@@ -1,0 +1,106 @@
+'use strict';
+/* 虚拟桌面几何：多屏并集、缩放、分块布局。 */
+
+const assert = require('assert');
+const { unionBounds, maxScaleFactor, tileLayout } = require('./lib/display-geometry');
+
+let pass = 0, fail = 0;
+const t = (n, f) => { try { f(); console.log('  PASS  ' + n); pass++; } catch (e) { console.log('  FAIL  ' + n + ' -> ' + e.message); fail++; } };
+
+const mk = (id, x, y, width, height, scaleFactor = 1) => ({ id, bounds: { x, y, width, height }, scaleFactor });
+
+console.log('\n== 虚拟桌面并集 ==');
+t('单屏：并集即自身', () => {
+  const r = unionBounds([mk(1, 0, 0, 1920, 1080)]);
+  assert.deepStrictEqual(r, { x: 0, y: 0, width: 1920, height: 1080 });
+});
+t('副屏在右侧：宽度相加', () => {
+  const r = unionBounds([mk(1, 0, 0, 1920, 1080), mk(2, 1920, 0, 2560, 1440)]);
+  assert.deepStrictEqual(r, { x: 0, y: 0, width: 4480, height: 1440 });
+});
+t('副屏在左侧：x 为负，宽度仍正确', () => {
+  const r = unionBounds([mk(1, 0, 0, 1920, 1080), mk(2, -1280, 0, 1280, 1024)]);
+  assert.strictEqual(r.x, -1280, 'x 应为 -1280');
+  assert.strictEqual(r.width, 3200, '宽度应为 3200');
+  assert.strictEqual(r.y, 0);
+  assert.strictEqual(r.height, 1080);
+});
+t('副屏在上方：y 为负', () => {
+  const r = unionBounds([mk(1, 0, 0, 1920, 1080), mk(2, 0, -1080, 1920, 1080)]);
+  assert.strictEqual(r.y, -1080);
+  assert.strictEqual(r.height, 2160);
+});
+t('四角分布的多屏', () => {
+  const r = unionBounds([
+    mk(1, 0, 0, 1920, 1080),
+    mk(2, -1920, 0, 1920, 1080),
+    mk(3, 0, -1080, 1920, 1080),
+    mk(4, 1920, 1080, 1920, 1080)
+  ]);
+  assert.deepStrictEqual(r, { x: -1920, y: -1080, width: 5760, height: 3240 });
+});
+t('空数组返回 null', () => assert.strictEqual(unionBounds([]), null));
+t('非数组返回 null', () => assert.strictEqual(unionBounds(null), null));
+t('跳过缺 bounds 的项', () => {
+  const r = unionBounds([mk(1, 0, 0, 800, 600), { id: 2 }]);
+  assert.deepStrictEqual(r, { x: 0, y: 0, width: 800, height: 600 });
+});
+
+console.log('\n== 缩放比选择 ==');
+t('混合 DPI 时取最大值', () => {
+  assert.strictEqual(maxScaleFactor([mk(1, 0, 0, 1920, 1080, 1), mk(2, 0, 0, 2560, 1440, 1.5)]), 1.5);
+});
+t('全部 1x 时为 1', () => assert.strictEqual(maxScaleFactor([mk(1, 0, 0, 800, 600, 1)]), 1));
+t('缺 scaleFactor 按 1 计', () => {
+  assert.strictEqual(maxScaleFactor([{ id: 1, bounds: { x: 0, y: 0, width: 800, height: 600 } }]), 1);
+});
+t('空数组为 1', () => assert.strictEqual(maxScaleFactor([]), 1));
+t('2x 屏与 1x 屏混合取 2', () => {
+  assert.strictEqual(maxScaleFactor([mk(1, 0, 0, 800, 600, 1), mk(2, 0, 0, 800, 600, 2)]), 2);
+});
+
+console.log('\n== 分块布局 ==');
+t('单屏 1x：位置归零', () => {
+  const r = tileLayout([mk(1, 0, 0, 1920, 1080)], { x: 0, y: 0 }, 1);
+  assert.deepStrictEqual(r, [{ id: 1, x: 0, y: 0, width: 1920, height: 1080 }]);
+});
+t('副屏在左：左侧块 x 为 0，主屏 x 为偏移量', () => {
+  const displays = [mk(1, 0, 0, 1920, 1080), mk(2, -1280, 0, 1280, 1024)];
+  const origin = unionBounds(displays);
+  const r = tileLayout(displays, origin, 1);
+  const left = r.find((x) => x.id === 2);
+  const main = r.find((x) => x.id === 1);
+  assert.strictEqual(left.x, 0, '最左侧块应从 0 开始');
+  assert.strictEqual(main.x, 1280, '主屏应偏移 1280');
+});
+t('按 2x 缩放时尺寸翻倍', () => {
+  const r = tileLayout([mk(1, 0, 0, 1920, 1080)], { x: 0, y: 0 }, 2);
+  assert.strictEqual(r[0].width, 3840);
+  assert.strictEqual(r[0].height, 2160);
+});
+t('混合 DPI：各块按统一缩放比放大', () => {
+  const displays = [mk(1, 0, 0, 1920, 1080, 1), mk(2, 1920, 0, 1280, 720, 1.5)];
+  const origin = unionBounds(displays);
+  const r = tileLayout(displays, origin, 1.5);
+  const a = r.find((x) => x.id === 1);
+  const b = r.find((x) => x.id === 2);
+  assert.strictEqual(a.width, 2880, '1920 × 1.5');
+  assert.strictEqual(a.height, 1620);
+  assert.strictEqual(b.x, 2880, '副屏从主屏右侧开始');
+  assert.strictEqual(b.width, 1920, '1280 × 1.5');
+});
+t('分块不重叠且完整覆盖', () => {
+  const displays = [mk(1, 0, 0, 1920, 1080), mk(2, 1920, 0, 1920, 1080)];
+  const origin = unionBounds(displays);
+  const r = tileLayout(displays, origin, 1);
+  const total = r.reduce((sum, x) => sum + x.width * x.height, 0);
+  assert.strictEqual(total, origin.width * origin.height, '面积应等于虚拟桌面面积');
+});
+t('尺寸至少为 1（防止零宽高）', () => {
+  const r = tileLayout([mk(1, 0, 0, 0, 0)], { x: 0, y: 0 }, 1);
+  assert.ok(r[0].width >= 1 && r[0].height >= 1);
+});
+t('非数组返回空', () => assert.deepStrictEqual(tileLayout(null, { x: 0, y: 0 }, 1), []));
+
+console.log('\n========== ' + pass + ' 通过 / ' + fail + ' 失败 ==========');
+process.exit(fail ? 1 : 0);

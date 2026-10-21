@@ -1,0 +1,736 @@
+'use strict';
+
+const $ = (selector, root = document) => root.querySelector(selector);
+const $$ = (selector, root = document) => Array.from(root.querySelectorAll(selector));
+
+const KIND_LABELS = { text: '文字', link: '链接', image: '图片', files: '文件', collection: '集合' };
+const SOURCE_LABELS = { screenshot: '截图', clipboard: '剪贴板', ocr: '识别', user: '手动', derived: '整理', shelf: '任务匣' };
+const ACTION_LABELS = {
+  'output.copy': '复制',
+  'text.merge-lines': '合并换行',
+  'text.clean': '清理文字',
+  'ocr.local': '提取文字',
+  'image.pin': '钉在桌面',
+  'files.reveal': '定位文件',
+  'output.open': '打开',
+  'output.shelf': '加入任务匣'
+};
+
+const state = {
+  page: 'shelf',
+  tasks: [],
+  selectedTaskId: '',
+  items: [],
+  executions: [],
+  filter: 'all',
+  query: '',
+  settings: null,
+  toastTimer: null,
+  ocrBusy: new Set(),
+  pinyinMatches: new Set()
+};
+
+function escapeHtml(value) {
+  return String(value ?? '').replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' }[char]));
+}
+
+function relativeTime(timestamp) {
+  const delta = Date.now() - Number(timestamp || 0);
+  if (delta < 60000) return '刚刚';
+  if (delta < 3600000) return `${Math.floor(delta / 60000)} 分钟前`;
+  if (delta < 86400000) return `${Math.floor(delta / 3600000)} 小时前`;
+  return new Date(timestamp).toLocaleDateString('zh-CN', { month: 'numeric', day: 'numeric' });
+}
+
+function showGlobalToast(message, type = '') {
+  const el = $('#global-toast');
+  el.textContent = message;
+  el.className = `global-toast is-visible ${type}`.trim();
+  clearTimeout(state.toastTimer);
+  state.toastTimer = setTimeout(() => el.classList.remove('is-visible'), 2200);
+}
+
+function selectedTask() {
+  return state.tasks.find((task) => task.id === state.selectedTaskId) || null;
+}
+
+function derivedChildren(itemId) {
+  return state.items.filter((item) => (item.parentIds || []).includes(itemId));
+}
+
+/* ---------- navigation ---------- */
+
+function navigate(page) {
+  state.page = page;
+  $$('.page').forEach((el) => el.classList.toggle('is-active', el.id === `page-${page}`));
+  $$('.nav-item').forEach((el) => el.classList.toggle('is-active', el.dataset.page === page));
+  $('#main-scroll').scrollTo({ top: 0 });
+  if (page === 'shelf') refreshShelf();
+  if (page === 'library') refreshLibrary();
+  if (page === 'trail') refreshTrail();
+  if (page === 'settings') refreshSettings();
+}
+
+/* ---------- shelf / task shelf ---------- */
+
+async function refreshShelf() {
+  const [tasks, items, executions] = await Promise.all([
+    window.suira.tasks.list(),
+    window.suira.content.list({ limit: 300 }),
+    window.suira.executions.list(200)
+  ]);
+  state.tasks = tasks || [];
+  state.items = items || [];
+  state.executions = executions || [];
+  if (!state.tasks.find((task) => task.id === state.selectedTaskId)) {
+    state.selectedTaskId = state.tasks[0]?.id || '';
+  }
+  renderTaskList();
+  renderTaskDetail();
+}
+
+function renderTaskList() {
+  const list = $('#task-list');
+  $('#task-count').textContent = `${state.tasks.length} 个`;
+  if (!state.tasks.length) {
+    list.innerHTML = '<div class="task-list-empty">还没有任务，点「新建任务」开始收集。</div>';
+    return;
+  }
+  list.innerHTML = state.tasks.map((task) => `
+    <button class="task-row ${task.id === state.selectedTaskId ? 'is-active' : ''}" type="button" data-id="${escapeHtml(task.id)}">
+      <span class="task-row-mark"></span>
+      <span class="task-row-body"><b>${escapeHtml(task.title)}</b><small>${task.items.length} 项 · ${relativeTime(task.updatedAt)}</small></span>
+    </button>
+  `).join('');
+  $$('.task-row', list).forEach((row) => {
+    row.addEventListener('click', () => {
+      state.selectedTaskId = row.dataset.id;
+      renderTaskList();
+      renderTaskDetail();
+    });
+  });
+}
+
+function taskStepChips(task) {
+  const related = new Set(task.items.map((item) => item.id));
+  const steps = state.executions
+    .filter((execution) => execution.inputIds.some((id) => related.has(id)))
+    .sort((a, b) => a.startedAt - b.startedAt)
+    .slice(-6);
+  if (!steps.length) return task.items.length ? ['接住内容'] : [];
+  const labels = [];
+  for (const step of steps) {
+    const label = ACTION_LABELS[step.actionId] || step.actionId;
+    if (labels[labels.length - 1] !== label) labels.push(label);
+  }
+  return ['接住内容', ...labels];
+}
+
+function renderTaskDetail() {
+  const task = selectedTask();
+  const empty = $('#task-empty');
+  const body = $('#task-body');
+  if (!task) {
+    empty.hidden = false;
+    body.hidden = true;
+    return;
+  }
+  empty.hidden = true;
+  body.hidden = false;
+  $('#task-title').textContent = task.title;
+  $('#task-subtitle').textContent = `${task.items.length} 项内容 · 创建于 ${relativeTime(task.createdAt)}`;
+
+  const chips = taskStepChips(task);
+  $('#task-timeline').innerHTML = chips.length ? chips.map((chip, index) => `
+    <span class="trail-step"><b>${index + 1}</b>${escapeHtml(chip)}</span>
+  `).join('<span class="trail-arrow">→</span>') : '<span class="trail-step is-muted">先加入内容，动作轨迹会显示在这里</span>';
+
+  const container = $('#task-items');
+  if (!task.items.length) {
+    container.innerHTML = '<div class="detail-placeholder">复制文字或截图后，用随手面板的「加入任务匣」把它们放进来。</div>';
+  } else {
+    container.innerHTML = task.items.map((item) => taskItemCard(item)).join('');
+    bindItemCardActions(container, task);
+  }
+}
+
+function taskItemCard(item) {
+  const children = derivedChildren(item.id);
+  const childHtml = children.map((child) => `
+    <div class="derived-card">
+      <span class="derived-tag">${escapeHtml(SOURCE_LABELS[child.source?.type] || '整理')}</span>
+      <p>${escapeHtml((child.text || child.title || '').slice(0, 220))}</p>
+      <div class="derived-actions">
+        <button type="button" data-copy="${escapeHtml(child.id)}">复制</button>
+      </div>
+    </div>
+  `).join('');
+  return `
+    <article class="shelf-card ${item.kind === 'image' ? 'is-image' : ''}" data-id="${escapeHtml(item.id)}">
+      <header class="shelf-card-head">
+        <span class="kind-tag ${escapeHtml(item.kind)}">${KIND_LABELS[item.kind] || '内容'}</span>
+        <b title="${escapeHtml(item.title)}">${escapeHtml(item.title)}</b>
+        <time>${relativeTime(item.createdAt)}</time>
+      </header>
+      ${item.kind === 'image' && item.thumbnail
+        ? `<img class="shelf-thumb" src="${escapeHtml(item.thumbnail)}" alt="">`
+        : `<p class="shelf-text">${escapeHtml((item.text || item.filePath || '').slice(0, 300))}</p>`}
+      ${childHtml ? `<div class="derived-wrap">${childHtml}</div>` : ''}
+      <footer class="shelf-card-actions">
+        <button type="button" data-copy="${escapeHtml(item.id)}">复制</button>
+        ${item.kind === 'image' && !children.length ? `<button type="button" data-ocr="${escapeHtml(item.id)}">${state.ocrBusy.has(item.id) ? '识别中…' : '提取文字'}</button>` : ''}
+        ${item.kind === 'image' && children.length ? `<button type="button" data-recipe="clean-text" data-recipe-item="${escapeHtml(children[children.length - 1].id)}">整理文字</button>` : ''}
+        ${(item.kind === 'text' || item.kind === 'link') ? `<button type="button" data-recipe="clean-text" data-recipe-item="${escapeHtml(item.id)}">整理文字</button>` : ''}
+        ${item.kind === 'files' || item.kind === 'link' ? `<button type="button" data-open="${escapeHtml(item.id)}">打开</button>` : ''}
+        <button type="button" class="is-danger" data-remove="${escapeHtml(item.id)}">移出任务</button>
+      </footer>
+    </article>
+  `;
+}
+
+function bindItemCardActions(root, task) {
+  $$('[data-copy]', root).forEach((button) => {
+    button.addEventListener('click', async () => {
+      const result = await window.suira.actions.run(button.dataset.copy, 'output.copy');
+      if (result?.ok) showGlobalToast('已复制', 'success');
+      else showGlobalToast(result?.error || '复制失败', 'error');
+    });
+  });
+  $$('[data-ocr]', root).forEach((button) => {
+    button.addEventListener('click', async () => {
+      const id = button.dataset.ocr;
+      state.ocrBusy.add(id);
+      button.textContent = '识别中…';
+      try {
+        const result = await window.suira.ocr.recognizeItem(id);
+        if (!result?.ok) throw new Error(result?.error || '识别失败');
+        showGlobalToast('识别完成，结果已保留在内容下方', 'success');
+      } catch (error) {
+        showGlobalToast(error.message || '识别失败', 'error');
+      } finally {
+        state.ocrBusy.delete(id);
+        await refreshShelf();
+      }
+    });
+  });
+  $$('[data-recipe]', root).forEach((button) => {
+    button.addEventListener('click', async () => {
+      const itemId = button.dataset.recipeItem;
+      const recipeId = button.dataset.recipe;
+      if (!itemId) return;
+      button.disabled = true;
+      const label = button.textContent;
+      button.textContent = '整理中…';
+      try {
+        const result = await window.suira.recipes.run({ itemId, recipeId, commit: false });
+        if (!result?.ok) throw new Error(result?.error || '整理失败');
+        const marks = (result.steps || []).map((step) => (step.ok ? '✓' : '✕')).join('');
+        showGlobalToast(`整理完成 ${marks}`, 'success');
+      } catch (error) {
+        showGlobalToast(error.message || '整理失败', 'error');
+      } finally {
+        button.disabled = false;
+        button.textContent = label;
+        await refreshShelf();
+      }
+    });
+  });
+  $$('[data-open]', root).forEach((button) => {
+    button.addEventListener('click', async () => {
+      const result = await window.suira.actions.run(button.dataset.open, 'output.open');
+      if (!result?.ok) showGlobalToast(result?.error || '打开失败', 'error');
+    });
+  });
+  $$('[data-remove]', root).forEach((button) => {
+    button.addEventListener('click', async () => {
+      await window.suira.tasks.removeItem({ taskId: task.id, itemId: button.dataset.remove });
+      await refreshShelf();
+    });
+  });
+}
+
+/* ---------- library ---------- */
+
+let pinyinTimer = null;
+function refreshPinyinMatches(query) {
+  clearTimeout(pinyinTimer);
+  if (!query) {
+    if (state.pinyinMatches.size) {
+      state.pinyinMatches.clear();
+      renderLibrary();
+    }
+    return;
+  }
+  pinyinTimer = setTimeout(async () => {
+    try {
+      const results = await window.suira.search.query(query);
+      const next = new Set((results || []).filter((r) => r.kind === 'content').map((r) => r.id));
+      const changed = next.size !== state.pinyinMatches.size || [...next].some((id) => !state.pinyinMatches.has(id));
+      state.pinyinMatches = next;
+      if (changed) renderLibrary();
+    } catch {
+      // 搜索失败时退化为纯文本匹配
+    }
+  }, 90);
+}
+
+async function refreshLibrary() {
+  state.items = (await window.suira.content.list({ limit: 300 })) || [];
+  renderLibrary();
+}
+
+function getVisibleItems() {
+  return state.items.filter((item) => {
+    if (state.filter !== 'all' && item.kind !== state.filter) return false;
+    if (!state.query) return true;
+    const haystack = `${item.title} ${item.text || ''} ${item.filePath || ''} ${item.source?.appName || ''}`.toLowerCase();
+    if (haystack.includes(state.query)) return true;
+    // 拼音与首字母匹配（由主进程 search:query 统一实现）
+    return state.pinyinMatches.has(item.id);
+  });
+}
+
+function renderLibrary() {
+  const grid = $('#library-grid');
+  const items = getVisibleItems();
+  if (!items.length) {
+    grid.innerHTML = `<div class="library-empty">${state.query ? '没有找到匹配的内容' : '还没有内容。截图、复制文字，或从随手面板开始。'}</div>`;
+    return;
+  }
+  grid.innerHTML = items.map((item) => {
+    const derived = derivedChildren(item.id);
+    return `
+    <article class="library-card" data-id="${escapeHtml(item.id)}">
+      <header class="shelf-card-head">
+        <span class="kind-tag ${escapeHtml(item.kind)}">${KIND_LABELS[item.kind] || '内容'}</span>
+        <b title="${escapeHtml(item.title)}">${escapeHtml(item.title)}</b>
+        ${item.pinned ? '<span class="pin-mark" title="已固定，不会被自动清理">固定</span>' : ''}
+        <time>${relativeTime(item.createdAt)}</time>
+      </header>
+      ${item.kind === 'image' && item.thumbnail
+        ? `<img class="shelf-thumb" src="${escapeHtml(item.thumbnail)}" alt="">`
+        : `<p class="shelf-text">${escapeHtml((item.text || item.filePath || '').slice(0, 220) || '（无文字内容）')}</p>`}
+      ${derived.length ? `<div class="derived-note">${derived.length} 个处理结果 · ${escapeHtml(derived[0].title || '')}</div>` : ''}
+      <footer class="shelf-card-actions">
+        <button type="button" data-copy="${escapeHtml(item.id)}">复制</button>
+        ${item.kind === 'image' ? `<button type="button" data-ocr="${escapeHtml(item.id)}">${state.ocrBusy.has(item.id) ? '识别中…' : '提取文字'}</button>` : ''}
+        ${item.kind === 'image' ? `<button type="button" data-pin="${escapeHtml(item.id)}">钉住</button>` : ''}
+        ${item.kind === 'files' || item.kind === 'link' ? `<button type="button" data-open="${escapeHtml(item.id)}">打开</button>` : ''}
+        <button type="button" data-shelf="${escapeHtml(item.id)}">入匣</button>
+        <button type="button" data-fix="${escapeHtml(item.id)}">${item.pinned ? '取消固定' : '固定'}</button>
+        <button type="button" class="is-danger" data-delete="${escapeHtml(item.id)}">删除</button>
+      </footer>
+    </article>`;
+  }).join('');
+
+  $$('[data-copy]', grid).forEach((button) => button.addEventListener('click', async () => {
+    const result = await window.suira.actions.run(button.dataset.copy, 'output.copy');
+    if (result?.ok) showGlobalToast('已复制', 'success');
+    else showGlobalToast(result?.error || '复制失败', 'error');
+  }));
+  $$('[data-ocr]', grid).forEach((button) => button.addEventListener('click', async () => {
+    const id = button.dataset.ocr;
+    state.ocrBusy.add(id);
+    button.textContent = '识别中…';
+    try {
+      const result = await window.suira.ocr.recognizeItem(id);
+      if (!result?.ok) throw new Error(result?.error || '识别失败');
+      showGlobalToast('识别完成', 'success');
+    } catch (error) {
+      showGlobalToast(error.message || '识别失败', 'error');
+    } finally {
+      state.ocrBusy.delete(id);
+      await refreshLibrary();
+    }
+  }));
+  $$('[data-pin]', grid).forEach((button) => button.addEventListener('click', async () => {
+    const result = await window.suira.actions.run(button.dataset.pin, 'image.pin');
+    if (result?.ok) showGlobalToast('已钉在桌面', 'success');
+    else showGlobalToast(result?.error || '钉图失败', 'error');
+  }));
+  $$('[data-open]', grid).forEach((button) => button.addEventListener('click', async () => {
+    const result = await window.suira.actions.run(button.dataset.open, 'output.open');
+    if (!result?.ok) showGlobalToast(result?.error || '打开失败', 'error');
+  }));
+  $$('[data-shelf]', grid).forEach((button) => button.addEventListener('click', async () => {
+    const result = await window.suira.actions.run(button.dataset.shelf, 'output.shelf');
+    if (result?.ok) showGlobalToast('已加入任务匣 · 临时收集', 'success');
+    else showGlobalToast(result?.error || '加入失败', 'error');
+  }));
+  $$('[data-fix]', grid).forEach((button) => button.addEventListener('click', async () => {
+    const result = await window.suira.content.togglePin(button.dataset.fix);
+    if (result?.ok) {
+      showGlobalToast(result.pinned ? '已固定，不会被自动清理' : '已取消固定', 'success');
+      await refreshLibrary();
+    } else {
+      showGlobalToast(result?.error || '操作失败', 'error');
+    }
+  }));
+  $$('[data-delete]', grid).forEach((button) => button.addEventListener('click', async () => {
+    await window.suira.content.remove(button.dataset.delete);
+    showGlobalToast('已删除');
+    await refreshLibrary();
+  }));
+}
+
+/* ---------- trail ---------- */
+
+async function refreshTrail() {
+  state.executions = (await window.suira.executions.list(200)) || [];
+  renderTrail();
+}
+
+function renderTrail() {
+  const summary = $('#trail-summary');
+  const list = $('#trail-list');
+  const done = state.executions.filter((execution) => execution.status === 'done').length;
+  const failed = state.executions.filter((execution) => execution.status === 'failed').length;
+  const ocrCount = state.executions.filter((execution) => execution.actionId === 'ocr.local').length;
+  summary.innerHTML = `
+    <div class="summary-card"><b>${state.executions.length}</b><span>总动作数</span></div>
+    <div class="summary-card"><b>${done}</b><span>成功</span></div>
+    <div class="summary-card ${failed ? 'is-warn' : ''}"><b>${failed}</b><span>失败</span></div>
+    <div class="summary-card"><b>${ocrCount}</b><span>文字识别</span></div>
+  `;
+  if (!state.executions.length) {
+    list.innerHTML = '<div class="library-empty">还没有动作记录。截图提字、合并换行后，这里会出现完整轨迹。</div>';
+    return;
+  }
+  list.innerHTML = state.executions.map((execution) => {
+    const statusLabel = { done: '完成', failed: '失败', running: '进行中', queued: '排队', cancelled: '已取消' }[execution.status] || execution.status;
+    const inputNames = execution.inputIds.map((id) => state.items.find((item) => item.id === id)?.title).filter(Boolean);
+    return `
+    <div class="trail-row ${execution.status === 'failed' ? 'is-failed' : ''}">
+      <span class="trail-status ${execution.status}">${statusLabel}</span>
+      <div class="trail-main">
+        <b>${escapeHtml(ACTION_LABELS[execution.actionId] || execution.actionId)}</b>
+        <small>${escapeHtml(inputNames.join('、') || '本地内容')}${execution.error ? ` · ${escapeHtml(execution.error)}` : ''}</small>
+      </div>
+      <time>${relativeTime(execution.startedAt)}</time>
+    </div>`;
+  }).join('');
+}
+
+/* ---------- settings ---------- */
+
+async function refreshSettings() {
+  const info = await window.suira.app.info();
+  $('#app-version').textContent = `版本 ${info?.version || '—'} · ${info?.runtime || ''}`;
+  $('#side-version').textContent = info?.version || '—';
+  $('#user-data-path').textContent = info?.dataPath || info?.userData || '';
+  const settings = await window.suira.settings.get();
+  state.settings = settings;
+  $('#setting-record').checked = Boolean(settings.recordClipboard);
+  $('#setting-sensitive').checked = Boolean(settings.pauseSensitive);
+  $('#setting-paste').checked = Boolean(settings.pasteAfterCopy);
+  $('#setting-encrypt').checked = settings.encryptContent !== false;
+  $('#setting-days').value = settings.retentionDays;
+  $('#setting-max').value = settings.maxItems;
+  $('#setting-langs').value = settings.ocrLangs;
+  await refreshShortcuts();
+}
+
+function bindSettings() {
+  $('#setting-record').addEventListener('change', (event) => window.suira.settings.update({ recordClipboard: event.target.checked }));
+  $('#setting-sensitive').addEventListener('change', (event) => window.suira.settings.update({ pauseSensitive: event.target.checked }));
+  $('#setting-paste').addEventListener('change', (event) => window.suira.settings.update({ pasteAfterCopy: event.target.checked }));
+  $('#setting-encrypt').addEventListener('change', (event) => window.suira.settings.update({ encryptContent: event.target.checked }));
+  $('#setting-days').addEventListener('change', (event) => window.suira.settings.update({ retentionDays: Number(event.target.value) }));
+  $('#setting-max').addEventListener('change', (event) => window.suira.settings.update({ maxItems: Number(event.target.value) }));
+  $('#setting-langs').addEventListener('change', (event) => window.suira.settings.update({ ocrLangs: event.target.value }));
+  bindShortcutEditors();
+}
+
+/* ---------- 快捷键改键 ---------- */
+
+const KEY_LABELS = {
+  ' ': 'Space', arrowup: 'Up', arrowdown: 'Down', arrowleft: 'Left', arrowright: 'Right',
+  escape: 'Esc', enter: 'Enter', tab: 'Tab', backspace: 'Backspace', delete: 'Delete'
+};
+
+/** 把键盘事件转成 Electron 加速键字符串。 */
+function toAccelerator(event) {
+  const modifiers = [];
+  if (event.ctrlKey) modifiers.push('Control');
+  if (event.altKey) modifiers.push('Alt');
+  if (event.shiftKey) modifiers.push('Shift');
+  if (event.metaKey) modifiers.push('Super');
+
+  const raw = String(event.key || '');
+  const lower = raw.toLowerCase();
+  if (['control', 'alt', 'shift', 'meta'].includes(lower)) return ''; // 只按了修饰键
+  const main = KEY_LABELS[lower] || (raw.length === 1 ? raw.toUpperCase() : raw);
+  if (!main) return '';
+  if (!modifiers.length) return ''; // 至少需要一个修饰键
+  return [...modifiers, main].join('+');
+}
+
+/** 把加速键字符串渲染成更易读的形式。 */
+function prettyAccelerator(accelerator) {
+  return String(accelerator || '')
+    .replace(/CommandOrControl/gi, 'Ctrl')
+    .replace(/Control/gi, 'Ctrl')
+    .replace(/Super/gi, 'Win')
+    .split('+')
+    .join(' + ');
+}
+
+function bindShortcutEditors() {
+  const editors = [
+    { name: 'quick', input: $('#setting-key-quick'), status: $('#status-quick') },
+    { name: 'capture', input: $('#setting-key-capture'), status: $('#status-capture') }
+  ];
+
+  for (const editor of editors) {
+    const input = editor.input;
+    if (!input) continue;
+    input.addEventListener('keydown', async (event) => {
+      event.preventDefault();
+      if (event.key === 'Escape') { input.blur(); return; }
+      const accelerator = toAccelerator(event);
+      if (!accelerator) {
+        editor.status.textContent = '请按下「修饰键 + 主键」的组合';
+        editor.status.className = 'shortcut-status is-warn';
+        return;
+      }
+      const result = await window.suira.shortcuts.set({ name: editor.name, accelerator });
+      if (result?.ok) {
+        input.value = prettyAccelerator(accelerator);
+        editor.status.textContent = '已更新';
+        editor.status.className = 'shortcut-status is-ok';
+      } else {
+        editor.status.textContent = result?.error || '改键失败';
+        editor.status.className = 'shortcut-status is-error';
+      }
+    });
+    input.addEventListener('focus', () => {
+      input.value = '';
+      input.placeholder = '请按下组合键…';
+      editor.status.textContent = '';
+      editor.status.className = 'shortcut-status';
+    });
+  }
+}
+
+/** 从主进程拉取当前键位与注册状态并渲染。 */
+async function refreshShortcuts() {
+  try {
+    const snapshot = await window.suira.shortcuts.get();
+    const render = (name, inputId, statusId) => {
+      const input = $(inputId);
+      const status = $(statusId);
+      if (!input || !status) return;
+      const accelerator = snapshot?.bindings?.[name] || '';
+      const entry = snapshot?.status?.[name];
+      input.value = prettyAccelerator(accelerator);
+      input.placeholder = '点击后按下组合键';
+      if (entry && !entry.ok) {
+        status.textContent = entry.error || '注册失败';
+        status.className = 'shortcut-status is-error';
+      } else if (entry?.reserved) {
+        status.textContent = `注意：${entry.reserved} 已被系统占用`;
+        status.className = 'shortcut-status is-warn';
+      } else if (entry?.ok) {
+        status.textContent = '已生效';
+        status.className = 'shortcut-status is-ok';
+      } else {
+        status.textContent = '';
+        status.className = 'shortcut-status';
+      }
+    };
+    render('quick', '#setting-key-quick', '#status-quick');
+    render('capture', '#setting-key-capture', '#status-capture');
+  } catch {
+    // 快捷键信息不可用时不阻塞设置页
+  }
+}
+
+/* ---------- modal ---------- */
+
+/** 同步最大化按钮图标与提示（还原 / 最大化）。 */
+function syncMaximizeIcon(maximized) {
+  const button = $('#maximize');
+  if (!button) return;
+  const isMax = Boolean(maximized);
+  button.setAttribute('aria-label', isMax ? '还原' : '最大化');
+  button.title = isMax ? '还原' : '最大化';
+  button.dataset.maximized = isMax ? '1' : '0';
+  button.innerHTML = isMax
+    ? '<svg viewBox="0 0 16 16"><rect x="3.5" y="5.5" width="7" height="7" rx="1"/><path d="M5.5 5.5V3.5h7v7h-2"/></svg>'
+    : '<svg viewBox="0 0 16 16"><rect x="3.5" y="3.5" width="9" height="9" rx="1"/></svg>';
+}
+function openModal(title, eyebrow, placeholder, onConfirm) {
+  $('#modal').hidden = false;
+  $('#modal-title').textContent = title;
+  $('#modal-eyebrow').textContent = eyebrow;
+  const input = $('#modal-input');
+  input.value = '';
+  input.placeholder = placeholder || '';
+  setTimeout(() => input.focus(), 30);
+  $('#modal-confirm').onclick = async () => {
+    const value = input.value.trim();
+    if (!value) return;
+    $('#modal').hidden = true;
+    await onConfirm(value);
+  };
+}
+
+function closeModal() {
+  $('#modal').hidden = true;
+}
+
+/* ---------- events ---------- */
+
+function installEvents() {
+  $$('.nav-item').forEach((item) => item.addEventListener('click', () => navigate(item.dataset.page)));
+
+  $('#show-quick').addEventListener('click', () => window.suira.quick.show());
+  $('#title-capture').addEventListener('click', async () => {
+    const result = await window.suira.capture.start();
+    if (!result?.ok) showGlobalToast(result?.error || '暂时无法开始截图', 'error');
+  });
+  $('#minimize').addEventListener('click', () => window.suira.window.minimize());
+  $('#maximize').addEventListener('click', async () => {
+    const maximized = await window.suira.window.maximize();
+    syncMaximizeIcon(maximized);
+  });
+  $('#close').addEventListener('click', () => window.suira.window.close());
+
+  $('#shelf-new').addEventListener('click', () => openModal('新建任务', 'NEW TASK', '例如：竞品研究', async (title) => {
+    const result = await window.suira.tasks.create(title);
+    if (result?.ok) {
+      state.selectedTaskId = result.task.id;
+      showGlobalToast('任务已创建', 'success');
+      await refreshShelf();
+    }
+  }));
+  $('#shelf-import').addEventListener('click', async () => {
+    let text = '';
+    try { text = await navigator.clipboard.readText(); } catch {}
+    if (!text.trim()) { showGlobalToast('剪贴板里暂时没有文字', 'error'); return; }
+    const result = await window.suira.content.addText({ text, source: 'clipboard' });
+    if (!result?.ok) { showGlobalToast(result?.error || '读取失败', 'error'); return; }
+    let task = state.tasks.find((entry) => !entry.archived && entry.title === '临时收集');
+    if (!task) {
+      const created = await window.suira.tasks.create('临时收集');
+      task = created?.task;
+    }
+    if (task) await window.suira.tasks.addItem({ taskId: task.id, itemId: result.item.id });
+    showGlobalToast('剪贴板内容已加入任务匣', 'success');
+    await refreshShelf();
+  });
+  $('#task-copy').addEventListener('click', async () => {
+    const task = selectedTask();
+    if (!task) return;
+    const result = await window.suira.tasks.copyText(task.id);
+    if (result?.ok) showGlobalToast('任务文字已按顺序复制', 'success');
+    else showGlobalToast(result?.error || '复制失败', 'error');
+  });
+  $('#task-export').addEventListener('click', async () => {
+    const task = selectedTask();
+    if (!task) return;
+    const result = await window.suira.tasks.export(task.id);
+    if (result?.ok) showGlobalToast(`已导出到 ${result.filePath}`, 'success');
+    else if (!result?.canceled) showGlobalToast(result?.error || '导出失败', 'error');
+  });
+  $('#task-delete').addEventListener('click', async () => {
+    const task = selectedTask();
+    if (!task) return;
+    openModal('删除任务', 'CONFIRM', `输入「${task.title}」确认删除`, async () => {
+      await window.suira.tasks.remove(task.id);
+      state.selectedTaskId = '';
+      showGlobalToast('任务已删除');
+      await refreshShelf();
+    });
+    $('#modal-confirm').textContent = '删除';
+  });
+
+  $('#library-capture').addEventListener('click', async () => {
+    const result = await window.suira.capture.start();
+    if (!result?.ok) showGlobalToast(result?.error || '暂时无法开始截图', 'error');
+  });
+  $('#library-clear').addEventListener('click', () => {
+    openModal('清空剪贴板记录', 'CLEAR CLIPBOARD', '输入「清空」以确认', async (value) => {
+      if (value !== '清空') { showGlobalToast('已取消', 'error'); return; }
+      const result = await window.suira.content.clearClipboard();
+      if (result?.ok) {
+        showGlobalToast(`已清空 ${result.removed || 0} 条剪贴板记录`, 'success');
+        await refreshLibrary();
+      } else {
+        showGlobalToast(result?.error || '清空失败', 'error');
+      }
+    });
+  });
+  $('#library-search').addEventListener('input', (event) => {
+    state.query = event.target.value.trim().toLowerCase();
+    renderLibrary();
+    refreshPinyinMatches(state.query);
+  });
+  $$('#library-filters .chip').forEach((chip) => {
+    chip.addEventListener('click', () => {
+      state.filter = chip.dataset.filter;
+      $$('#library-filters .chip').forEach((el) => el.classList.toggle('is-active', el === chip));
+      renderLibrary();
+    });
+  });
+
+  $('#trail-refresh').addEventListener('click', refreshTrail);
+
+  $('#open-data').addEventListener('click', () => window.suira.app.openDataDir());
+  bindSettings();
+
+  $('#modal-close').addEventListener('click', closeModal);
+  $('#modal-cancel').addEventListener('click', closeModal);
+  $('#modal').addEventListener('click', (event) => {
+    if (event.target === $('#modal')) closeModal();
+  });
+  $('#modal-input').addEventListener('keydown', (event) => {
+    if (event.key === 'Enter') { event.preventDefault(); $('#modal-confirm').click(); }
+    if (event.key === 'Escape') closeModal();
+  });
+
+  document.addEventListener('keydown', (event) => {
+    if (!$('#modal').hidden) {
+      if (event.key === 'Escape') closeModal();
+      return;
+    }
+    if (event.key === 'Escape' && event.target.matches('input, textarea')) event.target.blur();
+  });
+
+  window.suira.content.onChanged(() => {
+    if (state.page === 'shelf') refreshShelf();
+    if (state.page === 'library') refreshLibrary();
+  });
+  window.suira.tasks.onChanged(() => {
+    if (state.page === 'shelf') refreshShelf();
+  });
+  window.suira.executions.onChanged(() => {
+    if (state.page === 'trail') refreshTrail();
+    if (state.page === 'shelf') refreshShelf();
+  });
+  window.suira.app.onToast((payload) => showGlobalToast(payload.message || '', payload.type || ''));
+  window.suira.app.onNavigate((page) => navigate(page));
+  window.suira.ocr.onProgress((payload) => {
+    if (payload?.status === 'recognizing text' && state.page !== 'trail') {
+      showGlobalToast(`正在识别文字 ${Math.round((payload.progress || 0) * 100)}%`);
+    }
+  });
+}
+
+/* ---------- init ---------- */
+
+async function init() {
+  installEvents();
+  const info = await window.suira.app.info();
+  if (info?.version) {
+    $('#app-version').textContent = `版本 ${info.version} · ${info.runtime || ''}`;
+    $('#side-version').textContent = info.version;
+  }
+  state.executions = (await window.suira.executions.list(200)) || [];
+  navigate('shelf');
+}
+
+init().catch((error) => {
+  console.error(error);
+  showGlobalToast(`初始化失败：${error.message}`, 'error');
+});

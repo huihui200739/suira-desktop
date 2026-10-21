@@ -1,0 +1,106 @@
+<div class="viz-carousel viz-dotted-background" aria-label="随序界面概念" data-previous-label="上一个界面" data-next-label="下一个界面">
+  <section data-variant="随手面板" aria-label="随手面板概念">
+    <div id="suira-palette-stage" class="suira-stage">
+      <div id="suira-palette" class="suira-app suira-palette" aria-label="随手面板">
+        <header class="suira-top"><div class="suira-wordmark">SUIRA <span>随序</span></div><span class="suira-caption">交互概念</span></header>
+        <div class="suira-search"><i data-lucide="search" aria-hidden="true"></i><input id="suira-search" aria-label="搜索动作" placeholder="想做什么，直接输入" autocomplete="off"><kbd>Esc</kbd></div>
+        <div class="suira-inner">
+          <div class="suira-source" id="suira-source">
+            <div class="suira-line"><span><i data-lucide="text-select" aria-hidden="true"></i> 当前选中文字</span><span>来自 Edge</span></div>
+            <p id="suira-source-text">把工具放进同一条工作流。<br>让灵感从捕获到完成，自然衔接。</p>
+          </div>
+          <div class="suira-section-label">继续处理</div>
+          <div id="suira-actions" class="suira-actions">
+            <button class="suira-action cursor-interaction" type="button" data-action="clean" data-search="清理 合并 换行 hl"><span class="suira-action-icon"><i data-lucide="wrap-text" aria-hidden="true"></i></span><span><strong>合并换行</strong><small>保留语义，整理为连续文字</small></span><kbd>↵</kbd></button>
+            <button class="suira-action cursor-interaction" type="button" data-action="collect" data-search="任务匣 收集 保存 rwx"><span class="suira-action-icon"><i data-lucide="layers-2" aria-hidden="true"></i></span><span><strong>加入任务匣</strong><small>带上来源，稍后继续</small></span><i data-lucide="plus" aria-hidden="true"></i></button>
+            <button class="suira-action cursor-interaction" type="button" data-action="preview" data-search="预览 结果 文本 yl"><span class="suira-action-icon"><i data-lucide="scan-text" aria-hidden="true"></i></span><span><strong>预览处理结果</strong><small>检查文字，再决定下一步</small></span><i data-lucide="chevron-right" aria-hidden="true"></i></button>
+          </div>
+          <p id="suira-no-results" class="suira-empty" hidden>没有匹配的动作</p>
+          <div class="suira-result" id="suira-result" hidden><div class="suira-line"><strong>处理结果</strong><button id="suira-close-preview" class="suira-text-button cursor-interaction" type="button">收起</button></div><p id="suira-result-text"></p></div>
+        </div>
+        <footer class="suira-footer"><span id="suira-palette-status" role="status" aria-live="polite">接住内容，顺手继续。</span><span><span class="suira-dot"></span> 本地处理</span></footer>
+      </div>
+      <div class="suira-stage-note">全部为示例内容 · 可搜索、处理文字和加入任务匣</div>
+    </div>
+  </section>
+  <section data-variant="任务匣" aria-label="任务匣概念" hidden>
+    <div id="suira-shelf-stage" class="suira-stage">
+      <div id="suira-shelf" class="suira-app suira-shelf" aria-label="任务匣">
+        <header class="suira-top"><div class="suira-wordmark">SUIRA <span>任务匣</span></div><span class="suira-caption">竞品研究</span></header>
+        <div class="suira-shelf-heading"><div><h2>把线索，留在一起。</h2><p>同一个任务，从收集到完成。</p></div><span class="suira-count" id="suira-item-count">3 项内容</span></div>
+        <div class="suira-workspace">
+          <nav class="suira-items" aria-label="任务中的内容">
+            <button class="suira-item cursor-interaction" type="button" data-item="text" aria-pressed="true"><i data-lucide="file-text" aria-hidden="true"></i><span><strong>产品定位摘录</strong><small>文字 · Edge</small></span><span class="suira-check">·</span></button>
+            <button class="suira-item cursor-interaction" type="button" data-item="image" aria-pressed="false"><i data-lucide="image" aria-hidden="true"></i><span><strong>交互灵感截图</strong><small>图片 · 框选捕获</small></span></button>
+            <button class="suira-item cursor-interaction" type="button" data-item="file" aria-pressed="false"><i data-lucide="file" aria-hidden="true"></i><span><strong>研究提纲.docx</strong><small>文件引用 · 资源管理器</small></span></button>
+            <button id="suira-collected-item" class="suira-item cursor-interaction" type="button" data-item="collected" aria-pressed="false" hidden><i data-lucide="text-select" aria-hidden="true"></i><span><strong>刚刚收集的文字</strong><small>文字 · 随手面板</small></span></button>
+          </nav>
+          <article class="suira-detail">
+            <div class="suira-line"><span id="suira-detail-type">文字 · 来源已保留</span><button type="button" id="suira-pin" class="suira-text-button cursor-interaction" aria-pressed="false">保留</button></div>
+            <h3 id="suira-detail-title">产品定位摘录</h3>
+            <p id="suira-detail-text" class="suira-detail-body">把工具放进同一条工作流。<br>让灵感从捕获到完成，自然衔接。</p>
+            <div id="suira-image-preview" class="suira-image-preview" hidden><div class="suira-mini-window"><span></span><span></span><span></span><div class="suira-mini-line"></div><div class="suira-mini-line short"></div><div class="suira-mini-selection">内容 → 处理 → 继续</div></div></div>
+            <div class="suira-trail"><span><i data-lucide="check" aria-hidden="true"></i> 已收集</span><span>→</span><span id="suira-step-label">待整理</span></div>
+            <button id="suira-continue" class="suira-primary cursor-interaction" type="button"><i data-lucide="arrow-right" aria-hidden="true"></i><span>整理文字</span></button>
+          </article>
+        </div>
+        <footer class="suira-footer"><span id="suira-shelf-status" role="status" aria-live="polite">内容与处理结果一起保留。</span><span>保存在本机</span></footer>
+      </div>
+      <div class="suira-stage-note">点击内容查看来源与处理轨迹</div>
+    </div>
+  </section>
+</div>
+<style>
+.suira-stage{min-height:650px;padding:32px 16px 28px;display:flex;flex-direction:column;align-items:center;justify-content:center;box-sizing:border-box;gap:20px}
+.suira-app{--suira-bg:light-dark(#fafbfd,#24272e);--suira-inset:light-dark(#f0f3f8,#2d333f);--suira-fg:light-dark(#263040,#eef2fa);--suira-muted:light-dark(#616d80,#b6bfce);--suira-line:light-dark(#dde3ed,#444c5a);--suira-accent:light-dark(#506f9e,#a5bde6);--suira-accent-fg:light-dark(#f9fbff,#192535);--suira-selected:light-dark(#e8eef8,#34435d);background:var(--suira-bg);color:var(--suira-fg);border:1px solid var(--suira-line);border-radius:18px;box-shadow:0 20px 50px light-dark(#24354d1a,#00000036);font:14px/1.5 'Segoe UI Variable','Segoe UI','PingFang SC',sans-serif;width:100%;max-width:620px;overflow:hidden;box-sizing:border-box}
+.suira-app *{box-sizing:border-box}.suira-app [hidden]{display:none!important}.suira-app button,.suira-app input{font:inherit}.suira-app button{color:inherit}.suira-app button:focus-visible,.suira-app input:focus-visible{outline:2px solid var(--suira-accent);outline-offset:2px}.suira-app button{border:0}.suira-app svg{width:18px;height:18px;flex:0 0 auto}.suira-top{height:58px;display:flex;align-items:center;justify-content:space-between;padding:0 24px;border-bottom:1px solid var(--suira-line);gap:16px}.suira-wordmark{letter-spacing:2px;font-weight:600;font-size:14px;white-space:nowrap}.suira-wordmark span{letter-spacing:0;font-size:12px;font-weight:400;color:var(--suira-muted);margin-left:9px}.suira-caption{color:var(--suira-muted);font-size:12px;white-space:nowrap}.suira-search{display:flex;align-items:center;gap:12px;padding:18px 24px;border-bottom:1px solid var(--suira-line)}.suira-search input{min-width:0;width:100%;background:transparent;color:var(--suira-fg);border:0;padding:3px 0;font-size:18px}.suira-search input::placeholder{color:var(--suira-muted)}.suira-app kbd{font:11px/1.3 'Segoe UI',sans-serif;color:var(--suira-muted);border:1px solid var(--suira-line);border-radius:4px;min-width:23px;padding:3px 5px;text-align:center;background:var(--suira-bg)}.suira-inner{padding:18px}.suira-source{background:var(--suira-inset);border-radius:10px;padding:14px 16px}.suira-line{display:flex;justify-content:space-between;align-items:center;gap:12px;font-size:12px;color:var(--suira-muted);flex-wrap:wrap}.suira-line>span:first-child{display:inline-flex;align-items:center;gap:7px}.suira-line svg{width:14px;height:14px}.suira-source p{margin:12px 0 1px;font-size:14px;line-height:1.8;overflow-wrap:anywhere;white-space:pre-line}.suira-section-label{padding:18px 10px 8px;font-size:12px;color:var(--suira-muted)}.suira-actions{display:grid;gap:3px}.suira-action{background:transparent;display:flex;align-items:center;text-align:left;padding:12px 10px;border-radius:9px;gap:13px;width:100%}.suira-action:first-child{background:var(--suira-selected)}.suira-action:hover{background:var(--suira-inset)}.suira-action>span:nth-child(2){flex:1;min-width:0}.suira-action strong,.suira-item strong{display:block;font-weight:500}.suira-action small,.suira-item small{display:block;color:var(--suira-muted);font-size:12px;margin-top:2px}.suira-action-icon{width:34px;height:34px;display:grid;place-items:center;background:var(--suira-bg);border-radius:8px}.suira-footer{border-top:1px solid var(--suira-line);display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;padding:13px 24px;color:var(--suira-muted);font-size:11px}.suira-footer>span:last-child{white-space:nowrap;display:inline-flex;align-items:center;gap:6px}.suira-dot{width:5px;height:5px;border-radius:50%;background:var(--suira-accent);display:inline-block}.suira-stage-note{font:12px/1.5 'Segoe UI','PingFang SC',sans-serif;color:light-dark(#687488,#bbc4d5);text-align:center}.suira-result{background:var(--suira-inset);border-radius:9px;padding:14px 16px;margin-top:12px}.suira-result p{margin-bottom:0;overflow-wrap:anywhere}.suira-text-button{background:transparent;color:var(--suira-accent)!important;padding:3px 6px;border-radius:4px;font-size:12px!important}.suira-text-button[aria-pressed=true]{background:var(--suira-selected)}.suira-empty{margin:20px 10px;color:var(--suira-muted)}.suira-shelf-heading{display:flex;justify-content:space-between;align-items:center;padding:26px 24px;gap:12px}.suira-shelf-heading h2{margin:0;font-size:20px;font-weight:500;letter-spacing:-.4px}.suira-shelf-heading p{margin:6px 0 0;color:var(--suira-muted);font-size:12px}.suira-count{white-space:nowrap;font-size:12px;color:var(--suira-muted)}.suira-workspace{display:grid;grid-template-columns:218px minmax(0,1fr);min-height:315px;border-top:1px solid var(--suira-line)}.suira-items{padding:12px 8px;background:var(--suira-inset);border-right:1px solid var(--suira-line)}.suira-item{display:flex;align-items:center;gap:10px;text-align:left;width:100%;padding:13px 10px;border-radius:8px;background:transparent;margin-bottom:4px}.suira-item[aria-pressed=true]{background:var(--suira-bg)}.suira-item>span:nth-child(2){min-width:0;flex:1}.suira-item strong{font-size:12px;overflow-wrap:anywhere}.suira-item small{font-size:11px}.suira-check{color:var(--suira-accent);font-size:20px}.suira-detail{padding:22px;min-width:0}.suira-detail h3{font-size:16px;font-weight:500;margin:24px 0 14px}.suira-detail-body{font-size:14px;line-height:1.8;min-height:76px;white-space:pre-line;overflow-wrap:anywhere;margin:0}.suira-trail{display:flex;align-items:center;flex-wrap:wrap;gap:9px;color:var(--suira-muted);font-size:11px;margin:20px 0}.suira-trail>span:first-child{display:inline-flex;align-items:center;gap:4px}.suira-trail svg{width:13px;height:13px}.suira-primary{display:flex;align-items:center;justify-content:center;gap:9px;padding:10px 15px;background:var(--suira-accent);color:var(--suira-accent-fg)!important;border-radius:7px;width:100%;font-size:13px!important}.suira-image-preview{background:var(--suira-inset);border-radius:7px;padding:15px;margin:14px 0}.suira-mini-window{padding:10px;background:var(--suira-bg);border:1px solid var(--suira-line);border-radius:5px}.suira-mini-window>span{display:inline-block;width:4px;height:4px;background:var(--suira-muted);border-radius:50%;margin-right:3px}.suira-mini-line{height:5px;width:80%;background:var(--suira-line);margin:12px 0}.suira-mini-line.short{width:55%}.suira-mini-selection{background:var(--suira-selected);padding:7px;color:var(--suira-accent);font-size:11px;text-align:center}
+@media(max-width:520px){.suira-stage{min-height:875px;padding:24px 8px}.suira-top{padding:0 16px}.suira-search{padding:17px 16px}.suira-search input{font-size:16px}.suira-inner{padding:12px}.suira-footer{padding:12px 16px}.suira-workspace{grid-template-columns:1fr}.suira-items{border-right:0;border-bottom:1px solid var(--suira-line)}.suira-item{padding:10px}.suira-shelf-heading{padding:22px 16px;align-items:start;flex-wrap:wrap}.suira-detail{padding:18px}.suira-caption{font-size:11px}.suira-source .suira-line{gap:7px}.suira-action{padding:11px 8px;gap:10px}.suira-shelf-heading h2{font-size:19px}}
+@media(pointer:coarse){.suira-app button{min-height:44px}}
+</style>
+<script>
+(()=>{
+const palette=document.getElementById('suira-palette');
+const shelf=document.getElementById('suira-shelf');
+const search=document.getElementById('suira-search');
+const initial='把工具放进同一条工作流。\n让灵感从捕获到完成，自然衔接。';
+const saved=window.openai?.widgetState?.modelContent;
+let state={cleaned:!!saved?.cleaned,collected:!!saved?.collected,selected:['text','image','file','collected'].includes(saved?.selected)?saved.selected:'text',pinned:!!saved?.pinned};
+if(state.selected==='collected'&&!state.collected)state.selected='text';
+const design={corners:18,density:'舒展',showSource:true};
+const q=id=>document.getElementById(id);
+const currentText=()=>state.cleaned?initial.replace(/\n/g,''):initial;
+function persist(){window.openai?.setWidgetState({modelContent:{...state},privateContent:null})?.catch(()=>{});}
+function render(){
+ q('suira-source-text').textContent=initial;
+ q('suira-result-text').textContent=currentText();
+ q('suira-collected-item').hidden=!state.collected;
+ q('suira-item-count').textContent=(state.collected?4:3)+' 项内容';
+ shelf.querySelectorAll('[data-item]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.item===state.selected)));
+ const info={text:['产品定位摘录','文字 · 来源 Edge',currentText()],image:['交互灵感截图','图片 · 来源框选捕获','保留原图，也保留接下来识别的文字。'],file:['研究提纲.docx','文件引用 · 来源资源管理器','文件仍保存在原来的位置。将相关资料放在同一个任务中，随时继续。'],collected:['刚刚收集的文字','文字 · 来自随手面板',currentText()]}[state.selected];
+ q('suira-detail-title').textContent=info[0];q('suira-detail-type').textContent=info[1];q('suira-detail-text').textContent=info[2];
+ q('suira-image-preview').hidden=state.selected!=='image';
+ q('suira-step-label').textContent=(state.selected==='text'||state.selected==='collected')&&state.cleaned?'已合并换行':'待整理';
+ q('suira-continue').querySelector('span').textContent=state.selected==='image'?'提取文字':state.selected==='file'?'查看任务摘要':'整理文字';
+ q('suira-pin').setAttribute('aria-pressed',String(state.pinned));q('suira-pin').textContent=state.pinned?'已保留':'保留';
+ palette.style.borderRadius=design.corners+'px';shelf.style.borderRadius=design.corners+'px';
+ q('suira-source').hidden=!design.showSource;
+ palette.querySelectorAll('.suira-action').forEach(b=>b.style.paddingBlock=design.density==='紧凑'?'8px':'12px');
+}
+function action(name){
+ if(name==='clean'){state.cleaned=true;q('suira-palette-status').textContent='已合并换行 · 原文仍保留';q('suira-result').hidden=false;}
+ if(name==='collect'){state.collected=true;q('suira-palette-status').textContent='已加入「竞品研究」任务匣';q('suira-shelf-status').textContent='新增文字已带上来源。';}
+ if(name==='preview'){q('suira-result').hidden=false;q('suira-palette-status').textContent='检查结果，再继续。';}
+ render();persist();
+}
+palette.querySelectorAll('[data-action]').forEach(b=>b.addEventListener('click',()=>action(b.dataset.action)));
+search.addEventListener('input',()=>{const term=search.value.trim().toLowerCase();let count=0;palette.querySelectorAll('[data-action]').forEach(b=>{b.hidden=!(b.dataset.search+b.textContent).toLowerCase().includes(term);if(!b.hidden)count++;});q('suira-no-results').hidden=count>0;});
+search.addEventListener('keydown',e=>{if(e.isComposing)return;if(e.key==='Enter'){const b=[...palette.querySelectorAll('[data-action]')].find(x=>!x.hidden);if(b){e.preventDefault();action(b.dataset.action);}}if(e.key==='Escape'){search.value='';search.dispatchEvent(new Event('input'));q('suira-result').hidden=true;}});
+q('suira-close-preview').addEventListener('click',()=>q('suira-result').hidden=true);
+shelf.querySelectorAll('[data-item]').forEach(b=>b.addEventListener('click',()=>{state.selected=b.dataset.item;render();persist();}));
+q('suira-pin').addEventListener('click',()=>{state.pinned=!state.pinned;render();persist();});
+q('suira-continue').addEventListener('click',()=>{if(state.selected==='image'){q('suira-detail-text').textContent='内容 → 处理 → 继续';q('suira-step-label').textContent='已提字 · 示例结果';q('suira-shelf-status').textContent='演示文字已就绪，原图仍保留。';}else if(state.selected==='file'){q('suira-detail-text').textContent='竞品研究\n• 产品定位摘录\n• 交互灵感截图\n• 研究提纲.docx';q('suira-shelf-status').textContent='已生成当前任务的内容摘要。';}else{state.cleaned=true;render();q('suira-shelf-status').textContent='已整理文字，保留了原始来源。';persist();}});
+window.addEventListener('openai:set_globals',e=>{const s=e.detail?.globals?.widgetState?.modelContent;if(!s)return;state={cleaned:!!s.cleaned,collected:!!s.collected,selected:['text','image','file','collected'].includes(s.selected)?s.selected:'text',pinned:!!s.pinned};if(state.selected==='collected'&&!state.collected)state.selected='text';render();});
+render();
+if(globalThis.Tweak){const t=new Tweak({container:palette,onChange:render});t.addSlider(design,'corners',{label:'面板圆角',min:8,max:22,unit:'px'});t.addSelect(design,'density',{label:'动作密度',options:['舒展','紧凑']});t.addToggle(design,'showSource',{label:'显示内容来源'});}
+})();
+</script>

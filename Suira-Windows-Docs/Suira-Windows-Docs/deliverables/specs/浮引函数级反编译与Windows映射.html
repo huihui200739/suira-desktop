@@ -1,0 +1,317 @@
+<!doctype html><html lang="zh-CN"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>浮引函数级反编译与Windows映射</title><style>:root{color-scheme:light;--ink:#263040;--accent:#506f9e;--line:#dde5ef}*{box-sizing:border-box}body{margin:0;background:#f4f6fa;color:var(--ink);font:16px/1.85 'Segoe UI','Microsoft YaHei',system-ui,sans-serif}nav{padding:16px 5%;border-bottom:1px solid var(--line);background:#fff}main{max-width:1120px;margin:28px auto;padding:40px 48px;background:#fff;border:1px solid var(--line);border-radius:18px;overflow-wrap:anywhere}h1{font-size:30px;line-height:1.4;margin:0 0 22px}h2{font-size:23px;margin:38px 0 14px;padding-top:12px;border-top:1px solid var(--line)}h3{font-size:19px;margin-top:28px}a{color:#385b8d;text-underline-offset:3px}pre{overflow:auto;background:#eef2f7;padding:18px;border-radius:10px;font-size:13px;line-height:1.6}code{font-family:Consolas,monospace;font-size:.87em}p code,li code,td code{background:#eef2f7;padding:2px 4px;border-radius:4px}table{border-collapse:collapse;width:100%;font-size:14px;line-height:1.7}th,td{border:1px solid var(--line);padding:10px 12px;text-align:left;vertical-align:top}th{background:#eef2f7}img{max-width:100%;height:auto}.card{padding:22px;border:1px solid var(--line);border-radius:14px;margin:16px 0;background:#f8fafd}.small{color:#64758a;font-size:14px}.hero{display:flex;gap:24px;align-items:center}.hero img{width:100px;flex:none}.table-wrap{overflow-x:auto}@media(max-width:680px){body{font-size:15px}main{margin:12px;padding:24px 18px}h1{font-size:25px}.hero{gap:12px}.hero img{width:72px}}@media print{nav{display:none}main{border:0;margin:0;padding:0}body{background:white}pre,table{font-size:10px}a{color:inherit}}</style></head><body><nav><a href="../../开始阅读.html">← 返回阅读目录</a>　<span class="small">随序 SUIRA · 离线文档</span></nav><main><h1>浮引函数级反编译与 Windows 开发映射</h1>
+<p>版本：v1.0 · 2026-10-21。关联：<a href="../%E9%9A%8F%E5%BA%8F-Windows%E4%BA%A7%E5%93%81%E4%B8%8E%E5%BC%80%E5%8F%91%E6%96%B9%E6%A1%88.html">随序开发方案</a>。</p>
+<p>本轮已对本机浮引 6.0.1（216）的 arm64 主程序执行真实的 Ghidra 函数反编译，复核了面板、剪贴板、截图和 OCR 的若干关键路径。它将上一阶段的类型名、导入接口和字符串线索推进到了函数体、条件分支、字段读写与具体调用点。<strong>当前完成的是限定核心路径的函数级研究，不是全应用源码恢复。</strong></p>
+<p>对 Windows 开发最有价值的发现是：显隐有独立状态机；布局可以预准备和复用；动画从当前视觉状态继续；剪贴板用内容序号和递增代次控制过期任务；截图结果有只完成一次的保护；OCR 有缓存复用、任务取消和结构化结果处理。这些机制可以独立重写成 Windows 实现。</p>
+<h2>1. 样本、工具与证据规则</h2>
+<p><strong>版本复核：第一阶段结构/UI 研究记录的是 5.4.0（209），本轮函数切片属于当前安装的 6.0.1（216）。</strong> 已重新抽取当前 arm64 切片，哈希与实际反编译输入完全一致；当前 Info.plist 已留存为 <a href="../../research/function-analysis/current-bundle-info.json">current-bundle-info.json</a>。早期样本通用程序哈希为 <code>4f61dc3a3c9f825bb590d6149b0a93f32050882ea526aef896af3fcf08999e00</code>。两个阶段不是同一份程序，本文函数地址不能套用到旧样本，也没有做两版本行为差异审计。</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>项目</th>
+<th>本轮身份</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>原样本</td>
+<td><code>/Applications/浮引.app/Contents/MacOS/浮引</code>，6.0.1（216），<code>me.vkr.fg</code></td>
+</tr>
+<tr>
+<td>通用程序 SHA-256</td>
+<td><code>94f56b34ce8a795347014610b9dc1b801b53840128687359fb529d52b6d28bee</code></td>
+</tr>
+<tr>
+<td>分析切片</td>
+<td><a href="../../research/function-analysis/fuyin-arm64.macho">fuyin-arm64.macho</a>，由 <code>lipo -thin arm64</code> 派生</td>
+</tr>
+<tr>
+<td>切片 SHA-256</td>
+<td><code>994fea714090a8a2ee1aaedea5a40ef1789d41f281f87c948eb20502062c1307</code></td>
+</tr>
+<tr>
+<td>分析工具</td>
+<td>REA <code>rea-agents@6.7.0</code>；Ghidra 12.1.4；现有 JDK 21</td>
+</tr>
+<tr>
+<td>地址口径</td>
+<td>静态、未加 ASLR slide 的 arm64 VA；image base <code>0x100000000</code></td>
+</tr>
+<tr>
+<td>分析方式</td>
+<td>本地静态导入、默认自动分析、定向 <code>analyze_function</code>、调用引用和汇编复核</td>
+</tr>
+</tbody></table></div>
+<p>Ghidra 官方发行包在工作区解压；Mac arm64 decompiler 由该发行包自带 C++ 源码构建。没有修改原应用，也没有修改 Codex 全局配置。没有读取个人剪贴板数据库、笔记正文或账号凭据，没有运行调试器或测量原产品性能。</p>
+<p>下文“已确认”指本样本静态代码中存在对应分支或调用；不代表某次真实用户操作已经执行。<code>FUN_...</code> 和 C 伪代码来自分析器，中文职责名由分析者概括。Swift 的隐式 self、异步 continuation、泛型、Optional 和 ARC 仍可能表现为 <code>unaff_x20</code>、<code>unaff_x22</code>、<code>extraout_*</code> 或未解析间接调用，不能把这些签名当作原始 Swift 源码。</p>
+<p>完整证据保存于 <a href="../../research/function-analysis/">函数证据目录</a>，总索引为 <a href="../../research/function-analysis/evidence-index.json">evidence-index.json</a>。面板和剪贴板的详细函数表、汇编点及完整 Evidence ID 分别见 <a href="%E5%87%BD%E6%95%B0%E8%BF%BD%E8%B8%AA-%E9%9D%A2%E6%9D%BF.html">面板追踪</a> 与 <a href="%E5%87%BD%E6%95%B0%E8%BF%BD%E8%B8%AA-%E5%89%AA%E8%B4%B4%E6%9D%BF.html">剪贴板追踪</a>。</p>
+<h2>2. 面板：状态、布局、动画与输入</h2>
+<h3>入口和模式路由</h3>
+<p>实际 Objective-C 菜单入口 <code>0x10006dfe4</code>、<code>0x10006e014</code> 分别将首参数 0 / 1 传给公共路由 <code>0x100086374</code>。入口 selector 分别对应动作面板和应用面板；公共路由还读取窗口可见性、<code>motionState</code> 和 <code>currentOpenTarget</code>，再进入展示 <code>0x100a5c4e0</code> 或切换 <code>0x100a405dc</code>。这条菜单链已经确认，不能直接代替所有全局快捷键回调链。</p>
+<p>补查 <code>RegisterEventHotKey</code> 的直接调用者后，<code>0x10006993c</code> 中确实存在注册后随即注销返回句柄的分支（伪代码 L294–297、L892–895）。这支持“存在探测式注册路径”的推断，不能把这个函数直接称为实际常驻热键处理器。具体键位、双击/长按状态机和完整热键事件到面板的链路仍未完成。</p>
+<h3>显示与隐藏</h3>
+<p>展示函数会写 <code>pendingOpenTarget/currentOpenTarget</code>，对准备好的目标、布局及当前呈现状态进行比较。需要时才执行 <code>layoutSubtreeIfNeeded</code>、<code>displayIfNeeded</code>，并前置窗口、获取键盘焦点、将 <code>contentView</code> 设为 first responder。局部键盘监听只在未暂停捕获且监听尚不存在时注册；窗口外鼠标有独立的本地和全局监听。</p>
+<p>隐藏函数 <code>0x100a6270c</code> 会递增通知和准备代次、取消重定位任务，设置隐藏标志，并在可见分支暂时禁用窗口鼠标事件。静态配置中有 <strong>80 ms 的面板快捷键抑制</strong>，以及向另一回调传递的 <strong>100 ms 抑制请求</strong>，是两个不同的值。子窗口跟踪、屏幕边缘返回和特殊状态另有分支。</p>
+<p>动画函数 <code>0x100a5b588</code> 取消旧 <code>motionTask</code>，优先取得 <code>presentationLayer.transform</code>，再移除旧动画并建立新动画。因此反向操作可以从当前画面接续。状态值的高置信解释为：0 隐藏、1 展示过渡、2 稳定可见、3 隐藏过渡；值 4 的特殊状态尚未命名。代码有 0.16 / 0.20 / 0.25 秒时长选择，不能泛化为全部动画的固定时长。</p>
+<p>本轮追加展开了两个回调核心，补上子研究原先留下的边界：</p>
+<ul>
+<li><code>0x100a645f0</code>：动画完成回调先恢复控制器弱引用，再检查当前 <code>motionState</code> 是否仍为相应方向的 1 或 3，符合才调用 <code>0x100a61c5c</code>。已证实状态门控；最终收尾 helper 未继续展开，不能声称全部完成路径都已恢复。</li>
+<li><code>0x100a64670</code>：主队列通知回调实际比较捕获的 <code>panelDidOrderNotificationGeneration</code>；同时核对窗口仍是当前窗口、可见、未进入隐藏、状态在 1 / 2，满足才发送通知。<strong>这里不只是捕获了 generation，确实存在过期回调检查。</strong></li>
+</ul>
+<p>展示函数还有 <code>panel.presentation.slow</code> 记录：用 uptime 差值乘 1000，与 35.0 比较后记录目标、是否预热等上下文。<strong>35 ms 是日志阈值，不是实测延迟，也不是性能保证。</strong></p>
+<h3>Windows 落点</h3>
+<p>使用 <code>PanelLifecycle</code> 统一管理 Hidden / Opening / Visible / Closing，所有转换在 UI 调度器串行提交；缓存布局键包含内容版本、DPI、显示器工作区和主题版本。新输入打断动画时，从当前视觉进度继续。对延迟通知核对 generation 和窗口实例，对动画完成回调核对当前状态。关闭开始立即停止接受动作，避免透明窗口仍可点击。</p>
+<p>原应用隐藏后的来源窗口恢复尚未找到完整证据。随序要自己实现并验收 <code>ReturnTargetService</code>，记录来源 HWND、PID 和进程实例，不能把面板获取焦点误写成原窗口恢复已经还原。</p>
+<h2>3. 剪贴板：检测、版本核对、取消与重试</h2>
+<p>构造函数 <code>0x1001d852c</code> 获取 general pasteboard，建立标签为 <code>clipboard.monitor</code> 的队列，并分别初始化捕获、查询、图片刷新等任务字段。下列路径有函数体支持：</p>
+<pre><code class="language-text">监控启动 0x1001de648
+  → timer 闭包 0x10022eedc → 0x1001dede0
+      → 比较捕获盒中的 changeCount；变化才创建 MainActor 任务
+      （该异步任务到服务入口的全部 continuation 尚未展开）
+
+服务变化检查 0x1001df154
+  → 序号变化：更新外部变化标记、清内部标记
+  → 0x1001df48c：captureGeneration++，取消旧 retry task
+  → 0x1001fc3a4：读取前核对序号和代次
+      → 0x100205a44：尝试取得 payload
+      → 读取后再次核对 changeCount
+      ├─ 有效结果：进入异步后处理
+      └─ 空结果或读期间变化：0x1002050f8 有界重试
+</code></pre>
+<p>一条后台 monitor 的 timer 配置已通过汇编常量复核：首次 deadline 为 now + 1.3，repeating 为 <strong>1.3 秒</strong>，leeway 为 <strong>250 毫秒</strong>。创建函数仅在 timer 尚不存在时工作；当前直接调用者 <code>0x1002b427c</code> 先检查对象偏移 <code>0x12</code> 的标志，再启动监控并更新另外两个状态字节。该对象状态的完整语义未恢复。<strong>这些是这条路径的配置，不是浮引所有复制行为的响应延迟。</strong></p>
+<p>重试函数要求原序号和 generation 仍匹配，且 <code>retryIndex &lt; 3</code>，之后取消旧重试并创建新任务。存在表值 200 / 600 / 1200，但等待 continuation 的单位尚未确认，不将它写成已证实的毫秒退避。</p>
+<p>payload 路径先调用两个尚未展开的 helper，再走明确可识别的 NSImage 可读性、图片读取与文本读取分支。可识别的文本分支裁去两端空白和换行，仅在非空时返回文本。由于有未解析 helper 和 jumptable，不能宣称全部格式优先级已恢复，也不能将未知 helper 称为隐私过滤。</p>
+<p>在子研究之后又展开了 <code>0x1002060f0</code>：它以 utility 优先级构造后处理任务，再等待任务值；<strong>最终去重、INSERT/UPDATE、事务和保存失败处理仍未追到。</strong> 序号相同提前返回也不等于内容去重。</p>
+<h3>Windows 落点</h3>
+<p>沿用主方案的系统变化通知；每次变化创建独立 capture generation，读前、读后、重试前和提交前核对版本。取消令牌加版本校验同时使用，不能假设 cancel 会立即终止已运行任务。锁竞争采用可配置、有界重试。</p>
+<p>随序应保存用户复制的原始文本；空白整理作为单独动作生成新内容，避免缩进丢失。这是独立产品选择。去重、敏感格式排除、自写回环和落盘事务按自己的数据模型实现，当前反编译不能为原应用的这些机制背书。</p>
+<h2>4. 截图：原生采集与一次完成保护</h2>
+<p>鼠标释放的 Objective-C 入口 <code>0x101409e08</code> 转入 <code>0x101409b20</code>。后者先检查 <code>isInteractionEnabled</code>，处理 <code>suppressMouseUpAfterDoubleClick</code> 和 <code>pendingSingleClick</code>，将窗口内事件坐标转换到屏幕坐标，再进入 session helper。已看到鼠标释放路由和双击抑制，尚未逐边连接到最终矩形计算和采集请求。</p>
+<p>从 <code>captureImageWithFilter:configuration:completionHandler:</code> 的实际引用定位到 <code>0x1017b8200</code>。该函数建立 CheckedContinuation 和带 NSLock、完成标志的上下文，安装回调，再调用 <code>SCScreenshotManager.captureImage</code>，随后等待 continuation。解码字符串为 <code>captureImage(contentFilter:configuration:timeout:)</code>，说明存在带 timeout 参数的封装入口；具体超时分支、时长和所有取消路径尚未还原。</p>
+<p>回调包装 <code>0x1017be37c</code> 转发到 <code>0x1017b1f84</code>。后者无论图像成功还是错误路径，都在锁内检查完成标志；已经完成则返回，否则置完成后解锁并 resume continuation。由此可确认 <strong>此回调入口具备只完成一次的保护</strong>。不能据此声称所有竞争参与者都已经审计。</p>
+<p>以下为分析者整理的等价控制流摘要，省略 Swift ABI 和错误构造细节，<strong>不是恢复的原源码</strong>：</p>
+<pre><code class="language-text">onCaptureCallback(image, error, sharedState):
+    lock(sharedState)
+    if sharedState.completed:
+        unlock(sharedState)
+        return
+    sharedState.completed = true
+    unlock(sharedState)
+    resumeContinuation(image 或 error)
+</code></pre>
+<h3>Windows 落点</h3>
+<p><code>CaptureSession</code> 分离选择区域、采集、预览和后续动作；用 jobId / generation 标识会话。成功、失败、超时、用户取消都竞争同一个完成出口，在 C# 实现中采用 <code>TrySetResult / TrySetException / TrySetCanceled</code> 或等价原子状态转换。完成后清理设备、纹理、回调和遮罩窗口；迟到结果不能重新打开已关闭预览。Windows 图形采集与 DPI 换算仍按主方案独立实现。</p>
+<h2>5. OCR：缓存、任务、引擎与输出</h2>
+<p>钉图内容视图的 <code>textRecognitionPressed</code> 入口 <code>0x101736984</code> 转入 <code>0x10173590c(0)</code>。后者先检查资源是否已释放和一处能力策略回调；策略的商业语义未展开。普通触发下，已有 analysis 或 trim 后非空全文可以复用；否则取消旧 <code>textRecognitionTask</code>，清空旧结果，写识别状态 1，并持有图像启动弱引用任务。有缓存时写状态 2 并更新视图；状态的完整 UI 枚举仍以分析者解释为限。</p>
+<p>实际引擎路径已超过类型名层面：</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>函数</th>
+<th>函数体中可见的处理</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>0x101898e0c</code></td>
+<td>创建 <code>VNRecognizeTextRequest</code>，设置识别级别、语言纠正、语言表、最小文本高度及自动语言检测，然后调用执行函数</td>
+</tr>
+<tr>
+<td><code>0x1018a0444</code></td>
+<td>以 CGImage 创建 <code>VNImageRequestHandler</code>，执行 <code>performRequests:error:</code>，处理错误，读取 <code>VNRecognizedTextObservation</code> 结果</td>
+</tr>
+<tr>
+<td><code>0x1018a003c</code></td>
+<td>每个 observation 取 <code>topCandidates(1)</code>；提取字符串、trim 并跳过空串；读取 <code>boundingBox</code> 和 <code>confidence</code> 形成结构化记录</td>
+</tr>
+<tr>
+<td><code>0x1018a0444</code></td>
+<td>将结构化记录的文字以换行符 <code>0x0A</code> 连接为全文</td>
+</tr>
+<tr>
+<td><code>0x1018993dc</code></td>
+<td>在执行前后检查取消，再 yield 结果并 finish AsyncStream</td>
+</tr>
+</tbody></table></div>
+<p>几个 Ghidra 未命名 ObjC stub 已用本切片的 ADRP/LDR 指令、selector 引用槽和 selector 字符串复核，见 <a href="../../research/function-analysis/selector-stub-map.json">selector-stub-map.json</a>。识别级别传入原始值 0，语言纠正与自动语言检测传入 1。这里不猜测未解码的语言表元素，也不将没有复核的浮点参数写成准确配置。<code>0x1018a003c</code> 还调用一个数组处理 helper；其排序规则未展开，不能宣称已经恢复段落、表格或多栏阅读顺序算法。</p>
+<p>钉图 UI 入口和上述引擎入口分别已取得证据，但两者之间全部 async continuation 尚未逐边连接。本轮没有测量识别速度、准确率、中文语言覆盖或缓存命中率。</p>
+<h3>Windows 落点</h3>
+<p>定义 <code>OcrResult { blocks, fullText, engine, languageInfo }</code>。引擎返回文字块、矩形与可用的置信度；不同引擎缺少字段时允许为空。缓存键包括图像内容哈希、引擎及版本、语言配置和处理参数；用户修改图像或参数后重新计算。取消后不向已释放视图回写结果。先保留结构化输出，再提供全文、合并换行和表格预览等独立动作。</p>
+<h2>6. 覆盖矩阵与剩余缺口</h2>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>原始问题</th>
+<th>状态</th>
+<th>已回答部分</th>
+<th>尚未回答部分</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>热键到面板</td>
+<td>部分回答</td>
+<td>菜单入口到公共路由、面板内键盘监听、热键注册探测候选</td>
+<td>全局热键实际回调、双击/长按、所有键位</td>
+</tr>
+<tr>
+<td>面板显示与焦点</td>
+<td>部分回答</td>
+<td>状态机、布局准备、窗口前置、输入焦点、动画接续、通知代次检查</td>
+<td>隐藏后来源窗口/控件恢复，所有特殊状态与完成路径</td>
+</tr>
+<tr>
+<td>剪贴板捕获与历史</td>
+<td>部分回答</td>
+<td>一条监控配置、序号/代次、取消、有界重试、可识别 payload 分支</td>
+<td>完整格式分支、内容去重、隐私排除、最终落库</td>
+</tr>
+<tr>
+<td>截图区域到结果</td>
+<td>部分回答</td>
+<td>鼠标释放路由、原生采集调用、回调一次完成保护</td>
+<td>全部坐标/区域链、超时策略、长截图和录屏</td>
+</tr>
+<tr>
+<td>OCR</td>
+<td>部分回答</td>
+<td>UI 缓存/取消、实际 Vision 请求、候选提取、结构化记录、全文拼接</td>
+<td>完整 UI 到引擎异步链、语言表、排序 helper、准确率</td>
+</tr>
+<tr>
+<td>模块准备/暂停/释放</td>
+<td>未解决完整状态机</td>
+<td>找到监控启动调用者和若干 MainActor deinit/释放包装</td>
+<td>dormant/prepared/suspended/releasing 转换条件与实际资源效果</td>
+</tr>
+</tbody></table></div>
+<p>生命周期相关 <code>0x1002b39a0</code> 等函数主要是 actor 隔离检查、引用释放或析构包装，不能因地址位于相关区域就称为状态机。对 <code>runtime shutdown</code> / <code>memory.pressure.received</code> 的两次精确字符串 xref 查询为空；这只是当前引用查询的范围，不能证明没有相应功能。下一步如需深入，可从内存压力注册回调和运行时实例字段的交叉引用继续追踪。</p>
+<p>默认自动分析完成并报告成功，但期间有 analyzer 的 <code>ArrayIndexOutOfBoundsException</code>；日志已保留。部分函数存在无法恢复的 jumptable、未解析间接调用及分析器类型误差。不能将全程序索引条数写成“恢复了多少完整业务函数”，也不能把未找到的边写成不存在。</p>
+<p>这些缺口不阻止 Windows 原生样机开发。当前已有足够证据把核心交互拆成可验证的工程任务；未还原的行为按独立需求实现和测试，不能以“仿照原版”代替验收。</p>
+<h2>7. 写入开发排期的具体任务</h2>
+<p>下列任务合并进主方案原有阶段，不额外叠加一套未经估算的新工期。</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>阶段</th>
+<th>必须落实的实现</th>
+<th>验收场景</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>第 1 周技术样机</td>
+<td>面板状态机、当前视觉状态接续、布局缓存、原目标身份记录</td>
+<td>快速开关 20 次；动画中反向；切换显示器/DPI；旧回调不能隐藏新窗口</td>
+</tr>
+<tr>
+<td>第 3–4 周剪贴板</td>
+<td>系统通知、版本号、取消、读前后校验、有界重试、独立去重事务</td>
+<td>快速连续复制文本/图片；读期间再次复制；剪贴板锁竞争；自身写回不生成回环</td>
+</tr>
+<tr>
+<td>第 5–6 周截图/OCR</td>
+<td>单一任务完成出口、超时和取消、结构化 OCR、参数化缓存</td>
+<td>取消后迟到结果；反复点击识别；图像修改后缓存失效；无文字及引擎失败</td>
+</tr>
+<tr>
+<td>后续整合与稳定性</td>
+<td>来源 HWND 校验、输入法和子窗口 transient 状态、分段延迟记录</td>
+<td>原窗口关闭、用户主动切换目标、管理员目标、IME 候选、系统对话框</td>
+</tr>
+</tbody></table></div>
+<p>上述常数是研究样本的配置证据。随序的动画、抑制期、重试间隔与缓存容量以 Windows 真机测量决定；原计划中的 100 ms 热唤起等仍是待验证的产品目标。</p>
+<h2>8. 根补查证据索引</h2>
+<p>面板与剪贴板的原始 24 个子研究函数索引见各自追踪文档。这里列出根补查中直接支持本文新增结论的记录；每个 JSON 的 <code>normalized_result</code> 保留伪代码、汇编及分析限制，旁边有同名 <code>.pseudo.c</code> 可阅读。</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>结论</th>
+<th>地址 / 证据文件</th>
+<th>Evidence ID</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>菜单动作入口</td>
+<td><code>0x10006dfe4</code> · <a href="../../research/function-analysis/extracted/003-action-entry.json">003-action-entry</a></td>
+<td><code>ev_dee68ae094188ff1d146d542f4af20686e3b9f233c0a720387f403cd7c53bd3b</code></td>
+</tr>
+<tr>
+<td>菜单应用入口</td>
+<td><code>0x10006e014</code> · <a href="../../research/function-analysis/extracted/004-app-entry.json">004-app-entry</a></td>
+<td><code>ev_05ea615dd14dcb3488cf104bffa3cfeb12c82b02d439e5af9364525363700a2e</code></td>
+</tr>
+<tr>
+<td>鼠标释放路由</td>
+<td><code>0x101409b20</code> · <a href="../../research/function-analysis/extracted/330-mouse-up-core.json">330-mouse-up-core</a></td>
+<td><code>ev_c6877e056b066fc3eab3d0234d273151d3454d54bce2f38e541704c0fde26cf1</code></td>
+</tr>
+<tr>
+<td>原生截图采集</td>
+<td><code>0x1017b8200</code> · <a href="../../research/function-analysis/extracted/331-capture-call.json">331-capture-call</a></td>
+<td><code>ev_994de58431c891714223928c35ef81fc2644a6f831833ffe076eac21ae222976</code></td>
+</tr>
+<tr>
+<td>采集回调包装</td>
+<td><code>0x1017be37c</code> · <a href="../../research/function-analysis/extracted/340-capture-callback.json">340-capture-callback</a></td>
+<td><code>ev_9f808817ca7ea71faa3bd40197efe3c5a2deaac765b5bd5934c080503ee99405</code></td>
+</tr>
+<tr>
+<td>回调一次完成保护</td>
+<td><code>0x1017b1f84</code> · <a href="../../research/function-analysis/extracted/346-capture-resume.json">346-capture-resume</a></td>
+<td><code>ev_63dae0da7a4b4c909a0a2a593914fd1fefc932131ea194cd70f1073f179bf6c4</code></td>
+</tr>
+<tr>
+<td>钉图 OCR 缓存与取消</td>
+<td><code>0x10173590c</code> · <a href="../../research/function-analysis/extracted/333-ocr-trigger.json">333-ocr-trigger</a></td>
+<td><code>ev_6f9c7ad71ff4856ad592b84b2b5208b2e9a976b56777b5796469b83beca403d1</code></td>
+</tr>
+<tr>
+<td>OCR 请求配置</td>
+<td><code>0x101898e0c</code> · <a href="../../research/function-analysis/extracted/347-ocr-request.json">347-ocr-request</a></td>
+<td><code>ev_90a644e6c1e3746c96a3d9269c97143ca9219cc62ab078df35ca83a4de7b61c5</code></td>
+</tr>
+<tr>
+<td>OCR 执行与全文拼接</td>
+<td><code>0x1018a0444</code> · <a href="../../research/function-analysis/extracted/332-ocr-call.json">332-ocr-call</a></td>
+<td><code>ev_c09db71b40f79fc83b2ad84ac602ab5af1e037f3f00b66a8a47b72c1f283835b</code></td>
+</tr>
+<tr>
+<td>OCR 候选与结构化记录</td>
+<td><code>0x1018a003c</code> · <a href="../../research/function-analysis/extracted/341-ocr-extract.json">341-ocr-extract</a></td>
+<td><code>ev_5137327164567a7ba01cb116994761a16981f2e2def07eb6add5c9e3aac06b48</code></td>
+</tr>
+<tr>
+<td>OCR 取消与流式返回</td>
+<td><code>0x1018993dc</code> · <a href="../../research/function-analysis/extracted/348-ocr-request2.json">348-ocr-request2</a></td>
+<td><code>ev_8e6e3acac10af01522a11b48e663a6f37103960aeb2239f02a5d137dc3a434ca</code></td>
+</tr>
+<tr>
+<td>monitor 启动上层</td>
+<td><code>0x1002b427c</code> · <a href="../../research/function-analysis/extracted/344-clipboard-start-caller.json">344-clipboard-start-caller</a></td>
+<td><code>ev_9eaddcae3cca866b13eaf233cab8f45c5597806e96564fb4e99036e18d476ae3</code></td>
+</tr>
+<tr>
+<td>剪贴板异步后处理</td>
+<td><code>0x1002060f0</code> · <a href="../../research/function-analysis/extracted/349-clipboard-store-cont.json">349-clipboard-store-cont</a></td>
+<td><code>ev_4e2de130bbd6ec7d07bdfa12583fb06c38908159347a0e751a65ca1d6eb8bf1c</code></td>
+</tr>
+<tr>
+<td>热键探测式注册候选</td>
+<td><code>0x10006993c</code> · <a href="../../research/function-analysis/extracted/350-hotkey-register.json">350-hotkey-register</a></td>
+<td><code>ev_a6b14e5d5ba366028fb8406a9f77f8d3f2d84a412f58fbd60a0e41a8c2f95b00</code></td>
+</tr>
+<tr>
+<td>动画完成状态门控</td>
+<td><code>0x100a645f0</code> · <a href="../../research/function-analysis/extracted/351-panel-completion-core.json">351-panel-completion-core</a></td>
+<td><code>ev_d2001b10bef5e021b972fc58456a7f691c4c71ffeb02a82c2a32604a5e88e359</code></td>
+</tr>
+<tr>
+<td>延迟通知 generation 校验</td>
+<td><code>0x100a64670</code> · <a href="../../research/function-analysis/extracted/352-panel-notification-core.json">352-panel-notification-core</a></td>
+<td><code>ev_7a404b496e4834ba7b3e2438c788b060d4d784621c7ca29b34d7270429bc4f93</code></td>
+</tr>
+</tbody></table></div>
+<h2>9. 留存与复核</h2>
+<p>原始请求在 <code>research/function-analysis/requests/</code>，完整响应在 <code>responses/</code>，只读投影在 <code>extracted/</code>。已保存 <a href="../../research/function-analysis/ghidra-autoanalysis.log">自动分析日志</a>、<a href="../../research/function-analysis/%E7%B4%A2%E5%BC%95%E4%B8%8E%E5%80%99%E9%80%89%E5%85%A5%E5%8F%A3%E8%AF%B4%E6%98%8E.html">ObjC 索引说明</a>、<a href="../../research/function-analysis/toolchain-manifest.json">工具来源清单</a> 和 <a href="../../research/function-analysis/rea-function-evidence-bundle.json">portable evidence bundle</a>；会话结束后不依赖临时 Ghidra 数据库来阅读本轮证据。</p>
+<p>要重新生成可读投影，在本工作区运行：</p>
+<pre><code class="language-sh">python3 research/function-analysis/extract-results.py
+</code></pre>
+<p>该脚本只读取已保存响应，不启动或重新分析目标。重新反编译时，应先校验样本哈希，以新的输出目录启动 REA/Ghidra 会话，先 <code>open_binary</code>，再用本轮请求参数复核所需函数；不要直接复用会读取旧请求、可能覆盖响应的研究驱动目录。研究完成后执行 <code>close_binary</code>。</p>
+<p>本文件提供机制研究和 Windows 独立实现建议，不交付原应用源代码，也不将 C 伪代码直接移植到产品。当前随序仍处于开发方案阶段，尚无 Windows 原生可执行程序与真机性能报告。</p>
+</main></body></html>

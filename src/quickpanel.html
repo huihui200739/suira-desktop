@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="color-scheme" content="light dark">
+  <title>随序 · 随手面板</title>
+  <link rel="stylesheet" href="quickpanel.css">
+</head>
+<body>
+  <main class="panel" id="panel" aria-label="随序随手面板">
+    <header class="panel-head">
+      <div class="brand">
+        <img src="../assets/suira-icon.png" alt="">
+        <div><b>随序</b><span>SUIRA</span></div>
+      </div>
+      <div class="search-field">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m15.5 15.5 4 4"/></svg>
+        <input id="search" type="text" autocomplete="off" spellcheck="false" placeholder="搜索内容、动作或任务">
+        <kbd>Esc</kbd>
+      </div>
+      <button class="icon-btn" id="open-main" type="button" title="打开任务匣" aria-label="打开任务匣">
+        <svg viewBox="0 0 24 24"><path d="M4 7.5h16v12H4z"/><path d="M3 4.5h18v3H3zM9 11.5h6"/></svg>
+      </button>
+    </header>
+
+    <section class="source-card" id="source-card" hidden>
+      <div class="source-label"><span class="dot"></span><span id="source-kind">当前内容</span><time id="source-time"></time></div>
+      <div class="source-body" id="source-body"></div>
+      <div class="source-meta" id="source-meta"></div>
+    </section>
+
+    <section class="command-section" id="command-section" hidden>
+      <div class="section-title"><span>命令与结果</span></div>
+      <div class="command-list" id="command-list"></div>
+    </section>
+
+    <section class="result-area" id="result-area">
+      <div class="return-bar" id="return-bar" hidden>
+        <span class="return-target" id="return-target-text"></span>
+        <button id="return-commit" type="button">放回原处</button>
+      </div>
+      <div class="section-title"><span>建议动作</span><small id="action-count"></small></div>
+      <div class="action-list" id="action-list"></div>
+    </section>
+
+    <section class="content-section" id="content-section">
+      <div class="section-title"><span>最近内容</span><button id="see-all" type="button">查看全部</button></div>
+      <div class="content-list" id="content-list"></div>
+    </section>
+
+    <section class="task-section" id="task-section" hidden>
+      <div class="section-title"><span>任务匣</span><button id="open-tasks" type="button">打开</button></div>
+      <div class="task-list" id="task-list"></div>
+    </section>
+
+    <div class="ocr-panel" id="ocr-panel" hidden>
+      <div class="ocr-head">
+        <div><span class="eyebrow">本地 OCR</span><b>识别结果</b></div>
+        <button type="button" id="ocr-close" aria-label="关闭">×</button>
+      </div>
+      <textarea id="ocr-text" spellcheck="false" placeholder="识别文字会显示在这里"></textarea>
+      <div class="ocr-actions">
+        <button type="button" class="quiet" id="ocr-original">查看原图</button>
+        <button type="button" class="quiet" id="ocr-merge">合并换行</button>
+        <button type="button" class="primary" id="ocr-copy">复制文字</button>
+        <button type="button" class="secondary" id="ocr-shelf">加入任务匣</button>
+      </div>
+    </div>
+
+    <footer class="panel-foot">
+      <div class="foot-hints"><span><kbd>↑</kbd><kbd>↓</kbd> 选择</span><span><kbd>Enter</kbd> 执行</span><span><kbd>Tab</kbd> 切换</span><span><kbd>Esc</kbd> 关闭</span></div>
+      <button class="capture-chip" id="capture" type="button"><span>⌁</span> 截图 <kbd>Ctrl Shift A</kbd></button>
+    </footer>
+
+    <div class="toast" id="toast" role="status"></div>
+    <div class="empty-state" id="empty-state" hidden>
+      <div class="empty-mark">S</div>
+      <b>还没有可处理的内容</b>
+      <p>复制文字或截一张图，随序会在这里接住它。</p>
+      <div class="empty-actions"><button type="button" id="empty-capture">截图提取文字</button><button type="button" id="empty-paste">从剪贴板开始</button></div>
+    </div>
+    <div class="loading" id="loading" hidden><span></span><p>正在读取本地内容…</p></div>
+  </main>
+  <script src="quickpanel.js"></script>
+</body>
+</html>

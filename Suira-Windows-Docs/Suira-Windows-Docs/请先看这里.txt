@@ -1,0 +1,9 @@
+随序 SUIRA · Windows 开发资料
+
+1. 先把整个 ZIP 解压，不能只从压缩包预览单个 HTML。
+2. 双击“开始阅读.html”，用 Edge 或 Chrome 打开。
+3. 原始 Markdown、图标在 deliverables；反编译证据在 research。
+4. preview 内为示例数据的浏览器交互演示，并非 Windows 程序。
+5. 不包含 Ghidra 和 Node/REA 运行环境。
+
+微信传输：把 Suira-Windows-Docs.zip 发送给文件传输助手；在 Windows 微信打开同一会话，下载后解压即可。

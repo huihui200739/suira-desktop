@@ -1,0 +1,79 @@
+{
+  "name": "suira-desktop",
+  "version": "0.2.0",
+  "description": "随序 SUIRA：你的 Windows 随手工作台。截图、文字、剪贴板与任务匣共用一套内容与动作，顺手接住，让工作继续。",
+  "main": "main.js",
+  "author": "huihui200739",
+  "license": "MIT",
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron . --dev",
+    "test": "node test-core.js && node test-actions.js && node test-capabilities.js && node test-return.js && node test-foreground.js && node test-security.js && node test-display.js && node test-inject.js && node test-ui.js && node test-render.js",
+    "test:core": "node test-core.js",
+    "test:actions": "node test-actions.js",
+    "test:capabilities": "node test-capabilities.js",
+    "test:return": "node test-return.js",
+    "test:foreground": "node test-foreground.js",
+    "test:security": "node test-security.js",
+    "test:display": "node test-display.js",
+    "test:inject": "node test-inject.js",
+    "test:ui": "node test-ui.js",
+    "test:render": "node test-render.js",
+    "dist": "electron-builder --win nsis",
+    "dist:portable": "electron-builder --win portable"
+  },
+  "devDependencies": {
+    "electron": "^44.9.1",
+    "electron-builder": "^26.15.3",
+    "png-to-ico": "^3.0.2"
+  },
+  "build": {
+    "appId": "com.suira.desktop",
+    "productName": "随序",
+    "artifactName": "Suira-${version}-${arch}.${ext}",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "pin-preload.js",
+      "lib/**/*",
+      "src/**/*",
+      "assets/suira-icon.png",
+      "assets/icon.ico",
+      "assets/foreground-helper.ps1",
+      "assets/tessdata/**/*",
+      "package.json"
+    ],
+    "asarUnpack": [
+      "assets/tessdata/**/*",
+      "assets/foreground-helper.ps1"
+    ],
+    "win": {
+      "icon": "assets/icon.ico",
+      "target": [
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "portable": {
+      "artifactName": "Suira-${version}-portable.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "随序"
+    }
+  },
+  "dependencies": {
+    "pinyin-pro": "^3.29.5",
+    "tesseract.js": "^5.1.1"
+  }
+}

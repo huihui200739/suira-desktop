@@ -1,0 +1,114 @@
+<!doctype html><html lang="zh-CN"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>浮引逆向研究记录</title><style>:root{color-scheme:light;--ink:#263040;--accent:#506f9e;--line:#dde5ef}*{box-sizing:border-box}body{margin:0;background:#f4f6fa;color:var(--ink);font:16px/1.85 'Segoe UI','Microsoft YaHei',system-ui,sans-serif}nav{padding:16px 5%;border-bottom:1px solid var(--line);background:#fff}main{max-width:1120px;margin:28px auto;padding:40px 48px;background:#fff;border:1px solid var(--line);border-radius:18px;overflow-wrap:anywhere}h1{font-size:30px;line-height:1.4;margin:0 0 22px}h2{font-size:23px;margin:38px 0 14px;padding-top:12px;border-top:1px solid var(--line)}h3{font-size:19px;margin-top:28px}a{color:#385b8d;text-underline-offset:3px}pre{overflow:auto;background:#eef2f7;padding:18px;border-radius:10px;font-size:13px;line-height:1.6}code{font-family:Consolas,monospace;font-size:.87em}p code,li code,td code{background:#eef2f7;padding:2px 4px;border-radius:4px}table{border-collapse:collapse;width:100%;font-size:14px;line-height:1.7}th,td{border:1px solid var(--line);padding:10px 12px;text-align:left;vertical-align:top}th{background:#eef2f7}img{max-width:100%;height:auto}.card{padding:22px;border:1px solid var(--line);border-radius:14px;margin:16px 0;background:#f8fafd}.small{color:#64758a;font-size:14px}.hero{display:flex;gap:24px;align-items:center}.hero img{width:100px;flex:none}.table-wrap{overflow-x:auto}@media(max-width:680px){body{font-size:15px}main{margin:12px;padding:24px 18px}h1{font-size:25px}.hero{gap:12px}.hero img{width:72px}}@media print{nav{display:none}main{border:0;margin:0;padding:0}body{background:white}pre,table{font-size:10px}a{color:inherit}}</style></head><body><nav><a href="../../开始阅读.html">← 返回阅读目录</a>　<span class="small">随序 SUIRA · 离线文档</span></nav><main><h1>浮引本机逆向研究记录</h1>
+<p>日期：2026-10-21（Asia/Shanghai）。目标：为 Windows 同类产品理解结构与行为。研究过程只读检查安装包与设置页面，没有读取个人剪贴板历史、笔记正文或账号凭据，没有修改应用二进制。</p>
+<p><strong>当前研究状态：已补充当前 6.0.1（216）限定核心路径的函数级反编译；本页早期结构/UI 记录对应 5.4.0（209）。</strong> 本页保留第一阶段的结构检查记录；第二阶段的函数体、分支、地址、Evidence ID 和 Windows 落点见 <a href="%E6%B5%AE%E5%BC%95%E5%87%BD%E6%95%B0%E7%BA%A7%E5%8F%8D%E7%BC%96%E8%AF%91%E4%B8%8EWindows%E6%98%A0%E5%B0%84.html">函数级反编译与 Windows 映射</a>。第一阶段“尚未配置引擎”“采样周期待确认”等文字是当时边界，下方已更新为当前结论。</p>
+<h2>样本身份</h2>
+<ul>
+<li>目标：<code>/Applications/浮引.app</code></li>
+<li>Bundle ID：<code>me.vkr.fg</code></li>
+<li>版本：<code>5.4.0 (209)</code></li>
+<li>主程序：<code>Contents/MacOS/浮引</code></li>
+<li>SHA-256：<code>4f61dc3a3c9f825bb590d6149b0a93f32050882ea526aef896af3fcf08999e00</code></li>
+<li>双架构：x86_64 / arm64；此次规范化检查选择 arm64。</li>
+<li>系统最低版本：macOS 14.0；<code>LSUIElement=true</code>。</li>
+</ul>
+<h2>工具与复现</h2>
+<p>REA 使用官方 npm 注册的 <code>rea-agents@6.7.0</code>，安装在 <code>research/rea-tool</code>，未执行全局 <code>setup</code>。Node 为 24.19.0。Git clone 因 HTTP/2 传输错误失败；仓库 README 与相关说明通过官方 GitHub 地址读取，实际分析使用版本固定的 npm 包。不能把 npm 包分析描述为已经审计完整仓库源码。</p>
+<p>在工作区根目录运行：</p>
+<pre><code class="language-sh">NODE_BIN=/Users/huihui/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin/node
+REA_CLI=research/rea-tool/node_modules/rea-agents/scripts/rea.mjs
+&quot;$NODE_BIN&quot; &quot;$REA_CLI&quot; inspect-artifact /Applications/浮引.app --format json
+&quot;$NODE_BIN&quot; &quot;$REA_CLI&quot; inspect-macho /Applications/浮引.app --format json
+</code></pre>
+<p>补充使用 <code>plutil</code>、<code>file</code>、<code>otool -L</code>、<code>nm -arch arm64 -nm</code> 和 <code>strings -a</code>；原始输出保存在 <code>research/evidence/</code>。</p>
+<p>REA artifact Evidence ID：<code>ev_c98681768f435c00fb67fbcdea2413fe4ec93e973b4aa6f25c163a1bca7b3384</code>。<br>REA Mach-O Evidence ID：<code>ev_c8ae1d6bff76417fd4f122efd5d9a921fc8bfc9b783e7b7d5e9394802b849fd5</code>。</p>
+<p><code>inspect-artifact</code> 的归档/目录清点成功；<code>inspect-macho</code> 成功得到架构、依赖、导入、导出和构建元数据。它们不等于函数反编译。第一阶段 <code>doctor</code> 没有检测到已配置引擎；第二阶段已在工作区解压官方 Ghidra 12.1.4，构建其 Mac arm64 decompiler，并通过 REA 使用该本地引擎。版本与哈希见 <a href="../../research/function-analysis/toolchain-manifest.json">工具清单</a>。</p>
+<h2>证据索引</h2>
+<p>以下行号均对应本次生成的原始证据文件，后续重新提取时可能变化。</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>结论</th>
+<th>文件与行号/位置</th>
+<th>证据类型</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>SwiftUI、AppKit 与原生面板</td>
+<td><code>dependencies.txt</code>；<code>symbols.txt:4072</code></td>
+<td>导入与依赖，强证据</td>
+</tr>
+<tr>
+<td>系统热键和事件接入</td>
+<td><code>symbols.txt:3626</code>、<code>:4203</code></td>
+<td>CGEventTapCreate / RegisterEventHotKey</td>
+</tr>
+<tr>
+<td>辅助功能读取</td>
+<td><code>symbols.txt:3511</code></td>
+<td>AXUIElementCopyAttributeValue 等</td>
+</tr>
+<tr>
+<td>ScreenCaptureKit</td>
+<td><code>symbols.txt:4151</code>、<code>:4153</code></td>
+<td>SCScreenshotManager / SCStream</td>
+</tr>
+<tr>
+<td>系统 OCR 线索</td>
+<td><code>strings.txt:390893</code></td>
+<td>VNRecognizeTextRequest 类型标记</td>
+</tr>
+<tr>
+<td>剪贴板面板/服务</td>
+<td><code>strings.txt:227222</code>、<code>:227270</code></td>
+<td>ClipboardHistoryService / ClipboardPanelController</td>
+</tr>
+<tr>
+<td>剪贴板结构化存储</td>
+<td><code>strings.txt:631431</code>、<code>:631434</code>、<code>:631486</code></td>
+<td>WAL、表与索引 SQL；不证明实际数据库加密情况</td>
+</tr>
+<tr>
+<td>模块生命周期</td>
+<td><code>strings.txt:632016</code>–<code>:632022</code></td>
+<td>dormant/prepared/suspended/releasing；实现细节待追踪</td>
+</tr>
+<tr>
+<td>文件中转与状态文件</td>
+<td><code>strings.txt:632027</code>–<code>:632033</code></td>
+<td>FloatingIslandController / shelf-state.json / Store</td>
+</tr>
+<tr>
+<td>情境适配</td>
+<td><code>strings.txt:630808</code>、<code>:630816</code></td>
+<td>ApplicationAdaptation 标记与源文件名字符串</td>
+</tr>
+<tr>
+<td>富文本/Markdown 技术资源</td>
+<td><code>resource-inventory.txt</code></td>
+<td>Markdown/KaTeX/Mermaid/WebKit 相关资源及依赖</td>
+</tr>
+</tbody></table></div>
+<p><code>strings</code> 同时扫描通用二进制的两个切片，重复内容不能解释为“两套业务实现”。源码文件名字符串也不代表已经恢复了对应源文件。</p>
+<h2>UI 观察日志</h2>
+<p>通过原生辅助功能树与截图观察以下页面，只进行菜单/页面导航：</p>
+<ol>
+<li>通用：版本 5.4.0（209）；常驻菜单栏；面板风格、动画与外观设置。</li>
+<li>主面板：38 键动作面板、应用面板、空格切换、按键搜索/文字输入、应用扫描来源和排序设置。</li>
+<li>主动适应：应用/时间/专注状态组合条件；可调整快捷键、入口、屏幕边缘和输入法；离开场景恢复原设置。</li>
+<li>浮引岛：顶部临时文件中转；多显示器选项；跟随 Finder 或始终复制；拖出保留；卡槽与同步选项。</li>
+<li>快捷键：单键/多键/双击/长按/鼠标/手势配置入口；本机动作面板配置 Control 与 Option+F。</li>
+</ol>
+<p>设置边栏还确认了截图、长截图、录屏、钉图文、速记、剪贴板、解压、日历、Markdown、翻译等入口。没有逐个运行其业务流程。</p>
+<p>尝试以 Option+F 唤起主面板时，返回的窗口截图未呈现可分析内容。因此主面板规则以设置页中可见说明为依据，不把此次操作写成已成功体验主面板。</p>
+<h2>推断与待验证问题</h2>
+<ul>
+<li>由类型标记推断存在面板控制器、业务服务、模块运行时和存储层。具体依赖方向与调用顺序仍需函数引用或运行时证据。</li>
+<li>第一阶段仅有 <code>changeCount</code> 线索；第二阶段已确认一条后台 timer 配置为 repeating 1.3 秒、leeway 250 毫秒，并取得序号/代次核对和有界重试的函数证据。它不代表所有路径的更新延迟。</li>
+<li>存在 SQLite 与建表语句，不足以判断数据库正文是否明文落盘。</li>
+<li>存在恢复组件和生命周期状态，不足以证明崩溃恢复率或资源释放效果。</li>
+<li>没有测量浮引的启动时间、帧率、OCR 准确率、空闲内存和功耗。</li>
+<li>没有查看用户付费能力的实际执行；Pro 页中的说明只作为可见产品描述。</li>
+</ul>
+<p>第二阶段重新核对后，当前安装包已为 6.0.1（216），函数分析使用与其哈希一致的 arm64 切片；第一阶段 5.4.0（209）记录单独保留。已进行定向反编译：面板布局/动画/通知代次、剪贴板捕获/取消/重试、原生截图回调、OCR 执行与结果提取已有函数证据。当前仍未完成全局热键到面板的所有边、目标窗口恢复、去重落库、完整截图区域链和模块生命周期状态机，详见新报告的覆盖矩阵。</p>
+<p>Windows 产品按行为和公开系统能力独立实现，保持原创的代码、视觉和文案。REA 的 MIT 许可不代表浮引本身开源。</p>
+</main></body></html>

@@ -1,0 +1,46 @@
+# 依赖
+node_modules/
+package-lock.json
+
+# 构建产物
+dist/
+out/
+release/
+*.exe
+*.msi
+*.nsis
+
+# 运行时数据（绝不应提交：含用户内容与加密密钥）
+suira-data.json
+suira-data.key
+captures/
+clipboard-images/
+tessdata-cache/
+
+# 大文件与临时产物
+Suira-Windows-Docs.zip
+screen-test.png
+*.log
+*.tmp
+
+# 历史备份（保留在本地，不入库）
+*.bak
+*.pre-suira
+
+# 编辑器 / 系统
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ---------------------------------------------------------------------------
+# 逆向工程研究产物（约 300MB）
+#
+# research/ 下是 macOS 应用「浮引」的反编译证据：Mach-O 二进制切片、Ghidra
+# 导出的函数伪代码、Evidence ID 记录等。这些是研究过程的原始素材，
+# 体积大且属于第三方二进制的衍生数据，不适合放进代码仓库。
+#
+# 产品决策与实现约束已经提炼进 deliverables/ 下的方案文档，那部分正常提交。
+# ---------------------------------------------------------------------------
+Suira-Windows-Docs/Suira-Windows-Docs/research/
