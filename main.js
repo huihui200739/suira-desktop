@@ -1206,7 +1206,15 @@ async function initialize() {
   createQuickWindow();
   createTray();
   registerShortcuts();
-  startClipboardWatcher().catch((error) => console.warn('剪贴板监听启动失败:', error.message));
+  // 剪贴板监听失败时不能只写日志：剪贴板历史会完全失效，用户必须知道
+  startClipboardWatcher().catch((error) => {
+    console.warn('剪贴板监听启动失败:', error.message);
+    const message = `剪贴板监听未启动：${error.message || '未知错误'}`;
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('app:toast', { message, type: 'error' });
+    }
+    if (tray) tray.setToolTip(`${APP_NAME} · 剪贴板监听未启动`);
+  });
 }
 
 app.whenReady().then(initialize).catch((error) => {
