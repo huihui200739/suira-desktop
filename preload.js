@@ -43,7 +43,7 @@ contextBridge.exposeInMainWorld('suira', {
     onToast: (callback) => subscribe('app:toast', callback)
   },
   capture: {
-    start: () => ipcRenderer.invoke('capture:start'),
+    start: (options) => ipcRenderer.invoke('capture:start', options),
     getData: () => ipcRenderer.invoke('capture:get-data'),
     finish: (payload) => ipcRenderer.invoke('capture:finish', payload),
     cancel: () => ipcRenderer.invoke('capture:cancel')
@@ -55,6 +55,7 @@ contextBridge.exposeInMainWorld('suira', {
     remove: (id) => ipcRenderer.invoke('content:remove', id),
     togglePin: (id) => ipcRenderer.invoke('content:toggle-pin', id),
     clearClipboard: () => ipcRenderer.invoke('content:clear-clipboard'),
+    openOriginal: (id) => ipcRenderer.invoke('content:open-original', id),
     onChanged: (callback) => subscribe('content:changed', callback)
   },
   actions: {

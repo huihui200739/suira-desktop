@@ -38,7 +38,10 @@ const state = {
   steps: 0,
   toastTimer: null,
   dockSide: 'bottom',
-  ocrItemId: ''
+  ocrItemId: '',
+  // 从 38 键面板进入时的意图（ocr / pin / copy），以及是否已自动推进过
+  intent: '',
+  intentAutoDone: false
 };
 
 function clamp(value, min, max) {
@@ -338,7 +341,11 @@ function redo() {
   showAction('已恢复一步');
 }
 
-function compositeSelection() {
+/**
+ * 把选区合成成一张图。
+ * options.withoutAnnotations=true 时只截原始画面，用于「查看原图」。
+ */
+function compositeSelection(options = {}) {
   if (!hasSelection() || !state.image) return null;
   const s = state.selection;
   const sx = s.x / root.clientWidth * state.image.width;
@@ -350,6 +357,7 @@ function compositeSelection() {
   output.height = Math.max(1, Math.round(sh));
   const ctx = output.getContext('2d');
   ctx.drawImage(state.image, sx, sy, sw, sh, 0, 0, output.width, output.height);
+  if (options.withoutAnnotations) return output;
 
   const dpr = window.devicePixelRatio || 1;
   for (const item of state.annotations) {
@@ -668,6 +676,9 @@ function setupEvents() {
       if (state.selection && state.selection.w >= 4 && state.selection.h >= 4) {
         setTool('pen');
         renderSelection();
+        // 从面板带意图进来的（O 提字 / P 钉图）在这里自动推进，
+        // 用户框完就出结果，不必再点工具栏
+        autoAdvanceForIntent();
       } else {
         state.selection = null;
         renderSelection();
@@ -691,7 +702,10 @@ function setupEvents() {
     button.addEventListener('click', () => setTool(button.dataset.tool));
   });
 
-  $$('.tool-button[data-action]').forEach((button) => {
+  // 工具栏里所有带 data-action 的按钮都要绑定。
+  // 之前选择器写成 .tool-button[data-action]，而「识」（.token-button）和
+  // 「完成」（.complete-button）不是这个类，两个最关键的按钮点了没反应。
+  $$('[data-action]', toolDock).forEach((button) => {
     button.addEventListener('click', () => {
       const action = button.dataset.action;
       if (action === 'undo') undo();
@@ -709,7 +723,20 @@ function setupEvents() {
   });
 
   $('#ocr-result-close').addEventListener('click', closeOcrResult);
-  $('#ocr-result-retry').addEventListener('click', () => { ocrResult.hidden = true; startOcr(); });
+  $('#ocr-result-retry').addEventListener('click', () => { ocrResult.hidden = true; state.intentAutoDone = false; startOcr(); });
+  $('#ocr-result-original').addEventListener('click', () => {
+    // 「查看原图」看的是框选区域未加标注的原始画面。
+    // 之前这里没有按钮、也没有渲染目标，点了只会报错。
+    const output = compositeSelection({ withoutAnnotations: true });
+    if (!output) { showAction('请先拖拽选择一个区域', 'error'); return; }
+    const viewer = $('#original-viewer');
+    $('#original-image').src = output.toDataURL('image/png');
+    viewer.hidden = false;
+  });
+  $('#original-close').addEventListener('click', () => { $('#original-viewer').hidden = true; });
+  $('#original-viewer').addEventListener('click', (event) => {
+    if (event.target === $('#original-viewer')) $('#original-viewer').hidden = true;
+  });
   $('#ocr-result-copy').addEventListener('click', async () => {
     const text = ocrText.value.trim();
     if (!text) { showAction('没有可复制的文字', 'error'); return; }
@@ -770,6 +797,13 @@ function setupEvents() {
       if (event.key === 'Escape') { event.preventDefault(); closeOcrResult(); }
       return;
     }
+    // 焦点在文本框里时，键盘属于文本输入：Ctrl+A 必须是「全选文字」，
+    // 不能变成「选中整个屏幕区域」。之前这里没判断焦点，导致在文字
+    // 编辑器里按 Ctrl+A 会把选区重置为全屏，输入内容也一起丢失。
+    const target = event.target;
+    const isTextInput = target instanceof HTMLElement
+      && (target.tagName === 'TEXTAREA' || target.tagName === 'INPUT' || target.isContentEditable);
+    if (isTextInput) return;
     const key = event.key.toLowerCase();
     if (event.key === 'Escape') {
       event.preventDefault();
@@ -863,12 +897,48 @@ async function loadCapture() {
     state.scaleY = image.height / Math.max(1, payload.size?.height || root.clientHeight);
     resizeCanvases();
     $('#loading-state').hidden = true;
+    applyIntent(payload.intent);
   };
   image.onerror = () => {
     $('#loading-state').hidden = true;
     showAction('屏幕画面载入失败', 'error');
   };
   image.src = sourceUrl;
+}
+
+/**
+ * 应用入口意图。
+ *
+ * 从 38 键面板按 O 进来（intent=ocr）时，框选完成后直接开始识别；
+ * 按 P（intent=pin）时，框选完成后直接钉图。这样「面板 → 工具 → 完成」
+ * 少一次重复点击，也保证按键语义与最终动作一致。
+ */
+function applyIntent(intent) {
+  if (!intent || intent === 'copy' || intent === 'save' || intent === 'shelf') return;
+  state.intent = intent;
+  if (intent === 'ocr') {
+    // 提示用户这一趟是要提字的，不必再找工具栏
+    const brand = $('.hint-brand span');
+    if (brand) brand.textContent = '截图提字';
+    showAction('框选要识别的区域，完成后自动识别');
+  } else if (intent === 'pin') {
+    const brand = $('.hint-brand span');
+    if (brand) brand.textContent = '截图钉图';
+    showAction('框选要钉住的区域，完成后直接钉在桌面');
+  }
+}
+
+/**
+ * 框选结束（松开鼠标）后，按入口意图自动推进。
+ * 只在第一次形成有效选区时触发，避免调整选区时反复执行。
+ */
+function autoAdvanceForIntent() {
+  if (state.intentAutoDone || !state.intent) return;
+  if (!hasSelection()) return;
+  state.intentAutoDone = true;
+  const intent = state.intent;
+  if (intent === 'ocr') startOcr();
+  else if (intent === 'pin') finish('pin');
 }
 
 setupEvents();

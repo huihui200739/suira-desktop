@@ -234,6 +234,120 @@ t('面板尺寸能装下 38 键与搜索条', () => {
   if (!(height >= 560)) throw new Error('面板过矮：' + height);
 });
 
+console.log('\n== 第二批：已复现缺陷的回归断言 ==');
+t('配方 ID 与配方定义一致（曾指向不存在的 capture-to-text）', () => {
+  const { COMMANDS, RECIPE_IDS } = require('./lib/search');
+  const { RECIPES } = require('./lib/recipes');
+  const valid = new Set(RECIPES.map((r) => r.id));
+  const recipeCommands = COMMANDS.filter((c) => String(c.action).startsWith('recipe:'));
+  if (!recipeCommands.length) throw new Error('没有配方类命令');
+  for (const command of recipeCommands) {
+    const id = command.action.slice('recipe:'.length);
+    if (!valid.has(id)) throw new Error(`${command.id} 指向不存在的配方 ${id}`);
+  }
+  // 命令里的配方 id 必须来自 RECIPES，不允许再手写字符串
+  for (const id of Object.values(RECIPE_IDS)) {
+    if (!valid.has(id)) throw new Error('RECIPE_IDS 含不存在的配方 ' + id);
+  }
+  const src = read('lib/search.js');
+  if (/recipe:[a-z]/.test(src)) throw new Error('lib/search.js 里仍有手写配方 id');
+});
+t('搜索模式下的键盘只服务结果列表，不误触 38 键动作', () => {
+  // 曾经：document 上的 Enter 直接取 state.actions[focusIndex]，搜索时执行错动作
+  if (/state\.actions\[state\.focusIndex\]/.test(qpJs)) throw new Error('仍从 state.actions 取 Enter 目标');
+  const searchGuard = qpJs.match(/if \(state\.query\) \{[\s\S]{0,700}?runCommand\(state\.commandIndex\)/);
+  if (!searchGuard) throw new Error('搜索模式下没有把 Enter 交给 runCommand');
+  if (!qpJs.includes("if (event.key === 'Enter') {\n      if (!state.commandResults.length)")) {
+    throw new Error('搜索框 Enter 在无结果时未做明确处理');
+  }
+});
+t('搜索无结果时按 Enter 给出反馈而不是静默', () => {
+  if (!qpJs.includes('还在搜索')) throw new Error('缺少搜索中提示');
+});
+t('搜索命令的应用候选使用 appPath，不靠剥 id 前缀', () => {
+  if (!qpJs.includes('entry.appPath')) throw new Error('未使用 appPath');
+  const { COMMANDS } = require('./lib/search');
+  if (!COMMANDS.every((c) => c.id && c.kind === 'command')) throw new Error('命令表结构异常');
+});
+t('Ctrl+A 在文本框里不再触发全屏选区', () => {
+  const overlay = read('src/overlay.js');
+  if (!overlay.includes('isTextInput')) throw new Error('缺少文本输入焦点判断');
+  const ctrlA = overlay.match(/if \(event\.ctrlKey && key === 'a'\)[\s\S]{0,260}?\n    \}/);
+  if (!ctrlA) throw new Error('缺少 Ctrl+A 处理');
+  // 全屏选区必须在 isTextInput 早退之后
+  const guardIndex = overlay.indexOf('isTextInput');
+  const ctrlAIndex = overlay.indexOf("if (event.ctrlKey && key === 'a')");
+  if (guardIndex < 0 || guardIndex > ctrlAIndex) throw new Error('Ctrl+A 早于文本输入判断，仍会误触发');
+});
+t('OCR 结果面板有「查看原图」按钮且有渲染目标', () => {
+  const overlayHtml = read('src/overlay.html');
+  if (!overlayHtml.includes('id="ocr-result-original"')) throw new Error('缺少查看原图按钮');
+  if (!overlayHtml.includes('id="original-viewer"')) throw new Error('缺少原图查看器容器');
+  if (!overlayHtml.includes('id="original-image"')) throw new Error('缺少原图 img');
+  const overlay = read('src/overlay.js');
+  if (!overlay.includes("$('#ocr-result-original').addEventListener")) throw new Error('查看原图没有 handler');
+  if (!overlay.includes('withoutAnnotations')) throw new Error('原图未排除标注');
+  const ocss = read('src/overlay.css');
+  if (!ocss.includes('.original-viewer')) throw new Error('缺少原图查看器样式');
+});
+t('面板 OCR 结果也能查看原图（主进程反查来源图片）', () => {
+  if (!qpJs.includes("$('#ocr-original')")) throw new Error('quickpanel 缺少查看原图接线');
+  if (!qpJs.includes('content.openOriginal')) throw new Error('未调用 openOriginal');
+  if (!mainJs.includes("ipcMain.handle('content:open-original'")) throw new Error('缺少 content:open-original');
+  if (!mainJs.includes('originItemId')) throw new Error('未按 originItemId 反查来源');
+  const preload = read('preload.js');
+  if (!preload.includes('openOriginal')) throw new Error('preload 未暴露 openOriginal');
+});
+t('确认文字必须逐字匹配才允许提交', () => {
+  if (!appJs.includes('options.expect')) throw new Error('openModal 未接收确认词');
+  if (!appJs.includes("input.value.trim() === expect")) throw new Error('未做逐字校验');
+  if (!appJs.includes('confirmBtn.disabled = !ok')) throw new Error('未在未匹配时禁用确认');
+  // 两处危险操作都必须传 expect
+  if (!/expect: '清空'/.test(appJs)) throw new Error('清空剪贴板未要求确认词');
+  if (!/expect: task\.title/.test(appJs)) throw new Error('删除任务未要求输入任务名');
+  if (!html.includes('id="modal-hint"')) throw new Error('缺少确认提示元素');
+});
+t('面板截图入口带意图，O 提字 / P 钉图框完即出结果', () => {
+  // 意图由 lib/panel-actions.js 决定（可测），main.js 只负责把 capture 接上
+  if (!mainJs.includes('intent')) throw new Error('主进程未传递入口意图');
+  if (!/capture: \(intent\) => beginScreenCapture\('panel', \{ intent \}\)/.test(mainJs)) {
+    throw new Error('main.js 未把入口意图交给截图');
+  }
+  const panelActions = read('lib/panel-actions.js');
+  if (!panelActions.includes("return startCapture('ocr')")) throw new Error('OCR 入口未带意图');
+  if (!panelActions.includes("return startCapture('pin')")) throw new Error('钉图入口未带意图');
+  const overlay = read('src/overlay.js');
+  if (!overlay.includes('applyIntent')) throw new Error('覆盖层未应用意图');
+  if (!overlay.includes('autoAdvanceForIntent')) throw new Error('覆盖层未按意图自动推进');
+  if (!overlay.includes('intentAutoDone')) throw new Error('缺少重复触发保护');
+});
+t('截图完成后按意图回到内容库，不留下悬空窗口', () => {
+  if (!mainJs.includes('payload?.action !== \'ocr\'')) throw new Error('OCR 完成时未保留覆盖层供结果面板使用');
+  const overlay = read('src/overlay.js');
+  if (!overlay.includes('closeOcrResult')) throw new Error('缺少 OCR 结果关闭');
+});
+
+t('面板执行层惰性创建（store/actions 在 initialize 后才赋值）', () => {
+  // 曾经在模块顶层直接 createPanelActions({store, actions})，而两者此刻是 null，
+  // 会把 null 永久捕获进去，第一次按键就 TypeError
+  if (!/let panelActions = null/.test(mainJs)) throw new Error('panelActions 不是惰性创建');
+  if (!/function getPanelActions\(\)/.test(mainJs)) throw new Error('缺少 getPanelActions');
+  if (/^const panelActions = createPanelActions/m.test(mainJs)) throw new Error('仍在模块顶层直接创建执行层');
+  if (!mainJs.includes('getPanelActions().run(actionId)')) throw new Error('执行入口未走惰性实例');
+});
+t('面板执行逻辑独立成可测模块', () => {
+  if (!fs.existsSync('lib/panel-actions.js')) throw new Error('缺少 lib/panel-actions.js');
+  const pa = read('lib/panel-actions.js');
+  if (!pa.includes('createPanelActions')) throw new Error('缺少工厂函数');
+  if (!pa.includes('module.exports')) throw new Error('未导出');
+  // 副作用必须走注入，不能在模块里直接 require electron
+  if (/require\('electron'\)/.test(pa)) throw new Error('执行层不应直接依赖 electron，否则无法测试');
+});
+t('动作结果能带用户去结果页（openPage 有渲染层处理）', () => {
+  if (!qpJs.includes('result.openPage')) throw new Error('渲染层未处理 openPage');
+  if (!qpJs.includes('quick.showMain(result.openPage)')) throw new Error('openPage 未接到主窗口跳转');
+});
+
 console.log('\n== 放回子系统接线检查 ==');
 t('preload 暴露 returnTo 与 openApp', () => {
   if (!/returnTo:\s*\{[\s\S]*?commit\s*:/.test(preload)) throw new Error('缺少 returnTo.commit');

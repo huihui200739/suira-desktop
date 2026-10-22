@@ -559,7 +559,7 @@ function syncMaximizeIcon(maximized) {
     ? '<svg viewBox="0 0 16 16"><rect x="3.5" y="5.5" width="7" height="7" rx="1"/><path d="M5.5 5.5V3.5h7v7h-2"/></svg>'
     : '<svg viewBox="0 0 16 16"><rect x="3.5" y="3.5" width="9" height="9" rx="1"/></svg>';
 }
-function openModal(title, eyebrow, placeholder, onConfirm) {
+function openModal(title, eyebrow, placeholder, onConfirm, options = {}) {
   $('#modal').hidden = false;
   $('#modal-title').textContent = title;
   $('#modal-eyebrow').textContent = eyebrow;
@@ -567,16 +567,44 @@ function openModal(title, eyebrow, placeholder, onConfirm) {
   input.value = '';
   input.placeholder = placeholder || '';
   setTimeout(() => input.focus(), 30);
-  $('#modal-confirm').onclick = async () => {
+
+  // expect：必须逐字输入确认词才允许提交。之前只判断「非空」，
+  // 输入任意一个字符都能删任务或清空剪贴板。
+  const expect = String(options.expect || '');
+  const confirmBtn = $('#modal-confirm');
+  const hint = $('#modal-hint');
+  const sync = () => {
+    const ok = !expect || input.value.trim() === expect;
+    confirmBtn.disabled = !ok;
+    if (hint) {
+      hint.hidden = !expect;
+      hint.textContent = expect ? (ok ? `已确认：${expect}` : `请输入「${expect}」以继续`) : '';
+      hint.className = `modal-hint ${ok ? 'is-ok' : ''}`.trim();
+    }
+    return ok;
+  };
+  input.oninput = sync;
+  sync();
+
+  confirmBtn.onclick = async () => {
     const value = input.value.trim();
     if (!value) return;
+    if (!sync()) {
+      input.focus();
+      return;
+    }
     $('#modal').hidden = true;
+    input.oninput = null;
+    confirmBtn.disabled = false;
     await onConfirm(value);
   };
 }
 
 function closeModal() {
   $('#modal').hidden = true;
+  const input = $('#modal-input');
+  input.oninput = null;
+  $('#modal-confirm').disabled = false;
 }
 
 /* ---------- events ---------- */
@@ -641,7 +669,7 @@ function installEvents() {
       state.selectedTaskId = '';
       showGlobalToast('任务已删除');
       await refreshShelf();
-    });
+    }, { expect: task.title });
     $('#modal-confirm').textContent = '删除';
   });
 
@@ -659,7 +687,7 @@ function installEvents() {
       } else {
         showGlobalToast(result?.error || '清空失败', 'error');
       }
-    });
+    }, { expect: '清空' });
   });
   $('#library-search').addEventListener('input', (event) => {
     state.query = event.target.value.trim().toLowerCase();

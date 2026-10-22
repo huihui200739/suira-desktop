@@ -81,7 +81,18 @@ window.suira = {
         { id:'note', label:'速记', hint:'尚未实现', implemented:false }
       ] };
     },
-    run: async (id) => ({ ok:true, message:'已执行 ' + id })
+    // 与主进程返回结构一致：O 键返回 ocr 结果（带 itemId 供查看原图反查），
+    // 其余返回 message/closePanel/openPage。记录调用用于断言链路真的走通。
+    run: async (id) => {
+      window.__runs = window.__runs || [];
+      window.__runs.push(id);
+      if (id === 'ocr') {
+        return { ok:true, ocr:{ text:'框选区域识别出的文字。\\n第二行内容。', itemId:'i3' } };
+      }
+      if (id === 'clipboard') return { ok:true, openPage:'library', closePanel:true };
+      if (id === 'text-clean') return { ok:true, message:'已生成整理后的文字', openPage:'library', closePanel:true };
+      return { ok:true, message:'已执行 ' + id, closePanel:true };
+    }
   },
   apps:{
     list: async () => ([
@@ -104,9 +115,9 @@ window.suira = {
   },
   search:{ query: async (q) => q ? [
     { id:'cmd.capture', kind:'command', title:'区域截图', subtitle:'框选屏幕区域并标注', action:'capture' },
-    { id:'cmd.ocr', kind:'command', title:'截图提字', subtitle:'截图后离线识别文字', action:'recipe:capture-to-text' }
+    { id:'cmd.ocr', kind:'command', title:'截图提字', subtitle:'截图后离线识别并整理文字', action:'recipe:capture-to-clean-text' }
   ] : [] },
-  content:{ list: async (o) => items.slice(0, (o && o.limit) || 3), addText: async(p)=>({ok:true,item:{id:'new',...p}}), onChanged: on('content:changed') },
+  content:{ list: async (o) => items.slice(0, (o && o.limit) || 3), addText: async(p)=>({ok:true,item:{id:'new',...p}}), openOriginal: async()=>({ok:true}), onChanged: on('content:changed') },
   actions:{ run: async()=>({ok:true,output:{id:'o1',text:'合并后的文字'}}) },
   recipes:{ run: async()=>({ok:true,steps:[],output:null}) },
   returnTo:{ target: async () => ({ processName:'WINWORD', title:'季度报告.docx' }), commit: async()=>({ok:true,copied:true,message:'已复制'}) }
@@ -233,6 +244,52 @@ async function capture(send, name) {
     await evaluate(send, `document.getElementById('toolbox').click(), 'ok'`);
     await sleep(500);
     console.log('14-panel-toolbox.png  ' + await capture(send, '14-panel-toolbox.png') + ' bytes');
+
+    // ---- 第二批：从面板按键进入工具，验证真的走通到结果 ----
+    await evaluate(send, `document.getElementById('toolbox').click(), 'ok'`);
+    await sleep(400);
+
+    // O 键：提字 → OCR 结果面板（含「查看原图」）
+    const ocrFlow = await evaluate(send, `(async function(){
+      window.__runs = [];
+      document.dispatchEvent(new KeyboardEvent('keydown',{key:'o',bubbles:true}));
+      await new Promise(function(r){ setTimeout(r, 400); });
+      var panel = document.getElementById('ocr-panel');
+      return JSON.stringify({
+        runs: window.__runs,
+        panelShown: !panel.hidden,
+        itemId: panel.dataset.itemId || '',
+        text: (document.getElementById('ocr-text').value || '').slice(0, 40),
+        hasOriginalBtn: !!document.getElementById('ocr-original'),
+        buttons: Array.from(panel.querySelectorAll('.ocr-actions button')).map(function(b){ return b.textContent.trim(); })
+      });
+    })()`);
+    console.log('OCR-FLOW ' + ocrFlow);
+    console.log('15-panel-ocr-result.png ' + await capture(send, '15-panel-ocr-result.png') + ' bytes');
+
+    // 「查看原图」必须真的调用主进程，不能只是能点
+    const originalFlow = await evaluate(send, `(async function(){
+      window.__originalCalls = [];
+      var before = window.suira.content.openOriginal;
+      window.suira.content.openOriginal = async function(id){ window.__originalCalls.push(id); return { ok:true }; };
+      document.getElementById('ocr-original').click();
+      await new Promise(function(r){ setTimeout(r, 300); });
+      window.suira.content.openOriginal = before;
+      return JSON.stringify({ calls: window.__originalCalls });
+    })()`);
+    console.log('ORIGINAL-FLOW ' + originalFlow);
+
+    // 关闭 OCR 面板后回到键位面板
+    const backFlow = await evaluate(send, `(async function(){
+      document.getElementById('ocr-close').click();
+      await new Promise(function(r){ setTimeout(r, 300); });
+      return JSON.stringify({
+        ocrHidden: document.getElementById('ocr-panel').hidden,
+        keysVisible: document.querySelectorAll('.key').length,
+        mode: document.getElementById('panel').dataset.mode
+      });
+    })()`);
+    console.log('BACK-FLOW ' + backFlow);
 
     ws.close();
   } finally {

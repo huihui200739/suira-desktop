@@ -23,6 +23,7 @@ const { KeyVault, encryptItem, decryptItem, encryptText, decryptText } = require
 const { unionBounds, maxScaleFactor, tileLayout } = require('./lib/display-geometry');
 const { InputInjector } = require('./lib/input-injector');
 const { keyLayout, TOOLBOX_TOOLS, PANEL_ACTIONS } = require('./lib/keybindings');
+const { createPanelActions } = require('./lib/panel-actions');
 const { execFileSync } = require('node:child_process');
 
 const APP_NAME = '随序 SUIRA';
@@ -520,12 +521,15 @@ function showMain(page = 'shelf') {
   mainWindow.webContents.send('app:navigate', page);
 }
 
-async function beginScreenCapture(source = 'panel') {
+async function beginScreenCapture(source = 'panel', options = {}) {
   if (captureBusy) return { ok: true };
   if (overlayWindow && !overlayWindow.isDestroyed()) {
     overlayWindow.focus();
     return { ok: true };
   }
+  // 入口意图：从 38 键面板按 O 进来，框完直接进识别；按 P 进来直接钉图。
+  // 意图随 payload 交给覆盖层，覆盖层据此预选工具或自动完成。
+  const intent = ['ocr', 'pin', 'copy', 'save', 'shelf'].includes(options?.intent) ? options.intent : 'copy';
   captureBusy = true;
   try {
     hideQuickPanel();
@@ -567,6 +571,8 @@ async function beginScreenCapture(source = 'panel') {
         bounds: d.bounds,
         scaleFactor: d.scaleFactor || 1
       })),
+      // 入口意图：覆盖层据此处决定框选完成后直接做哪一步
+      intent,
       source
     };
     overlayWindow = new BrowserWindow({
@@ -734,17 +740,6 @@ function lockWorkstation() {
   }
 }
 
-/** 最近一条图片内容（OCR / 钉图的输入）。 */
-function latestItemOfKind(kind) {
-  const items = store.listItems({ limit: 20, kinds: [kind] });
-  return items[0] || null;
-}
-
-/** 最近一条文字内容（文本转换的输入）。 */
-function latestTextItem() {
-  return store.listItems({ limit: 5, kinds: ['text', 'link'] })[0] || null;
-}
-
 /**
  * 应用索引里的应用对用户是否真的可启动。
  * 索引为空时（首次扫描中）不阻塞键位展示，避免面板整片空白。
@@ -754,50 +749,33 @@ function appIndexReady() {
 }
 
 /**
+ * 面板动作执行层：真实逻辑在 lib/panel-actions.js（可注入依赖、可被测试覆盖），
+ * 这里只负责把主进程的能力接进去。
+ *
+ * 惰性创建：store / actions 要到 initialize() 才赋值，模块加载时还是 null。
+ * 之前在这里直接创建会把 null 永久捕获进去，第一次按键就 TypeError。
+ */
+let panelActions = null;
+function getPanelActions() {
+  if (!panelActions) {
+    panelActions = createPanelActions({
+      store,
+      actions,
+      capture: (intent) => beginScreenCapture('panel', { intent }),
+      pin: (filePath, size) => createPinWindow(pathToFileURL(filePath).href, size),
+      switchToDesktop,
+      lockWorkstation
+    });
+  }
+  return panelActions;
+}
+
+/**
  * 执行面板动作。这是 38 个按键唯一的执行入口：
  * 鼠标点击和键盘直达走同一条通道，保证「按键与鼠标调用同一动作」。
  */
 async function runPanelAction(actionId) {
-  switch (actionId) {
-    case 'capture': {
-      const result = await beginScreenCapture('panel');
-      return result.ok ? { ok: true, closePanel: true } : { ok: false, error: result.error };
-    }
-    case 'annotate': {
-      // 标注是在截图覆盖层里完成的：先框选，再在工具栏选标注
-      const result = await beginScreenCapture('panel');
-      return result.ok ? { ok: true, closePanel: true } : { ok: false, error: result.error };
-    }
-    case 'ocr': {
-      const item = latestItemOfKind('image');
-      if (!item) return { ok: false, error: '还没有图片，先截一张图' };
-      const result = await actions.execute(item.id, 'ocr.local');
-      if (!result.ok) return { ok: false, error: result.error || '识别失败' };
-      return { ok: true, ocr: { text: result.output?.text || '', itemId: item.id } };
-    }
-    case 'pin': {
-      const item = latestItemOfKind('image');
-      if (!item) return { ok: false, error: '还没有图片可以钉住' };
-      if (!item.filePath) return { ok: false, error: '这张图片没有可读取的文件' };
-      createPinWindow(pathToFileURL(item.filePath).href, item.meta?.width && item.meta?.height ? { width: item.meta.width, height: item.meta.height } : {});
-      return { ok: true, message: '已钉在桌面', closePanel: true };
-    }
-    case 'clipboard':
-      return { ok: true, openPage: 'library', closePanel: true };
-    case 'text-clean': {
-      const item = latestTextItem();
-      if (!item) return { ok: false, error: '还没有文字内容可以转换' };
-      const result = await actions.execute(item.id, 'text.merge-lines');
-      if (!result.ok) return { ok: false, error: result.error || '转换失败' };
-      return { ok: true, message: '已生成合并换行版本，可在内容库查看' };
-    }
-    case 'desktop':
-      return switchToDesktop();
-    case 'lock':
-      return lockWorkstation();
-    default:
-      return { ok: false, error: '这个动作还没有实现' };
-  }
+  return getPanelActions().run(actionId);
 }
 
 /**
@@ -986,7 +964,7 @@ function createPinWindow(dataUrl, size = {}) {
   }));
   ipcMain.handle('app:open-data-dir', () => shell.openPath(userRoot()));
 
-  ipcMain.handle('capture:start', () => beginScreenCapture('main'));
+  ipcMain.handle('capture:start', (_event, options) => beginScreenCapture('main', options || {}));
   ipcMain.handle('capture:get-data', () => capturePayload);
   ipcMain.handle('capture:cancel', () => {
     if (overlayWindow && !overlayWindow.isDestroyed()) overlayWindow.destroy();
@@ -1042,6 +1020,28 @@ function createPinWindow(dataUrl, size = {}) {
     return { ok: true, pinned: item.pinned };
   });
 
+  /**
+   * 打开某条内容的来源原图。
+   * 识别结果（kind=text, meta.originItemId）指向它由哪张图片生成；
+   * 图片本身没有 originItemId，直接开自己。
+   */
+  ipcMain.handle('content:open-original', async (_event, id) => {
+    const item = store.getItem(String(id || ''));
+    if (!item) return { ok: false, error: '内容不存在或已被清理' };
+    const sourceId = item.meta?.originItemId || '';
+    const source = sourceId ? store.getItem(sourceId) : item;
+    const target = source || item;
+    if (!target.filePath) return { ok: false, error: '这条内容没有来源图片' };
+    if (!fs.existsSync(target.filePath)) return { ok: false, error: '原图文件已被移动或删除' };
+    // 优先交给系统默认看图程序；失败再退到资源管理器定位
+    const error = await shell.openPath(target.filePath);
+    if (error) {
+      shell.showItemInFolder(target.filePath);
+      return { ok: true, fallback: true, message: '无法用默认程序打开，已在资源管理器中定位' };
+    }
+    return { ok: true };
+  });
+
   ipcMain.handle('actions:list', (_event, itemId) => {
     const item = store.getItem(String(itemId || ''));
     return actions.listForItem(item).map((id) => {
@@ -1082,8 +1082,7 @@ function createPinWindow(dataUrl, size = {}) {
       for (const app of await appIndex.candidates()) candidates.push(app);
     } catch {
       // 索引不可用时不影响命令与内容搜索
-    }
-    for (const item of store.listItems({ limit: 200 })) {
+    }    for (const item of store.listItems({ limit: 200 })) {
       candidates.push({
         id: item.id,
         kind: 'content',

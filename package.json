@@ -8,11 +8,12 @@
   "scripts": {
     "start": "electron .",
     "dev": "electron . --dev",
-    "test": "node test-core.js && node test-actions.js && node test-capabilities.js && node test-keybindings.js && node test-return.js && node test-foreground.js && node test-security.js && node test-display.js && node test-inject.js && node test-ui.js && node test-render.js",
+    "test": "node test-core.js && node test-actions.js && node test-capabilities.js && node test-keybindings.js && node test-panel-flows.js && node test-return.js && node test-foreground.js && node test-security.js && node test-display.js && node test-inject.js && node test-ui.js && node test-render.js && node tools/confirm-check.js && node tools/overlay-check.js",
     "test:core": "node test-core.js",
     "test:actions": "node test-actions.js",
     "test:capabilities": "node test-capabilities.js",
     "test:keybindings": "node test-keybindings.js",
+    "test:flows": "node test-panel-flows.js",
     "test:return": "node test-return.js",
     "test:foreground": "node test-foreground.js",
     "test:security": "node test-security.js",
@@ -20,6 +21,8 @@
     "test:inject": "node test-inject.js",
     "test:ui": "node test-ui.js",
     "test:render": "node test-render.js",
+    "test:confirm": "node tools/confirm-check.js",
+    "test:overlay": "node tools/overlay-check.js",
     "dist": "electron-builder --win nsis",
     "dist:portable": "electron-builder --win portable"
   },

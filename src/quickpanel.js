@@ -314,22 +314,32 @@ async function runCommand(index) {
   if (!entry) return;
   const kind = entry.kind;
   if (kind === 'app') {
-    await openApp(String(entry.id || '').replace(/^app:/, ''));
+    // 主进程返回的应用候选把快捷方式路径放在 appPath；id 只是 'app:'+path 的展示键。
+    // 之前直接拿 id 去壳，遇到没有 appPath 的候选会拼出错误路径。
+    const target = entry.appPath || String(entry.id || '').replace(/^app:/, '');
+    await openApp(target);
     return;
   }
   if (kind === 'task') { window.suira.quick.showMain('shelf'); return; }
-  if (kind === 'content') {
-    window.suira.quick.showMain('library');
-    return;
-  }
+  if (kind === 'content') { window.suira.quick.showMain('library'); return; }
   const action = String(entry.action || '');
   if (action === 'capture') { runAction('capture'); return; }
   if (action === 'quick') { clearSearch(); return; }
   if (action.startsWith('navigate:')) { window.suira.quick.showMain(action.slice('navigate:'.length)); return; }
   if (action.startsWith('recipe:')) {
-    // 配方入口统一交给主进程执行，副作用仍只在提交时发生
-    await window.suira.recipes.run({ itemId: '', recipeId: action.slice('recipe:'.length), commit: false }).catch(() => {});
-    toast('请在内容库选择内容后运行配方');
+    // 配方需要一条具体内容作为输入：用最近内容，没有就直接说明白，
+    // 不再拿空 itemId 去调主进程换回一句「内容不存在」。
+    const item = state.recentItem;
+    if (!item) { toast('还没有内容可以整理，先截一张图或复制一段文字'); return; }
+    const result = await window.suira.recipes.run({
+      itemId: item.id,
+      recipeId: action.slice('recipe:'.length),
+      commit: false
+    });
+    if (!result?.ok) { toast(result?.error || '执行失败', 'error'); return; }
+    const marks = (result.steps || []).map((step) => (step.ok ? '✓' : '✕')).join('');
+    toast(`处理完成 ${marks}`);
+    await loadRecent();
     return;
   }
 }
@@ -344,6 +354,12 @@ async function runAction(actionId) {
     if (result.ocr) { showOcr(result.ocr.text || '', result.ocr.itemId || ''); return; }
     if (result.message) toast(result.message, result.ok ? '' : 'error');
     else if (result.error) toast(result.error, 'error');
+    // 动作结果在主窗口某页里（内容库 / 任务匣）：带用户过去看，
+    // 而不是让结果留在看不见的地方
+    if (result.openPage) {
+      window.suira.quick.showMain(result.openPage);
+      return;
+    }
     if (result.closePanel) window.suira.quick.hide();
   } catch (error) {
     toast(error.message || '动作执行失败', 'error');
@@ -452,6 +468,9 @@ function installEvents() {
       toggleApps();
       return;
     }
+    if (event.key === 'Escape' || event.key === 'Tab') return;
+    // 搜索模式下 ↑↓ 与 Enter 只作用于搜索结果列表；没有结果时 Enter
+    // 不做任何事（也不会回落到动作执行），避免"按了没反应"或误执行
     if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
       if (!state.commandResults.length) return;
       event.preventDefault();
@@ -460,7 +479,12 @@ function installEvents() {
       renderCommands();
       return;
     }
-    if (event.key === 'Enter' && state.commandResults.length) {
+    if (event.key === 'Enter') {
+      if (!state.commandResults.length) {
+        // 结果是异步拉取的，按得太早时给一次明确反馈，而不是静默
+        if (state.query) toast('还在搜索，稍等一下');
+        return;
+      }
       event.preventDefault();
       runCommand(state.commandIndex);
     }
@@ -480,6 +504,37 @@ function installEvents() {
       return;
     }
     if (inInput) return; // 输入框自行处理，避免把字母解释成动作
+    // 搜索进行中：键盘只服务结果列表，不能把字母再解释成 38 键动作
+    if (state.query) {
+      if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+        if (!state.commandResults.length) return;
+        event.preventDefault();
+        const delta = event.key === 'ArrowDown' ? 1 : -1;
+        state.commandIndex = Math.max(0, Math.min(state.commandResults.length - 1, state.commandIndex + delta));
+        renderCommands();
+        return;
+      }
+      if (event.key === 'Enter') {
+        if (!state.commandResults.length) return;
+        event.preventDefault();
+        runCommand(state.commandIndex);
+        return;
+      }
+      if (event.key === 'Backspace' || event.key === 'Delete') {
+        event.preventDefault();
+        input.value = state.query.slice(0, -1);
+        updateSearch(input.value);
+        focusSearch();
+        return;
+      }
+      if (event.key.length === 1 && !event.ctrlKey && !event.altKey && !event.metaKey) {
+        event.preventDefault();
+        input.value = state.query + event.key;
+        updateSearch(input.value);
+        focusSearch();
+      }
+      return;
+    }
     if (event.key === ' ') { event.preventDefault(); toggleApps(); return; }
     if (event.key === '/' || event.key === 'F3') { event.preventDefault(); focusSearch(); return; }
     if (event.ctrlKey || event.altKey || event.metaKey) return;
@@ -512,6 +567,14 @@ function installEvents() {
   });
 
   $('#ocr-close').addEventListener('click', closeOcr);
+  $('#ocr-original').addEventListener('click', async () => {
+    // 识别结果的来源图片：面板只持有 itemId，打开原图交给主进程，
+    // 避免在渲染层拼 file:// 路径（之前这里没有任何 handler，点了必报错）
+    const itemId = $('#ocr-panel').dataset.itemId || '';
+    if (!itemId) { toast('找不到这张识别结果的来源图片', 'error'); return; }
+    const result = await window.suira.content.openOriginal(itemId);
+    if (!result?.ok) toast(result?.error || '无法打开原图', 'error');
+  });
   $('#ocr-copy').addEventListener('click', async () => {
     const text = $('#ocr-text').value;
     if (!text.trim()) { toast('没有可复制的文字', 'error'); return; }
