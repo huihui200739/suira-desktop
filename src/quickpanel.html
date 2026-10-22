@@ -4,55 +4,60 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="color-scheme" content="light dark">
-  <title>随序 · 随手面板</title>
+  <title>随序 · 动作面板</title>
   <link rel="stylesheet" href="quickpanel.css">
 </head>
 <body>
-  <main class="panel" id="panel" aria-label="随序随手面板">
+  <main class="panel" id="panel" data-mode="actions" aria-label="随序动作面板">
     <header class="panel-head">
-      <div class="brand">
-        <img src="../assets/suira-icon.png" alt="">
-        <div><b>随序</b><span>SUIRA</span></div>
-      </div>
       <div class="search-field">
         <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m15.5 15.5 4 4"/></svg>
-        <input id="search" type="text" autocomplete="off" spellcheck="false" placeholder="搜索内容、动作或任务">
-        <kbd>Esc</kbd>
+        <input id="search" type="text" autocomplete="off" spellcheck="false" placeholder="按空格查看全部应用" aria-label="搜索命令、应用或内容">
+        <kbd class="search-mode" id="mode-chip">动作</kbd>
       </div>
-      <button class="icon-btn" id="open-main" type="button" title="打开任务匣" aria-label="打开任务匣">
-        <svg viewBox="0 0 24 24"><path d="M4 7.5h16v12H4z"/><path d="M3 4.5h18v3H3zM9 11.5h6"/></svg>
+      <button class="toolbox-btn" id="toolbox" type="button" aria-label="打开工具箱">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="7" width="7" height="7" rx="1.6"/><rect x="13.5" y="7" width="7" height="7" rx="1.6"/><rect x="3.5" y="16" width="7" height="4.5" rx="1.4"/><rect x="13.5" y="16" width="7" height="4.5" rx="1.4"/></svg>
+        <span>工具箱</span>
       </button>
     </header>
 
+    <section class="panel-body" id="panel-body">
+      <!-- 动作面板：38 键固定布局 -->
+      <div class="keyboard" id="key-grid" aria-label="38 键动作面板"></div>
+
+      <!-- 应用面板：空格切换 -->
+      <section class="apps" id="apps-panel" hidden aria-label="应用面板">
+        <div class="apps-grid" id="apps-grid"></div>
+        <div class="apps-foot">
+          <button class="pager-btn" id="apps-prev" type="button" aria-label="上一页">‹</button>
+          <span class="pager-text" id="apps-pager">第 1 / 1 页</span>
+          <button class="pager-btn" id="apps-next" type="button" aria-label="下一页">›</button>
+        </div>
+      </section>
+
+      <!-- 工具箱 -->
+      <section class="toolbox" id="toolbox-panel" hidden aria-label="工具箱">
+        <div class="tool-grid" id="tool-grid"></div>
+      </section>
+
+      <!-- 搜索结果 -->
+      <section class="command-section" id="command-section" hidden>
+        <div class="command-list" id="command-list"></div>
+      </section>
+    </section>
+
     <section class="source-card" id="source-card" hidden>
-      <div class="source-label"><span class="dot"></span><span id="source-kind">当前内容</span><time id="source-time"></time></div>
-      <div class="source-body" id="source-body"></div>
-      <div class="source-meta" id="source-meta"></div>
+      <span class="source-dot"></span>
+      <span id="source-kind">最近内容</span>
+      <span class="source-sep">·</span>
+      <time id="source-time"></time>
+      <button id="source-open" type="button">查看</button>
     </section>
 
-    <section class="command-section" id="command-section" hidden>
-      <div class="section-title"><span>命令与结果</span></div>
-      <div class="command-list" id="command-list"></div>
-    </section>
-
-    <section class="result-area" id="result-area">
-      <div class="return-bar" id="return-bar" hidden>
-        <span class="return-target" id="return-target-text"></span>
-        <button id="return-commit" type="button">放回原处</button>
-      </div>
-      <div class="section-title"><span>建议动作</span><small id="action-count"></small></div>
-      <div class="action-list" id="action-list"></div>
-    </section>
-
-    <section class="content-section" id="content-section">
-      <div class="section-title"><span>最近内容</span><button id="see-all" type="button">查看全部</button></div>
-      <div class="content-list" id="content-list"></div>
-    </section>
-
-    <section class="task-section" id="task-section" hidden>
-      <div class="section-title"><span>任务匣</span><button id="open-tasks" type="button">打开</button></div>
-      <div class="task-list" id="task-list"></div>
-    </section>
+    <div class="return-bar" id="return-bar" hidden>
+      <span class="return-target" id="return-target-text"></span>
+      <button id="return-commit" type="button">放回原处</button>
+    </div>
 
     <div class="ocr-panel" id="ocr-panel" hidden>
       <div class="ocr-head">
@@ -61,26 +66,26 @@
       </div>
       <textarea id="ocr-text" spellcheck="false" placeholder="识别文字会显示在这里"></textarea>
       <div class="ocr-actions">
-        <button type="button" class="quiet" id="ocr-original">查看原图</button>
         <button type="button" class="quiet" id="ocr-merge">合并换行</button>
+        <button type="button" class="quiet" id="ocr-shelf">加入任务匣</button>
         <button type="button" class="primary" id="ocr-copy">复制文字</button>
-        <button type="button" class="secondary" id="ocr-shelf">加入任务匣</button>
       </div>
     </div>
 
     <footer class="panel-foot">
-      <div class="foot-hints"><span><kbd>↑</kbd><kbd>↓</kbd> 选择</span><span><kbd>Enter</kbd> 执行</span><span><kbd>Tab</kbd> 切换</span><span><kbd>Esc</kbd> 关闭</span></div>
+      <div class="foot-hints">
+        <span><kbd>空格</kbd> 切换应用</span>
+        <span><kbd>字母</kbd> 直达动作</span>
+        <span><kbd>Esc</kbd> 关闭</span>
+      </div>
       <button class="capture-chip" id="capture" type="button"><span>⌁</span> 截图 <kbd>Ctrl Shift A</kbd></button>
     </footer>
 
     <div class="toast" id="toast" role="status"></div>
     <div class="empty-state" id="empty-state" hidden>
-      <div class="empty-mark">S</div>
-      <b>还没有可处理的内容</b>
-      <p>复制文字或截一张图，随序会在这里接住它。</p>
-      <div class="empty-actions"><button type="button" id="empty-capture">截图提取文字</button><button type="button" id="empty-paste">从剪贴板开始</button></div>
+      <b>应用索引还没有准备好</b>
+      <p>首次启动会扫描开始菜单，稍后再按空格查看应用。</p>
     </div>
-    <div class="loading" id="loading" hidden><span></span><p>正在读取本地内容…</p></div>
   </main>
   <script src="quickpanel.js"></script>
 </body>

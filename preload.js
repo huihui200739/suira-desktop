@@ -26,6 +26,16 @@ contextBridge.exposeInMainWorld('suira', {
     openApp: (filePath) => ipcRenderer.invoke('quick:open-app', filePath),
     onShown: (callback) => subscribe('quick:shown', callback)
   },
+  // 38 键动作面板：键位表与执行通道
+  panel: {
+    state: () => ipcRenderer.invoke('panel:state'),
+    run: (actionId) => ipcRenderer.invoke('panel:run', actionId)
+  },
+  // 应用面板：开始菜单应用目录（图标按需取，保证首帧快）
+  apps: {
+    list: () => ipcRenderer.invoke('apps:list'),
+    icons: (filePaths) => ipcRenderer.invoke('apps:icons', filePaths)
+  },
   app: {
     info: () => ipcRenderer.invoke('app:info'),
     openDataDir: () => ipcRenderer.invoke('app:open-data-dir'),

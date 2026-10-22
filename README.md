@@ -12,7 +12,7 @@ Electron 实现的 Windows 桌面端样机。产品方向、交互结构与验�
 ```powershell
 npm install
 npm start          # 启动应用
-npm test           # 全量自动化测试（370 项）
+npm test           # 全量自动化测试（416 项）
 ```
 
 > 打包：`npm run dist`（NSIS 安装包）或 `npm run dist:portable`（免安装单文件）。
@@ -23,33 +23,50 @@ npm test           # 全量自动化测试（370 项）
 
 ## 界面
 
-完整界面图（含随手面板、截图覆盖层与真实运行截图）见
-[docs/screenshots/](docs/screenshots/README.md)。
+主入口是浮引式的 **38 键动作面板**；完整界面图见 [docs/screenshots/](docs/screenshots/README.md)。
 
 <table>
   <tr>
-    <td width="50%"><img src="docs/screenshots/01-task-shelf.png" alt="任务匣"></td>
-    <td width="50%"><img src="docs/screenshots/02-content-library.png" alt="内容库"></td>
+    <td width="50%"><img src="docs/screenshots/12-panel-actions.png" alt="38 键动作面板"></td>
+    <td width="50%"><img src="docs/screenshots/13-panel-apps.png" alt="应用面板"></td>
   </tr>
   <tr>
-    <td align="center"><b>任务匣</b>：左侧任务，右侧当前任务的混合内容</td>
-    <td align="center"><b>内容库</b>：图片卡片下挂识别结果</td>
+    <td align="center"><b>38 键动作面板</b>：固定键位、彩色图标、角标键帽，未绑定键显示「绑定」</td>
+    <td align="center"><b>应用面板</b>：空格切换，开始菜单应用网格与搜索</td>
   </tr>
   <tr>
-    <td width="50%"><img src="docs/screenshots/05-quick-panel.png" alt="随手面板"></td>
-    <td width="50%"><img src="docs/screenshots/07-capture-overlay.png" alt="截图覆盖层"></td>
+    <td width="50%"><img src="docs/screenshots/14-panel-toolbox.png" alt="工具箱"></td>
+    <td width="50%"><img src="docs/screenshots/05-quick-panel.png" alt="任务匣 / 内容库"></td>
   </tr>
   <tr>
-    <td align="center"><b>随手面板</b>：<code>Ctrl+Alt+Space</code> 唤起</td>
-    <td align="center"><b>截图覆盖层</b>：选区、放大镜、标注</td>
+    <td align="center"><b>工具箱</b>：集中入口，未完成工具明确标注「尚未实现」</td>
+    <td align="center"><b>任务匣 / 内容库</b>：降为低频管理入口</td>
   </tr>
 </table>
+
+### 38 键面板的键位（对照本机浮引）
+
+| 键 | 动作 | 状态 |
+|---|---|---|
+| `Z` | 截图（框选 + 标注） | 已实现 |
+| `X` | 剪贴板（内容库） | 已实现 |
+| `V` | 文本转换（合并换行 / 清理） | 已实现 |
+| `B` | 标注（截图覆盖层） | 已实现 |
+| `O` | 提取文字（离线 OCR） | 已实现 |
+| `P` | 钉图文 | 已实现 |
+| `D` | 回到桌面 | 已实现 |
+| `L` | 锁屏 | 已实现 |
+| `W` `S` `G` `T` `I` `F` `N` `M` | 壁纸 / 录屏 / 长截图 / 翻译 / 改图 / 日历 / 速记 / Markdown | 规划占位：键位保留，明确标注「未实现」 |
+| 其余键 | — | 显示「绑定」，未绑定动作 |
+
+键位与动作的映射集中在 `lib/keybindings.js`；鼠标点击与键盘直达走同一条 `panel:run` 通道。
+空格在「动作面板 / 应用面板」之间切换，工具箱是独立入口。
 
 ---
 
 ## 三个核心流程
 
-对应开发方案第 4 节的差异化结构，也是首要打磨的三条链路：
+主入口为 38 键动作面板（`Ctrl+Alt+Space` 唤起）后的链路：
 
 ### 1. 截图 → 提字 → 清理换行 → 放进文档
 
@@ -75,13 +92,14 @@ npm test           # 全量自动化测试（370 项）
 
 | 快捷键 | 功能 |
 |---|---|
-| `Ctrl+Alt+Space` | 打开 / 收起随手面板 |
+| `Ctrl+Alt+Space` | 打开 / 收起 38 键动作面板 |
 | `Ctrl+Shift+A` | 区域截图 |
 | `Esc` | 关闭面板 / 取消截图 |
 
-> `Alt+F` 作为历史兼容键也绑定了随手面板。
+> `Alt+F` 作为历史兼容键也绑定了面板。
 
-随手面板内：`Enter` 执行选中动作，`↑` `↓` 切换内容，`Tab` / `Shift+Tab` 切换动作，`Ctrl+A` 直接截图。
+面板内：`空格` 在动作面板 / 应用面板之间切换，`字母键` 直达对应动作，
+`/` 或 `F3` 聚焦搜索，`↑` `↓` `Enter` 选择搜索结果，`Esc` 逐级返回。
 
 > 热键通过 `ShortcutManager` 注册，**有冲突检测**：注册失败会在设置页显示原因并支持改键，
 > 改键失败自动回滚到原键位。
@@ -92,14 +110,19 @@ npm test           # 全量自动化测试（370 项）
 
 ### 已实现
 
-- **随手面板**：搜索命令 / 应用 / 内容 / 任务，支持**中文、拼音全拼、拼音首字母**（`rwx` → 任务匣）；
-  按内容类型给出相关动作；来源预览
+- **38 键动作面板**：固定键位布局（12 / 10 / 9 / 7，行间错位与物理键盘一致），
+  8 个键位已接到真实能力，其余显示「绑定」或明确标注「未实现」；
+  鼠标点击与键盘直达走同一条执行通道
+- **应用面板**：空格切换，扫描开始菜单得到应用网格、图标缓存、分页与搜索
+- **工具箱**：集中入口，未完成工具显示明确状态，不放空壳按钮
+- **搜索**：命令 / 应用 / 内容 / 任务，支持**中文、拼音全拼、拼音首字母**（`rwx` → 任务匣）；
+  命令区与 38 键面板区域分离，不再混成一列长列表
 - **剪贴板历史**：文本 / 图片 / 文件引用，去重、置顶、保留期、搜索
 - **区域截图与标注**：**跨屏区域**（覆盖整个虚拟桌面，支持副屏在主屏左侧/上方）、
   混合 DPI，工具为矩形 / 箭头 / 画笔 / 文字 / 马赛克 / 序号，支持撤销、复制 / 保存 / 钉图
 - **离线 OCR**：本地 `tesseract.js`，中英文，识别结果可编辑
 - **文本处理**：合并换行、清理多余空格、纯文本
-- **任务匣**：混合内容、来源标记、派生关系、批量复制、导出 Markdown
+- **任务匣**：混合内容、来源标记、派生关系、批量复制、导出 Markdown（已降为低频管理入口）
 - **处理轨迹**：按步骤记录每次动作的输入输出与失败原因，失败可重试
 - **配方（动作链）**：3 条内置模板，显式提交副作用，支持取消
 - **钉图**：置顶窗口、缩放、透明度、临时收起（收成窄条后可点回）、悬停工具栏
@@ -112,10 +135,12 @@ npm test           # 全量自动化测试（370 项）
 - **放回原处（完整链路）**：唤起面板前记录目标窗口（HWND / PID / 进程启动时间），
   提交前重新校验 → 复制 → 置前目标窗口 → `SendInput` 注入 `Ctrl+V`。
   任一步失败都降级为「已复制，切回目标后粘贴」，不假装成功
-- **应用搜索**：扫描开始菜单快捷方式（当前用户 + 所有用户），支持拼音与首字母
+- **回到桌面 / 锁屏**：`D` / `L` 键位调用系统能力，失败如实报错
 
 ### 未实现 / 受限
 
+- **38 键面板中的规划键位**：壁纸、录屏、长截图、翻译、改图、日历、速记、Markdown
+  保留键位但在面板上标注「未实现」，点击只给提示，不假装可用。
 - **`SendInput` 的 UIPI 限制**：普通权限无法向以管理员运行的窗口注入输入
   （[官方说明](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-sendinput)）。
   此时会如实提示「已复制，请手动粘贴」，不会静默失败。产品本身不以管理员常驻。
@@ -162,8 +187,9 @@ lib/display-geometry.js    虚拟桌面几何：多屏并集、缩放、分块�
 lib/input-injector.js      输入注入：PowerShell + SendInput 发送 Ctrl+V
 assets/foreground-helper.ps1  只读 Win32 查询助手（GetForegroundWindow）
 lib/ocr.js                 离线 OCR 封装
-src/index.html + app.js    主窗口：任务匣 / 内容库 / 处理轨迹 / 设置
-src/quickpanel.*           随手面板
+lib/keybindings.js         38 键面板的键位模型：布局、动作目录、绑定与可用状态
+src/index.html + app.js    主窗口：任务匣 / 内容库 / 处理轨迹 / 设置（低频管理）
+src/quickpanel.*           38 键动作面板 + 应用面板 + 工具箱（主入口）
 src/overlay.*              截图覆盖层 + OCR 结果面板
 ```
 
@@ -176,31 +202,35 @@ ContentItem = id + kind + payloadRef + source + createdAt + parentIds
 Action      = stableId + acceptedTypes + outputType + executor + sideEffect
 Execution   = jobId + inputIds + actionId + status + outputIds + error
 Recipe      = id + version + accepts + steps[] + commit
+KeyBinding  = key + actionId（lib/keybindings.js 是唯一来源）
 ```
 
 关键约束：**动作产出新版本，绝不覆盖原始捕获**。`parentIds` 指回来源，
-`meta.derivedBy` 标记由哪个动作生成。
+`meta.derivedBy` 标记由哪个动作生成。38 键面板的每个按键通过 `panel:run`
+执行；未实现动作在主进程与渲染层都被拦截，不会假装可用。
 
 ---
 
 ## 测试
 
 ```powershell
-npm test                   # 全部 370 项
+npm test                   # 全部 416 项
 npm run test:core          # 36 项：数据层、文本处理、保留策略
 npm run test:actions       # 16 项：类型匹配、派生关系、失败路径
 npm run test:capabilities  # 43 项：拼音搜索、配方执行、剪贴板守卫
+npm run test:keybindings   # 24 项：38 键布局、绑定模型、未实现动作不冒充可用
 npm run test:return        # 38 项：放回校验、目标失效回退、回环账本、应用索引
 npm run test:foreground    # 18 项：前台窗口探测、超时、dispose 强制清理
 npm run test:security      # 61 项：快捷键冲突、加解密、真实 DPAPI、加密落盘
 npm run test:display       # 20 项：多屏并集、负坐标、混合 DPI、分块布局
 npm run test:inject        # 20 项：SendInput 脚本、调用协议、失败处理
-npm run test:ui            # 75 项：IPC 通道一致性、钉图、跨屏、HTML/JS 接线
-npm run test:render        # 43 项：无头 Chrome 真实渲染断言
+npm run test:ui            # 89 项：IPC 通道一致性、键位接线、钉图、跨屏
+npm run test:render        # 51 项：无头 Chrome 真实渲染断言（含面板模式切换）
 ```
 
 `test-render.js` 用无头 Chrome 加载真实页面，断言 DOM 结构与 canvas 像素值，
-fixture 在运行时生成、结束后清理。
+fixture 在运行时生成、结束后清理。面板截图可用 `node tools/panel-shot.js`
+重新生成（无头 Chrome 渲染真实 quickpanel 页面）。
 
 ### 测试覆盖不到的部分
 

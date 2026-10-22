@@ -22,15 +22,19 @@ const { DEFAULT_BINDINGS, ShortcutManager } = require('./lib/shortcuts');
 const { KeyVault, encryptItem, decryptItem, encryptText, decryptText } = require('./lib/crypto-store');
 const { unionBounds, maxScaleFactor, tileLayout } = require('./lib/display-geometry');
 const { InputInjector } = require('./lib/input-injector');
+const { keyLayout, TOOLBOX_TOOLS, PANEL_ACTIONS } = require('./lib/keybindings');
 const { execFileSync } = require('node:child_process');
 
 const APP_NAME = '随序 SUIRA';
 const APP_ID = 'com.suira.desktop';
 const MAIN_WIDTH = 1180;
 const MAIN_HEIGHT = 820;
-const QUICK_WIDTH = 660;
+// 38 键面板需要装下 12/10/9/7 四行键位 + 搜索条 + 底部提示
+const QUICK_WIDTH = 720;
 const QUICK_HEIGHT = 620;
 const TEXT_HISTORY_LIMIT = 2000;
+// 应用图标缓存：开始菜单路径 → data URL。图标是静态资源，随进程生命周期复用。
+const appIconCache = new Map();
 
 let store = null;
 let ocr = null;
@@ -706,6 +710,115 @@ async function completeCapture(dataUrl, action) {
   return { ok: true, filePath, item };
 }
 
+function switchToDesktop() {
+  if (mainWindow && !mainWindow.isDestroyed()) mainWindow.hide();
+  if (quickWindow && !quickWindow.isDestroyed()) quickWindow.hide();
+  // 与 Win+D 等价：最小化所有顶层窗口，不需要管理员权限
+  try {
+    execFileSync('powershell.exe', [
+      '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command',
+      '(New-Object -ComObject Shell.Application).ToggleDesktop()'
+    ], { windowsHide: true, timeout: 3000 });
+    return { ok: true, message: '已回到桌面', closePanel: true };
+  } catch (error) {
+    return { ok: false, error: `切换桌面失败：${error.message}`, closePanel: false };
+  }
+}
+
+function lockWorkstation() {
+  try {
+    execFileSync('rundll32.exe', ['user32.dll,LockWorkStation'], { windowsHide: true, timeout: 3000 });
+    return { ok: true, message: '正在锁屏', closePanel: true };
+  } catch (error) {
+    return { ok: false, error: `锁屏失败：${error.message}`, closePanel: false };
+  }
+}
+
+/** 最近一条图片内容（OCR / 钉图的输入）。 */
+function latestItemOfKind(kind) {
+  const items = store.listItems({ limit: 20, kinds: [kind] });
+  return items[0] || null;
+}
+
+/** 最近一条文字内容（文本转换的输入）。 */
+function latestTextItem() {
+  return store.listItems({ limit: 5, kinds: ['text', 'link'] })[0] || null;
+}
+
+/**
+ * 应用索引里的应用对用户是否真的可启动。
+ * 索引为空时（首次扫描中）不阻塞键位展示，避免面板整片空白。
+ */
+function appIndexReady() {
+  return true;
+}
+
+/**
+ * 执行面板动作。这是 38 个按键唯一的执行入口：
+ * 鼠标点击和键盘直达走同一条通道，保证「按键与鼠标调用同一动作」。
+ */
+async function runPanelAction(actionId) {
+  switch (actionId) {
+    case 'capture': {
+      const result = await beginScreenCapture('panel');
+      return result.ok ? { ok: true, closePanel: true } : { ok: false, error: result.error };
+    }
+    case 'annotate': {
+      // 标注是在截图覆盖层里完成的：先框选，再在工具栏选标注
+      const result = await beginScreenCapture('panel');
+      return result.ok ? { ok: true, closePanel: true } : { ok: false, error: result.error };
+    }
+    case 'ocr': {
+      const item = latestItemOfKind('image');
+      if (!item) return { ok: false, error: '还没有图片，先截一张图' };
+      const result = await actions.execute(item.id, 'ocr.local');
+      if (!result.ok) return { ok: false, error: result.error || '识别失败' };
+      return { ok: true, ocr: { text: result.output?.text || '', itemId: item.id } };
+    }
+    case 'pin': {
+      const item = latestItemOfKind('image');
+      if (!item) return { ok: false, error: '还没有图片可以钉住' };
+      if (!item.filePath) return { ok: false, error: '这张图片没有可读取的文件' };
+      createPinWindow(pathToFileURL(item.filePath).href, item.meta?.width && item.meta?.height ? { width: item.meta.width, height: item.meta.height } : {});
+      return { ok: true, message: '已钉在桌面', closePanel: true };
+    }
+    case 'clipboard':
+      return { ok: true, openPage: 'library', closePanel: true };
+    case 'text-clean': {
+      const item = latestTextItem();
+      if (!item) return { ok: false, error: '还没有文字内容可以转换' };
+      const result = await actions.execute(item.id, 'text.merge-lines');
+      if (!result.ok) return { ok: false, error: result.error || '转换失败' };
+      return { ok: true, message: '已生成合并换行版本，可在内容库查看' };
+    }
+    case 'desktop':
+      return switchToDesktop();
+    case 'lock':
+      return lockWorkstation();
+    default:
+      return { ok: false, error: '这个动作还没有实现' };
+  }
+}
+
+/**
+ * 取出开始菜单快捷方式的图标并转成 data URL。
+ * 结果按路径缓存：图标是静态资源，不需要每次打开面板都重新提取。
+ */
+async function appIconFor(filePath) {
+  if (appIconCache.has(filePath)) return appIconCache.get(filePath);
+  let dataUrl = '';
+  try {
+    const image = await app.getFileIcon(filePath, { size: 'normal' });
+    if (image && !image.isEmpty()) {
+      dataUrl = image.resize({ width: 64, height: 64, quality: 'best' }).toDataURL();
+    }
+  } catch {
+    dataUrl = '';
+  }
+  appIconCache.set(filePath, dataUrl);
+  return dataUrl;
+}
+
 function createPinWindow(dataUrl, size = {}) {
   const maxWidth = 560;
   const ratio = (size.height || 600) / Math.max(1, size.width || 800);
@@ -997,6 +1110,47 @@ function createPinWindow(dataUrl, size = {}) {
     } catch (error) {
       return { ok: false, error: error.message || '启动失败' };
     }
+  });
+
+  /* ---- 38 键动作面板 ---- */
+  ipcMain.handle('panel:state', () => ({
+    ...keyLayout(appIndexReady),
+    tools: TOOLBOX_TOOLS
+  }));
+  ipcMain.handle('panel:run', async (_event, actionId) => {
+    const id = String(actionId || '');
+    if (!PANEL_ACTIONS[id]) return { ok: false, error: '未知动作' };
+    if (!PANEL_ACTIONS[id].implemented) return { ok: false, error: `「${PANEL_ACTIONS[id].label}」尚未实现` };
+    try {
+      const result = await runPanelAction(id);
+      if (result?.openPage) { hideQuickPanel(); showMain(result.openPage); }
+      if (result?.closePanel) hideQuickPanel();
+      return result;
+    } catch (error) {
+      return { ok: false, error: error.message || '动作执行失败' };
+    }
+  });
+
+  /* ---- 应用面板：开始菜单应用目录 ---- */
+  ipcMain.handle('apps:list', async () => {
+    let shortcuts = [];
+    try {
+      shortcuts = await appIndex.ensure();
+    } catch {
+      shortcuts = [];
+    }
+    // 只返回名称与路径，保证首帧快；图标走 apps:icons 按需取
+    return shortcuts.map((entry) => ({ name: entry.name, filePath: entry.filePath }));
+  });
+  ipcMain.handle('apps:icons', async (_event, filePaths) => {
+    const list = Array.isArray(filePaths) ? filePaths.slice(0, 64) : [];
+    const icons = {};
+    await Promise.all(list.map(async (filePath) => {
+      const target = String(filePath || '');
+      if (!target) return;
+      icons[target] = await appIconFor(target);
+    }));
+    return icons;
   });
 
   ipcMain.handle('shortcuts:get', () => (shortcutManager ? shortcutManager.snapshot() : { bindings: {}, status: {} }));

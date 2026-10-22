@@ -22,6 +22,7 @@ Suira-Windows-Docs.zip
 screen-test.png
 *.log
 *.tmp
+tools/.panel-shot/
 
 # 历史备份（保留在本地，不入库）
 *.bak

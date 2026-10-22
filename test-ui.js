@@ -155,6 +155,85 @@ t('quickpanel 支持配方执行', () => {
   if (!qpJs.includes('window.suira.recipes.run')) throw new Error('未调用 recipes.run');
 });
 
+console.log('\n== 38 键动作面板（复刻第一批）==');
+t('quickpanel 有 38 键容器、应用面板与工具箱三个主体', () => {
+  for (const id of ['key-grid', 'apps-panel', 'toolbox-panel', 'toolbox', 'mode-chip']) {
+    if (!qpIds.has(id)) throw new Error('缺少 ' + id);
+  }
+});
+t('quickpanel 样式包含 38 键布局、应用网格与工具箱', () => {
+  const qcss = read('src/quickpanel.css');
+  for (const sel of ['.keyboard', '.key-row', '.key-card', '.key-badge', '.apps-grid', '.app-icon', '.tool-grid', '.tool-item']) {
+    if (!qcss.includes(sel)) throw new Error('缺少样式 ' + sel);
+  }
+});
+t('行间缩进按物理键盘相对位置（数字行 / QWERTY / ASDF / ZXCV）', () => {
+  const qcss = read('src/quickpanel.css');
+  for (const row of [1, 2, 3]) {
+    if (!qcss.includes(`.key-row[data-row="${row}"]`)) throw new Error('缺少第 ' + row + ' 行缩进规则');
+  }
+});
+t('键位模型独立成模块且是唯一来源', () => {
+  if (!fs.existsSync('lib/keybindings.js')) throw new Error('缺少 lib/keybindings.js');
+  const kb = read('lib/keybindings.js');
+  if (!kb.includes('KEY_ROWS')) throw new Error('缺少 KEY_ROWS');
+  if (!kb.includes('module.exports')) throw new Error('未导出键位模型');
+  // 渲染层不得自己再写一份键位表：否则两处定义必然漂移
+  if (/KEY_ROWS\s*=\s*\[/.test(qpJs)) throw new Error('quickpanel.js 里重复定义了键位表');
+});
+t('主进程用键位模型生成面板状态', () => {
+  if (!mainJs.includes("require('./lib/keybindings')")) throw new Error('main.js 未引入键位模型');
+  if (!mainJs.includes('keyLayout')) throw new Error('main.js 未使用 keyLayout');
+});
+t('未绑定与未实现键都有明确状态，不冒充可用', () => {
+  const kb = read('lib/keybindings.js');
+  for (const state of ['unbound', 'unimplemented', 'bound']) {
+    if (!kb.includes(`'${state}'`)) throw new Error('缺少状态 ' + state);
+  }
+  if (!qpJs.includes('is-unbound') || !qpJs.includes('is-unimplemented')) throw new Error('渲染层未区分未绑定/未实现');
+  if (!qpJs.includes('尚未实现')) throw new Error('未实现动作缺少明确提示');
+});
+t('按键与鼠标点击走同一执行通道', () => {
+  // pressKey 是唯一入口：键盘直达和 click 都必须经过它
+  if (!/function pressKey/.test(qpJs)) throw new Error('缺少 pressKey');
+  const clickBinding = qpJs.match(/\.key', grid\)\.forEach\(\(button\) => \{\s*button\.addEventListener\('click', \(\) => pressKey\(button\.dataset\.key\)\)/);
+  if (!clickBinding) throw new Error('键位点击未走 pressKey');
+  if (!/keyByChar\(event\.key\)/.test(qpJs)) throw new Error('键盘直达未走 keyByChar');
+});
+t('面板执行通道对未实现动作直接拒绝', () => {
+  if (!mainJs.includes('PANEL_ACTIONS[id].implemented')) throw new Error('主进程未拦截未实现动作');
+});
+t('空格切换动作/应用面板', () => {
+  if (!qpJs.includes('toggleApps')) throw new Error('缺少 toggleApps');
+  if (!qpJs.includes("event.key === ' '")) throw new Error('未绑定空格键');
+});
+t('应用面板走开始菜单索引并带图标', () => {
+  if (!mainJs.includes('app.getFileIcon')) throw new Error('未提取应用图标');
+  if (!mainJs.includes("ipcMain.handle('apps:list'")) throw new Error('缺少 apps:list');
+  if (!mainJs.includes("ipcMain.handle('apps:icons'")) throw new Error('缺少 apps:icons');
+  if (!qpJs.includes('window.suira.apps.list')) throw new Error('渲染层未取应用列表');
+  if (!qpJs.includes('window.suira.apps.icons')) throw new Error('渲染层未按需取图标');
+});
+t('面板图标缓存避免每次打开都重新提取', () => {
+  if (!mainJs.includes('appIconCache.has')) throw new Error('缺少图标缓存读取');
+  if (!mainJs.includes('appIconCache.set')) throw new Error('缺少图标缓存写入');
+});
+t('工具箱未完成工具显示明确状态', () => {
+  if (!qpJs.includes('is-todo')) throw new Error('缺少未完成样式标记');
+  const qcss = read('src/quickpanel.css');
+  if (!qcss.includes('.tool-item.is-todo')) throw new Error('缺少 .tool-item.is-todo 样式');
+});
+t('面板状态接口暴露 rows/keys/tools', () => {
+  if (!mainJs.includes("ipcMain.handle('panel:state'")) throw new Error('缺少 panel:state');
+  if (!mainJs.includes('tools: TOOLBOX_TOOLS')) throw new Error('panel:state 未返回工具箱目录');
+});
+t('面板尺寸能装下 38 键与搜索条', () => {
+  const width = Number((mainJs.match(/const QUICK_WIDTH = (\d+)/) || [])[1]);
+  const height = Number((mainJs.match(/const QUICK_HEIGHT = (\d+)/) || [])[1]);
+  if (!(width >= 700)) throw new Error('面板过窄：' + width);
+  if (!(height >= 560)) throw new Error('面板过矮：' + height);
+});
+
 console.log('\n== 放回子系统接线检查 ==');
 t('preload 暴露 returnTo 与 openApp', () => {
   if (!/returnTo:\s*\{[\s\S]*?commit\s*:/.test(preload)) throw new Error('缺少 returnTo.commit');
@@ -190,8 +269,7 @@ t('随手面板放回条元素齐备', () => {
   for (const id of ['return-bar', 'return-target-text', 'return-commit']) {
     if (!qpIds.has(id)) throw new Error('缺少 ' + id);
   }
-});
-t('随手面板放回条样式已定义', () => {
+});t('随手面板放回条样式已定义', () => {
   const qcss = read('src/quickpanel.css');
   for (const sel of ['.return-bar', '.return-target']) {
     if (!qcss.includes(sel)) throw new Error('缺少样式 ' + sel);

@@ -8,10 +8,11 @@
   "scripts": {
     "start": "electron .",
     "dev": "electron . --dev",
-    "test": "node test-core.js && node test-actions.js && node test-capabilities.js && node test-return.js && node test-foreground.js && node test-security.js && node test-display.js && node test-inject.js && node test-ui.js && node test-render.js",
+    "test": "node test-core.js && node test-actions.js && node test-capabilities.js && node test-keybindings.js && node test-return.js && node test-foreground.js && node test-security.js && node test-display.js && node test-inject.js && node test-ui.js && node test-render.js",
     "test:core": "node test-core.js",
     "test:actions": "node test-actions.js",
     "test:capabilities": "node test-capabilities.js",
+    "test:keybindings": "node test-keybindings.js",
     "test:return": "node test-return.js",
     "test:foreground": "node test-foreground.js",
     "test:security": "node test-security.js",

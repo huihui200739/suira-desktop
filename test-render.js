@@ -190,6 +190,46 @@ window.suira.returnTo = {
   commit: async () => ({ ok:true, copied:true, canPaste:false, message:'已复制，请手动粘贴到原窗口' })
 };
 window.suira.quick.openApp = async () => ({ ok:true });
+// 38 键面板的键位表由主进程 lib/keybindings.js 提供，fixture 里照抄同一份布局
+window.suira.panel = {
+  state: async () => {
+    var rows = [
+      ['1','2','3','4','5','6','7','8','9','0','-','='],
+      ['Q','W','E','R','T','Y','U','I','O','P'],
+      ['A','S','D','F','G','H','J','K','L'],
+      ['Z','X','C','V','B','N','M']
+    ];
+    var bound = { O:'ocr', P:'pin', D:'desktop', L:'lock', Z:'capture', X:'clipboard', V:'text-clean', B:'annotate' };
+    var planned = { S:'录屏', G:'长截图', T:'文本翻译', W:'壁纸', I:'改图', F:'日历', N:'速记', M:'Markdown' };
+    var keys = [];
+    rows.forEach(function (row, rowIndex) {
+      row.forEach(function (key) {
+        var actionId = bound[key] || '';
+        var plannedLabel = planned[key] || '';
+        keys.push({
+          key: key, row: rowIndex, actionId: actionId,
+          label: plannedLabel || (actionId ? actionId : ''),
+          hint: '', state: actionId ? 'bound' : plannedLabel ? 'unimplemented' : 'unbound'
+        });
+      });
+    });
+    return { rows: rows, keys: keys, count: 38, tools: [
+      { id:'capture', label:'截图', hint:'框选屏幕区域', implemented:true },
+      { id:'ocr', label:'提取文字', hint:'离线 OCR', implemented:true },
+      { id:'shelf', label:'任务匣', hint:'临时收集', implemented:true, open:'shelf' },
+      { id:'record', label:'录屏', hint:'尚未实现', implemented:false }
+    ] };
+  },
+  run: async (actionId) => ({ ok: true, message: '已执行 ' + actionId })
+};
+window.suira.apps = {
+  list: async () => ([
+    { name:'计算器', filePath:'C:\\Demo\\calc.lnk' },
+    { name:'记事本', filePath:'C:\\Demo\\notepad.lnk' },
+    { name:'Visual Studio Code', filePath:'C:\\Demo\\vscode.lnk' }
+  ]),
+  icons: async () => ({})
+};
 `;
   const qpHtml = fs.readFileSync(path.join(__dirname, 'src', 'quickpanel.html'), 'utf8')
     .replace('<script src="quickpanel.js"></script>', '<script src="__fx_qp_mock.js"></script><script src="quickpanel.js"></script>')
@@ -203,16 +243,51 @@ window.addEventListener('load', function () {
 });
 </script>
 <script>
+// 记录空白态：38 键面板应在未搜索时完整显示
 window.addEventListener('load', function () {
   setTimeout(function () {
     window.__before = {
-      contentItems: document.querySelectorAll('.content-item').length,
-      commandHidden: document.getElementById('command-section').hidden
+      keys: document.querySelectorAll('.key').length,
+      rows: document.querySelectorAll('.key-row').length,
+      boundKeys: document.querySelectorAll('.key.is-bound').length,
+      keysHidden: document.getElementById('key-grid').hidden,
+      commandHidden: document.getElementById('command-section').hidden,
+      modeChip: (document.getElementById('mode-chip') || {}).textContent || ''
     };
-    var input = document.getElementById('search');
-    input.value = 'rwx';
-    input.dispatchEvent(new Event('input', { bubbles: true }));
-  }, 800);
+    // 空格切到应用面板
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: ' ', bubbles: true }));
+    setTimeout(function () {
+      window.__apps = {
+        appItems: document.querySelectorAll('.app-item').length,
+        appsHidden: document.getElementById('apps-panel').hidden,
+        keysHidden: document.getElementById('key-grid').hidden,
+        modeChip: (document.getElementById('mode-chip') || {}).textContent || ''
+      };
+      // 再按空格切回动作面板
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: ' ', bubbles: true }));
+      setTimeout(function () {
+        window.__back = {
+          keysHidden: document.getElementById('key-grid').hidden,
+          appsHidden: document.getElementById('apps-panel').hidden
+        };
+        // 工具箱
+        document.getElementById('toolbox').click();
+        setTimeout(function () {
+          window.__tools = {
+            toolItems: document.querySelectorAll('.tool-item').length,
+            todoItems: document.querySelectorAll('.tool-item.is-todo').length,
+            toolboxHidden: document.getElementById('toolbox-panel').hidden
+          };
+          document.getElementById('toolbox').click();
+          setTimeout(function () {
+            var input = document.getElementById('search');
+            input.value = 'rwx';
+            input.dispatchEvent(new Event('input', { bubbles: true }));
+          }, 120);
+        }, 200);
+      }, 200);
+    }, 200);
+  }, 900);
 });
 </script>
 <script>
@@ -220,10 +295,11 @@ window.addEventListener('load', function () {
   setTimeout(function () {
     var out = {
       before: window.__before || {},
+      apps: window.__apps || {},
+      back: window.__back || {},
+      tools: window.__tools || {},
       commandSectionHidden: document.getElementById('command-section').hidden,
       commandItems: document.querySelectorAll('.command-item').length,
-      contentItems: document.querySelectorAll('.content-item').length,
-      actionItems: document.querySelectorAll('.action-item').length,
       hasSourceCard: !!document.getElementById('source-card'),
       returnBarHidden: document.getElementById('return-bar').hidden,
       returnTargetText: document.getElementById('return-target-text').textContent,
@@ -232,7 +308,7 @@ window.addEventListener('load', function () {
     var pre = document.createElement('pre');
     pre.textContent = 'Q:' + JSON.stringify(out);
     document.body.appendChild(pre);
-  }, 2400);
+  }, 3000);
 });
 </script>
 </body>`);
@@ -335,15 +411,29 @@ try {
   t('截图图像已成功加载', () => assert.strictEqual(ov.hasImage, true));
   t('OCR 结果面板已挂载', () => assert.strictEqual(ov.ocrPanelExists, true));
 
-  console.log('\n== 随手面板命令搜索渲染断言 ==');
-  const qp = probe(runChrome('__fx_qp.html', ['--window-size=620,560']), 'Q');
-  t('搜索前内容列表已渲染', () => assert.ok(qp.before.contentItems > 0, 'before=' + qp.before.contentItems));
-  t('搜索前命令区隐藏', () => assert.strictEqual(qp.before.commandHidden, true));
-  t('输入拼音首字母后命令区显示', () => assert.strictEqual(qp.commandSectionHidden, false));
+  console.log('\n== 38 键动作面板渲染断言 ==');
+  const qp = probe(runChrome('__fx_qp.html', ['--window-size=720,620']), 'Q');
+  t('面板渲染 38 个键位', () => assert.strictEqual(qp.before.keys, 38));
+  t('键位按 4 行排列（12/10/9/7）', () => assert.strictEqual(qp.before.rows, 4));
+  t('已实现动作显示为彩色绑定键', () => assert.strictEqual(qp.before.boundKeys, 8));
+  t('未搜索时键位面板可见', () => assert.strictEqual(qp.before.keysHidden, false));
+  t('未搜索时命令区隐藏', () => assert.strictEqual(qp.before.commandHidden, true));
+  t('默认模式标记为「动作」', () => assert.strictEqual(qp.before.modeChip, '动作'));
+  t('空格切到应用面板：应用图标网格渲染 3 个', () => assert.strictEqual(qp.apps.appItems, 3));
+  t('空格切到应用面板：应用面板可见、键位面板隐藏', () => {
+    assert.strictEqual(qp.apps.appsHidden, false);
+    assert.strictEqual(qp.apps.keysHidden, true);
+  });
+  t('空格切到应用面板：模式标记变为「应用」', () => assert.strictEqual(qp.apps.modeChip, '应用'));
+  t('再按空格返回动作面板', () => {
+    assert.strictEqual(qp.back.keysHidden, false);
+    assert.strictEqual(qp.back.appsHidden, true);
+  });
+  t('工具箱是独立入口，渲染工具网格', () => assert.ok(qp.tools.toolItems >= 4, 'toolItems=' + qp.tools.toolItems));
+  t('未实现的工具显示明确状态（不放假按钮）', () => assert.strictEqual(qp.tools.todoItems, 1));
+  t('输入拼音首字母后显示命令区', () => assert.strictEqual(qp.commandSectionHidden, false));
   t('命令结果渲染出 3 条', () => assert.strictEqual(qp.commandItems, 3));
-  t('无匹配内容时内容列表清空（正确过滤行为）', () => assert.strictEqual(qp.contentItems, 0));
-  t('动作列表仍然渲染', () => assert.ok(qp.actionItems > 0, 'actionItems=' + qp.actionItems));
-  t('来源预览卡存在', () => assert.strictEqual(qp.hasSourceCard, true));
+  t('最近内容卡存在', () => assert.strictEqual(qp.hasSourceCard, true));
   t('放回条已显示（记录到目标窗口）', () => assert.strictEqual(qp.returnBarHidden, false));
   t('放回条显示目标进程与标题', () => {
     assert.ok(qp.returnTargetText.includes('WINWORD'), '实际: ' + qp.returnTargetText);
