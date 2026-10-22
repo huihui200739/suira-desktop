@@ -17,6 +17,34 @@ npm test           # 全量自动化测试（370 项）
 
 > 打包：`npm run dist`（NSIS 安装包）或 `npm run dist:portable`（免安装单文件）。
 
+> 启动遇到问题？先看 [docs/KNOWN-ISSUES.md](docs/KNOWN-ISSUES.md)。
+
+---
+
+## 界面
+
+完整界面图（含随手面板、截图覆盖层与真实运行截图）见
+[docs/screenshots/](docs/screenshots/README.md)。
+
+<table>
+  <tr>
+    <td width="50%"><img src="docs/screenshots/01-task-shelf.png" alt="任务匣"></td>
+    <td width="50%"><img src="docs/screenshots/02-content-library.png" alt="内容库"></td>
+  </tr>
+  <tr>
+    <td align="center"><b>任务匣</b>：左侧任务，右侧当前任务的混合内容</td>
+    <td align="center"><b>内容库</b>：图片卡片下挂识别结果</td>
+  </tr>
+  <tr>
+    <td width="50%"><img src="docs/screenshots/05-quick-panel.png" alt="随手面板"></td>
+    <td width="50%"><img src="docs/screenshots/07-capture-overlay.png" alt="截图覆盖层"></td>
+  </tr>
+  <tr>
+    <td align="center"><b>随手面板</b>：<code>Ctrl+Alt+Space</code> 唤起</td>
+    <td align="center"><b>截图覆盖层</b>：选区、放大镜、标注</td>
+  </tr>
+</table>
+
 ---
 
 ## 三个核心流程
@@ -187,6 +215,7 @@ fixture 在运行时生成、结束后清理。
 - OCR 首次识别需加载语言包，约 1–2 秒
 - 主进程崩溃会丢失未落盘的会话状态
 - 打包配置已包含 OCR 语言包，但尚未做签名与安装验证
+- 数据目录不可写时没有降级方案，会直接退出（详见 [docs/KNOWN-ISSUES.md](docs/KNOWN-ISSUES.md)）
 
 ---
 
