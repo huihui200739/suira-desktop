@@ -74,6 +74,8 @@ let overlayWindow = null;
 let tray = null;
 let capturePayload = null;
 let clipboardTimer = null;
+let clipboardWatcherError = '';
+let clipboardWatcherReady = Promise.resolve();
 let lastClipboardText = '';
 let lastClipboardImageHash = '';
 let clipboardWriteGuard = '';
@@ -304,6 +306,8 @@ async function startClipboardWatcher() {
   const initialImage = await readClipboardImage();
   lastClipboardImageHash = initialImage ? hashBuffer(initialImage.toPNG()) : '';
   clipboardTimer = setInterval(pollClipboard, 550);
+  clipboardWatcherError = '';
+  console.log('[clipboard] 监听已启动，间隔 550ms');
 }
 
 async function migrateLegacyHistory() {
@@ -1417,9 +1421,10 @@ async function initialize() {
   createTray();
   registerShortcuts();
   // 剪贴板监听失败时不能只写日志：剪贴板历史会完全失效，用户必须知道
-  startClipboardWatcher().catch((error) => {
-    console.warn('剪贴板监听启动失败:', error.message);
-    const message = `剪贴板监听未启动：${error.message || '未知错误'}`;
+  clipboardWatcherReady = startClipboardWatcher().catch((error) => {
+    clipboardWatcherError = error && error.message ? error.message : String(error);
+    console.warn('剪贴板监听启动失败:', clipboardWatcherError);
+    const message = `剪贴板监听未启动：${clipboardWatcherError || '未知错误'}`;
     if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.webContents.send('app:toast', { message, type: 'error' });
     }
@@ -1427,18 +1432,22 @@ async function initialize() {
   });
 }
 
-app.whenReady().then(initialize).then(() => {
+app.whenReady().then(initialize).then(async () => {
   // --diag：启动自检。把环境、窗口、快捷键、能力可用性写成一份报告，
   // 便于在没有开发者工具的情况下定位真机问题。见 docs/REAL-MACHINE-CHECKLIST.md
   if (process.argv.includes('--diag')) {
-    collectDiagnostics()
-      .then((report) => {
-        const target = path.join(app.getPath('userData'), 'diag-report.txt');
-        fs.writeFileSync(target, report, 'utf8');
-        console.log(report);
-        console.log('\n报告已写入: ' + target);
-      })
-      .catch((error) => console.error('自检失败:', error && error.stack ? error.stack : error));
+    // 剪贴板监听是异步启动的：不等它完成，报告会把「正在启动」误报成「未运行」。
+    // 这类误报会直接误导排查，必须等。
+    try { await clipboardWatcherReady; } catch { /* 错误已记录在 clipboardWatcherError */ }
+    try {
+      const report = await collectDiagnostics();
+      const target = path.join(app.getPath('userData'), 'diag-report.txt');
+      fs.writeFileSync(target, report, 'utf8');
+      console.log(report);
+      console.log('\n报告已写入: ' + target);
+    } catch (error) {
+      console.error('自检失败:', error && error.stack ? error.stack : error);
+    }
   }
 }).catch((error) => {
   console.error('随序启动失败:', error);
@@ -1496,8 +1505,17 @@ async function collectDiagnostics() {
     add(`  显示器 ${i + 1}`, `${d.size.width}×${d.size.height} @${d.scaleFactor}x`);
   });
   add('OCR 引擎', ocr ? '已创建' : '未创建');
-  add('剪贴板监听', clipboardTimer ? '运行中' : '未运行');
+  add('剪贴板监听', clipboardTimer ? '运行中' : ('未运行' + (clipboardWatcherError ? '：' + clipboardWatcherError : '')));
   add('托盘', tray ? '已创建' : '未创建');
+  // 剪贴板读取能力单独测一次：监听没起来时，要能区分是「定时器没设」
+  // 还是「根本读不到剪贴板」，否则无法定位
+  try {
+    const raw = clipboard.readText();
+    const text = String(raw || '');
+    add('剪贴板可读', `是（当前文本长度 ${text.length}）`);
+  } catch (error) {
+    add('剪贴板可读', '否 — ' + error.message);
+  }
 
   section('最近内容');
   try {

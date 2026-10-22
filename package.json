@@ -26,12 +26,15 @@
     "test:shortcut": "node tools/shortcut-check.js",
     "test:diagnostics": "node test-diagnostics.js",
     "diag": "electron . --diag",
+    "verify:electron": "node tools/electron-real-check.js",
+    "verify:ipc": "node tools/electron-verify.js",
+    "verify:capture": "node tools/electron-capture-check.js",
     "audit:batch3": "node tools/fuyin-modules.js",
     "dist": "electron-builder --win nsis",
     "dist:portable": "electron-builder --win portable"
   },
   "devDependencies": {
-    "electron": "^44.9.1",
+    "electron": "^45.0.0",
     "electron-builder": "^26.15.3",
     "png-to-ico": "^3.0.2"
   },

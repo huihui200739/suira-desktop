@@ -421,10 +421,26 @@ t('真机验证清单存在且覆盖关键路径', () => {
   if (!doc.includes('npm run diag')) throw new Error('清单未包含自检入口');
   // 必须说明「不会假装已验证」
   if (!doc.includes('我不会假装已验证')) throw new Error('清单缺少诚实性声明');
-  // 关键验证项编号必须存在
-  for (const n of ['| 3 |', '| 9 |', '| 17 |']) {
-    if (!doc.includes(n)) throw new Error('清单缺少验证项 ' + n);
+  // 必须区分「已验证」与「仍需人工确认」两段
+  if (!doc.includes('## 已验证（真实 Electron，非模拟）')) throw new Error('缺少已验证段落');
+  if (!doc.includes('## 仍需人工确认（只能人眼看）')) throw new Error('缺少待人工确认段落');
+  // 关键人工验证项必须在场：Ctrl+A 焦点隔离、查看原图、清除绑定
+  if (!doc.includes('Ctrl+A')) throw new Error('缺少 Ctrl+A 焦点隔离项');
+  if (!doc.includes('查看原图')) throw new Error('缺少查看原图项');
+  if (!doc.includes('清除绑定')) throw new Error('缺少清除绑定项');
+});
+
+t('真实 Electron 验证脚本存在且不依赖无头浏览器', () => {
+  for (const file of ['tools/electron-real-check.js', 'tools/electron-verify.js', 'tools/electron-capture-check.js']) {
+    if (!fs.existsSync(file)) throw new Error('缺少 ' + file);
+    const src = read(file);
+    // 必须是连真实 Electron 的 CDP，而不是拉起 headless Chrome
+    if (src.includes('--headless')) throw new Error(file + ' 仍在使用无头浏览器');
+    if (!src.includes('json/list')) throw new Error(file + ' 未连接 CDP');
   }
+  // 启动器必须解释为什么用工作区外的 Electron
+  const launcher = read('tools/electron-real-check.js');
+  if (!launcher.includes('0x80000003')) throw new Error('启动器未说明 ACL 限制的原因');
 });
 
 t('诊断报告包含排查真机问题所需的全部区块', () => {
