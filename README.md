@@ -12,7 +12,7 @@ Electron 实现的 Windows 桌面端样机。产品方向、交互结构与验�
 ```powershell
 npm install
 npm start          # 启动应用
-npm test           # 全量自动化测试（416 项）
+npm test           # 全量自动化测试（491 项）
 ```
 
 > 打包：`npm run dist`（NSIS 安装包）或 `npm run dist:portable`（免安装单文件）。
@@ -102,7 +102,16 @@ npm test           # 全量自动化测试（416 项）
 `/` 或 `F3` 聚焦搜索，`↑` `↓` `Enter` 选择搜索结果，`Esc` 逐级返回。
 
 > 热键通过 `ShortcutManager` 注册，**有冲突检测**：注册失败会在设置页显示原因并支持改键，
-> 改键失败自动回滚到原键位。
+> 改键失败自动回滚到原键位。设置页还支持**恢复默认**（一键回到出厂键位）和
+> **清除绑定**（解绑后不再响应，条目保留可重新绑定）——对应原产品
+> `KeyboardShortcutRecorderController` 的 `restoreDefault` / `clearShortcut`。
+
+### 按住型唤起
+
+原产品把唤起分成两套语义：切换型（按一下开、再按一下收）和**按住型**（按住显示、松手收起）。
+`MomentaryWatcher` 实现后者：Electron 的 `globalShortcut` 拿不到「松开」事件，
+所以用「按下时开始，定时器发现超过间隔没有新按下就判定松手」来实现。
+这个类只吃时间戳、不依赖 Electron，因此可完整测试。
 
 ---
 
@@ -228,7 +237,7 @@ KeyBinding  = key + actionId（lib/keybindings.js 是唯一来源）
 ## 测试
 
 ```powershell
-npm test                   # 全部 480 项
+npm test                   # 全部 491 项
 npm run test:core          # 36 项：数据层、文本处理、保留策略
 npm run test:actions       # 16 项：类型匹配、派生关系、失败路径
 npm run test:capabilities  # 43 项：拼音搜索、配方执行、剪贴板守卫
@@ -236,13 +245,15 @@ npm run test:keybindings   # 24 项：38 键布局、绑定模型、未实现动
 npm run test:flows         # 18 项：按键链路「进入工具 → 完成操作 → 关闭/返回」
 npm run test:return        # 38 项：放回校验、目标失效回退、回环账本、应用索引
 npm run test:foreground    # 18 项：前台窗口探测、超时、dispose 强制清理
-npm run test:security      # 61 项：快捷键冲突、加解密、真实 DPAPI、加密落盘
+npm run test:security      # 73 项：快捷键冲突、恢复默认/清除、按住型唤起、加解密、加密落盘
 npm run test:display       # 20 项：多屏并集、负坐标、混合 DPI、分块布局
 npm run test:inject        # 20 项：SendInput 脚本、调用协议、失败处理
-npm run test:ui            # 102 项：IPC 通道一致性、键位接线、缺陷回归、钉图、跨屏
+npm run test:ui            # 109 项：IPC 通道一致性、键位接线、缺陷回归、钉图、跨屏、第三批差异表
 npm run test:render        # 51 项：无头 Chrome 真实渲染断言（含面板模式切换）
 npm run test:confirm       # 12 项：确认词校验（真实 DOM，错误输入不得通过）
 npm run test:overlay       # 21 项：覆盖层 Ctrl+A 焦点隔离、查看原图、工具栏绑定
+npm run test:shortcut      # 12 项：恢复默认/清除绑定的真实点击（真实 DOM）
+npm run audit:batch3       # 从保存的浮引切片提取第三批各模块的静态证据
 ```
 
 `test-render.js` 用无头 Chrome 加载真实页面，断言 DOM 结构与 canvas 像素值，
@@ -287,10 +298,42 @@ fixture 在运行时生成、结束后清理。面板截图可用 `node tools/pa
 | 6 | 确认词校验 | 内容库点「清空剪贴板记录」，输入错误内容时确认按钮应保持禁用 |
 | 7 | `V` 文本转换结果可见 | 按 `V` 后应跳到内容库并看到新生成的整理结果 |
 | 8 | 多屏 / 混合 DPI 截图 | 副屏在主屏左侧或上方时框选位置应准确 |
+| 9 | 恢复默认 / 清除绑定 | 设置页点「清除绑定」后该快捷键应立刻失效；点「恢复默认」应回到 `Ctrl+Alt+Space` |
+| 10 | 按住型唤起 | 目前只有状态机实现，尚未绑到全局热键（Electron 拿不到松手事件），需真机确认可行性 |
 
 > 第 1–7 项的行为逻辑已由 `test-panel-flows.js`、`tools/confirm-check.js`、
 > `tools/overlay-check.js` 用真实事件覆盖，但这些测试跑在无头 Chrome 里，
 > **不是 Electron 窗口**。真机结论以实际操作为准。
+
+---
+
+## 第三批：周边入口与扩展工具
+
+第三批的范围（文件中转、边缘入口、自定义唤起、右键、长截图、录屏、速记、翻译）
+**尚未开始实现**。开工前先产出了差距表 [docs/BATCH3-GAP-ANALYSIS.md](docs/BATCH3-GAP-ANALYSIS.md)，
+原因见该文：方案要求「先观察原产品完整行为再写验收」，但本机没有浮引可运行，
+改用仓库内保存的浮引 6.0.1 arm64 切片的静态分析产物作为替代证据。
+
+```powershell
+npm run audit:batch3              # 查看全部模块的静态证据
+node tools/fuyin-modules.js note  # 只看某个模块
+```
+
+可以从静态证据确认的范围：
+
+| 模块 | 可确认 | 无法确认 |
+|---|---|---|
+| 文件中转 | 拖放五段、拖出、QuickLook 预览、悬停展开、点击外部收起、持久化 | 岛的位置与卡槽数量、`shelf-state.json` 字段 |
+| 长截图 | 算法参数名（稳定延迟、最小采集间隔、宽度比校验、像素上限） | 参数数值、支持的滚动容器范围 |
+| 录屏 | 选区/倒计时/摄像头/音频/光标高亮/键盘提示完整链条 | 音频混流细节、输出格式 |
+| 自定义唤起 | 录制器方法、切换型与按住型两套语义 | 各快捷键默认值 |
+| 速记 | 窗口生命周期完整、多页与桌面钉住 | 编辑与富文本能力 |
+| 翻译 | 实时语音翻译与图片取词翻译是两支 | 默认语言、是否保留原文 |
+| 边缘入口 | pull 与 orb 两类、定时器驱动指针检测、槽位概念 | 触发阈值、外观与动作列表 |
+| 右键 | **原件指键帽与钉图窗口的右键，不是 Explorer 右键菜单** | — |
+
+> 该差距表已写入 `test-ui.js` 的断言，防止证据文件丢失或范围被改动。
+> 所有标「推测」的内容都是假设，不是已还原的结论。
 
 ---
 

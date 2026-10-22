@@ -1165,6 +1165,35 @@ function createPinWindow(dataUrl, size = {}) {
     return { ok: true, status: result.status };
   });
 
+  // 恢复出厂默认（对应原产品 KeyboardShortcutRecorderController.restoreDefault）
+  ipcMain.handle('shortcuts:restore-default', async (_event, payload) => {
+    if (!shortcutManager) return { ok: false, error: '快捷键尚未初始化' };
+    const name = payload?.name ? String(payload.name) : '';
+    if (name && name !== 'quick' && name !== 'capture') {
+      return { ok: false, error: '未知的快捷键名称' };
+    }
+    const result = shortcutManager.restoreDefault(name || undefined);
+    if (!result.ok) return { ok: false, error: result.error, status: result.status };
+    const patch = {};
+    for (const restored of result.restored) {
+      if (restored === 'quick') patch.shortcutQuick = shortcutManager.snapshot().bindings.quick;
+      if (restored === 'capture') patch.shortcutCapture = shortcutManager.snapshot().bindings.capture;
+    }
+    if (Object.keys(patch).length) await store.updateSettings(patch);
+    return { ok: true, status: result.status, restored: result.restored };
+  });
+
+  // 清除绑定（对应原产品 clearShortcut）：解绑后不再响应，但保留条目
+  ipcMain.handle('shortcuts:clear', async (_event, payload) => {
+    if (!shortcutManager) return { ok: false, error: '快捷键尚未初始化' };
+    const name = String(payload?.name || '');
+    if (name !== 'quick' && name !== 'capture') return { ok: false, error: '未知的快捷键名称' };
+    const result = shortcutManager.clear(name);
+    if (!result.ok) return { ok: false, error: result.error, status: result.status };
+    await store.updateSettings(name === 'quick' ? { shortcutQuick: '' } : { shortcutCapture: '' });
+    return { ok: true, status: result.status };
+  });
+
   ipcMain.handle('return:target', () => returnTarget);
 
   ipcMain.handle('return:commit', async (_event, payload) => {

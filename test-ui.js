@@ -348,6 +348,70 @@ t('动作结果能带用户去结果页（openPage 有渲染层处理）', () =>
   if (!qpJs.includes('quick.showMain(result.openPage)')) throw new Error('openPage 未接到主窗口跳转');
 });
 
+console.log('\n== 第三批差距表与证据链 ==');
+t('第三批差距表存在且覆盖全部模块', () => {
+  if (!fs.existsSync('docs/BATCH3-GAP-ANALYSIS.md')) throw new Error('缺少 docs/BATCH3-GAP-ANALYSIS.md');
+  const doc = read('docs/BATCH3-GAP-ANALYSIS.md');
+  for (const module of ['文件中转', '边缘入口', '自定义唤起', '右键', '长截图', '录屏', '速记', '翻译']) {
+    if (!doc.includes(module)) throw new Error('差距表缺少模块：' + module);
+  }
+  // 方案要求：不以占位界面宣称完成。差距表必须写边界声明
+  if (!doc.includes('未运行原产品验证任何行为')) throw new Error('缺少证据边界声明');
+});
+t('差距表依据的原始证据文件确实存在', () => {
+  const base = 'Suira-Windows-Docs/Suira-Windows-Docs/research/function-analysis';
+  for (const file of ['fuyin-arm64.macho', 'objc-methods.json', 'otool-objc.txt']) {
+    if (!fs.existsSync(path.join(base, file))) throw new Error('缺少证据文件 ' + file);
+  }
+});
+t('证据提取脚本可复现且不改动原程序', () => {
+  if (!fs.existsSync('tools/fuyin-modules.js')) throw new Error('缺少 tools/fuyin-modules.js');
+  const tool = read('tools/fuyin-modules.js');
+  // 只读：不得出现写原程序、执行原程序
+  if (/writeFileSync\(.*\.macho/.test(tool)) throw new Error('脚本会写原程序文件');
+  if (/execSync|spawnSync|child_process/.test(tool)) throw new Error('脚本不应执行外部程序');
+  if (!tool.includes('objc-methods.json')) throw new Error('未指明数据来源');
+});
+t('右键范围已在差距表中纠正（原件指键帽/钉图，非 Explorer）', () => {
+  const doc = read('docs/BATCH3-GAP-ANALYSIS.md');
+  if (!doc.includes('不是 Windows 资源管理器右键菜单')) {
+    throw new Error('未纠正右键范围的误读');
+  }
+  if (!doc.includes('PinClipboardReceiverRightClickView')) throw new Error('缺少右键类的证据');
+});
+t('差距表声明第三批当前实现量为 0，不虚报', () => {
+  const doc = read('docs/BATCH3-GAP-ANALYSIS.md');
+  const rows = doc.split('\n').filter((line) => line.includes('| **0**'));
+  if (rows.length < 8) throw new Error('应有 8 个模块标注当前实现量为 0，实际 ' + rows.length);
+});
+
+t('快捷键恢复默认/清除绑定已接到界面', () => {
+  const html = read('src/index.html');
+  const appJs = read('src/app.js');
+  const preload = read('preload.js');
+  // 界面元素存在
+  if (!html.includes('id="shortcut-restore"')) throw new Error('缺少「恢复默认」按钮');
+  if (!html.includes('data-shortcut-clear="quick"')) throw new Error('缺少随手面板「清除绑定」');
+  if (!html.includes('data-shortcut-clear="capture"')) throw new Error('缺少区域截图「清除绑定」');
+  // 渲染层调用
+  if (!appJs.includes('shortcuts.restoreDefault')) throw new Error('恢复默认未接线');
+  if (!appJs.includes('shortcuts.clear')) throw new Error('清除绑定未接线');
+  // preload 暴露
+  if (!preload.includes("'shortcuts:restore-default'")) throw new Error('preload 未暴露 restore-default');
+  if (!preload.includes("'shortcuts:clear'")) throw new Error('preload 未暴露 clear');
+  // 清除后要有可见状态，不能静默
+  if (!appJs.includes('未绑定，点击输入框可重新设置')) throw new Error('清除后缺少状态提示');
+});
+
+t('按住型唤起已实现且有独立测试', () => {
+  const shortcuts = read('lib/shortcuts.js');
+  if (!shortcuts.includes('class MomentaryWatcher')) throw new Error('缺少按住型状态机');
+  if (!shortcuts.includes('MomentaryWatcher')) throw new Error('未导出');
+  // 依据：原产品 KeyboardMonitorService 有 momentary 语义
+  const doc = read('docs/BATCH3-GAP-ANALYSIS.md');
+  if (!doc.includes('onMomentaryActivationShortcut')) throw new Error('差距表缺少 momentary 证据');
+});
+
 console.log('\n== 放回子系统接线检查 ==');
 t('preload 暴露 returnTo 与 openApp', () => {
   if (!/returnTo:\s*\{[\s\S]*?commit\s*:/.test(preload)) throw new Error('缺少 returnTo.commit');

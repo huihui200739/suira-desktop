@@ -76,6 +76,8 @@ contextBridge.exposeInMainWorld('suira', {
   shortcuts: {
     get: () => ipcRenderer.invoke('shortcuts:get'),
     set: (payload) => ipcRenderer.invoke('shortcuts:set', payload),
+    restoreDefault: (payload) => ipcRenderer.invoke('shortcuts:restore-default', payload),
+    clear: (payload) => ipcRenderer.invoke('shortcuts:clear', payload),
     onChanged: (callback) => subscribe('shortcuts:changed', callback)
   },
   ocr: {

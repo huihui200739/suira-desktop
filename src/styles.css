@@ -711,6 +711,13 @@ svg { fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round
 .shortcut-status.is-warn { color: #a8791f; }
 .shortcut-status.is-error { color: #b4463f; }
 .setting-row.shortcut-edit { border-bottom: 0; padding-bottom: 4px; }
+.shortcut-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  margin: -2px 0 10px;
+}
+.shortcut-actions .quiet-btn { font-size: 11px; padding: 3px 9px; }
 
 .about-card { display: flex; flex-direction: column; gap: 12px; align-items: flex-start; }
 .about-mark img { width: 52px; height: 52px; border-radius: 14px; box-shadow: 0 6px 18px rgba(37, 43, 53, 0.18); }

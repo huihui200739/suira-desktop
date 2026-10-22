@@ -9,7 +9,8 @@ const crypto = require('crypto');
 
 const {
   DEFAULT_BINDINGS, LEGACY_BINDINGS, RESERVED_COMBOS,
-  normalizeAccelerator, validateAccelerator, findReserved, ShortcutManager
+  normalizeAccelerator, validateAccelerator, findReserved, ShortcutManager,
+  MomentaryWatcher
 } = require('./lib/shortcuts');
 const {
   KEY_BYTES, isEncrypted, encryptText, decryptText, generateKey,
@@ -442,6 +443,145 @@ const waitSave = () => new Promise((r) => setTimeout(r, 120));
   });
 
   fs.rmSync(storeDir, { recursive: true, force: true });
+
+  /* ---------- 第三批：自定义唤起增量 ---------- */
+  console.log('\n== 恢复默认 / 清除绑定（对应原产品 restoreDefault / clearShortcut）==');
+
+  const makeManager = () => {
+    const registered = new Set();
+    const gs = {
+      register: (acc) => { if (registered.has(acc)) return false; registered.add(acc); return true; },
+      unregister: (acc) => registered.delete(acc),
+      isRegistered: (acc) => registered.has(acc)
+    };
+    const m = new ShortcutManager({ globalShortcut: gs, handlers: { quick: () => {}, capture: () => {} } });
+    m.registerAll();
+    return { m, registered };
+  };
+
+  t('恢复默认把单个键位改回出厂值', () => {
+    const { m } = makeManager();
+    m.rebind('quick', 'Control+Alt+Q');
+    assert.strictEqual(m.snapshot().bindings.quick, 'Control+Alt+Q');
+    const r = m.restoreDefault('quick');
+    assert.strictEqual(r.ok, true);
+    assert.deepStrictEqual(r.restored, ['quick']);
+    assert.strictEqual(m.snapshot().bindings.quick, DEFAULT_BINDINGS.quick);
+  });
+
+  t('恢复默认可一次恢复全部', () => {
+    const { m } = makeManager();
+    m.rebind('quick', 'Control+Alt+Q');
+    m.rebind('capture', 'Control+Alt+W');
+    const r = m.restoreDefault();
+    assert.strictEqual(r.ok, true);
+    assert.deepStrictEqual(r.restored.sort(), ['capture', 'quick']);
+    assert.strictEqual(m.snapshot().bindings.quick, DEFAULT_BINDINGS.quick);
+    assert.strictEqual(m.snapshot().bindings.capture, DEFAULT_BINDINGS.capture);
+  });
+
+  t('恢复未知键位返回错误而不抛异常', () => {
+    const { m } = makeManager();
+    const r = m.restoreDefault('nope');
+    assert.strictEqual(r.ok, false);
+    assert.match(r.error, /没有出厂默认/);
+  });
+
+  t('清除绑定后不再占用全局热键', () => {
+    const { m, registered } = makeManager();
+    const acc = m.snapshot().bindings.capture;
+    assert.strictEqual(registered.has(acc), true);
+    const r = m.clear('capture');
+    assert.strictEqual(r.ok, true);
+    assert.strictEqual(registered.has(acc), false, '清除后仍占着全局热键');
+    assert.strictEqual(m.isBound('capture'), false);
+    assert.strictEqual(m.snapshot().status.capture.cleared, true);
+  });
+
+  t('清除未知键位返回错误', () => {
+    const { m } = makeManager();
+    const r = m.clear('nope');
+    assert.strictEqual(r.ok, false);
+    assert.match(r.error, /未知/);
+  });
+
+  t('恢复默认会重新占用被清除的键位', () => {
+    const { m, registered } = makeManager();
+    m.clear('capture');
+    assert.strictEqual(m.isBound('capture'), false);
+    const r = m.restoreDefault('capture');
+    assert.strictEqual(r.ok, true);
+    assert.strictEqual(m.isBound('capture'), true);
+    assert.strictEqual(registered.has(DEFAULT_BINDINGS.capture), true);
+  });
+
+  console.log('\n== 按住型唤起（对应原产品 momentary 语义）==');
+
+  const makeWatcher = (gapMs = 100) => {
+    const box = { now: 1000, events: [] };
+    const w = new MomentaryWatcher({
+      gapMs,
+      now: () => box.now,
+      onStart: () => box.events.push('start'),
+      onEnd: () => box.events.push('end')
+    });
+    return { w, box };
+  };
+
+  t('按下触发开始，超过间隔未再按则结束', () => {
+    const { w, box } = makeWatcher();
+    w.press();
+    assert.deepStrictEqual(box.events, ['start']);
+    assert.strictEqual(w.active, true);
+    box.now += 150;
+    w.check();
+    assert.deepStrictEqual(box.events, ['start', 'end']);
+    assert.strictEqual(w.active, false);
+    w.dispose();
+  });
+
+  t('按住期间重复触发不会重复开始', () => {
+    const { w, box } = makeWatcher();
+    w.press();
+    box.now += 60; w.press();
+    box.now += 60; w.press();
+    assert.deepStrictEqual(box.events, ['start'], '重复按下不应重复触发开始');
+    assert.strictEqual(w.active, true);
+    w.dispose();
+  });
+
+  t('未到间隔时 check 不结束', () => {
+    const { w, box } = makeWatcher();
+    w.press();
+    box.now += 50;
+    w.check();
+    assert.deepStrictEqual(box.events, ['start']);
+    w.dispose();
+  });
+
+  t('release 可强制结束（失焦场景）', () => {
+    const { w, box } = makeWatcher();
+    w.press();
+    w.release();
+    assert.deepStrictEqual(box.events, ['start', 'end']);
+    w.release();
+    assert.deepStrictEqual(box.events, ['start', 'end'], '重复 release 不应重复触发结束');
+    w.dispose();
+  });
+
+  t('未按下时 release 不触发结束', () => {
+    const { w, box } = makeWatcher();
+    w.release();
+    assert.deepStrictEqual(box.events, []);
+    w.dispose();
+  });
+
+  t('默认间隔为正数，避免定时器空转', () => {
+    const w = new MomentaryWatcher();
+    assert.ok(w.gapMs > 0, '默认间隔应为正数');
+    w.dispose();
+  });
+
   console.log('\n========== ' + pass + ' 通过 / ' + fail + ' 失败 ==========');
   process.exit(fail ? 1 : 0);
 })();

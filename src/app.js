@@ -510,6 +510,41 @@ function bindShortcutEditors() {
       editor.status.className = 'shortcut-status';
     });
   }
+
+  // 清除绑定：解绑后该快捷键不再响应，条目保留以便重新绑定
+  for (const button of document.querySelectorAll('[data-shortcut-clear]')) {
+    button.addEventListener('click', async () => {
+      const name = button.dataset.shortcutClear;
+      const entry = editors.find((item) => item.name === name);
+      const result = await window.suira.shortcuts.clear({ name });
+      if (result?.ok) {
+        if (entry) {
+          entry.status.textContent = '已清除，该快捷键不再响应';
+          entry.status.className = 'shortcut-status is-warn';
+        }
+        await refreshShortcuts();
+      } else if (entry) {
+        entry.status.textContent = result?.error || '清除失败';
+        entry.status.className = 'shortcut-status is-error';
+      }
+    });
+  }
+
+  // 恢复默认：两个快捷键都回到出厂值
+  const restoreButton = $('#shortcut-restore');
+  if (restoreButton) {
+    restoreButton.addEventListener('click', async () => {
+      const result = await window.suira.shortcuts.restoreDefault();
+      await refreshShortcuts();
+      if (!result?.ok) {
+        const status = $('#status-quick');
+        if (status) {
+          status.textContent = result?.error || '恢复默认失败';
+          status.className = 'shortcut-status is-error';
+        }
+      }
+    });
+  }
 }
 
 /** 从主进程拉取当前键位与注册状态并渲染。 */
@@ -524,7 +559,10 @@ async function refreshShortcuts() {
       const entry = snapshot?.status?.[name];
       input.value = prettyAccelerator(accelerator);
       input.placeholder = '点击后按下组合键';
-      if (entry && !entry.ok) {
+      if (!accelerator && entry?.cleared) {
+        status.textContent = '未绑定，点击输入框可重新设置';
+        status.className = 'shortcut-status is-warn';
+      } else if (entry && !entry.ok) {
         status.textContent = entry.error || '注册失败';
         status.className = 'shortcut-status is-error';
       } else if (entry?.reserved) {
