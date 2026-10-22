@@ -147,12 +147,59 @@ npm start
 
 ## 第三批开发期间的修复（2026-10-22）
 
-- **第 3 条已修**：`main.js` 里 `registerIpc()` 收尾与 `createTray()` 之间的粘连
-  （`}function createTray()`）已补换行；`search:query` 里 `}    for (` 的同类格式问题一并修掉。
+- **第 3 条已修（本轮补全）**：`main.js` 里 `}function createTray()` 的粘连已补换行。
+  更正：上一轮只修了 `registerIpc()` 与 `pin:` 处理器之间的同类问题，`createTray` 这处
+  当时漏掉了；本轮已确认 `}function` / `}    for (` 两种粘连都不再存在（`test-ui.js` 有断言）。
 - **第 4 条已修**：`src/overlay.html` 品牌位原先引用不存在的 `../assets/screenshot.png`，
   改为已有的 `../assets/brand.svg`（18×18），覆盖层不再出现 404 与空品牌位。
 - **第 1 条仍未处理**：数据目录不可写时依然没有降级路径，会直接退出并弹错误框。
-  第三批新增的浮引岛/按住型侦测都依赖同一数据目录，这条对真机部署仍是一个门槛。
+  第三批新增的浮引岛/按住型侦测/OCR 缓存都依赖同一数据目录，这条对真机部署仍是一个门槛。
 - **第 2 条仍未处理**：三个页面仍没有 CSP。页面依赖内联脚本与 `data:` 图片，
   加最小策略需要先拆内联脚本，留到发布前统一做。
 - **第 5 条**：托盘告警未再复现，继续按「偶发、原因不明」记录。
+
+---
+
+## 核心框架开发期间发现并修复的问题（2026-10-22 第二轮）
+
+### 1. 截图提字在 Electron 主进程里永久卡住（已修，严重）
+
+**现象**：真实 Electron 里按 `O` 框选后，OCR 结果面板一直显示「正在准备本地识别…」，
+不报错、不结束；主进程 CPU 很低。同一份 `OcrService` 在纯 `node` 下 0.8 秒就能识别。
+
+**根因**：`tesseract.js` 用 `is-electron` 判断环境。Electron 主进程里 `env` 是 `electron`
+而不是 `node`，`worker-script/index.js` 因此把本地 `langPath` 当成 URL 去 `fetch`，
+抛 `TypeError: Only absolute URLs are supported`；该异常发生在 worker 消息回调里，
+`createWorker` 永远不会 resolve，于是表现为永久等待。
+
+**修法**（不改 `node_modules`）：`OcrService.prepareLanguageCache()` 在 `createWorker` 之前
+把 `assets/tessdata/*.traineddata.gz` 解压进 `cachePath`。tesseract 缓存命中时不走 fetch
+分支，完全离线。`test-ocr.js` 覆盖缓存命中/重建/缺包/坏包；`verify:core` 在真实 Electron 里
+用带文字的图片识别出 `HELLO SUIRA 2026`。
+
+**边界**：首次识别需要解压语言包（约 1–2 秒）；`cachePath` 必须可写（与第 1 条同一风险）。
+
+### 2. 剪贴板文件引用从未被采集（已修）
+
+Electron 45 把资源管理器复制的文件暴露为 `text/uri-list`（`file:///C:/...`，多行），
+原实现只读 `text/plain` 与图片格式，所以「复制文件」在历史里完全消失。
+现在一次 `clipboard.read()` 同时解析文本 / 文件 / 图片，文件条目保存路径列表与文件名，
+不复制文件本体。注意平台格式细节：复制文件时**没有** `text/plain`。
+
+### 3. 剪贴板去重只比较最后一条（已修）
+
+`A → B → A` 会留下两条 A。现在按「最近 300 条 + kind 一致 + 归一化文本/hash 一致」判重，
+命中就刷新 `createdAt` 置顶，不新增条目。
+
+### 4. 剪贴板来源应用一直是空（已修）
+
+`shouldExcludeCapture` 支持按进程名/窗口标题排除密码管理器，但主进程从没把来源传进去。
+现在每次剪贴板变化都读一次前台窗口（`foregroundProbe`），把 `appId/appName/windowTitle`
+写进 `source`，并用于敏感排除。注意：这是**推断**（`confidence: 'inferred'`），
+轮询时机约晚 0.5 秒，用户如果在这期间切窗口可能记错来源，UI 不把它当确定事实。
+
+### 5. 主窗口没有位置记忆（已修）
+
+现在记录 `windowState`（位置/尺寸/最大化），启动时用 `sanitizeWindowBounds` 校验：
+显示器被拔掉、分辨率变化、窗口落在负坐标副屏、只露出一条边等情况都会回落到可见位置，
+不会出现「窗口不见了」。

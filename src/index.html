@@ -212,6 +212,23 @@
         <div class="modal-foot"><button class="quiet-btn" type="button" id="modal-cancel">取消</button><button class="primary-btn" type="button" id="modal-confirm">创建</button></div>
       </div>
     </div>
+    <div class="preview" id="preview" hidden>
+      <div class="preview-card" role="dialog" aria-modal="true" aria-labelledby="preview-title">
+        <header class="preview-head">
+          <div class="preview-heading">
+            <span class="kind-tag" id="preview-kind">内容</span>
+            <b id="preview-title">预览</b>
+            <time id="preview-time"></time>
+          </div>
+          <div class="preview-actions">
+            <button class="quiet-btn" type="button" id="preview-copy">复制</button>
+            <button class="quiet-btn" type="button" id="preview-paste">粘贴</button>
+            <button class="preview-close" type="button" id="preview-close" aria-label="关闭预览">×</button>
+          </div>
+        </header>
+        <div class="preview-body" id="preview-body"></div>
+      </div>
+    </div>
   </div>
   <script src="app.js"></script>
 </body>

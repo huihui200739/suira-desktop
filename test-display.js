@@ -2,7 +2,7 @@
 /* 虚拟桌面几何：多屏并集、缩放、分块布局。 */
 
 const assert = require('assert');
-const { unionBounds, maxScaleFactor, tileLayout } = require('./lib/display-geometry');
+const { unionBounds, maxScaleFactor, tileLayout, sanitizeWindowBounds } = require('./lib/display-geometry');
 
 let pass = 0, fail = 0;
 const t = (n, f) => { try { f(); console.log('  PASS  ' + n); pass++; } catch (e) { console.log('  FAIL  ' + n + ' -> ' + e.message); fail++; } };
@@ -101,6 +101,63 @@ t('尺寸至少为 1（防止零宽高）', () => {
   assert.ok(r[0].width >= 1 && r[0].height >= 1);
 });
 t('非数组返回空', () => assert.deepStrictEqual(tileLayout(null, { x: 0, y: 0 }, 1), []));
+
+console.log('\n== 主窗口状态恢复（sanitizeWindowBounds）==');
+const mainScreen = { bounds: { x: 0, y: 0, width: 1920, height: 1080 }, workArea: { x: 0, y: 0, width: 1920, height: 1040 } };
+const secondScreen = { bounds: { x: -1280, y: 0, width: 1280, height: 720 }, workArea: { x: -1280, y: 0, width: 1280, height: 720 } };
+const fallback = { width: 1180, height: 820 };
+
+t('没有记忆时回落为居中默认尺寸', () => {
+  const r = sanitizeWindowBounds(null, [mainScreen], fallback);
+  assert.strictEqual(r.width, 1180);
+  assert.strictEqual(r.height, 820);
+  assert.strictEqual(r.x, 370, '(1920-1180)/2');
+  assert.strictEqual(r.y, 110, '(1040-820)/2');
+});
+t('合法记忆原样保留', () => {
+  const r = sanitizeWindowBounds({ x: 120, y: 80, width: 1000, height: 700 }, [mainScreen], fallback);
+  assert.deepStrictEqual(r, { x: 120, y: 80, width: 1000, height: 700 });
+});
+t('记在已拔掉的副屏上：回落到主屏默认位置', () => {
+  const r = sanitizeWindowBounds({ x: -3000, y: -2000, width: 1000, height: 700 }, [mainScreen], fallback);
+  assert.strictEqual(r.x, 370);
+  assert.strictEqual(r.width, 1180);
+});
+t('核心可见区域不足时同样回落（80×40 以下）', () => {
+  const r = sanitizeWindowBounds({ x: 1900, y: 0, width: 1000, height: 700 }, [mainScreen], fallback);
+  assert.strictEqual(r.x, 370);
+});
+t('只露出一条边也回落，不会让窗口半截在外面找不回来', () => {
+  const r = sanitizeWindowBounds({ x: 0, y: 1030, width: 1000, height: 700 }, [mainScreen], fallback);
+  assert.strictEqual(r.y, 110);
+  // 恰好留出 40px（默认可见下限）时算「还能找回来」，不强制回落
+  const edge = sanitizeWindowBounds({ x: 0, y: 1000, width: 1000, height: 700 }, [mainScreen], fallback);
+  assert.strictEqual(edge.y, 1000);
+});
+t('宽高超过当前屏幕时夹到屏幕工作区', () => {
+  const r = sanitizeWindowBounds({ x: 0, y: 0, width: 4000, height: 3000 }, [mainScreen], fallback);
+  assert.strictEqual(r.width, 1920);
+  assert.strictEqual(r.height, 1040);
+});
+t('NaN / 缺字段：回落默认而不是抛错', () => {
+  for (const bad of [{}, { x: NaN, y: 0, width: 800, height: 600 }, { x: 0, y: 0, width: 'wide' }]) {
+    const r = sanitizeWindowBounds(bad, [mainScreen], fallback);
+    assert.strictEqual(r.width, 1180);
+  }
+});
+t('记录在负坐标副屏上且仍存在：保留原位置', () => {
+  const r = sanitizeWindowBounds({ x: -1100, y: 20, width: 900, height: 600 }, [mainScreen, secondScreen], fallback);
+  assert.strictEqual(r.x, -1100);
+  assert.strictEqual(r.width, 900);
+});
+t('优先使用 workArea（避开任务栏）', () => {
+  const r = sanitizeWindowBounds({ x: 0, y: 0, width: 3000, height: 3000 }, [mainScreen], fallback);
+  assert.strictEqual(r.height, 1040, '应夹到 workArea 高度而不是 bounds 高度');
+});
+t('没有显示器信息时给一个可用的默认值', () => {
+  const r = sanitizeWindowBounds(null, [], fallback);
+  assert.deepStrictEqual({ x: r.x, y: r.y, width: r.width, height: r.height }, { x: 0, y: 0, width: 1180, height: 820 });
+});
 
 console.log('\n========== ' + pass + ' 通过 / ' + fail + ' 失败 ==========');
 process.exit(fail ? 1 : 0);

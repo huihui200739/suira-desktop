@@ -414,6 +414,8 @@ svg { fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round
 }
 .shelf-card:hover,
 .library-card:hover { border-color: rgba(80, 111, 158, 0.28); box-shadow: var(--shadow-sm); }
+/* 卡片主体可点开预览，底部动作按钮各自处理点击 */
+.library-card { cursor: pointer; }
 .shelf-card-head { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
 .shelf-card-head b {
   min-width: 0;
@@ -593,6 +595,21 @@ svg { fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round
 .trail-main b { font-size: 12.5px; font-weight: 600; }
 .trail-main small { color: var(--ink-muted); font-size: 10.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .trail-row time { flex: 0 0 auto; color: var(--ink-faint); font-size: 10px; }
+
+/* 失败步骤的重试入口：只有失败行才出现 */
+.trail-retry {
+  flex: 0 0 auto;
+  padding: 5px 10px;
+  border: 1px solid rgba(185, 88, 93, 0.34);
+  border-radius: 6px;
+  background: var(--danger-soft);
+  color: var(--danger);
+  font-size: 11px;
+  font-weight: 600;
+  transition: border-color 0.13s, background 0.13s;
+}
+.trail-retry:hover { border-color: rgba(185, 88, 93, 0.58); background: rgba(185, 88, 93, 0.16); }
+.trail-retry:disabled { opacity: 0.55; cursor: default; }
 
 /* ---------- settings ---------- */
 
@@ -813,6 +830,113 @@ svg { fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round
 .modal-foot { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
 .primary-btn:disabled { opacity: 0.45; cursor: not-allowed; box-shadow: none; transform: none; }
 
+/* ---------- 内容预览层 ---------- */
+
+.preview {
+  position: fixed;
+  inset: 0;
+  /* 低于 toast(60)，保证预览层里的粘贴结果提示能看见；高于页面内容 */
+  z-index: 55;
+  display: grid;
+  place-items: center;
+  padding: 36px;
+  background: rgba(22, 30, 43, 0.42);
+  backdrop-filter: blur(3px);
+  animation: modal-fade 140ms ease;
+}
+.preview-card {
+  display: flex;
+  flex-direction: column;
+  width: min(920px, 100%);
+  max-height: 100%;
+  min-height: 0;
+  overflow: hidden;
+  border-radius: var(--radius-lg);
+  background: var(--paper-raised);
+  box-shadow: var(--shadow-lg);
+  animation: modal-rise 160ms cubic-bezier(0.2, 0.8, 0.3, 1);
+}
+.preview-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: 0 0 auto;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--line);
+}
+.preview-heading { display: flex; align-items: center; gap: 9px; flex: 1; min-width: 0; }
+.preview-heading b {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 14px;
+  font-weight: 640;
+}
+.preview-heading time { flex: 0 0 auto; color: var(--ink-faint); font-size: 10.5px; }
+.preview-actions { display: flex; align-items: center; gap: 8px; flex: 0 0 auto; }
+.preview-close {
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  border-radius: 8px;
+  background: var(--paper-soft);
+  color: var(--ink-muted);
+  font-size: 17px;
+  line-height: 1;
+}
+.preview-close:hover { background: var(--paper-sink); color: var(--ink); }
+.preview-body {
+  flex: 1;
+  min-height: 0;
+  padding: 16px;
+  overflow: auto;
+  background: var(--paper);
+  overscroll-behavior: contain;
+}
+.preview-image {
+  display: block;
+  max-width: 100%;
+  max-height: calc(100vh - 220px);
+  margin: 0 auto;
+  border-radius: var(--radius-sm);
+  background: var(--paper-sink);
+  object-fit: contain;
+}
+/* 全文预览：只读但允许选中复制 */
+.preview-text {
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--paper-raised);
+  color: var(--ink-soft);
+  font-size: 13px;
+  line-height: 1.8;
+  white-space: pre-wrap;
+  word-break: break-word;
+  user-select: text;
+  cursor: text;
+}
+.preview-file-list { display: flex; flex-direction: column; gap: 8px; margin: 0; padding: 0; list-style: none; }
+.preview-file-list li {
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--paper-raised);
+  color: var(--ink-soft);
+  font-size: 12.5px;
+  line-height: 1.6;
+  word-break: break-all;
+  user-select: text;
+}
+.preview-empty {
+  padding: 30px 16px;
+  color: var(--ink-faint);
+  font-size: 12.5px;
+  text-align: center;
+}
+
 /* ---------- dark ---------- */
 
 @media (prefers-color-scheme: dark) {
@@ -852,6 +976,7 @@ svg { fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round
   .derived-card { background: rgba(45, 61, 83, 0.45); }
   .shelf-card-actions button:hover { background: var(--paper-soft); }
   .modal { background: rgba(8, 11, 16, 0.6); }
+  .preview { background: rgba(8, 11, 16, 0.66); }
   .shelf-thumb { background: var(--paper-sink); }
   ::-webkit-scrollbar-thumb { background-color: #3d4655; }
   ::-webkit-scrollbar-thumb:hover { background-color: #4c5666; }

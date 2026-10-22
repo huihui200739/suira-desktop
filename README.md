@@ -16,7 +16,7 @@ Electron 实现的 Windows 桌面端样机。产品方向、交互结构与验�
 ```powershell
 npm install
 npm start          # 启动应用
-npm test           # 全量自动化测试（773 项）
+npm test           # 全量自动化测试（894 项）
 npm run diag       # 启动自检，生成环境报告
 ```
 
@@ -153,6 +153,29 @@ Electron 的 `globalShortcut` 只在按下时回调，拿不到「松开」，�
 
 ---
 
+## 核心框架（本轮补齐）
+
+按「先把截图 / 剪贴板 / 主体做完整，再加新功能」的顺序，本轮把三大基础框架的缺口
+逐项补齐，并用**真实 Electron** 跑通端到端链路（`npm run verify:core`，42 项）。
+
+| 框架 | 之前的状态 | 本轮补齐 |
+|---|---|---|
+| 截图 | 截图→标注→复制/钉图/OCR 代码齐全，但 **OCR 在 Electron 主进程会永久卡住** | 修正 tesseract.js 的环境误判（见下）；保存对话框不再以隐藏主窗口为父窗口；真机验证 复制 / 钉图 / 提字 全链路 |
+| 剪贴板 | 只采文本与图片；来源应用字段是空；同一内容复制两次会存两条 | 采集**文件引用**（`text/uri-list` → 多路径），记录**来源应用/窗口标题**（敏感应用排除真正生效），重复内容**置顶不新增**，启动与修改保留期时即时清理 |
+| 主体 | 四个页面可用，但缺预览、粘贴回原窗口、失败重试、窗口记忆 | 内容库**预览层**（图/文/文件）、**粘贴回原窗口**（复用放回子系统，失败降级为「已复制」）、轨迹**失败重试**、**窗口位置/尺寸/最大化记忆**（多屏校验后恢复） |
+
+### OCR 在 Electron 主进程里卡死的修复（重要）
+
+`tesseract.js` 用 `is-electron` 判断运行环境：在 Electron 主进程里 `env` 是 `electron`
+而不是 `node`，它会把本地 `langPath` 当成 URL 去 `fetch`，抛出
+`TypeError: Only absolute URLs are supported`，而 `createWorker` 永远等不到就绪消息——
+用户看到的现象是「截图提字一直转圈」，且没有任何报错。修法不改 `node_modules`：
+`OcrService.prepareLanguageCache()` 先把随应用附带的 `.traineddata.gz` 解压进
+`cachePath`，缓存命中后 tesseract 不再走 fetch 分支。`test-ocr.js` 锁住这个行为，
+`verify:core` 在真实 Electron 里用带文字的图片验证识别结果。
+
+---
+
 ## 功能状态
 
 ### 已实现
@@ -183,19 +206,27 @@ Electron 的 `globalShortcut` 只在按下时回调，拿不到「松开」，�
   改键失败自动回滚并显示原因
 - **搜索**：命令 / 应用 / 内容 / 任务，支持**中文、拼音全拼、拼音首字母**（`rwx` → 任务匣）；
   命令区与 38 键面板区域分离，不再混成一列长列表
-- **剪贴板历史**：文本 / 图片 / 文件引用，去重、置顶、保留期、搜索
+- **剪贴板历史（本轮补完整）**：文本 / 图片 / **文件引用**三类都采集；
+  每条记录**来源应用与窗口标题**（密码管理器等敏感来源默认排除）；
+  同一段文字/同一张图/同一批文件再次复制时**置顶而不是新增**；
+  保留期在启动时与修改设置后立即生效；搜索、固定、删除、清空剪贴板记录
+- **内容库预览与粘贴（主体补完整）**：点卡片主体打开预览层（图片大图 / 文字全文 /
+  文件路径列表），Esc 或点遮罩关闭；卡片可直接**粘贴回打开随序前所在的应用**
+  （目标窗口校验失败时如实降级为「已复制，切回目标后粘贴」）
 - **区域截图与标注**：**跨屏区域**（覆盖整个虚拟桌面，支持副屏在主屏左侧/上方）、
   混合 DPI，工具为矩形 / 箭头 / 画笔 / 文字 / 马赛克 / 序号，支持撤销、复制 / 保存 / 钉图
 - **离线 OCR**：本地 `tesseract.js`，中英文，识别结果可编辑，可**查看原图**
-  （原图 = 框选区域未加标注的原始画面）
+  （原图 = 框选区域未加标注的原始画面）；语言包首次预热约 1–2 秒，之后命中缓存
 - **文本处理**：合并换行、清理多余空格、纯文本
 - **任务匣**：混合内容、来源标记、派生关系、批量复制、导出 Markdown（已降为低频管理入口）
-- **处理轨迹**：按步骤记录每次动作的输入输出与失败原因，失败可重试
+- **处理轨迹**：按步骤记录每次动作的输入输出与失败原因，**失败记录可一键重试**
 - **配方（动作链）**：3 条内置模板，显式提交副作用，支持取消
 - **钉图**：置顶窗口、缩放、透明度、临时收起（收成窄条后可点回）、悬停工具栏、
   `Ctrl+Alt+H` 一键显隐
 - **内容库**：按类型筛选、搜索、复制、提取文字、钉图、入匣、**固定**（不被自动清理）、
-  **清空剪贴板记录**（必须逐字输入确认词才允许提交）
+  **清空剪贴板记录**（必须逐字输入确认词才允许提交）、文件条目可直接在资源管理器中定位
+- **主窗口记忆（主体补完整）**：记住位置 / 尺寸 / 最大化状态；显示器被拔掉或分辨率变化时
+  回落到可见位置，不会让窗口「消失」在已不存在的屏幕上
 - **设置**：记录开关、保留策略、OCR 语言、敏感来源排除、数据目录、五组快捷键改键、
   **内容加密开关**
 - **快捷键冲突检测**：注册失败会显示在设置页并给出原因；支持点击改键，
@@ -232,10 +263,11 @@ Electron 的 `globalShortcut` 只在按下时回调，拿不到「松开」，�
 ## 数据存储
 
 ```
-%APPDATA%\随序\suira-data.json          内容、任务、执行记录、设置、浮引岛暂存
+%APPDATA%\随序\suira-data.json          内容、任务、执行记录、设置、浮引岛暂存、窗口状态
 %APPDATA%\随序\suira-data.key           DPAPI 保护的数据密钥（勿删，删后旧内容无法解密）
 %APPDATA%\随序\captures\                截图 PNG
 %APPDATA%\随序\clipboard-images\        剪贴板图片
+%APPDATA%\随序\tessdata-cache\          OCR 语言包解压缓存（首次识别自动生成）
 ```
 
 `items[].text` / `items[].title` 在磁盘上是加密信封（`{__enc, iv, data, tag}`），
@@ -243,7 +275,8 @@ Electron 的 `globalShortcut` 只在按下时回调，拿不到「松开」，�
 内存中始终为明文，因此搜索、派生关系、导出都不需要逐条解密。
 
 浮引岛只保存文件引用（`island.items[] = {id, name, path, kind, addedAt}`）与拖入策略，
-不复制文件本体；路径属于元数据，按明文保存。
+不复制文件本体；路径属于元数据，按明文保存。剪贴板文件条目同理：只存路径与文件名，
+不复制文件。`windowState` 记录主窗口的位置/尺寸/最大化状态。
 
 单文件 JSON，版本号 `version: 1`。写入为整体序列化 + 原子 rename，非增量事务。
 
@@ -254,11 +287,12 @@ Electron 的 `globalShortcut` 只在按下时回调，拿不到「松开」，�
 ```
 main.js                    主进程：窗口、热键、托盘、截图、剪贴板、浮引岛、IPC
 preload.js                 contextBridge 暴露 window.suira
-lib/store.js               数据层：内容 / 任务 / 执行记录 / 设置 / 浮引岛暂存
+lib/store.js               数据层：内容 / 任务 / 执行记录 / 设置 / 浮引岛暂存 / 窗口状态
 lib/actions.js             动作注册表：类型匹配、派生内容生成
 lib/recipes.js             配方执行器：动作链、提交分离、取消
 lib/search.js              搜索：拼音 / 首字母 / 打分排序
 lib/clipboard-guard.js     剪贴板守卫：锁重试、敏感排除、超大内容
+lib/clipboard-capture.js   剪贴板采集纯模型：file:// URI 解析、文件条目、去重比较
 lib/return-target.js       放回校验：目标快照、提交前校验、回环账本
 lib/app-index.js           应用索引：开始菜单扫描与缓存
 lib/foreground-probe.js    前台窗口探测：常驻 PowerShell 助手客户端
@@ -266,14 +300,14 @@ lib/shortcuts.js           快捷键：校验、冲突检测、改键与回滚�
 lib/key-watch.js           按住型侦测客户端：VK 解析、KeyWatchProbe 状态机
 lib/island-model.js        浮引岛纯模型：分类、去重、容量、统计（纯函数）
 lib/crypto-store.js        内容加密：AES-256-GCM + DPAPI 密钥保管
-lib/display-geometry.js    虚拟桌面几何：多屏并集、缩放、分块布局
+lib/display-geometry.js    虚拟桌面几何：多屏并集、缩放、分块布局、窗口边界恢复
 lib/input-injector.js      输入注入：PowerShell + SendInput 发送 Ctrl+V
 assets/foreground-helper.ps1  只读 Win32 查询助手（GetForegroundWindow）
 assets/key-watch.ps1       按住型侦测助手（GetAsyncKeyState 轮询，READY/DOWN/UP 协议）
-lib/ocr.js                 离线 OCR 封装
+lib/ocr.js                 离线 OCR 封装（含语言包缓存预热，兼容 Electron 主进程）
 lib/keybindings.js         38 键面板的键位模型：布局、动作目录、绑定与可用状态
 lib/panel-actions.js       面板动作执行层：按键语义与收尾，副作用走注入
-src/index.html + app.js    主窗口：任务匣 / 内容库 / 处理轨迹 / 设置（低频管理）
+src/index.html + app.js    主窗口：任务匣 / 内容库 / 处理轨迹 / 设置（低频管理）+ 预览层
 src/quickpanel.*           38 键动作面板 + 应用面板 + 工具箱（主入口）
 src/island.*               浮引岛：收起细条 / 展开卡片 / 拖入拖出 / 策略与清空
 src/overlay.*              截图覆盖层 + OCR 结果面板
@@ -301,8 +335,10 @@ ShelfItem   = id + name + path + kind + addedAt（只存引用，lib/island-mode
 ## 测试
 
 ```powershell
-npm test                   # 全部 773 项
-npm run test:core          # 36 项：数据层、文本处理、保留策略
+npm test                   # 全部 894 项
+npm run test:core          # 39 项：数据层、文本处理、保留策略、窗口状态、去重置顶
+npm run test:clipboard     # 74 项：剪贴板纯模型（file:// URI、文件条目、去重比较、归一化）
+npm run test:ocr           # 11 项：OCR 语言缓存预热（Electron 主进程兼容）与语言包完整性
 npm run test:island        # 88 项：浮引岛纯模型（75）+ 落盘层（13）
 npm run test:island-store  # 13 项：island 段清洗、容量、策略、重启恢复、清除绑定落盘
 npm run test:island-render # 93 项：浮引岛无头 Chrome 真实 DOM（收起/展开/24 文件滚动/拖拽时序）
@@ -314,11 +350,11 @@ npm run test:flows         # 18 项：按键链路「进入工具 → 完成操�
 npm run test:return        # 38 项：放回校验、目标失效回退、回环账本、应用索引
 npm run test:foreground    # 18 项：前台窗口探测、超时、dispose 强制清理
 npm run test:security      # 82 项：快捷键冲突、恢复默认/清除、按住型校验、加解密、加密落盘
-npm run test:display       # 20 项：多屏并集、负坐标、混合 DPI、分块布局
+npm run test:display       # 30 项：多屏并集、负坐标、混合 DPI、分块布局、窗口边界恢复
 npm run test:inject        # 20 项：SendInput 脚本、调用协议、失败处理
 npm run test:diagnostics   # 10 项：自检报告字段、只读性、--diag 接线
-npm run test:ui            # 119 项：IPC 通道一致性、键位接线、浮引岛/按住型接线、缺陷回归
-npm run test:render        # 57 项：无头 Chrome 真实渲染断言（含面板模式切换、五组改键）
+npm run test:ui            # 129 项：IPC 通道一致性、键位接线、核心框架接线、缺陷回归
+npm run test:render        # 70 项：无头 Chrome 真实渲染断言（含预览层、轨迹重试、五组改键）
 npm run test:confirm       # 12 项：确认词校验（真实 DOM，错误输入不得通过）
 npm run test:overlay       # 21 项：覆盖层 Ctrl+A 焦点隔离、查看原图、工具栏绑定
 npm run test:shortcut      # 12 项：恢复默认/清除绑定的真实点击（真实 DOM）
@@ -350,8 +386,11 @@ canvas/布局像素；fixture 在运行时生成、结束后清理。浮引岛�
 
 ## 已知限制
 
-- 剪贴板监听为 550ms 轮询，非事件驱动（`WM_CLIPBOARDUPDATE` 需原生模块）
-- OCR 首次识别需加载语言包，约 1–2 秒
+- 剪贴板监听为 550ms 轮询，非事件驱动（`WM_CLIPBOARDUPDATE` 需原生模块）；
+  因此同一份内容连续复制两次不会被再次感知，跨应用复制后约 0.5s 才入库
+- 剪贴板文件引用只保存路径与文件名，不复制文件本体；原文件被移动/删除后，
+  条目仍可复制路径，但「打开」会如实报错
+- OCR 首次识别需要解压并加载语言包，约 1–2 秒；之后命中缓存与常驻 worker 会快很多
 - 主进程崩溃会丢失未落盘的会话状态
 - 打包配置已包含 OCR 语言包与两个 PowerShell 助手，但尚未做签名与安装验证
 - 数据目录不可写时没有降级方案，会直接退出（详见 [docs/KNOWN-ISSUES.md](docs/KNOWN-ISSUES.md)）
@@ -379,6 +418,7 @@ npm run verify:electron   # 启动并确认窗口
 npm run verify:ipc        # 20 项：preload / IPC / 渲染 / 面板交互
 npm run verify:capture    # 9 项：截图链路
 npm run verify:island     # 38 项：浮引岛增删改清落盘 + 窗口尺寸 + 按住型侦测真实运行
+npm run verify:core       # 42 项：截图复制/钉图/提字、剪贴板三类采集与去重、预览/粘贴/重试、窗口记忆
 ```
 
 已通过的项目（真实 Electron，非模拟）：
@@ -393,10 +433,20 @@ npm run verify:island     # 38 项：浮引岛增删改清落盘 + 窗口尺寸 
 | 未实现动作被拒绝并给出原因 | ✅ |
 | 主窗口与面板真实渲染 | ✅ |
 | **截图链路：动作 → 覆盖层 → 截到真实屏幕 → 取消关闭** | ✅ |
+| **截图完成 → 图片入库 → 系统剪贴板里确实是图片** | ✅ |
+| **截图钉图 → 多出一个置顶窗口** | ✅ |
+| **截图提字 → 识别出「HELLO SUIRA 2026」并与原图建立派生关系** | ✅ |
 | 剪贴板监听运行、快捷键已注册 | ✅ |
+| **剪贴板：文本 / 文件引用 / 图片 三类都被采集，带来源应用与采集方式** | ✅ |
+| **剪贴板：同一内容再次复制只保留一条并回到列表最前** | ✅ |
+| **内容库：卡片预览层打开/关闭、粘贴按钮、文件定位按钮** | ✅ |
+| **放回原窗口：目标不可用时降级为「已复制」并给出可读文案** | ✅ |
+| **处理轨迹：失败记录可重试，重试产生新的执行记录（IPC 与页面按钮都验过）** | ✅ |
+| **窗口状态：最大化/还原后写入 `windowState`，重启后位置尺寸恢复** | ✅ |
 | **浮引岛：拖入两文件 → 2 条、重复不重复入岛 → 自动展开 520×148 → 移除/清空 → 回到 176×44** | ✅ |
 | **浮引岛暂存落盘到 `suira-data.json` 的 `island` 段** | ✅ |
 | **按住型侦测在真实主进程里 `watching`（真实 PowerShell 助手）** | ✅ |
+| **重启后内容（截图 / 文字 / 文件引用）仍在** | ✅ |
 
 ## 仍需人工确认（只能人眼看）
 
@@ -417,9 +467,13 @@ npm run verify:island     # 38 项：浮引岛增删改清落盘 + 窗口尺寸 
 | 11 | **浮引岛悬停手感** | 鼠标移入立即展开、移出约 0.2 秒收起；点击岛是否抢焦点需实际感受 |
 | 12 | **按住型唤起手感** | 按住 `Ctrl+Alt+Shift+Space` 面板出现并保持，松开立刻收起；面板里空格不误切应用 |
 | 13 | 面板布局轮换 / 钉图显隐 | `Ctrl+Alt+Q` 在三布局间轮换；`Ctrl+Alt+H` 隐藏/恢复全部钉图 |
-| 14 | 面板视觉 | 字体、圆角、间距、图标与参考图的接近程度 |
+| 14 | **内容库预览手感** | 点卡片主体弹出预览；图片大图、文字全文可选中；Esc / 点遮罩关闭 |
+| 15 | **粘贴回原窗口** | 从别的应用按托盘/面板打开随序 → 内容库点「粘贴」，应回到原应用并粘贴（失败时给出「已复制」说明） |
+| 16 | **剪贴板文件条目** | 在资源管理器复制 2 个文件 → 内容库出现「文件」条目，标题是文件名、正文是两条路径 |
+| 17 | **窗口记忆** | 移动/缩放主窗口后退出再开，窗口回到上次的位置尺寸；最大化退出后应仍最大化 |
+| 18 | 面板视觉 | 字体、圆角、间距、图标与参考图的接近程度 |
 
-> 详细步骤见 [docs/REAL-MACHINE-CHECKLIST.md](docs/REAL-MACHINE-CHECKLIST.md)（20 项）。
+> 详细步骤见 [docs/REAL-MACHINE-CHECKLIST.md](docs/REAL-MACHINE-CHECKLIST.md)（27 项）。
 > 自动化能证明「逻辑通了」，证明不了「手感对、看着像」——在你反馈前上述项保持未确认。
 
 ---

@@ -27,7 +27,8 @@ const state = {
   settings: null,
   toastTimer: null,
   ocrBusy: new Set(),
-  pinyinMatches: new Set()
+  pinyinMatches: new Set(),
+  previewId: ''
 };
 
 function escapeHtml(value) {
@@ -300,7 +301,7 @@ function renderLibrary() {
   grid.innerHTML = items.map((item) => {
     const derived = derivedChildren(item.id);
     return `
-    <article class="library-card" data-id="${escapeHtml(item.id)}">
+    <article class="library-card" data-id="${escapeHtml(item.id)}" data-preview="${escapeHtml(item.id)}">
       <header class="shelf-card-head">
         <span class="kind-tag ${escapeHtml(item.kind)}">${KIND_LABELS[item.kind] || '内容'}</span>
         <b title="${escapeHtml(item.title)}">${escapeHtml(item.title)}</b>
@@ -313,15 +314,29 @@ function renderLibrary() {
       ${derived.length ? `<div class="derived-note">${derived.length} 个处理结果 · ${escapeHtml(derived[0].title || '')}</div>` : ''}
       <footer class="shelf-card-actions">
         <button type="button" data-copy="${escapeHtml(item.id)}">复制</button>
+        <button type="button" data-paste="${escapeHtml(item.id)}">粘贴</button>
         ${item.kind === 'image' ? `<button type="button" data-ocr="${escapeHtml(item.id)}">${state.ocrBusy.has(item.id) ? '识别中…' : '提取文字'}</button>` : ''}
         ${item.kind === 'image' ? `<button type="button" data-pin="${escapeHtml(item.id)}">钉住</button>` : ''}
         ${item.kind === 'files' || item.kind === 'link' ? `<button type="button" data-open="${escapeHtml(item.id)}">打开</button>` : ''}
+        ${item.kind === 'files' ? `<button type="button" data-reveal="${escapeHtml(item.id)}">所在文件夹</button>` : ''}
         <button type="button" data-shelf="${escapeHtml(item.id)}">入匣</button>
         <button type="button" data-fix="${escapeHtml(item.id)}">${item.pinned ? '取消固定' : '固定'}</button>
         <button type="button" class="is-danger" data-delete="${escapeHtml(item.id)}">删除</button>
       </footer>
     </article>`;
   }).join('');
+
+  $$('[data-preview]', grid).forEach((card) => card.addEventListener('click', (event) => {
+    // 卡片主体打开预览；底部动作按钮有自己的语义，不触发预览
+    if (event.target.closest('button')) return;
+    openPreview(card.dataset.preview);
+  }));
+  $$('[data-paste]', grid).forEach((button) => button.addEventListener('click', () => pasteItemToTarget(button.dataset.paste)));
+  $$('[data-reveal]', grid).forEach((button) => button.addEventListener('click', async () => {
+    const result = await window.suira.actions.run(button.dataset.reveal, 'files.reveal');
+    if (result?.ok) showGlobalToast(result.message || '已在资源管理器中定位', 'success');
+    else showGlobalToast(result?.error || '定位失败', 'error');
+  }));
 
   $$('[data-copy]', grid).forEach((button) => button.addEventListener('click', async () => {
     const result = await window.suira.actions.run(button.dataset.copy, 'output.copy');
@@ -373,6 +388,126 @@ function renderLibrary() {
   }));
 }
 
+/* ---------- preview ---------- */
+
+/** 图片预览优先用缩略图（已内联，必定可读），没有再回落到本地文件路径。 */
+function previewImageSource(item) {
+  if (item?.thumbnail) return item.thumbnail;
+  const filePath = String(item?.filePath || '').trim();
+  if (!filePath) return '';
+  // Windows 路径转 file:// URL：逐段转义（空格、#、? 等），保留盘符的冒号
+  const encoded = filePath
+    .replace(/\\/g, '/')
+    .split('/')
+    .map((part, index) => (index === 0 && /^[A-Za-z]:$/.test(part) ? part : encodeURIComponent(part)))
+    .join('/');
+  return `file:///${encoded}`;
+}
+
+/** 文件条目可能是多行路径（剪贴板里复制的路径列表），统一拆成路径数组。 */
+function previewFilePaths(item) {
+  const paths = [];
+  const push = (value) => {
+    const text = String(value || '').trim();
+    if (text && !paths.includes(text)) paths.push(text);
+  };
+  String(item?.text || '').split(/\r?\n/).forEach(push);
+  push(item?.filePath);
+  return paths;
+}
+
+function previewPlaceholder(message) {
+  const el = document.createElement('div');
+  el.className = 'preview-empty';
+  el.textContent = message;
+  return el;
+}
+
+function openPreview(itemId) {
+  const item = state.items.find((entry) => entry.id === itemId);
+  const preview = $('#preview');
+  if (!preview) return;
+  if (!item) {
+    showGlobalToast('内容不存在或已被清理', 'error');
+    return;
+  }
+  state.previewId = item.id;
+  const kind = $('#preview-kind');
+  kind.textContent = KIND_LABELS[item.kind] || '内容';
+  kind.className = `kind-tag ${item.kind}`;
+  $('#preview-title').textContent = item.title || '未命名内容';
+  $('#preview-title').title = item.title || '';
+  $('#preview-time').textContent = relativeTime(item.createdAt);
+
+  const body = $('#preview-body');
+  body.replaceChildren();
+  if (item.kind === 'image') {
+    const source = previewImageSource(item);
+    if (source) {
+      const image = document.createElement('img');
+      image.className = 'preview-image';
+      image.alt = item.title || '图片预览';
+      image.src = source;
+      body.appendChild(image);
+    } else {
+      body.appendChild(previewPlaceholder('这张图片没有可读取的文件'));
+    }
+  } else if (item.kind === 'files') {
+    const paths = previewFilePaths(item);
+    if (!paths.length) {
+      body.appendChild(previewPlaceholder('没有可显示的文件路径'));
+    } else {
+      const list = document.createElement('ul');
+      list.className = 'preview-file-list';
+      for (const filePath of paths) {
+        const row = document.createElement('li');
+        row.textContent = filePath;
+        list.appendChild(row);
+      }
+      body.appendChild(list);
+    }
+  } else {
+    const text = String(item.text || '');
+    if (!text.trim()) {
+      body.appendChild(previewPlaceholder('（无文字内容）'));
+    } else {
+      // 只读、可选中复制的全文区；内容用 textContent 写入，不拼 innerHTML
+      const content = document.createElement('div');
+      content.className = 'preview-text';
+      content.textContent = text;
+      body.appendChild(content);
+    }
+  }
+
+  preview.hidden = false;
+  const closeButton = $('#preview-close');
+  if (closeButton) closeButton.focus({ preventScroll: true });
+}
+
+/** 关闭预览层；返回本次是否真的关闭了（供 Esc 判断要不要拦截）。 */
+function closePreview() {
+  const preview = $('#preview');
+  if (!preview || preview.hidden) return false;
+  preview.hidden = true;
+  state.previewId = '';
+  const body = $('#preview-body');
+  if (body) body.replaceChildren();
+  return true;
+}
+
+/** 复制内容并尝试直接粘回打开随序之前所在的应用。 */
+async function pasteItemToTarget(itemId) {
+  const id = String(itemId || '');
+  if (!id) return;
+  try {
+    const result = await window.suira.returnTo.commit({ itemId: id, intent: 'return-and-paste' });
+    if (result?.ok) showGlobalToast(result.message || '已复制', 'success');
+    else showGlobalToast(result?.error || '粘贴失败', 'error');
+  } catch (error) {
+    showGlobalToast(error.message || '粘贴失败', 'error');
+  }
+}
+
 /* ---------- trail ---------- */
 
 async function refreshTrail() {
@@ -406,9 +541,31 @@ function renderTrail() {
         <b>${escapeHtml(ACTION_LABELS[execution.actionId] || execution.actionId)}</b>
         <small>${escapeHtml(inputNames.join('、') || '本地内容')}${execution.error ? ` · ${escapeHtml(execution.error)}` : ''}</small>
       </div>
+      ${execution.status === 'failed' ? `<button class="trail-retry" type="button" data-retry="${escapeHtml(execution.id)}">重试</button>` : ''}
       <time>${relativeTime(execution.startedAt)}</time>
     </div>`;
   }).join('');
+
+  // 失败步骤可以重跑一次：主进程负责复用原始输入重新执行
+  $$('[data-retry]', list).forEach((button) => button.addEventListener('click', async () => {
+    const executionId = button.dataset.retry;
+    if (!executionId) return;
+    button.disabled = true;
+    const label = button.textContent;
+    button.textContent = '重试中…';
+    try {
+      const result = await window.suira.executions.retry(executionId);
+      if (!result?.ok) throw new Error(result?.error || '重试失败');
+      showGlobalToast('已重试', 'success');
+      await refreshTrail();
+    } catch (error) {
+      showGlobalToast(error.message || '重试失败', 'error');
+      if (button.isConnected) {
+        button.disabled = false;
+        button.textContent = label;
+      }
+    }
+  }));
 }
 
 /* ---------- settings ---------- */
@@ -839,12 +996,31 @@ function installEvents() {
     if (event.key === 'Escape') closeModal();
   });
 
+  // 预览层：关闭按钮 / 点遮罩 / 底部的复制与粘贴
+  $('#preview-close').addEventListener('click', closePreview);
+  $('#preview').addEventListener('click', (event) => {
+    if (event.target === $('#preview')) closePreview();
+  });
+  $('#preview-copy').addEventListener('click', async () => {
+    const id = state.previewId;
+    if (!id) return;
+    const result = await window.suira.actions.run(id, 'output.copy');
+    if (result?.ok) showGlobalToast('已复制', 'success');
+    else showGlobalToast(result?.error || '复制失败', 'error');
+  });
+  $('#preview-paste').addEventListener('click', () => pasteItemToTarget(state.previewId));
+
   document.addEventListener('keydown', (event) => {
+    // 预览层打开时，Esc 只关预览层，不再落到弹窗或输入框逻辑
+    if (event.key === 'Escape' && closePreview()) {
+      event.preventDefault();
+      return;
+    }
     if (!$('#modal').hidden) {
       if (event.key === 'Escape') closeModal();
       return;
     }
-    if (event.key === 'Escape' && event.target.matches('input, textarea')) event.target.blur();
+    if (event.key === 'Escape' && event.target?.matches?.('input, textarea')) event.target.blur();
   });
 
   window.suira.content.onChanged(() => {

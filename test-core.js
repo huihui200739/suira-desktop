@@ -1,4 +1,4 @@
-﻿const assert = require('assert');
+const assert = require('assert');
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
@@ -165,6 +165,31 @@ console.log('\n== 落盘与重载 ==');
     assert.ok(r.retentionDays <= 3650);
     console.log('  PASS  保留天数被夹紧'); pass++;
   } catch (e) { console.log('  FAIL  保留天数夹紧 -> ' + e.message); fail++; }
+
+  console.log('\n== 主窗口状态与剪贴板置顶 ==');
+  try {
+    assert.strictEqual(store.getWindowState(), null, '初始不应有窗口状态');
+    const saved = store.setWindowState({ x: 100, y: 50, width: 1200, height: 800, maximized: false });
+    assert.strictEqual(saved.width, 1200);
+    await store.save();
+    const reloaded = new SuiraStore(dataFile);
+    assert.deepStrictEqual(reloaded.getWindowState(), { x: 100, y: 50, width: 1200, height: 800, maximized: false });
+    console.log('  PASS  窗口状态可落盘并在重启后恢复'); pass++;
+  } catch (e) { console.log('  FAIL  窗口状态持久化 -> ' + e.message); fail++; }
+  try {
+    store.setWindowState({ x: NaN, y: 0, width: 800, height: 600 });
+    assert.strictEqual(store.getWindowState().width, 1200, '非法输入不应覆盖已记录的状态');
+    console.log('  PASS  非法窗口状态被丢弃'); pass++;
+  } catch (e) { console.log('  FAIL  非法窗口状态 -> ' + e.message); fail++; }
+  try {
+    const item = store.addItem({ kind: 'text', text: '去重测试' });
+    const before = item.createdAt;
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    const touched = store.touchItem(item.id);
+    assert.ok(touched.createdAt > before, '应刷新 createdAt 让条目回到最前');
+    assert.strictEqual(store.touchItem('not-exist'), null);
+    console.log('  PASS  同一内容再次复制时置顶而不是新增'); pass++;
+  } catch (e) { console.log('  FAIL  touchItem -> ' + e.message); fail++; }
 
   fs.rmSync(tmp, { recursive: true, force: true });
   console.log('\n========== ' + pass + ' 通过 / ' + fail + ' 失败 ==========');

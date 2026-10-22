@@ -60,9 +60,10 @@ window.suira = {
   capture:{ start:async()=>({ok:true}), getData:async()=>null, finish:async()=>({ok:true}), cancel:async()=>({ok:true}) },
   content:{ list:async(o={})=>items.slice(0,(o.limit||80)), get:async(id)=>items.find(x=>x.id===id), addText:async(p)=>({ok:true,item:{id:'new',...p}}), remove:async()=>({ok:true}), togglePin:async()=>({ok:true}), onChanged:on('content:changed') },
   actions:{ list:async(id)=>({i2:[{id:'ocr.local',label:'提取文字',hint:'本地离线 OCR'},{id:'image.pin',label:'钉在桌面',hint:'保持图片置顶'},{id:'output.copy',label:'复制',hint:'复制到剪贴板'},{id:'output.shelf',label:'加入任务匣',hint:'暂存到临时收集'}],i1:[{id:'output.copy',label:'复制',hint:'复制到剪贴板'},{id:'text.merge-lines',label:'合并换行',hint:'把断行接成自然段'},{id:'text.clean',label:'清理文字',hint:'去掉多余空格和空行'},{id:'output.shelf',label:'加入任务匣',hint:'暂存到临时收集'}],i5:[{id:'files.reveal',label:'定位文件',hint:'在资源管理器中显示'}]}[id]||[]), run:async()=>({ok:true,message:'已复制'}) },
+  returnTo:{ target:async()=>null, commit:async(p)=>{ window.__lastCommit = p; return p && p.itemId==='i5' ? {ok:false,error:'目标窗口已关闭'} : {ok:true,copied:true,verdict:'copy-only',canPaste:false,message:'已复制，切回目标后粘贴'}; } },
   ocr:{ recognizeItem:async()=>({ok:true,output:{id:'o1',text:'识别结果'}}), onProgress:on('ocr:progress') },
   tasks:{ list:async()=>tasks, create:async(t)=>({ok:true,task:{id:'tn',title:t,itemIds:[],items:[]}}), rename:async()=>({ok:true}), remove:async()=>({ok:true}), addItem:async()=>({ok:true}), removeItem:async()=>({ok:true}), copyText:async()=>({ok:true}), export:async()=>({ok:true,filePath:'x.md'}), onChanged:on('tasks:changed') },
-  executions:{ list:async()=>executions, onChanged:on('executions:changed') },
+  executions:{ list:async()=>executions, retry:async(id)=>{ window.__lastRetry = id; return {ok:true,output:{id:'r-'+id}}; }, onChanged:on('executions:changed') },
   settings:{ get:async()=>settings, update:async(p)=>({ok:true,settings}), onChanged:on('settings:changed') },
   search:{ query:async()=>[] },
   shortcuts:{ get:async()=>({ bindings:{ quick:'CommandOrControl+Alt+Space', capture:'CommandOrControl+Shift+A', momentary:'CommandOrControl+Alt+Shift+Space', panelCycle:'CommandOrControl+Alt+Q', pinnedToggle:'CommandOrControl+Alt+H' }, status:{ quick:{ok:true,accelerator:'CommandOrControl+Alt+Space',error:'',reserved:null}, capture:{ok:false,accelerator:'CommandOrControl+Shift+A',error:'无法注册，可能已被占用',reserved:null}, momentary:{ok:momentaryWatching,accelerator:'CommandOrControl+Alt+Shift+Space',error:momentaryWatching ? '' : '按住型侦测未运行',reserved:null,watching:momentaryWatching}, panelCycle:{ok:true,accelerator:'CommandOrControl+Alt+Q',error:'',reserved:null}, pinnedToggle:{ok:true,accelerator:'CommandOrControl+Alt+H',error:'',reserved:null} } }), set:async()=>({ok:true}), clear:async()=>({ok:true}), restoreDefault:async()=>({ok:true}), onChanged:on('shortcuts:changed') },
@@ -97,6 +98,15 @@ window.addEventListener('load', function () {
       bodyOverflowX: document.documentElement.scrollWidth - document.documentElement.clientWidth,
       visiblePageCount: document.querySelectorAll('.page.is-active').length,
       recipeButtons: document.querySelectorAll('[data-recipe]').length,
+      previewCards: document.querySelectorAll('[data-preview]').length,
+      pasteButtons: document.querySelectorAll('[data-paste]').length,
+      pasteButtonTexts: Array.from(document.querySelectorAll('[data-paste]')).map((b) => b.textContent.trim()),
+      revealButtons: document.querySelectorAll('[data-reveal]').length,
+      retryButtons: document.querySelectorAll('[data-retry]').length,
+      retryButtonTexts: Array.from(document.querySelectorAll('[data-retry]')).map((b) => b.textContent.trim()),
+      previewOverlay: !!document.getElementById('preview'),
+      previewHidden: !!(document.getElementById('preview') || {}).hidden,
+      previewBody: !!document.getElementById('preview-body'),
       hasSearchApi: typeof window.suira.search.query === 'function',
       shortcutInputs: document.querySelectorAll('.shortcut-input').length,
       quickKeyValue: (document.getElementById('setting-key-quick') || {}).value || '',
@@ -165,6 +175,75 @@ window.addEventListener('load', function () {
 </script>
 `;
 
+const PROBE_FLOW = `
+<script>
+window.addEventListener('load', function () {
+  var pageMatch = location.search.match(/page=([a-z]+)/);
+  var page = pageMatch ? pageMatch[1] : 'shelf';
+  var out = {};
+  function previewState() {
+    var preview = document.getElementById('preview');
+    return {
+      opened: preview ? !preview.hidden : false,
+      title: (document.getElementById('preview-title') || {}).textContent || '',
+      kind: (document.getElementById('preview-kind') || {}).textContent || '',
+      text: ((document.getElementById('preview-body') || {}).textContent || '').slice(0, 160)
+    };
+  }
+  function emit() {
+    var pre = document.createElement('pre');
+    pre.textContent = 'L:' + JSON.stringify(out);
+    document.body.appendChild(pre);
+  }
+  if (page === 'library') {
+    setTimeout(function () {
+      var first = document.querySelector('.library-card');
+      if (!first) { emit(); return; }
+      var target = first.querySelector('.shelf-card-head b') || first;
+      // 1. 点卡片主体打开预览
+      target.click();
+      out.preview = previewState();
+      // 预览层里的提示必须盖在遮罩之上（toast z-index 高于 preview）
+      out.previewZ = Number(getComputedStyle(document.getElementById('preview')).zIndex) || 0;
+      out.toastZ = Number(getComputedStyle(document.getElementById('global-toast')).zIndex) || 0;
+      // 2. Esc 只关预览层
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+      out.closedByEsc = (document.getElementById('preview') || {}).hidden === true;
+      // 3. 重新打开后点遮罩关闭
+      target.click();
+      out.reopened = previewState().opened;
+      document.getElementById('preview').click();
+      out.closedByMask = (document.getElementById('preview') || {}).hidden === true;
+      // 4. 粘贴成功路径（commit 文案回显到 toast）
+      first.querySelector('[data-paste]').click();
+      setTimeout(function () {
+        out.pasteToast = (document.getElementById('global-toast') || {}).textContent || '';
+        out.commitPayload = window.__lastCommit || null;
+        // 5. 粘贴失败路径（主进程返回 error）
+        var filesCard = document.querySelector('.library-card[data-id="i5"]');
+        if (filesCard) filesCard.querySelector('[data-paste]').click();
+        setTimeout(function () {
+          out.pasteErrorToast = (document.getElementById('global-toast') || {}).textContent || '';
+          emit();
+        }, 200);
+      }, 200);
+    }, 1200);
+  } else if (page === 'trail') {
+    setTimeout(function () {
+      var retry = document.querySelector('[data-retry]');
+      if (retry) retry.click();
+      setTimeout(function () {
+        out.retryToast = (document.getElementById('global-toast') || {}).textContent || '';
+        out.retriedId = window.__lastRetry || '';
+        out.rowsAfterRetry = document.querySelectorAll('.trail-row').length;
+        emit();
+      }, 300);
+    }, 1200);
+  }
+});
+</script>
+`;
+
 function buildFixtures() {
   fs.writeFileSync(path.join(FIXTURES, '__fx_mock.js'), MOCK, 'utf8');
 
@@ -179,7 +258,7 @@ window.addEventListener('DOMContentLoaded', function () {
     if (nav) nav.click();
   }, 120);
 });
-</script>` + PROBE_MAIN + '</body>');
+</script>` + PROBE_MAIN + PROBE_FLOW + '</body>');
   fs.writeFileSync(path.join(FIXTURES, '__fx_main.html'), indexHtml, 'utf8');
 
   const overlayHtml = fs.readFileSync(path.join(__dirname, 'src', 'overlay.html'), 'utf8')
@@ -391,11 +470,63 @@ try {
   });
   t('内容库：有「清空剪贴板记录」按钮', () => assert.strictEqual(lib.clearButton, true));
   t('内容库：当前页正确', () => assert.strictEqual(lib.activePage, 'page-library'));
+  t('内容库：每张卡片主体都能打开预览', () => assert.strictEqual(lib.previewCards, 5));
+  t('内容库：每张卡都有「粘贴」按钮', () => {
+    assert.strictEqual(lib.pasteButtons, 5);
+    assert.ok(lib.pasteButtonTexts.every((x) => x === '粘贴'), '实际: ' + lib.pasteButtonTexts.join(','));
+  });
+  t('内容库：文件条目额外提供「所在文件夹」', () => assert.strictEqual(lib.revealButtons, 1));
+  t('内容库：预览层已挂载且默认隐藏', () => {
+    assert.strictEqual(lib.previewOverlay, true);
+    assert.strictEqual(lib.previewHidden, true);
+    assert.strictEqual(lib.previewBody, true);
+  });
 
   const trail = probe(runChrome('__fx_main.html', [], '?page=trail'), 'P');
   t('处理轨迹：4 条记录', () => assert.strictEqual(trail.trailRows, 4));
   t('处理轨迹：4 张统计卡', () => assert.strictEqual(trail.summaryCards, 4));
   t('处理轨迹：失败记录有独立样式', () => assert.strictEqual(trail.failedRows, 1));
+  t('处理轨迹：只有失败行带「重试」按钮', () => {
+    assert.strictEqual(trail.retryButtons, 1);
+    assert.deepStrictEqual(trail.retryButtonTexts, ['重试']);
+  });
+
+  console.log('\n== 内容库预览 / 粘贴 / 轨迹重试交互断言 ==');
+  const libFlow = probe(runChrome('__fx_main.html', [], '?page=library'), 'L');
+  t('内容库：点卡片主体打开预览并显示全文', () => {
+    assert.strictEqual(libFlow.preview.opened, true);
+    assert.strictEqual(libFlow.preview.kind, '文字');
+    assert.ok(libFlow.preview.title.includes('产品需求摘要'), '实际标题: ' + libFlow.preview.title);
+    assert.ok(libFlow.preview.text.includes('顺手接住'), '预览正文应包含全文: ' + libFlow.preview.text);
+  });
+  t('内容库：Esc 只关闭预览层', () => {
+    assert.strictEqual(libFlow.closedByEsc, true);
+  });
+  t('内容库：点遮罩关闭预览层', () => {
+    assert.strictEqual(libFlow.reopened, true);
+    assert.strictEqual(libFlow.closedByMask, true);
+  });
+  t('内容库：预览层里的 toast 提示层级高于遮罩', () => {
+    assert.ok(libFlow.toastZ > libFlow.previewZ, `toast=${libFlow.toastZ} preview=${libFlow.previewZ}`);
+  });
+  t('内容库：「粘贴」调用 returnTo.commit({intent:"return-and-paste"})', () => {
+    assert.ok(libFlow.commitPayload, '未调用 returnTo.commit');
+    assert.strictEqual(libFlow.commitPayload.itemId, 'i1');
+    assert.strictEqual(libFlow.commitPayload.intent, 'return-and-paste');
+  });
+  t('内容库：粘贴成功 toast 显示主进程 message', () => {
+    assert.strictEqual(libFlow.pasteToast, '已复制，切回目标后粘贴');
+  });
+  t('内容库：粘贴失败 toast 显示主进程 error', () => {
+    assert.strictEqual(libFlow.pasteErrorToast, '目标窗口已关闭');
+  });
+
+  const trailFlow = probe(runChrome('__fx_main.html', [], '?page=trail'), 'L');
+  t('处理轨迹：点重试调用 executions.retry 并提示「已重试」', () => {
+    assert.strictEqual(trailFlow.retriedId, 'e4');
+    assert.strictEqual(trailFlow.retryToast, '已重试');
+    assert.strictEqual(trailFlow.rowsAfterRetry, 4);
+  });
 
   const set = probe(runChrome('__fx_main.html', [], '?page=settings'), 'P');
   t('设置：当前页正确', () => assert.strictEqual(set.activePage, 'page-settings'));

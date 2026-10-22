@@ -8,8 +8,10 @@
   "scripts": {
     "start": "electron .",
     "dev": "electron . --dev",
-    "test": "node test-core.js && node test-island-store.js && node test-island.js && node test-actions.js && node test-capabilities.js && node test-keybindings.js && node test-panel-flows.js && node test-return.js && node test-foreground.js && node test-security.js && node test-key-watch.js && node test-display.js && node test-inject.js && node test-diagnostics.js && node test-ui.js && node test-render.js && node tools/island-check.js && node tools/confirm-check.js && node tools/overlay-check.js && node tools/shortcut-check.js",
+    "test": "node test-core.js && node test-clipboard.js && node test-ocr.js && node test-island-store.js && node test-island.js && node test-actions.js && node test-capabilities.js && node test-keybindings.js && node test-panel-flows.js && node test-return.js && node test-foreground.js && node test-security.js && node test-key-watch.js && node test-display.js && node test-inject.js && node test-diagnostics.js && node test-ui.js && node test-render.js && node tools/island-check.js && node tools/confirm-check.js && node tools/overlay-check.js && node tools/shortcut-check.js",
     "test:core": "node test-core.js",
+    "test:clipboard": "node test-clipboard.js",
+    "test:ocr": "node test-ocr.js",
     "test:island": "node test-island.js && node test-island-store.js",
     "test:island-store": "node test-island-store.js",
     "test:island-render": "node tools/island-check.js",
@@ -36,7 +38,8 @@
     "audit:batch3": "node tools/fuyin-modules.js",
     "dist": "electron-builder --win nsis",
     "dist:portable": "electron-builder --win portable",
-    "verify:island": "node tools/electron-island-check.js"
+    "verify:island": "node tools/electron-island-check.js",
+    "verify:core": "node tools/electron-core-check.js"
   },
   "devDependencies": {
     "electron": "^45.0.0",

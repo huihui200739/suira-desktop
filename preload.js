@@ -131,6 +131,8 @@ contextBridge.exposeInMainWorld('suira', {
   },
   executions: {
     list: (limit) => ipcRenderer.invoke('executions:list', limit),
+    // 处理轨迹里失败记录的重试：用同一条输入再执行一次原动作
+    retry: (executionId) => ipcRenderer.invoke('executions:retry', executionId),
     onChanged: (callback) => subscribe('executions:changed', callback)
   },
   settings: {

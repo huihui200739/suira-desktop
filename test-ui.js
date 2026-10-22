@@ -759,5 +759,91 @@ t('面板空格键不再吃掉带修饰键的组合（按住型唤起不被面�
   }
 });
 
+console.log('\n== 核心框架：截图 / 剪贴板 / 主体 ==');
+
+t('剪贴板采集覆盖文本 / 文件引用 / 图片三条路径', () => {
+  if (!mainJs.includes('readClipboardSnapshot')) throw new Error('缺少剪贴板快照读取');
+  if (!mainJs.includes('rememberClipboardFiles')) throw new Error('缺少文件引用采集');
+  if (!mainJs.includes('parseClipboardFileUris')) throw new Error('缺少 file: URI 解析接线');
+  if (!mainJs.includes('text/uri-list')) throw new Error('未读取 text/uri-list');
+  if (!mainJs.includes('addImageToStore')) throw new Error('缺少图片采集');
+  const capture = read('lib/clipboard-capture.js');
+  if (/require\('electron'\)/.test(capture) || /require\('node:fs'\)/.test(capture)) {
+    throw new Error('剪贴板纯模型不应依赖 electron / node:fs');
+  }
+});
+
+t('剪贴板记录来源应用并用于敏感排除', () => {
+  if (!mainJs.includes('clipboardSourceSnapshot')) throw new Error('缺少来源应用采集');
+  if (!mainJs.includes('processName: source.appName')) throw new Error('敏感排除未使用来源进程名');
+  if (!mainJs.includes('windowTitle: source.windowTitle')) throw new Error('敏感排除未使用窗口标题');
+});
+
+t('重复内容置顶而不是新增重复条目', () => {
+  if (!mainJs.includes('findRecentDuplicate')) throw new Error('未使用最近去重');
+  if (!mainJs.includes('touchItem')) throw new Error('未实现置顶');
+  if (!mainJs.includes('deduped: true')) throw new Error('置顶后未广播 content:changed');
+  const store = read('lib/store.js');
+  if (!store.includes('touchItem')) throw new Error('store 缺 touchItem');
+});
+
+t('保留期在启动与设置变更时立即生效', () => {
+  const initStart = mainJs.indexOf('async function initialize(');
+  const initEnd = mainJs.indexOf('async function collectDiagnostics(');
+  if (initStart < 0 || initEnd < 0) throw new Error('找不到 initialize / collectDiagnostics');
+  if (!/store\.prune\(\)/.test(mainJs.slice(initStart, initEnd))) throw new Error('启动时未清理过期内容');
+  if (!mainJs.includes('patch.retentionDays !== undefined')) throw new Error('设置变更后未触发清理');
+});
+
+t('主窗口记忆尺寸 / 位置 / 最大化，并校验多屏', () => {
+  if (!mainJs.includes('sanitizeWindowBounds')) throw new Error('未校验记忆边界');
+  if (!mainJs.includes('rememberMainWindowState')) throw new Error('未保存窗口状态');
+  if (!mainJs.includes("mainWindow.on('resize'") || !mainJs.includes("mainWindow.on('move'")) {
+    throw new Error('未监听窗口移动/缩放');
+  }
+  if (!mainJs.includes('getWindowState()')) throw new Error('未读取窗口状态');
+  const store = read('lib/store.js');
+  if (!store.includes('getWindowState') || !store.includes('setWindowState')) throw new Error('store 缺窗口状态方法');
+  const geometry = read('lib/display-geometry.js');
+  if (!geometry.includes('sanitizeWindowBounds')) throw new Error('几何模块缺边界校验');
+});
+
+t('处理轨迹失败记录可重试（IPC + preload）', () => {
+  if (!mainJs.includes("ipcMain.handle('executions:retry'")) throw new Error('缺少重试 IPC');
+  const preload = read('preload.js');
+  if (!preload.includes("'executions:retry'")) throw new Error('preload 未暴露 retry');
+  if (!mainJs.includes("execution.status !== 'failed'")) throw new Error('未限制只重试失败记录');
+});
+
+t('截图保存 / 任务导出对话框不再以隐藏窗口为父窗口', () => {
+  const guard = /mainWindow && !mainWindow\.isDestroyed\(\) && mainWindow\.isVisible\(\) \? mainWindow : null/g;
+  const count = (mainJs.match(guard) || []).length;
+  if (count < 2) throw new Error('保存/导出对话框仍有隐藏父窗口风险，实际命中 ' + count);
+});
+
+t('诊断报告不再把异步剪贴板读取写成同步', () => {
+  if (!mainJs.includes('await clipboard.readText()')) throw new Error('缺少 await readText');
+  if (mainJs.includes('const raw = clipboard.readText();')) throw new Error('仍存在未 await 的 readText');
+  const diagStart = mainJs.indexOf('async function collectDiagnostics(');
+  const diag = mainJs.slice(diagStart, diagStart + 14000);
+  for (const required of ['窗口状态记忆', '剪贴板采集范围']) {
+    if (!diag.includes(required)) throw new Error('诊断缺少字段 ' + required);
+  }
+});
+
+t('托盘提供浮引岛入口且函数不再粘连', () => {
+  if (!mainJs.includes('浮引岛（显示/隐藏）')) throw new Error('托盘缺浮引岛入口');
+  if (mainJs.includes('}function createTray')) throw new Error('createTray 仍与前一个函数粘连');
+  if (mainJs.includes('}    for (const item')) throw new Error('search:query 仍有粘连格式问题');
+});
+
+t('放回原处：复制失败必须返回失败而不是成功提示', () => {
+  if (!mainJs.includes('copyFailed')) throw new Error('复制失败未单独标记');
+  if (!mainJs.includes('decision.copyFailed')) throw new Error('return:commit 未处理复制失败');
+  if (!mainJs.includes("ok: false, error: decision.message || '复制失败'")) {
+    throw new Error('复制失败仍以 ok:true 返回，界面会显示成功');
+  }
+});
+
 console.log('\n========== ' + pass + ' 通过 / ' + fail + ' 失败 ==========');
 process.exit(fail ? 1 : 0);
