@@ -7,6 +7,7 @@ const {
 const path = require('node:path');
 const fs = require('node:fs');
 const fsp = require('node:fs/promises');
+const os = require('node:os');
 const crypto = require('node:crypto');
 const { pathToFileURL } = require('node:url');
 const { SuiraStore, makeId } = require('./lib/store');
@@ -1399,11 +1400,101 @@ async function initialize() {
   });
 }
 
-app.whenReady().then(initialize).catch((error) => {
+app.whenReady().then(initialize).then(() => {
+  // --diag：启动自检。把环境、窗口、快捷键、能力可用性写成一份报告，
+  // 便于在没有开发者工具的情况下定位真机问题。见 docs/REAL-MACHINE-CHECKLIST.md
+  if (process.argv.includes('--diag')) {
+    collectDiagnostics()
+      .then((report) => {
+        const target = path.join(app.getPath('userData'), 'diag-report.txt');
+        fs.writeFileSync(target, report, 'utf8');
+        console.log(report);
+        console.log('\n报告已写入: ' + target);
+      })
+      .catch((error) => console.error('自检失败:', error && error.stack ? error.stack : error));
+  }
+}).catch((error) => {
   console.error('随序启动失败:', error);
   dialog.showErrorBox('随序启动失败', error.stack || error.message || String(error));
   app.quit();
 });
+
+/**
+ * 收集真机诊断信息。
+ * 只读：不改设置、不动用户数据，只报告当前状态。
+ */
+async function collectDiagnostics() {
+  const lines = [];
+  const add = (label, value) => lines.push(String(label).padEnd(28) + String(value));
+  const section = (title) => { lines.push(''); lines.push('== ' + title + ' =='); };
+
+  section('环境');
+  add('应用版本', app.getVersion());
+  add('Electron', process.versions.electron || '-');
+  add('Chrome', process.versions.chrome || '-');
+  add('Node', process.versions.node || '-');
+  add('平台', `${process.platform} ${process.arch}`);
+  add('系统版本', `${os.release()}`);
+  add('数据目录', app.getPath('userData'));
+  add('数据目录可写', (() => {
+    try {
+      const probe = path.join(app.getPath('userData'), '.write-probe');
+      fs.writeFileSync(probe, 'ok');
+      fs.unlinkSync(probe);
+      return '是';
+    } catch (error) { return '否 — ' + error.message; }
+  })());
+  add('启动方式', process.argv.includes('--diag') ? '含 --diag' : '普通');
+
+  section('窗口');
+  for (const [name, win] of [['主窗口', mainWindow], ['面板', quickWindow]]) {
+    if (!win || win.isDestroyed()) { add(name, '未创建'); continue; }
+    const [w, h] = win.getSize();
+    add(`${name} 尺寸`, `${w}×${h}`);
+    add(`${name} 可见`, win.isVisible() ? '是' : '否');
+  }
+
+  section('快捷键');
+  const snap = shortcutManager ? shortcutManager.snapshot() : { bindings: {}, status: {} };
+  for (const [name, accelerator] of Object.entries(snap.bindings)) {
+    const entry = snap.status[name] || {};
+    const state = !accelerator ? '未绑定' : (entry.ok ? '已注册' : '注册失败：' + (entry.error || '未知'));
+    add(name, `${accelerator || '—'} ${state}`);
+  }
+  if (!shortcutManager) add('管理器', '未初始化');
+
+  section('能力');
+  add('屏幕数量', String(screen.getAllDisplays().length));
+  screen.getAllDisplays().forEach((d, i) => {
+    add(`  显示器 ${i + 1}`, `${d.size.width}×${d.size.height} @${d.scaleFactor}x`);
+  });
+  add('OCR 引擎', ocr ? '已创建' : '未创建');
+  add('剪贴板监听', clipboardTimer ? '运行中' : '未运行');
+  add('托盘', tray ? '已创建' : '未创建');
+
+  section('最近内容');
+  try {
+    const items = store ? store.listItems({ limit: 3 }) : [];
+    add('内容条数（前 3 条）', String(items.length));
+    items.forEach((item, i) => {
+      add(`  #${i + 1}`, `${item.kind} / ${String(item.title || '').slice(0, 24)}`);
+    });
+  } catch (error) {
+    add('读取失败', error.message);
+  }
+
+  section('设置');
+  try {
+    const settings = store ? store.getSettings() : {};
+    for (const key of Object.keys(settings).sort()) {
+      add(key, JSON.stringify(settings[key]));
+    }
+  } catch (error) {
+    add('读取失败', error.message);
+  }
+
+  return lines.join('\n');
+}
 
 app.on('before-quit', () => { isQuitting = true; });
 app.on('will-quit', () => {

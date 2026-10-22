@@ -12,12 +12,16 @@ Electron 实现的 Windows 桌面端样机。产品方向、交互结构与验�
 ```powershell
 npm install
 npm start          # 启动应用
-npm test           # 全量自动化测试（491 项）
+npm test           # 全量自动化测试（500 项）
+npm run diag       # 启动自检，生成环境报告
 ```
 
 > 打包：`npm run dist`（NSIS 安装包）或 `npm run dist:portable`（免安装单文件）。
 
 > 启动遇到问题？先看 [docs/KNOWN-ISSUES.md](docs/KNOWN-ISSUES.md)。
+
+> **要在真机上验证？** 照着 [docs/REAL-MACHINE-CHECKLIST.md](docs/REAL-MACHINE-CHECKLIST.md)
+> 走一遍，22 项逐条列出预期结果。先跑 `npm run diag` 能省掉大半排查时间。
 
 ---
 
@@ -237,7 +241,7 @@ KeyBinding  = key + actionId（lib/keybindings.js 是唯一来源）
 ## 测试
 
 ```powershell
-npm test                   # 全部 491 项
+npm test                   # 全部 502 项
 npm run test:core          # 36 项：数据层、文本处理、保留策略
 npm run test:actions       # 16 项：类型匹配、派生关系、失败路径
 npm run test:capabilities  # 43 项：拼音搜索、配方执行、剪贴板守卫
@@ -248,7 +252,8 @@ npm run test:foreground    # 18 项：前台窗口探测、超时、dispose 强�
 npm run test:security      # 73 项：快捷键冲突、恢复默认/清除、按住型唤起、加解密、加密落盘
 npm run test:display       # 20 项：多屏并集、负坐标、混合 DPI、分块布局
 npm run test:inject        # 20 项：SendInput 脚本、调用协议、失败处理
-npm run test:ui            # 109 项：IPC 通道一致性、键位接线、缺陷回归、钉图、跨屏、第三批差异表
+npm run test:diagnostics   # 9 项：自检报告字段、只读性、--diag 接线
+npm run test:ui            # 111 项：IPC 通道一致性、键位接线、缺陷回归、钉图、跨屏、第三批差异表
 npm run test:render        # 51 项：无头 Chrome 真实渲染断言（含面板模式切换）
 npm run test:confirm       # 12 项：确认词校验（真实 DOM，错误输入不得通过）
 npm run test:overlay       # 21 项：覆盖层 Ctrl+A 焦点隔离、查看原图、工具栏绑定

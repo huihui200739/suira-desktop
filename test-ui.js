@@ -412,6 +412,31 @@ t('按住型唤起已实现且有独立测试', () => {
   if (!doc.includes('onMomentaryActivationShortcut')) throw new Error('差距表缺少 momentary 证据');
 });
 
+t('真机验证清单存在且覆盖关键路径', () => {
+  if (!fs.existsSync('docs/REAL-MACHINE-CHECKLIST.md')) throw new Error('缺少真机验证清单');
+  const doc = read('docs/REAL-MACHINE-CHECKLIST.md');
+  // 清单必须提醒 ELECTRON_RUN_AS_NODE：这个变量会让窗口不出现
+  if (!doc.includes('ELECTRON_RUN_AS_NODE')) throw new Error('清单未提醒 ELECTRON_RUN_AS_NODE');
+  // 必须包含自检入口
+  if (!doc.includes('npm run diag')) throw new Error('清单未包含自检入口');
+  // 必须说明「不会假装已验证」
+  if (!doc.includes('我不会假装已验证')) throw new Error('清单缺少诚实性声明');
+  // 关键验证项编号必须存在
+  for (const n of ['| 3 |', '| 9 |', '| 17 |']) {
+    if (!doc.includes(n)) throw new Error('清单缺少验证项 ' + n);
+  }
+});
+
+t('诊断报告包含排查真机问题所需的全部区块', () => {
+  const mainJs = read('main.js');
+  const start = mainJs.indexOf('async function collectDiagnostics(');
+  if (start < 0) throw new Error('缺少 collectDiagnostics');
+  const body = mainJs.slice(start);
+  for (const section of ['环境', '窗口', '快捷键', '能力', '最近内容', '设置']) {
+    if (!body.includes(`section('${section}')`)) throw new Error('自检缺少区块：' + section);
+  }
+});
+
 console.log('\n== 放回子系统接线检查 ==');
 t('preload 暴露 returnTo 与 openApp', () => {
   if (!/returnTo:\s*\{[\s\S]*?commit\s*:/.test(preload)) throw new Error('缺少 returnTo.commit');
