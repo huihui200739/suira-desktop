@@ -691,8 +691,9 @@ t('单屏时不走合成，直接用原图', () => {
   }
 });
 t('overlay 窗口覆盖整个虚拟桌面', () => {
-  if (!mainJs.includes('overlayWindow.setBounds(virtualBounds)')) throw new Error('overlay 未覆盖虚拟桌面');
-  if (!mainJs.includes('x: virtualBounds.x')) throw new Error('overlay x 未对齐虚拟桌面');
+  if (!mainJs.includes('currentVirtualBounds')) throw new Error('缺少虚拟桌面边界计算');
+  if (!mainJs.includes('win.setBounds(bounds)')) throw new Error('overlay 未按当前虚拟桌面重设边界');
+  if (!mainJs.includes('x: bounds.x')) throw new Error('overlay x 未对齐虚拟桌面');
 });
 t('payload 携带每块的位置与尺寸', () => {
   const overlay = read('src/overlay.js');
@@ -837,12 +838,81 @@ t('托盘提供浮引岛入口且函数不再粘连', () => {
   if (mainJs.includes('}    for (const item')) throw new Error('search:query 仍有粘连格式问题');
 });
 
+t('放回原处：图片条目复制位图而不是路径文本', () => {
+  if (!mainJs.includes("item?.kind === 'image' && item.filePath && fs.existsSync(item.filePath)")) {
+    throw new Error('图片条目未走位图复制');
+  }
+  if (!mainJs.includes('await writeClipboardImage(image)')) throw new Error('未调用 writeClipboardImage');
+});
+
 t('放回原处：复制失败必须返回失败而不是成功提示', () => {
   if (!mainJs.includes('copyFailed')) throw new Error('复制失败未单独标记');
   if (!mainJs.includes('decision.copyFailed')) throw new Error('return:commit 未处理复制失败');
   if (!mainJs.includes("ok: false, error: decision.message || '复制失败'")) {
     throw new Error('复制失败仍以 ok:true 返回，界面会显示成功');
   }
+});
+
+console.log('\n== 体验优化：截图流畅度 / 工具栏时序 / 底部剪贴板条 ==');
+
+t('截图覆盖层是预热常驻窗口（不再每次新建/销毁）', () => {
+  if (!mainJs.includes('function createOverlayWindow')) throw new Error('缺少覆盖层预热创建');
+  if (!mainJs.includes('showOverlayWindow')) throw new Error('缺少统一显示入口');
+  if (!mainJs.includes('hideOverlayWindow')) throw new Error('缺少隐藏而不是销毁');
+  if (!mainJs.includes("webContents.send('capture:shown')")) throw new Error('未通知覆盖层重新取画面');
+  if (mainJs.includes('overlayWindow.destroy()')) throw new Error('覆盖层仍在销毁，失去预热意义');
+  const preload = read('preload.js');
+  if (!preload.includes("'capture:shown'")) throw new Error('preload 未暴露 capture.onShown');
+  const overlay = read('src/overlay.js');
+  if (!overlay.includes('capture.onShown')) throw new Error('覆盖层未订阅 capture.onShown');
+});
+
+t('截图工具栏在框选完成前不出现', () => {
+  const overlay = read('src/overlay.js');
+  if (!overlay.includes('toolDock.hidden')) throw new Error('缺少工具栏显隐控制');
+  if (!/selecting|selectionReady/.test(overlay)) throw new Error('缺少「正在框选/已完成」状态');
+});
+
+t('覆盖层 canvas 不再强制软件渲染', () => {
+  const overlay = read('src/overlay.js');
+  if (overlay.includes('willReadFrequently')) throw new Error('canvas 仍用 willReadFrequently，会掉帧');
+  if (!/requestAnimationFrame/.test(overlay)) throw new Error('pointermove 未做合帧');
+});
+
+t('剪贴板历史条：窗口 / 组合键 / IPC 接线', () => {
+  if (!mainJs.includes('createClipboardBarWindow')) throw new Error('缺少底部条窗口创建');
+  if (!mainJs.includes('showClipboardBar') || !mainJs.includes('toggleClipboardBar')) throw new Error('缺少显示/切换入口');
+  for (const channel of ['clipboard-bar:show', 'clipboard-bar:hide', 'clipboard-bar:toggle']) {
+    if (!mainJs.includes(channel)) throw new Error('缺少 IPC ' + channel);
+  }
+  if (!mainJs.includes("title: '随序 · 剪贴板'")) throw new Error('窗口标题缺失');
+  const shortcuts = read('lib/shortcuts.js');
+  if (!shortcuts.includes("clipboardBar: 'CommandOrControl+Alt+V'")) throw new Error('缺省组合键未注册');
+  const store = read('lib/store.js');
+  if (!store.includes('shortcutClipboardBar')) throw new Error('设置未持久化底部条键位');
+  if (!mainJs.includes('clipboardBar: toggleClipboardBar')) throw new Error('快捷键 handler 未接');
+});
+
+t('剪贴板历史条：preload 与设置页入口', () => {
+  const preload = read('preload.js');
+  for (const method of ['show', 'hide', 'toggle', 'onShown']) {
+    if (!preload.includes(method + ':') && !preload.includes(method + ' =>') && !preload.includes(method + ':')) {
+      throw new Error('preload 未暴露 clipboardBar.' + method);
+    }
+  }
+  const html = read('src/index.html');
+  const appJs = read('src/app.js');
+  for (const id of ['setting-key-clipboardBar', 'status-clipboardBar']) {
+    if (!html.includes(`id="${id}"`)) throw new Error('设置页缺少 ' + id);
+  }
+  if (!html.includes('data-shortcut-clear="clipboardBar"')) throw new Error('缺少底部条清除绑定按钮');
+  if (!appJs.includes("name: 'clipboardBar'")) throw new Error('设置页未绑定底部条改键');
+  if (!fs.existsSync('src/clipboardbar.html') || !fs.existsSync('src/clipboardbar.js') || !fs.existsSync('src/clipboardbar.css')) {
+    throw new Error('缺少 clipboardbar 页面文件');
+  }
+  const barJs = read('src/clipboardbar.js');
+  if (/require\('node:fs'\)|require\('electron'\)/.test(barJs)) throw new Error('底部条渲染层不应依赖 node/electron');
+  if (!barJs.includes('returnTo.commit')) throw new Error('底部条未接放回提交');
 });
 
 console.log('\n========== ' + pass + ' 通过 / ' + fail + ' 失败 ==========');

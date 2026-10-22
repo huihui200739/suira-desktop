@@ -1,10 +1,14 @@
 'use strict';
 /*
- * 用无头 Chrome 验证截图覆盖层的两处修复在真实 DOM 里生效：
+ * 用无头 Chrome 验证截图覆盖层在真实 DOM 里的行为：
  *
- * 1. Ctrl+A：在文字输入框里应当「全选文字」，不能把选区重置成整个屏幕
- *    （复现缺陷：文字编辑器里按 Ctrl+A 会清空输入并选中全屏）
- * 2. 查看原图：OCR 结果面板的按钮必须真的把未加标注的原图渲染出来
+ * 1. 工具栏时序：拖动框选期间只显示顶部提示条，松开形成有效选区后才出现编辑工具栏；
+ *    重新开始框选时旧选区与工具栏立刻消失。
+ * 2. 流畅度：pointermove 合帧（同帧多次移动只应用一次）、主画布不再用软件 canvas、
+ *    拖动路径不再逐帧读布局。
+ * 3. 预热覆盖层契约：页面加载完成后不自动取画面；每次 capture:shown 先 reset 再加载，
+ *    第二次唤起时选区 / 工具栏 / 标注 / 面板全部清空。
+ * 4. 历史缺陷回归：Ctrl+A 焦点隔离、查看原图尺寸、工具栏按钮绑定、完成提交。
  *
  * 用法：node tools/overlay-check.js
  */
@@ -28,9 +32,10 @@ fs.mkdirSync(TMP, { recursive: true });
 
 // 覆盖层需要一份「屏幕画面」：用 canvas 生成纯色 PNG 当作 payload.dataUrl，
 // 这样 compositeSelection 能真的裁出一张图。
+// capture.onShown 对应主进程的 capture:shown：fixture 用 __fireShown() 主动唤起。
 const MOCK = `
 (function(){
-  var handlers = {};
+  var shownCallbacks = [];
   function makeScreen(w, h, color) {
     var c = document.createElement('canvas');
     c.width = w; c.height = h;
@@ -56,7 +61,15 @@ const MOCK = `
         };
       },
       finish: async function(p){ window.__finish = p; return { ok:true, item:{id:'img1'}, output:{ id:'txt1', text:'识别出的文字' } }; },
-      cancel: async function(){ window.__canceled = true; return { ok:true }; }
+      cancel: async function(){ window.__canceled = true; return { ok:true }; },
+      // 预热覆盖层契约：主进程每次唤起截图前发 capture:shown
+      onShown: function(cb){
+        shownCallbacks.push(cb);
+        return function(){
+          var i = shownCallbacks.indexOf(cb);
+          if (i >= 0) shownCallbacks.splice(i, 1);
+        };
+      }
     },
     content: {
       addText: async function(p){ window.__added = p; return { ok:true, item:{ id:'txt2' } }; },
@@ -64,6 +77,12 @@ const MOCK = `
     },
     actions: { run: async function(){ return { ok:true }; } },
     quick: { hide: async function(){ return {ok:true}; } }
+  };
+  window.__shownCount = 0;
+  window.__fireShown = function(){
+    window.__shownCount += 1;
+    var list = shownCallbacks.slice();
+    for (var i = 0; i < list.length; i += 1) list[i]();
   };
 })();
 `;
@@ -102,6 +121,19 @@ async function evaluate(send, expression) {
   return r.result ? r.result.value : undefined;
 }
 
+/** 轮询页面条件，避免用固定 sleep 猜加载耗时 */
+async function waitFor(send, expression, timeoutMs = 5000, interval = 50) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    try {
+      const ok = await evaluate(send, `Boolean(${expression})`);
+      if (ok) return true;
+    } catch { /* 页面还在导航 */ }
+    await sleep(interval);
+  }
+  return false;
+}
+
 let pass = 0, fail = 0;
 const check = (name, cond, detail) => {
   if (cond) { console.log('  PASS  ' + name); pass++; }
@@ -110,6 +142,7 @@ const check = (name, cond, detail) => {
 
 (async () => {
   if (!CHROME) throw new Error('未找到 Chrome/Edge');
+  const overlaySource = fs.readFileSync(path.join(ROOT, 'src', 'overlay.js'), 'utf8');
   const html = fs.readFileSync(path.join(ROOT, 'src', 'overlay.html'), 'utf8')
     .replace('<script src="overlay.js"></script>', '<script src="__mock.js"></script><script src="overlay.js"></script>');
   fs.writeFileSync(path.join(TMP, '__mock.js'), MOCK, 'utf8');
@@ -142,18 +175,198 @@ const check = (name, cond, detail) => {
     await send('Runtime.enable');
     await send('Emulation.setDeviceMetricsOverride', { width: 800, height: 600, deviceScaleFactor: 1, mobile: false });
     await send('Page.navigate', { url: 'file:///' + path.join(TMP, 'overlay.html').replace(/\\/g, '/') });
-    await sleep(1500);
 
-    const loaded = await evaluate(send, `JSON.stringify({
+    console.log('\n== 预热契约：页面就绪后等待 capture:shown ==');
+    const ready = await waitFor(send, `typeof window.__fireShown === 'function' && !!window.__lastCapturePerf`, 5000);
+    check('mock 提供 capture.onShown，覆盖层完成引导', ready);
+    const beforeShown = await evaluate(send, `JSON.stringify({
+      shownAt: window.__lastCapturePerf && window.__lastCapturePerf.shownAt,
       loadingHidden: document.getElementById('loading-state').hidden,
-      hasImage: (function(){ try { return true; } catch(e){ return false; } })()
+      dockHidden: document.getElementById('tool-dock').hidden
     })`);
-    check('覆盖层画面已加载', JSON.parse(loaded).loadingHidden === true, loaded);
+    const bs = JSON.parse(beforeShown);
+    check('页面加载完成后不自动取画面（等 shown 事件）', bs.shownAt === 0, beforeShown);
+
+    await evaluate(send, `window.__fireShown(), 'ok'`);
+    const loadedOk = await waitFor(send, `document.getElementById('loading-state').hidden === true`, 6000);
+    check('收到 shown 后画面已加载', loadedOk);
+    const loaded = await evaluate(send, `JSON.stringify({
+      shownCount: window.__shownCount,
+      perf: window.__lastCapturePerf
+    })`);
+    const ld = JSON.parse(loaded);
+    check('第一次 shown 被处理且埋点已写入 shownAt/imageReadyAt',
+      ld.shownCount === 1 && ld.perf.shownAt > 0 && ld.perf.imageReadyAt > 0, loaded);
+
+    console.log('\n== 任务 A：工具栏要框选完（松开）才出现 ==');
+    const initial = await evaluate(send, `JSON.stringify({
+      dockHidden: document.getElementById('tool-dock').hidden,
+      selectionHidden: document.getElementById('selection').hidden,
+      hintHidden: document.getElementById('capture-hint').classList.contains('is-hidden')
+    })`);
+    const init = JSON.parse(initial);
+    check('初始没有选区时 #tool-dock 隐藏', init.dockHidden === true, initial);
+    check('初始选区框隐藏', init.selectionHidden === true, initial);
+    check('初始只显示顶部提示条', init.hintHidden === false, initial);
+
+    // 开始一次框选：按下 + 同一任务里连续 6 次 pointermove（顺带验证合帧），先不松手
+    await evaluate(send, `(function(){
+      window.__perfStart = JSON.parse(JSON.stringify(window.__lastCapturePerf));
+      var root = document.getElementById('capture-root');
+      root.dispatchEvent(new PointerEvent('pointerdown', {button:0, clientX:100, clientY:100, bubbles:true, pointerId:11}));
+      for (var i = 1; i <= 6; i += 1) {
+        root.dispatchEvent(new PointerEvent('pointermove', {clientX:100 + i * 50, clientY:100 + i * 25, bubbles:true, pointerId:11}));
+      }
+    })(), 'ok'`);
+    await sleep(150);
+    const dragging = await evaluate(send, `JSON.stringify({
+      dockHidden: document.getElementById('tool-dock').hidden,
+      selectionHidden: document.getElementById('selection').hidden,
+      hintHidden: document.getElementById('capture-hint').classList.contains('is-hidden'),
+      perf: window.__lastCapturePerf,
+      prev: window.__perfStart
+    })`);
+    const dr = JSON.parse(dragging);
+    check('拖动中 #tool-dock 仍然隐藏（框选完才出现）', dr.dockHidden === true, dragging);
+    check('拖动中橡皮筋选区框可见', dr.selectionHidden === false, dragging);
+    check('拖动中顶部提示条保持显示', dr.hintHidden === false, dragging);
+    check('pointermove 合帧：6 次移动只应用 1 帧',
+      dr.perf.pointerMoves - dr.prev.pointerMoves === 6 && dr.perf.framesApplied - dr.prev.framesApplied === 1,
+      'moves=' + (dr.perf.pointerMoves - dr.prev.pointerMoves) + ' frames=' + (dr.perf.framesApplied - dr.prev.framesApplied));
+    check('首次 pointerdown 后写入 firstPointerMs', dr.perf.firstPointerMs > 0, JSON.stringify(dr.perf));
+
+    await evaluate(send, `(function(){
+      var root = document.getElementById('capture-root');
+      root.dispatchEvent(new PointerEvent('pointerup', {clientX:400, clientY:250, bubbles:true, pointerId:11}));
+    })(), 'ok'`);
+    await sleep(150);
+    const released = await evaluate(send, `JSON.stringify({
+      dockHidden: document.getElementById('tool-dock').hidden,
+      dockLeft: parseInt(document.getElementById('tool-dock').style.left, 10),
+      dockTop: parseInt(document.getElementById('tool-dock').style.top, 10),
+      selW: Math.round(parseFloat(document.getElementById('selection').style.width)),
+      selH: Math.round(parseFloat(document.getElementById('selection').style.height)),
+      hintHidden: document.getElementById('capture-hint').classList.contains('is-hidden')
+    })`);
+    const rl = JSON.parse(released);
+    check('松开后 #tool-dock 出现', rl.dockHidden === false, released);
+    check('合帧后选区尺寸取最后一帧坐标', rl.selW === 300 && rl.selH === 150, released);
+    check('工具栏定位在选区下方（有 left/top，且在视口内）',
+      Number.isFinite(rl.dockLeft) && Number.isFinite(rl.dockTop) && rl.dockTop > 250 && rl.dockTop < 600 && rl.dockLeft >= 0,
+      released);
+    check('松开后顶部提示条收起', rl.hintHidden === true, released);
+
+    // 重新开始新框选：按下瞬间旧选区与工具栏都要消失
+    await evaluate(send, `(function(){
+      document.querySelector('[data-tool="select"]').click();
+      var root = document.getElementById('capture-root');
+      root.dispatchEvent(new PointerEvent('pointerdown', {button:0, clientX:200, clientY:400, bubbles:true, pointerId:12}));
+    })(), 'ok'`);
+    await sleep(120);
+    const restarted = await evaluate(send, `JSON.stringify({
+      dockHidden: document.getElementById('tool-dock').hidden,
+      selectionHidden: document.getElementById('selection').hidden,
+      hintHidden: document.getElementById('capture-hint').classList.contains('is-hidden')
+    })`);
+    const rs = JSON.parse(restarted);
+    check('重新开始新框选时工具栏立即隐藏', rs.dockHidden === true, restarted);
+    check('重新开始新框选时旧选区立即消失', rs.selectionHidden === true, restarted);
+    check('重新开始新框选时提示条恢复', rs.hintHidden === false, restarted);
+
+    // 完成这次新框选，进入「已有选区」状态
+    await evaluate(send, `(function(){
+      var root = document.getElementById('capture-root');
+      root.dispatchEvent(new PointerEvent('pointermove', {clientX:360, clientY:470, bubbles:true, pointerId:12}));
+      root.dispatchEvent(new PointerEvent('pointerup', {clientX:360, clientY:470, bubbles:true, pointerId:12}));
+    })(), 'ok'`);
+    await sleep(150);
+    const again = await evaluate(send, `JSON.stringify({
+      dockHidden: document.getElementById('tool-dock').hidden,
+      selW: Math.round(parseFloat(document.getElementById('selection').style.width))
+    })`);
+    check('再次框选松手后工具栏重新出现', JSON.parse(again).dockHidden === false, again);
+
+    // 已有选区上移动 / 缩放：工具栏保持可见并跟随
+    await evaluate(send, `(function(){
+      document.querySelector('[data-tool="select"]').click();
+      var root = document.getElementById('capture-root');
+      var sel = document.getElementById('selection');
+      var before = { left: parseInt(document.getElementById('tool-dock').style.left, 10), top: parseInt(document.getElementById('tool-dock').style.top, 10) };
+      window.__dockBefore = before;
+      // 用选区元素本身作为 target，模拟「按住选区内部拖动」
+      sel.dispatchEvent(new PointerEvent('pointerdown', {button:0, clientX:280, clientY:430, bubbles:true, pointerId:13}));
+      root.dispatchEvent(new PointerEvent('pointermove', {clientX:330, clientY:450, bubbles:true, pointerId:13}));
+    })(), 'ok'`);
+    await sleep(150);
+    const moving = await evaluate(send, `JSON.stringify({
+      dockHidden: document.getElementById('tool-dock').hidden,
+      before: window.__dockBefore,
+      top: parseInt(document.getElementById('tool-dock').style.top, 10),
+      selTop: parseFloat(document.getElementById('selection').style.top)
+    })`);
+    const mv = JSON.parse(moving);
+    check('移动已有选区时工具栏保持可见', mv.dockHidden === false, moving);
+    check('移动已有选区时工具栏跟随（top 变化）', Number.isFinite(mv.top) && mv.top !== mv.before.top, moving);
+    await evaluate(send, `(function(){
+      var root = document.getElementById('capture-root');
+      root.dispatchEvent(new PointerEvent('pointerup', {clientX:330, clientY:450, bubbles:true, pointerId:13}));
+    })(), 'ok'`);
+    await sleep(120);
+    const movedEnd = await evaluate(send, `JSON.stringify({ dockHidden: document.getElementById('tool-dock').hidden })`);
+    check('移动结束后工具栏仍在', JSON.parse(movedEnd).dockHidden === false, movedEnd);
+
+    console.log('\n== 运行期证明：拖动时不做布局读取 ==');
+
+    // 把 Element.prototype.getBoundingClientRect 与 offsetWidth getter 打上计数器，
+    // 在真实 pointer 事件序列 + 两帧 rAF 里统计 JS 层的强制同步布局次数。
+    const layoutProbe = (action, args) => evaluate(send, `(function(){
+      var rectCalls = 0, offsetCalls = 0;
+      var origRect = Element.prototype.getBoundingClientRect;
+      Element.prototype.getBoundingClientRect = function(){ rectCalls += 1; return origRect.call(this); };
+      var offsetDesc = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'offsetWidth');
+      Object.defineProperty(HTMLElement.prototype, 'offsetWidth', { configurable: true, get: function(){ offsetCalls += 1; return offsetDesc.get.call(this); } });
+      function restore() {
+        Element.prototype.getBoundingClientRect = origRect;
+        Object.defineProperty(HTMLElement.prototype, 'offsetWidth', offsetDesc);
+      }
+      var rootEl = document.getElementById('capture-root');
+      var sel = document.getElementById('selection');
+      ${action}
+      return new Promise(function(resolve){
+        requestAnimationFrame(function(){ requestAnimationFrame(function(){
+          restore();
+          ${args}
+          resolve(JSON.stringify({ rectCalls: rectCalls, offsetCalls: offsetCalls }));
+        }); });
+      });
+    })()`);
+
+    // 1) 橡皮筋框选：拖动期间不应有任何布局读取
+    const dragProbe = await layoutProbe(
+      `rootEl.dispatchEvent(new PointerEvent('pointerdown', {button:0, clientX:60, clientY:60, bubbles:true, pointerId:41}));
+       for (var i = 1; i <= 4; i += 1) rootEl.dispatchEvent(new PointerEvent('pointermove', {clientX:60 + i * 40, clientY:60 + i * 30, bubbles:true, pointerId:41}));`,
+      `rootEl.dispatchEvent(new PointerEvent('pointerup', {clientX:220, clientY:180, bubbles:true, pointerId:41}));`
+    );
+    const dp = JSON.parse(dragProbe);
+    check('框选拖动期间 0 次 getBoundingClientRect / offsetWidth 读取',
+      dp.rectCalls === 0 && dp.offsetCalls === 0, dragProbe);
+
+    // 2) 移动已有选区：工具栏用缓存尺寸定位，同样不应读布局
+    const moveProbe = await layoutProbe(
+      `document.querySelector('[data-tool="select"]').click();
+       sel.dispatchEvent(new PointerEvent('pointerdown', {button:0, clientX:120, clientY:120, bubbles:true, pointerId:42}));
+       for (var j = 1; j <= 4; j += 1) rootEl.dispatchEvent(new PointerEvent('pointermove', {clientX:120 + j * 20, clientY:120 + j * 15, bubbles:true, pointerId:42}));`,
+      `rootEl.dispatchEvent(new PointerEvent('pointerup', {clientX:200, clientY:180, bubbles:true, pointerId:42}));`
+    );
+    const mp = JSON.parse(moveProbe);
+    check('移动 / 缩放选区期间 0 次 getBoundingClientRect / offsetWidth 读取',
+      mp.rectCalls === 0 && mp.offsetCalls === 0, moveProbe);
 
     console.log('\n== Ctrl+A 不再误把选区重置为全屏 ==');
 
-    // 先建立一个小选区
+    // 先建立一个小选区（先切回「选择区域」，否则会画一笔）
     await evaluate(send, `(function(){
+      document.querySelector('[data-tool="select"]').click();
       var root = document.getElementById('capture-root');
       var down = new PointerEvent('pointerdown', {button:0, clientX:100, clientY:100, bubbles:true, pointerId:1});
       root.dispatchEvent(down);
@@ -224,7 +437,7 @@ const check = (name, cond, detail) => {
     console.log('\n== OCR 结果面板「查看原图」==');
 
     // 关掉文字编辑器，用真实拖拽重新建立一个选区。
-    // 注意：已有选区时 mode 是 annotate，直接拖会画笔画一笔而不是重选，
+    // 已有选区时 mode 是 annotate，直接拖会画笔画一笔而不是重选，
     // 所以先切回「选择区域」工具——这正是用户会做的动作。
     await evaluate(send, `(function(){
       document.getElementById('text-editor').hidden = true;
@@ -294,6 +507,44 @@ const check = (name, cond, detail) => {
     const closed = await evaluate(send, `JSON.stringify({ hidden: document.getElementById('original-viewer').hidden })`);
     check('原图层可关闭并回到 OCR 结果', JSON.parse(closed).hidden === true, closed);
 
+    console.log('\n== 马赛克 / 标注仍能真的画出来（去掉 getImageData 热点后）==');
+
+    const annotationPixels = () => evaluate(send, `(function(){
+      var c = document.getElementById('annotation-canvas');
+      var data = c.getContext('2d').getImageData(0, 0, c.width, c.height).data;
+      var count = 0;
+      for (var i = 3; i < data.length; i += 16) { if (data[i]) count += 1; }
+      return count;
+    })()`);
+
+    // 马赛克现在用预计算调色板取色，拖动路径不再 getImageData
+    await evaluate(send, `(function(){
+      document.querySelector('[data-tool="mosaic"]').click();
+      var root = document.getElementById('capture-root');
+      root.dispatchEvent(new PointerEvent('pointerdown', {button:0, clientX:150, clientY:130, bubbles:true, pointerId:31}));
+      root.dispatchEvent(new PointerEvent('pointermove', {clientX:260, clientY:220, bubbles:true, pointerId:31}));
+      root.dispatchEvent(new PointerEvent('pointerup', {clientX:260, clientY:220, bubbles:true, pointerId:31}));
+    })(), 'ok'`);
+    await sleep(250);
+    const mosaicPixels = await annotationPixels();
+    check('马赛克拖动后标注画布有像素（调色板取色路径可用）', mosaicPixels > 0, 'pixels=' + mosaicPixels);
+    await evaluate(send, `document.querySelector('[data-action="undo"]').click(), 'ok'`);
+    await sleep(150);
+    const afterUndo = await annotationPixels();
+    check('撤销马赛克后标注画布清空', afterUndo === 0, 'pixels=' + afterUndo);
+
+    // 矩形标注（普通 canvas 绘制路径）
+    await evaluate(send, `(function(){
+      document.querySelector('[data-tool="rect"]').click();
+      var root = document.getElementById('capture-root');
+      root.dispatchEvent(new PointerEvent('pointerdown', {button:0, clientX:140, clientY:120, bubbles:true, pointerId:32}));
+      root.dispatchEvent(new PointerEvent('pointermove', {clientX:260, clientY:220, bubbles:true, pointerId:32}));
+      root.dispatchEvent(new PointerEvent('pointerup', {clientX:260, clientY:220, bubbles:true, pointerId:32}));
+    })(), 'ok'`);
+    await sleep(200);
+    const rectPixels = await annotationPixels();
+    check('矩形标注画到 annotation canvas 上', rectPixels > 0, 'pixels=' + rectPixels);
+
     console.log('\n== 工具栏按钮都真的绑定了行为 ==');
     // 复现过的缺陷：选择器只匹配 .tool-button，而「识」与「完成」是别的类，
     // 点击完全没反应
@@ -327,6 +578,74 @@ const check = (name, cond, detail) => {
     })`);
     check('点「完成」真的提交截图（不再无反应）', JSON.parse(doneClick).finished === true, doneClick);
     check('「完成」提交的 action 是 copy', JSON.parse(doneClick).action === 'copy', doneClick);
+
+    console.log('\n== 第二次 capture:shown：状态被彻底重置 ==');
+
+    // 当前仍有选区 / 工具栏 / 标注，再触发一次唤起
+    const second = await evaluate(send, `(function(){
+      var c = document.getElementById('annotation-canvas');
+      var beforeData = c.getContext('2d').getImageData(0, 0, c.width, c.height).data;
+      var beforePixels = 0;
+      for (var i = 3; i < beforeData.length; i += 16) { if (beforeData[i]) beforePixels += 1; }
+      window.__fireShown();
+      var afterData = c.getContext('2d').getImageData(0, 0, c.width, c.height).data;
+      var afterPixels = 0;
+      for (var j = 3; j < afterData.length; j += 16) { if (afterData[j]) afterPixels += 1; }
+      return JSON.stringify({
+        beforePixels: beforePixels,
+        afterPixels: afterPixels,
+        shownCount: window.__shownCount,
+        dockHidden: document.getElementById('tool-dock').hidden,
+        selectionHidden: document.getElementById('selection').hidden,
+        loadingHidden: document.getElementById('loading-state').hidden,
+        hintHidden: document.getElementById('capture-hint').classList.contains('is-hidden'),
+        ocrHidden: document.getElementById('ocr-result').hidden,
+        viewerHidden: document.getElementById('original-viewer').hidden,
+        editorHidden: document.getElementById('text-editor').hidden
+      });
+    })()`);
+    const sec = JSON.parse(second);
+    check('第二次 shown 前确实有标注内容', sec.beforePixels > 0, second);
+    check('第二次 shown 同步清空选区', sec.selectionHidden === true, second);
+    check('第二次 shown 同步隐藏工具栏', sec.dockHidden === true, second);
+    check('第二次 shown 同步清空标注画布', sec.afterPixels === 0, second);
+    check('第二次 shown 显示 loading 并在途', sec.loadingHidden === false, second);
+    check('第二次 shown 恢复顶部提示条', sec.hintHidden === false, second);
+    check('第二次 shown 隐藏 OCR / 原图 / 文字编辑器',
+      sec.ocrHidden === true && sec.viewerHidden === true && sec.editorHidden === true, second);
+    check('shown 事件计数为 2', sec.shownCount === 2, second);
+
+    const reloadedOk = await waitFor(send, `document.getElementById('loading-state').hidden === true`, 6000);
+    check('第二次 shown 后新画面加载完成（loading 消失）', reloadedOk);
+    const afterSecondLoad = await evaluate(send, `(function(){
+      var c = document.getElementById('screen-canvas');
+      var px = c.getContext('2d').getImageData(4, 4, 1, 1).data;
+      return JSON.stringify({
+        loadingHidden: document.getElementById('loading-state').hidden,
+        dockHidden: document.getElementById('tool-dock').hidden,
+        selectionHidden: document.getElementById('selection').hidden,
+        pixel: [px[0], px[1], px[2], px[3]],
+        shownAt: window.__lastCapturePerf.shownAt,
+        imageReadyAt: window.__lastCapturePerf.imageReadyAt
+      });
+    })()`);
+    const asl = JSON.parse(afterSecondLoad);
+    check('第二次 shown 后新画面真的重绘到 screen canvas', asl.pixel[0] > 200 && asl.pixel[3] === 255, afterSecondLoad);
+    check('第二次 shown 后仍是空白状态（无选区 / 无工具栏）',
+      asl.selectionHidden === true && asl.dockHidden === true, afterSecondLoad);
+    check('第二次 shown 的埋点已刷新', asl.shownAt > 0 && asl.imageReadyAt > 0, afterSecondLoad);
+
+    console.log('\n== 源码层性能约束（静态）==');
+    check('主画布 getContext 不再传 willReadFrequently',
+      !/getContext\('2d',\s*\{\s*willReadFrequently/.test(overlaySource), '仍有软件 canvas');
+    check('主画布不再用 getImageData 读回（screenCtx.getImageData 已移除）',
+      !/screenCtx\.getImageData/.test(overlaySource));
+    check('拖动路径不再逐帧 root.getBoundingClientRect（只剩 refreshMetrics 一处）',
+      (overlaySource.match(/root\.getBoundingClientRect/g) || []).length === 1);
+    check('拖动路径不再逐帧读 root.clientWidth / root.clientHeight',
+      !/root\.clientWidth|root\.clientHeight/.test(overlaySource));
+    check('工具栏尺寸只测量一次（toolDock.offsetWidth 仅 measureDock 一处）',
+      (overlaySource.match(/toolDock\.offsetWidth/g) || []).length === 1);
 
     console.log('\n========== ' + pass + ' 通过 / ' + fail + ' 失败 ==========');
     ws.close();

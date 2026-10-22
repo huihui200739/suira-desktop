@@ -10,6 +10,12 @@
   <div id="capture-root">
     <canvas id="screen-canvas"></canvas>
     <canvas id="annotation-canvas"></canvas>
+    <!-- 选区外压暗：用 4 块矩形代替 100vmax 的 box-shadow。
+         拖动时只重绘选区边缘的条带，不再每帧整屏重绘一次巨大阴影。 -->
+    <div class="dim" id="dim-top"></div>
+    <div class="dim" id="dim-right"></div>
+    <div class="dim" id="dim-bottom"></div>
+    <div class="dim" id="dim-left"></div>
     <div class="shade" id="shade"></div>
     <div class="selection" id="selection" hidden>
       <div class="selection-grid"></div>

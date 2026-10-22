@@ -95,11 +95,21 @@ async function waitFor(check, timeoutMs = 6000, intervalMs = 250) {
   fs.mkdirSync(tempDir, { recursive: true });
   const pngDataUrl = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
 
+  // 这个脚本要能重复跑：先清掉上一轮留下的内容，避免「重复条目」「文件已落盘」误报
+  const staleItems = JSON.parse(await evaluate(main.send, `JSON.stringify(await window.suira.content.list({ limit: 500 }))`));
+  for (const item of staleItems) {
+    await evaluate(main.send, `window.suira.content.remove(${JSON.stringify(item.id)})`);
+  }
+  await sleep(300);
+
   console.log('\n== 截图：复制 ==');
   const copyResult = JSON.parse(await evaluate(main.send, `JSON.stringify(await window.suira.capture.finish({ dataUrl: ${JSON.stringify(pngDataUrl)}, action: 'copy' }))`));
   check('截图完成并入库（action=copy）', copyResult.ok === true && Boolean(copyResult.item?.id), JSON.stringify(copyResult).slice(0, 200));
   check('截图条目类型为 image', copyResult.item?.kind === 'image', copyResult.item?.kind);
-  check('截图文件已落盘', Boolean(copyResult.filePath) && fs.existsSync(copyResult.filePath), copyResult.filePath);
+  // 同一张图重复截图会命中 hash 去重、删掉新写的文件并复用旧条目，
+  // 所以这里校验「条目实际指向的文件存在」而不是「新写的那份存在」。
+  const captureFile = copyResult.item?.filePath || copyResult.filePath;
+  check('截图文件已落盘', Boolean(captureFile) && fs.existsSync(captureFile), captureFile);
   const clipboardHasImage = ps("Add-Type -AssemblyName System.Windows.Forms; if ([System.Windows.Forms.Clipboard]::GetImage()) { 'YES' } else { 'NO' }");
   check('复制后系统剪贴板里确实是图片', clipboardHasImage === 'YES', clipboardHasImage);
 
@@ -154,7 +164,7 @@ async function waitFor(check, timeoutMs = 6000, intervalMs = 250) {
   check('文件名进入标题', String(filesItem?.title || '').includes('e2e-a.txt'), filesItem?.title);
   check('两个绝对路径都在正文里', String(filesItem?.text || '').includes(fileA) && String(filesItem?.text || '').includes(fileB), String(filesItem?.text || '').slice(0, 200));
   check('filePath 指向第一个文件', filesItem?.filePath === fileA, filesItem?.filePath);
-  const allFilesItems = (await listItems(main.send)).filter((item) => item.kind === 'files');
+  const allFilesItems = (await listItems(main.send)).filter((item) => item.kind === 'files' && String(item.text).includes(tempDir));
   check('文件条目不重复入库', allFilesItems.length === 1, 'files items = ' + allFilesItems.length);
 
   console.log('\n== 剪贴板：重复内容置顶 ==');
@@ -266,6 +276,113 @@ async function waitFor(check, timeoutMs = 6000, intervalMs = 250) {
   await sleep(1400);
   const restoredState = readWindowState();
   check('还原后 windowState 回到 maximized=false', restoredState?.maximized === false, JSON.stringify(restoredState));
+
+  console.log('\n== 截图：预热覆盖层 / 工具栏时序 / 合帧 ==');
+  const pageTargets = async () => (await (await fetch(`http://127.0.0.1:${PORT}/json/list`)).json()).filter((t) => t.type === 'page');
+  const overlayTargets = async () => (await pageTargets()).filter((t) => t.url.includes('overlay.html'));
+
+  await evaluate(main.send, `window.suira.capture.start()`);
+  const firstOverlay = await waitFor(async () => {
+    const list = await overlayTargets();
+    return list.length ? list[list.length - 1] : null;
+  }, 8000);
+  check('截图覆盖层窗口已出现', Boolean(firstOverlay));
+  const overlay = await connect(firstOverlay.webSocketDebuggerUrl);
+  await overlay.send('Runtime.enable');
+  const ready = await waitFor(async () => {
+    const hidden = await evaluate(overlay.send, `document.getElementById('loading-state').hidden`);
+    return hidden === true ? true : null;
+  }, 8000);
+  check('覆盖层画面加载完成（loading 消失）', ready === true);
+
+  // 模拟真实框选：按下 → 多次移动（同一帧内应被合并）→ 松开
+  const dispatchPointer = (type, x, y) => evaluate(overlay.send, `
+    document.getElementById('capture-root').dispatchEvent(new PointerEvent('${type}', {
+      bubbles: true, cancelable: true, clientX: ${x}, clientY: ${y},
+      button: 0, buttons: ${type === 'pointerup' ? 0 : 1}, pointerId: 1, pointerType: 'mouse'
+    }))`);
+  await dispatchPointer('pointerdown', 120, 120);
+  for (let i = 1; i <= 6; i += 1) await dispatchPointer('pointermove', 120 + i * 40, 120 + i * 24);
+  // 合帧是用 requestAnimationFrame 做的：等一帧再断言，否则读到的是「还没应用」
+  await sleep(180);
+  const during = JSON.parse(await evaluate(overlay.send, `JSON.stringify({
+    dockHidden: document.getElementById('tool-dock').hidden,
+    selectionHidden: document.getElementById('selection').hidden,
+    selectionWidth: parseFloat(document.getElementById('selection').style.width) || 0
+  })`));
+  check('拖动中不出现编辑工具栏', during.dockHidden === true, JSON.stringify(during));
+  check('拖动中橡皮筋选区可见', during.selectionHidden === false && during.selectionWidth > 0, JSON.stringify(during));
+  await dispatchPointer('pointerup', 400, 280);
+  await sleep(250);
+  const after = JSON.parse(await evaluate(overlay.send, `JSON.stringify({
+    dockHidden: document.getElementById('tool-dock').hidden,
+    dims: document.querySelectorAll('.dim').length
+  })`));
+  check('松开鼠标后编辑工具栏出现', after.dockHidden === false, JSON.stringify(after));
+  check('选区外压暗用 4 块矩形（不再用 100vmax 阴影）', after.dims === 4, JSON.stringify(after));
+
+  const perf = JSON.parse(await evaluate(overlay.send, `JSON.stringify(window.__lastCapturePerf || {})`));
+  check('pointermove 合帧生效（帧数少于事件数）',
+    Number(perf.framesApplied) > 0 && Number(perf.framesApplied) < Number(perf.pointerMoves),
+    JSON.stringify(perf));
+
+  await evaluate(overlay.send, `window.suira.capture.cancel()`);
+  await sleep(400);
+  check('取消后覆盖层被隐藏而不是销毁', (await overlayTargets()).length === 1);
+  check('隐藏后页面 visibilityState=hidden', await evaluate(overlay.send, `document.visibilityState`) === 'hidden');
+
+  await evaluate(main.send, `window.suira.capture.start()`);
+  const visibleAgain = await waitFor(async () => {
+    const state = await evaluate(overlay.send, `document.visibilityState`);
+    return state === 'visible' ? true : null;
+  }, 6000);
+  check('第二次唤起复用同一个预热窗口', visibleAgain === true && (await overlayTargets()).length === 1);
+  await evaluate(overlay.send, `window.suira.capture.cancel()`);
+  await sleep(300);
+
+  console.log('\n== 底部剪贴板历史条 ==');
+  await evaluate(main.send, `window.suira.clipboardBar.toggle()`);
+  const barTarget = await waitFor(async () => {
+    const list = await pageTargets();
+    return list.find((t) => t.url.includes('clipboardbar.html')) || null;
+  }, 8000);
+  check('底部剪贴板条窗口已出现', Boolean(barTarget));
+  const bar = await connect(barTarget.webSocketDebuggerUrl);
+  await bar.send('Runtime.enable');
+  const barReady = await waitFor(async () => {
+    const cards = await evaluate(bar.send, `document.querySelectorAll('.bar-card').length`);
+    return cards > 0 ? cards : null;
+  }, 6000);
+  check('历史条渲染出卡片（读取真实内容库）', Boolean(barReady), 'cards = ' + barReady);
+  const barState = JSON.parse(await evaluate(bar.send, `JSON.stringify({
+    selected: (document.querySelector('.bar-card[aria-selected="true"]') || {dataset:{}}).dataset.id || '',
+    pageScroll: document.documentElement.scrollHeight > window.innerHeight + 2,
+    trackScrollable: (function () { var t = document.getElementById('bar-track'); return t ? t.scrollWidth > t.clientWidth : false; })()
+  })`));
+  check('默认选中第一条', barState.selected.length > 0, JSON.stringify(barState));
+  check('历史条没有页面级滚动条', barState.pageScroll === false, JSON.stringify(barState));
+  check('轨道可横向滚动（内容多于视口时）', barState.trackScrollable === true, JSON.stringify(barState));
+  await evaluate(bar.send, `document.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }))`);
+  await sleep(200);
+  const selectedAfterRight = await evaluate(bar.send, `(document.querySelector('.bar-card[aria-selected="true"]') || {dataset:{}}).dataset.id || ''`);
+  check('→ 可以切换选中项', selectedAfterRight !== barState.selected, barState.selected + ' -> ' + selectedAfterRight);
+  await evaluate(bar.send, `document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))`);
+  await sleep(500);
+  check('Esc 收起历史条', await evaluate(bar.send, `document.visibilityState`) === 'hidden');
+
+  // 选中历史里的图片：应复制位图，而不是把文件路径当文本复制
+  await evaluate(main.send, `window.suira.clipboardBar.toggle()`);
+  await sleep(700);
+  const imageItem = JSON.parse(await evaluate(main.send, `JSON.stringify((await window.suira.content.list({ limit: 60 })).find((i) => i.kind === 'image') || null)`));
+  if (imageItem) {
+    const commit = JSON.parse(await evaluate(main.send, `JSON.stringify(await window.suira.returnTo.commit({ itemId: ${JSON.stringify(imageItem.id)}, intent: 'return-and-paste' }))`));
+    check('图片条目提交返回已复制', commit.ok === true && commit.copied === true, JSON.stringify(commit));
+    const hasBitmap = ps("Add-Type -AssemblyName System.Windows.Forms; if ([System.Windows.Forms.Clipboard]::GetImage()) { 'YES' } else { 'NO' }");
+    check('图片条目复制的是位图而不是路径文本', hasBitmap === 'YES', hasBitmap);
+  }
+  await evaluate(main.send, `window.suira.clipboardBar.hide()`);
+  await sleep(300);
+  bar.ws.close();
 
   // 恢复现场：清掉本脚本写入的剪贴板内容与临时文件
   ps("Set-Clipboard -Value 'suira core e2e done'");

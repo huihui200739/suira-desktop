@@ -5,21 +5,37 @@ const { $, $$ } = (() => ({
 
 const root = $('#capture-root');
 const screenCanvas = $('#screen-canvas');
-const screenCtx = screenCanvas.getContext('2d', { willReadFrequently: true });
+// 主画布只做 drawImage（放大镜、马赛克取样都走独立的小 canvas），
+// 不要开「读写频繁」模式：那会把 canvas 钉死在软件渲染上，
+// 4K / 高 DPI 下每帧整屏重绘会明显掉帧。
+const screenCtx = screenCanvas.getContext('2d');
 const annotationCanvas = $('#annotation-canvas');
-const annotationCtx = annotationCanvas.getContext('2d', { willReadFrequently: true });
+const annotationCtx = annotationCanvas.getContext('2d');
 const selectionEl = $('#selection');
+// 选区外压暗的 4 块矩形（代替 100vmax box-shadow，见 overlay.css）
+const dimEls = {
+  top: $('#dim-top'),
+  right: $('#dim-right'),
+  bottom: $('#dim-bottom'),
+  left: $('#dim-left')
+};
 const sizeBadge = $('#size-badge');
 const toolDock = $('#tool-dock');
 const hint = $('#capture-hint');
+const hintBrand = $('.hint-brand span');
 const magnifier = $('#magnifier');
 const magnifierCanvas = $('#magnifier-canvas');
-const magnifierCtx = magnifierCanvas.getContext('2d', { willReadFrequently: true });
+const magnifierCtx = magnifierCanvas.getContext('2d');
+const magnifierCoords = $('#magnifier-coords');
 const actionToast = $('#action-toast');
 const textEditor = $('#text-editor');
 const textInput = $('#text-input');
 const colorDot = $('#color-dot');
 const colorPopover = $('#color-popover');
+const loadingState = $('#loading-state');
+const originalViewer = $('#original-viewer');
+
+const ANNOTATION_TYPES = ['pen', 'rect', 'arrow', 'mosaic'];
 
 const state = {
   payload: null,
@@ -41,87 +57,189 @@ const state = {
   ocrItemId: '',
   // 从 38 键面板进入时的意图（ocr / pin / copy），以及是否已自动推进过
   intent: '',
-  intentAutoDone: false
+  intentAutoDone: false,
+  // 选区状态机：拖动中（selecting=true）只显示提示条，松开形成有效选区后才显示工具栏
+  selecting: false,
+  selectionReady: false
 };
+
+/**
+ * 视口 / 指针坐标系缓存。
+ * 拖动时每帧重读覆盖层根节点的 getBoundingClientRect() / clientWidth 会强制同步布局，
+ * 这里只在启动、窗口 resize 时刷新一次。
+ */
+const metrics = { left: 0, top: 0, width: 0, height: 0, dpr: 1 };
+
+function refreshMetrics() {
+  const rect = root.getBoundingClientRect();
+  metrics.left = rect.left;
+  metrics.top = rect.top;
+  metrics.width = rect.width;
+  metrics.height = rect.height;
+  metrics.dpr = window.devicePixelRatio || 1;
+}
+
+/* 轻量计时埋点：供真机 E2E 读取，不输出到界面 */
+let perf = { shownAt: 0, imageReadyAt: 0, firstPointerMs: 0, pointerMoves: 0, framesApplied: 0 };
+window.__lastCapturePerf = perf;
+// 每次唤起递增；旧的异步加载靠它判断自己是否已经过期
+let showSeq = 0;
+// 屏幕画面代数（马赛克取色调色板的失效依据）
+let imageSerial = 0;
 
 function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
 }
 
 function point(event) {
-  const rect = root.getBoundingClientRect();
   return {
-    x: clamp(event.clientX - rect.left, 0, rect.width),
-    y: clamp(event.clientY - rect.top, 0, rect.height)
+    x: clamp(event.clientX - metrics.left, 0, metrics.width),
+    y: clamp(event.clientY - metrics.top, 0, metrics.height)
   };
 }
 
 function normSelection(a, b) {
-  const left = clamp(Math.min(a.x, b.x), 0, root.clientWidth);
-  const top = clamp(Math.min(a.y, b.y), 0, root.clientHeight);
-  const right = clamp(Math.max(a.x, b.x), 0, root.clientWidth);
-  const bottom = clamp(Math.max(a.y, b.y), 0, root.clientHeight);
+  const left = clamp(Math.min(a.x, b.x), 0, metrics.width);
+  const top = clamp(Math.min(a.y, b.y), 0, metrics.height);
+  const right = clamp(Math.max(a.x, b.x), 0, metrics.width);
+  const bottom = clamp(Math.max(a.y, b.y), 0, metrics.height);
   return { x: left, y: top, w: right - left, h: bottom - top };
 }
 
 function normalizeSelection(selection) {
   if (!selection) return null;
-  const x1 = clamp(Math.min(selection.x, selection.x + selection.w), 0, root.clientWidth);
-  const y1 = clamp(Math.min(selection.y, selection.y + selection.h), 0, root.clientHeight);
-  const x2 = clamp(Math.max(selection.x, selection.x + selection.w), 0, root.clientWidth);
-  const y2 = clamp(Math.max(selection.y, selection.y + selection.h), 0, root.clientHeight);
+  const x1 = clamp(Math.min(selection.x, selection.x + selection.w), 0, metrics.width);
+  const y1 = clamp(Math.min(selection.y, selection.y + selection.h), 0, metrics.height);
+  const x2 = clamp(Math.max(selection.x, selection.x + selection.w), 0, metrics.width);
+  const y2 = clamp(Math.max(selection.y, selection.y + selection.h), 0, metrics.height);
   return { x: x1, y: y1, w: x2 - x1, h: y2 - y1 };
+}
+
+/* ---------- 只在值变化时写 DOM，避免拖动期无意义的样式失效 ---------- */
+
+function setHidden(el, hidden) {
+  if (el.hidden !== hidden) el.hidden = hidden;
+}
+
+function setRootClass(name, enabled) {
+  if (root.classList.contains(name) !== enabled) root.classList.toggle(name, enabled);
+}
+
+function setHintHidden(hidden) {
+  if (hint.classList.contains('is-hidden') !== hidden) hint.classList.toggle('is-hidden', hidden);
 }
 
 function hasSelection() {
   return Boolean(state.selection && state.selection.w >= 2 && state.selection.h >= 2);
 }
 
+/* 上一次真正写进 DOM 的值：值没变就不碰 DOM */
+const lastSelectionBox = { x: NaN, y: NaN, w: NaN, h: NaN };
+let lastSizeText = '';
+
+/** 4 块压暗矩形的位置缓存：只在几何变化时写 style。 */
+const lastDimBoxes = { top: {}, right: {}, bottom: {}, left: {} };
+
+function setDimBox(name, x, y, w, h) {
+  const el = dimEls[name];
+  if (!el) return;
+  const last = lastDimBoxes[name];
+  if (last.x !== x) { el.style.left = `${x}px`; last.x = x; }
+  if (last.y !== y) { el.style.top = `${y}px`; last.y = y; }
+  if (last.w !== w) { el.style.width = `${w}px`; last.w = w; }
+  if (last.h !== h) { el.style.height = `${h}px`; last.h = h; }
+}
+
+/**
+ * 用 4 块矩形把选区外部压暗。
+ * 每帧只改边缘条带的几何，比给选区元素 100vmax spread 的 box-shadow
+ * （等于每帧重绘整个覆盖层）便宜得多。
+ */
+function renderDimming(s) {
+  const width = metrics.width;
+  const height = metrics.height;
+  if (!width || !height) return;
+  const left = clamp(s.x, 0, width);
+  const top = clamp(s.y, 0, height);
+  const right = clamp(s.x + s.w, 0, width);
+  const bottom = clamp(s.y + s.h, 0, height);
+  setDimBox('top', 0, 0, width, top);
+  setDimBox('bottom', 0, bottom, width, height - bottom);
+  setDimBox('left', 0, top, left, bottom - top);
+  setDimBox('right', right, top, width - right, bottom - top);
+}
+
 function renderSelection() {
   if (!hasSelection()) {
-    selectionEl.hidden = true;
-    toolDock.hidden = true;
-    root.classList.remove('has-selection');
+    setHidden(selectionEl, true);
+    setHidden(toolDock, true);
+    setRootClass('has-selection', false);
+    // 回到「拖动中 / 还没框选」：只留顶部提示条
+    setHintHidden(false);
     return;
   }
   const s = state.selection;
-  selectionEl.hidden = false;
-  toolDock.hidden = false;
-  root.classList.add('has-selection');
-  Object.assign(selectionEl.style, {
-    left: `${s.x}px`,
-    top: `${s.y}px`,
-    width: `${s.w}px`,
-    height: `${s.h}px`
-  });
+  setHidden(selectionEl, false);
+  // 只在几何变化时写 style：拖动合帧后每帧最多 4 次写法，值没变就跳过
+  if (lastSelectionBox.x !== s.x) { selectionEl.style.left = `${s.x}px`; lastSelectionBox.x = s.x; }
+  if (lastSelectionBox.y !== s.y) { selectionEl.style.top = `${s.y}px`; lastSelectionBox.y = s.y; }
+  if (lastSelectionBox.w !== s.w) { selectionEl.style.width = `${s.w}px`; lastSelectionBox.w = s.w; }
+  if (lastSelectionBox.h !== s.h) { selectionEl.style.height = `${s.h}px`; lastSelectionBox.h = s.h; }
+  renderDimming(s);
   const physicalW = Math.max(1, Math.round(s.w * state.scaleX));
   const physicalH = Math.max(1, Math.round(s.h * state.scaleY));
-  sizeBadge.textContent = `${physicalW} × ${physicalH}`;
-  hint.classList.add('is-hidden');
+  const sizeText = `${physicalW} × ${physicalH}`;
+  if (lastSizeText !== sizeText) { sizeBadge.textContent = sizeText; lastSizeText = sizeText; }
+  setRootClass('has-selection', true);
+  // 任务 A：只有「松开鼠标形成有效选区」后（selectionReady）才出现编辑工具栏
+  const showDock = state.selectionReady && !state.selecting;
+  setHintHidden(showDock);
+  if (!showDock) {
+    setHidden(toolDock, true);
+    return;
+  }
+  setHidden(toolDock, false);
   positionDock();
 }
 
+/* 工具栏尺寸惰性测量：首次显示时量一次，窗口 resize 时失效。
+ * 拖动 / 移动过程中位置计算只用缓存值，不再读 offsetWidth 触发同步布局。 */
+const dockMetrics = { width: 0, height: 0 };
+const lastDock = { left: NaN, top: NaN };
+
+function measureDock() {
+  if (dockMetrics.width > 0 && dockMetrics.height > 0) return dockMetrics;
+  const width = toolDock.offsetWidth;
+  const height = toolDock.offsetHeight;
+  if (width > 0 && height > 0) {
+    dockMetrics.width = width;
+    dockMetrics.height = height;
+  }
+  return dockMetrics;
+}
+
 function positionDock() {
-  if (!hasSelection()) return;
+  if (!hasSelection() || toolDock.hidden) return;
   const s = state.selection;
-  const dockWidth = Math.min(toolDock.offsetWidth || 720, root.clientWidth - 24);
-  const dockHeight = toolDock.offsetHeight || 50;
+  const measured = measureDock();
+  const dockWidth = Math.min(measured.width || 720, metrics.width - 24);
+  const dockHeight = measured.height || 50;
   const gap = 12;
   let left = s.x + s.w - dockWidth;
-  left = clamp(left, 12, root.clientWidth - dockWidth - 12);
+  left = clamp(left, 12, metrics.width - dockWidth - 12);
   let top;
-  if (s.y + s.h + gap + dockHeight < root.clientHeight - 10) {
+  if (s.y + s.h + gap + dockHeight < metrics.height - 10) {
     top = s.y + s.h + gap;
     state.dockSide = 'bottom';
   } else if (s.y - gap - dockHeight > 10) {
     top = s.y - gap - dockHeight;
     state.dockSide = 'top';
   } else {
-    top = clamp(s.y + s.h - dockHeight - 8, 10, root.clientHeight - dockHeight - 10);
+    top = clamp(s.y + s.h - dockHeight - 8, 10, metrics.height - dockHeight - 10);
     state.dockSide = 'inside';
   }
-  toolDock.style.left = `${left}px`;
-  toolDock.style.top = `${top}px`;
+  if (lastDock.left !== left) { toolDock.style.left = `${left}px`; lastDock.left = left; }
+  if (lastDock.top !== top) { toolDock.style.top = `${top}px`; lastDock.top = top; }
 }
 
 function setSelection(selection, render = true) {
@@ -132,13 +250,25 @@ function setSelection(selection, render = true) {
 
 function clearSelection() {
   state.selection = null;
+  state.selecting = false;
+  state.selectionReady = false;
   state.annotations = [];
   state.redoStack = [];
   state.steps = 0;
   renderSelection();
   renderAnnotations();
-  hint.classList.remove('is-hidden');
-  magnifier.hidden = true;
+  setMagnifierVisible(false);
+}
+
+/** Ctrl+A：把整个屏幕作为「已经完成的选区」，工具栏随之出现 */
+function selectWholeScreen() {
+  state.selecting = false;
+  state.selectionReady = true;
+  state.selection = { x: 0, y: 0, w: metrics.width, h: metrics.height };
+  state.annotations = [];
+  state.redoStack = [];
+  renderSelection();
+  renderAnnotations();
 }
 
 function showAction(message, type = '') {
@@ -165,6 +295,8 @@ function setTool(tool) {
   if (tool === 'text') {
     showAction('在选区中点击以放置文字');
   }
+  // 工具栏按钮的高亮 / 提示切换后重新贴合选区（尺寸用的是缓存值，不会触发布局）
+  if (!toolDock.hidden) positionDock();
 }
 
 function setColor(color) {
@@ -175,12 +307,16 @@ function setColor(color) {
 }
 
 function resizeCanvases() {
-  const width = root.clientWidth;
-  const height = root.clientHeight;
-  const dpr = window.devicePixelRatio || 1;
+  const width = metrics.width;
+  const height = metrics.height;
+  const dpr = metrics.dpr || 1;
+  const pixelW = Math.max(1, Math.round(width * dpr));
+  const pixelH = Math.max(1, Math.round(height * dpr));
   for (const canvas of [screenCanvas, annotationCanvas]) {
-    canvas.width = Math.max(1, Math.round(width * dpr));
-    canvas.height = Math.max(1, Math.round(height * dpr));
+    // 尺寸没变就不动后备缓冲：避免无谓的清屏 + 重新分配
+    if (canvas.width === pixelW && canvas.height === pixelH) continue;
+    canvas.width = pixelW;
+    canvas.height = pixelH;
     canvas.style.width = `${width}px`;
     canvas.style.height = `${height}px`;
   }
@@ -192,53 +328,74 @@ function resizeCanvases() {
 
 function drawScreen() {
   if (!state.image) return;
-  const width = root.clientWidth;
-  const height = root.clientHeight;
+  const width = metrics.width;
+  const height = metrics.height;
   screenCtx.clearRect(0, 0, width, height);
   screenCtx.imageSmoothingEnabled = true;
   screenCtx.imageSmoothingQuality = 'high';
   screenCtx.drawImage(state.image, 0, 0, width, height);
 }
 
+/* 放大镜显隐 / 位置 / 坐标文本都只在值变化时写 DOM */
+const lastMagnifierPos = { left: NaN, top: NaN };
+const lastMagnifierPx = { x: NaN, y: NaN };
+
+function setMagnifierVisible(visible) {
+  if (magnifier.hidden !== !visible) magnifier.hidden = !visible;
+}
+
 function drawMagnifier(p) {
   if (!state.image || !state.payload) return;
-  magnifier.hidden = false;
+  // 放大镜挂在 #selection 内部，选区框不可见时它本来就看不见，不用画
+  if (selectionEl.hidden) {
+    setMagnifierVisible(false);
+    return;
+  }
+  setMagnifierVisible(true);
   const sampleSize = 22;
-  const srcX = (p.x / root.clientWidth) * state.image.width;
-  const srcY = (p.y / root.clientHeight) * state.image.height;
-  const half = sampleSize / 2;
-  magnifierCtx.imageSmoothingEnabled = false;
-  magnifierCtx.clearRect(0, 0, magnifierCanvas.width, magnifierCanvas.height);
-  magnifierCtx.fillStyle = '#080b13';
-  magnifierCtx.fillRect(0, 0, magnifierCanvas.width, magnifierCanvas.height);
-  magnifierCtx.drawImage(
-    state.image,
-    srcX - half,
-    srcY - half,
-    sampleSize,
-    sampleSize,
-    0,
-    0,
-    magnifierCanvas.width,
-    magnifierCanvas.height
-  );
-  magnifierCtx.strokeStyle = 'rgba(119,173,255,0.9)';
-  magnifierCtx.lineWidth = 1;
-  magnifierCtx.strokeRect(magnifierCanvas.width / 2 - 11, magnifierCanvas.height / 2 - 11, 22, 22);
-  $('#magnifier-coords').textContent = `${Math.round(srcX)}, ${Math.round(srcY)}`;
+  // 量化到源图像素：源像素没变就不重绘放大镜，坐标文本也一起跳过
+  const srcX = Math.round((p.x / metrics.width) * state.image.width);
+  const srcY = Math.round((p.y / metrics.height) * state.image.height);
+  if (srcX !== lastMagnifierPx.x || srcY !== lastMagnifierPx.y) {
+    lastMagnifierPx.x = srcX;
+    lastMagnifierPx.y = srcY;
+    const half = sampleSize / 2;
+    magnifierCtx.imageSmoothingEnabled = false;
+    magnifierCtx.clearRect(0, 0, magnifierCanvas.width, magnifierCanvas.height);
+    magnifierCtx.fillStyle = '#080b13';
+    magnifierCtx.fillRect(0, 0, magnifierCanvas.width, magnifierCanvas.height);
+    magnifierCtx.drawImage(
+      state.image,
+      srcX - half,
+      srcY - half,
+      sampleSize,
+      sampleSize,
+      0,
+      0,
+      magnifierCanvas.width,
+      magnifierCanvas.height
+    );
+    magnifierCtx.strokeStyle = 'rgba(119,173,255,0.9)';
+    magnifierCtx.lineWidth = 1;
+    magnifierCtx.strokeRect(magnifierCanvas.width / 2 - 11, magnifierCanvas.height / 2 - 11, 22, 22);
+    const coords = `${srcX}, ${srcY}`;
+    if (magnifierCoords.textContent !== coords) magnifierCoords.textContent = coords;
+  }
 
   const offset = 20;
   let left = p.x + offset;
   let top = p.y + offset;
-  if (left + 154 > root.clientWidth) left = p.x - 154 - offset;
-  if (top + 140 > root.clientHeight) top = p.y - 140 - offset;
-  magnifier.style.left = `${clamp(left, 8, root.clientWidth - 152)}px`;
-  magnifier.style.top = `${clamp(top, 8, root.clientHeight - 138)}px`;
+  if (left + 154 > metrics.width) left = p.x - 154 - offset;
+  if (top + 140 > metrics.height) top = p.y - 140 - offset;
+  left = clamp(left, 8, metrics.width - 152);
+  top = clamp(top, 8, metrics.height - 138);
+  if (lastMagnifierPos.left !== left) { magnifier.style.left = `${left}px`; lastMagnifierPos.left = left; }
+  if (lastMagnifierPos.top !== top) { magnifier.style.top = `${top}px`; lastMagnifierPos.top = top; }
 }
 
 function renderAnnotations() {
-  const width = root.clientWidth;
-  const height = root.clientHeight;
+  const width = metrics.width;
+  const height = metrics.height;
   annotationCtx.clearRect(0, 0, width, height);
   annotationCtx.lineCap = 'round';
   annotationCtx.lineJoin = 'round';
@@ -300,22 +457,63 @@ function drawArrow(ctx, from, to, width) {
   ctx.fill();
 }
 
-function drawMosaic(item) {
-  const cell = 8;
+/**
+ * 马赛克取色。
+ *
+ * 旧实现每个 8px 色块都从主 canvas 读回一次像素（大选区时几百次读回/帧），
+ * 既拖慢马赛克拖动，也逼着主 canvas 必须开「读写频繁」软件模式。
+ * 现在把整幅屏幕画面缩成 8px 网格的小调色板，只在画面 / 视口变化时读一次，
+ * 拖动过程中纯查表，主 canvas 保持 GPU 加速。
+ */
+const MOSAIC_CELL = 8;
+const mosaicPalette = document.createElement('canvas');
+const mosaicPaletteCtx = mosaicPalette.getContext('2d');
+let mosaicPaletteKey = '';
+let mosaicPaletteData = null;
+
+function ensureMosaicPalette() {
+  if (!state.image) return false;
+  const key = `${imageSerial}:${Math.round(metrics.width)}x${Math.round(metrics.height)}`;
+  if (key === mosaicPaletteKey && mosaicPaletteData) return true;
+  const cols = Math.max(1, Math.ceil(metrics.width / MOSAIC_CELL));
+  const rows = Math.max(1, Math.ceil(metrics.height / MOSAIC_CELL));
+  mosaicPalette.width = cols;
+  mosaicPalette.height = rows;
+  mosaicPaletteCtx.imageSmoothingEnabled = true;
+  mosaicPaletteCtx.clearRect(0, 0, cols, rows);
+  mosaicPaletteCtx.drawImage(state.image, 0, 0, cols, rows);
+  mosaicPaletteData = mosaicPaletteCtx.getImageData(0, 0, cols, rows).data;
+  mosaicPaletteKey = key;
+  return true;
+}
+
+function mosaicColorAt(cssX, cssY) {
+  const cols = mosaicPalette.width;
+  const rows = mosaicPalette.height;
+  const px = clamp(Math.floor(cssX / MOSAIC_CELL), 0, cols - 1);
+  const py = clamp(Math.floor(cssY / MOSAIC_CELL), 0, rows - 1);
+  const index = (py * cols + px) * 4;
+  const data = mosaicPaletteData;
+  return `rgb(${data[index]},${data[index + 1]},${data[index + 2]})`;
+}
+
+function drawMosaicCells(target, item) {
+  if (!ensureMosaicPalette()) return;
+  const cell = MOSAIC_CELL;
   const startX = Math.floor(Math.min(item.x, item.x + item.w) / cell) * cell;
   const startY = Math.floor(Math.min(item.y, item.y + item.h) / cell) * cell;
   const endX = Math.ceil(Math.max(item.x, item.x + item.w) / cell) * cell;
   const endY = Math.ceil(Math.max(item.y, item.y + item.h) / cell) * cell;
-  const dpr = window.devicePixelRatio || 1;
   for (let y = startY; y < endY; y += cell) {
     for (let x = startX; x < endX; x += cell) {
-      const sx = clamp(Math.round((x / root.clientWidth) * state.image.width), 0, state.image.width - 1);
-      const sy = clamp(Math.round((y / root.clientHeight) * state.image.height), 0, state.image.height - 1);
-      const pixel = screenCtx.getImageData(Math.round(x * dpr), Math.round(y * dpr), 1, 1).data;
-      annotationCtx.fillStyle = `rgb(${pixel[0]},${pixel[1]},${pixel[2]})`;
-      annotationCtx.fillRect(x, y, cell, cell);
+      target.fillStyle = mosaicColorAt(x, y);
+      target.fillRect(x, y, cell, cell);
     }
   }
+}
+
+function drawMosaic(item) {
+  drawMosaicCells(annotationCtx, item);
 }
 
 function addAnnotation(item) {
@@ -348,10 +546,10 @@ function redo() {
 function compositeSelection(options = {}) {
   if (!hasSelection() || !state.image) return null;
   const s = state.selection;
-  const sx = s.x / root.clientWidth * state.image.width;
-  const sy = s.y / root.clientHeight * state.image.height;
-  const sw = s.w / root.clientWidth * state.image.width;
-  const sh = s.h / root.clientHeight * state.image.height;
+  const sx = s.x / metrics.width * state.image.width;
+  const sy = s.y / metrics.height * state.image.height;
+  const sw = s.w / metrics.width * state.image.width;
+  const sh = s.h / metrics.height * state.image.height;
   const output = document.createElement('canvas');
   output.width = Math.max(1, Math.round(sw));
   output.height = Math.max(1, Math.round(sh));
@@ -359,13 +557,11 @@ function compositeSelection(options = {}) {
   ctx.drawImage(state.image, sx, sy, sw, sh, 0, 0, output.width, output.height);
   if (options.withoutAnnotations) return output;
 
-  const dpr = window.devicePixelRatio || 1;
   for (const item of state.annotations) {
     if (!annotationIntersectsSelection(item)) continue;
     ctx.save();
     ctx.translate(-s.x, -s.y);
     ctx.scale(output.width / s.w, output.height / s.h);
-    const original = annotationCtx;
     drawAnnotationToContext(ctx, item);
     ctx.restore();
   }
@@ -427,19 +623,7 @@ function drawAnnotationToContext(ctx, item) {
 }
 
 function drawMosaicToContext(ctx, item) {
-  const cell = 8;
-  const startX = Math.floor(Math.min(item.x, item.x + item.w) / cell) * cell;
-  const startY = Math.floor(Math.min(item.y, item.y + item.h) / cell) * cell;
-  const endX = Math.ceil(Math.max(item.x, item.x + item.w) / cell) * cell;
-  const endY = Math.ceil(Math.max(item.y, item.y + item.h) / cell) * cell;
-  const dpr = window.devicePixelRatio || 1;
-  for (let y = startY; y < endY; y += cell) {
-    for (let x = startX; x < endX; x += cell) {
-      const pixel = screenCtx.getImageData(Math.round(x * dpr), Math.round(y * dpr), 1, 1).data;
-      ctx.fillStyle = `rgb(${pixel[0]},${pixel[1]},${pixel[2]})`;
-      ctx.fillRect(x, y, cell, cell);
-    }
-  }
+  drawMosaicCells(ctx, item);
 }
 
 async function finish(action = 'copy') {
@@ -510,26 +694,31 @@ function beginDrag(event) {
     startMove(event);
     return;
   }
+  // 重新开始一次框选：旧选区和工具栏立刻消失，回到「拖动中」
   state.mode = 'select';
+  state.selecting = true;
+  state.selectionReady = false;
   state.selection = null;
   state.annotations = [];
   state.redoStack = [];
   renderSelection();
   renderAnnotations();
   state.drawing = { type: 'select', start: p, current: p };
-  updateSelectionPreview(p);
 }
 
 function updateSelectionPreview(p) {
   if (!state.drawing || state.drawing.type !== 'select') return;
+  state.drawing.current = p;
   const selection = normSelection(state.drawing.start, p);
   state.selection = selection.w >= 2 && selection.h >= 2 ? selection : null;
-  if (state.selection) renderSelection();
+  renderSelection();
   drawMagnifier(p);
 }
 
 function startMove(event) {
   const p = point(event);
+  // 已有选区上的移动 / 缩放：工具栏保持可见并跟随
+  state.selecting = false;
   state.drawing = {
     type: 'move',
     start: p,
@@ -537,7 +726,7 @@ function startMove(event) {
     handle: event.target.dataset.handle || ''
   };
   root.style.cursor = event.target.dataset.handle ? `${event.target.dataset.handle}-resize` : 'move';
-  magnifier.hidden = true;
+  setMagnifierVisible(false);
 }
 
 function startAnnotation(event, p) {
@@ -547,8 +736,8 @@ function startAnnotation(event, p) {
     if (p.x < s.x || p.x > s.x + s.w || p.y < s.y || p.y > s.y + s.h) return;
     state.textAnchor = p;
     textEditor.hidden = false;
-    textEditor.style.left = `${clamp(p.x, 8, root.clientWidth - 270)}px`;
-    textEditor.style.top = `${clamp(p.y, 8, root.clientHeight - 120)}px`;
+    textEditor.style.left = `${clamp(p.x, 8, metrics.width - 270)}px`;
+    textEditor.style.top = `${clamp(p.y, 8, metrics.height - 120)}px`;
     textInput.value = '';
     textInput.focus();
     return;
@@ -579,14 +768,14 @@ function updateMove(p) {
   if (d.handle) {
     let left = o.x, top = o.y, right = o.x + o.w, bottom = o.y + o.h;
     if (d.handle.includes('w')) left = clamp(left + dx, 0, right - 2);
-    if (d.handle.includes('e')) right = clamp(right + dx, left + 2, root.clientWidth);
+    if (d.handle.includes('e')) right = clamp(right + dx, left + 2, metrics.width);
     if (d.handle.includes('n')) top = clamp(top + dy, 0, bottom - 2);
-    if (d.handle.includes('s')) bottom = clamp(bottom + dy, top + 2, root.clientHeight);
+    if (d.handle.includes('s')) bottom = clamp(bottom + dy, top + 2, metrics.height);
     state.selection = { x: left, y: top, w: right - left, h: bottom - top };
   } else {
     state.selection = {
-      x: clamp(o.x + dx, 0, root.clientWidth - o.w),
-      y: clamp(o.y + dy, 0, root.clientHeight - o.h),
+      x: clamp(o.x + dx, 0, metrics.width - o.w),
+      y: clamp(o.y + dy, 0, metrics.height - o.h),
       w: o.w,
       h: o.h
     };
@@ -608,11 +797,66 @@ function updateAnnotation(p) {
 }
 
 function renderAnnotationsWithPreview(preview) {
-  const width = root.clientWidth;
-  const height = root.clientHeight;
+  const width = metrics.width;
+  const height = metrics.height;
   annotationCtx.clearRect(0, 0, width, height);
   for (const item of state.annotations) drawAnnotation(item);
   drawAnnotation(preview);
+}
+
+/* ---------- pointermove 合帧 ----------
+ * 同一帧里可能来好几个 pointermove；这里只记点，用一次 rAF 统一应用，
+ * 保证每帧最多一次 DOM 写入 + 一次 canvas 绘制。
+ */
+const pendingPoints = [];
+let frameHandle = 0;
+
+function queuePointer(p) {
+  pendingPoints.push(p);
+  if (pendingPoints.length > 64) pendingPoints.splice(0, pendingPoints.length - 64);
+  if (perf) perf.pointerMoves += 1;
+  if (!frameHandle) frameHandle = requestAnimationFrame(flushPointerFrame);
+}
+
+function flushPointerFrame() {
+  frameHandle = 0;
+  applyPendingPointer();
+}
+
+function applyPendingPointer() {
+  if (!pendingPoints.length) return;
+  const points = pendingPoints.splice(0, pendingPoints.length);
+  const last = points[points.length - 1];
+  const type = state.drawing && state.drawing.type;
+  if (perf) perf.framesApplied += 1;
+  if (type === 'pen') {
+    // 画笔保留帧内所有点，线条不会因为合帧变粗
+    for (const p of points) state.drawing.points.push(p);
+    renderAnnotations();
+    return;
+  }
+  if (type === 'select') { updateSelectionPreview(last); return; }
+  if (type === 'move') { updateMove(last); return; }
+  if (type && ANNOTATION_TYPES.includes(type)) { updateAnnotation(last); return; }
+  if (!hasSelection()) drawMagnifier(last);
+}
+
+/** 立即消化未成帧的点（松开鼠标前必须调用，否则最后一小段会丢） */
+function flushPointerNow() {
+  if (frameHandle) {
+    cancelAnimationFrame(frameHandle);
+    frameHandle = 0;
+  }
+  applyPendingPointer();
+}
+
+/** 丢弃未成帧的点（松开 / 离开时用最后一帧的精确坐标重新计算） */
+function dropPendingPointer() {
+  pendingPoints.length = 0;
+  if (frameHandle) {
+    cancelAnimationFrame(frameHandle);
+    frameHandle = 0;
+  }
 }
 
 function endAnnotation() {
@@ -647,33 +891,40 @@ function confirmText() {
 
 function setupEvents() {
   root.addEventListener('pointerdown', (event) => {
+    if (perf && !perf.firstPointerMs && perf.shownAt) {
+      perf.firstPointerMs = performance.now() - perf.shownAt;
+    }
     if (event.target.closest('button, textarea, .text-editor, .color-popover')) return;
     if (event.target.closest('.handle')) {
       startMove(event);
       return;
     }
     beginDrag(event);
-    if (state.drawing && ['pen', 'rect', 'arrow', 'mosaic'].includes(state.drawing.type)) {
+    if (state.drawing && ANNOTATION_TYPES.includes(state.drawing.type)) {
       annotationCanvas.setPointerCapture?.(event.pointerId);
     }
   });
 
+  // pointermove 只记点：一帧里来多少次都合并成一次应用。
+  // 没有拖拽时（只是划过覆盖层）什么都不用画——放大镜是 #selection 的子节点，
+  // 没有选区时本来就不可见，所以直接不排帧。
   root.addEventListener('pointermove', (event) => {
-    const p = point(event);
-    if (state.drawing?.type === 'select') {
-      updateSelectionPreview(p);
-    } else if (state.drawing?.type === 'move') {
-      updateMove(p);
-    } else if (state.drawing?.type && ['pen', 'rect', 'arrow', 'mosaic'].includes(state.drawing.type)) {
-      updateAnnotation(p);
-    } else if (!hasSelection()) {
-      drawMagnifier(p);
-    }
+    if (!state.drawing) return;
+    queuePointer(point(event));
   });
 
   root.addEventListener('pointerup', (event) => {
-    if (state.drawing?.type === 'select') {
+    const p = point(event);
+    const type = state.drawing?.type;
+    if (type === 'select') {
+      dropPendingPointer();
+      // 用松开点作为最终落点，避免最后一小段没成帧而少算几像素
+      updateSelectionPreview(p);
+      state.drawing = null;
+      state.selecting = false;
       if (state.selection && state.selection.w >= 4 && state.selection.h >= 4) {
+        // 先框选、松开后才出现编辑工具栏
+        state.selectionReady = true;
         setTool('pen');
         renderSelection();
         // 从面板带意图进来的（O 提字 / P 钉图）在这里自动推进，
@@ -681,21 +932,35 @@ function setupEvents() {
         autoAdvanceForIntent();
       } else {
         state.selection = null;
+        state.selectionReady = false;
         renderSelection();
       }
+      setMagnifierVisible(false);
+    } else if (type === 'move') {
+      dropPendingPointer();
+      updateMove(p);
       state.drawing = null;
-      magnifier.hidden = true;
-    } else if (state.drawing?.type === 'move') {
-      state.drawing = null;
+      state.selecting = false;
       root.style.cursor = '';
       renderSelection();
-    } else {
+    } else if (type && ANNOTATION_TYPES.includes(type)) {
+      // 画笔要把帧内剩余点补上；矩形 / 箭头 / 马赛克用松开点当最后终点，
+      // 中间的帧点可以直接丢，省一次整屏重绘
+      if (type === 'pen') {
+        flushPointerNow();
+      } else {
+        dropPendingPointer();
+        updateAnnotation(p);
+      }
       endAnnotation();
     }
   });
 
   root.addEventListener('pointerleave', () => {
-    if (!state.drawing) magnifier.hidden = true;
+    if (!state.drawing) {
+      dropPendingPointer();
+      setMagnifierVisible(false);
+    }
   });
 
   $$('.tool-button[data-tool]').forEach((button) => {
@@ -828,11 +1093,7 @@ function setupEvents() {
     }
     if (event.ctrlKey && key === 'a') {
       event.preventDefault();
-      state.selection = { x: 0, y: 0, w: root.clientWidth, h: root.clientHeight };
-      state.annotations = [];
-      state.redoStack = [];
-      renderSelection();
-      renderAnnotations();
+      selectWholeScreen();
       return;
     }
     if (event.key === 'Delete' || event.key === 'Backspace') {
@@ -847,13 +1108,19 @@ function setupEvents() {
   });
 
   window.addEventListener('resize', () => {
+    refreshMetrics();
+    // 尺寸可能变了：下次定位时重新量一次工具栏
+    dockMetrics.width = 0;
+    dockMetrics.height = 0;
+    mosaicPaletteKey = '';
+    mosaicPaletteData = null;
     resizeCanvases();
     if (state.selection) {
       state.selection = {
-        x: clamp(state.selection.x, 0, root.clientWidth - 2),
-        y: clamp(state.selection.y, 0, root.clientHeight - 2),
-        w: clamp(state.selection.w, 2, root.clientWidth),
-        h: clamp(state.selection.h, 2, root.clientHeight)
+        x: clamp(state.selection.x, 0, metrics.width - 2),
+        y: clamp(state.selection.y, 0, metrics.height - 2),
+        w: clamp(state.selection.w, 2, metrics.width),
+        h: clamp(state.selection.h, 2, metrics.height)
       };
       renderSelection();
     }
@@ -877,8 +1144,99 @@ function composeTiles(tiles, width, height) {
   }))).then(() => canvas.toDataURL('image/png'));
 }
 
-async function loadCapture() {
+/* ---------- 预热覆盖层：每次 capture:shown 都要先重置再加载 ---------- */
+
+const DEFAULT_HINT_BRAND = '区域截图';
+
+function clearCanvas(canvas) {
+  // 直接清空后备缓冲，不改尺寸（避免重新分配）
+  const ctx = canvas.getContext('2d');
+  ctx.save();
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.restore();
+}
+
+/**
+ * 把覆盖层恢复到「刚唤起的空白状态」。
+ * 覆盖层窗口现在是启动时预创建、之后只 show/hide，所以每一次唤起都必须
+ * 清掉上一轮的选区、标注、面板与画面，否则会带着旧内容出现。
+ */
+function resetOverlay() {
+  showSeq += 1;
+  state.payload = null;
+  state.image = null;
+  state.selection = null;
+  state.annotations = [];
+  state.redoStack = [];
+  state.steps = 0;
+  state.drawing = null;
+  state.selecting = false;
+  state.selectionReady = false;
+  state.intent = '';
+  state.intentAutoDone = false;
+  state.mode = 'select';
+  state.tool = 'pen';
+  state.textAnchor = null;
+  state.dockSide = 'bottom';
+  state.ocrItemId = '';
+  state.scaleX = 1;
+  state.scaleY = 1;
+  clearTimeout(state.toastTimer);
+  state.toastTimer = null;
+  imageSerial += 1;
+  mosaicPaletteKey = '';
+  mosaicPaletteData = null;
+
+  // 缓存的「上次写入值」一并失效，确保重置后一定会真正写一遍 DOM
+  lastSelectionBox.x = NaN;
+  lastSelectionBox.y = NaN;
+  lastSelectionBox.w = NaN;
+  lastSelectionBox.h = NaN;
+  lastSizeText = '';
+  lastMagnifierPx.x = NaN;
+  lastMagnifierPx.y = NaN;
+  lastMagnifierPos.left = NaN;
+  lastMagnifierPos.top = NaN;
+  lastDock.left = NaN;
+  lastDock.top = NaN;
+  dropPendingPointer();
+
+  setHidden(selectionEl, true);
+  setHidden(toolDock, true);
+  setHidden(magnifier, true);
+  setHidden(ocrResult, true);
+  setHidden(originalViewer, true);
+  setHidden(textEditor, true);
+  setHidden(colorPopover, true);
+  setHidden(loadingState, false);
+  setRootClass('has-selection', false);
+  hint.classList.remove('is-hidden');
+  if (hintBrand) hintBrand.textContent = DEFAULT_HINT_BRAND;
+  sizeBadge.textContent = '0 × 0';
+  actionToast.className = 'action-toast';
+  textInput.value = '';
+  ocrText.value = '';
+  ocrText.placeholder = '正在识别…';
+  root.dataset.tool = 'select';
+  root.style.cursor = '';
+  $$('.tool-button[data-tool]').forEach((button) => {
+    button.classList.toggle('is-active', button.dataset.tool === 'select');
+  });
+
+  refreshMetrics();
+  clearCanvas(screenCanvas);
+  clearCanvas(annotationCanvas);
+  resizeCanvases();
+
+  perf = { shownAt: performance.now(), imageReadyAt: 0, firstPointerMs: 0, pointerMoves: 0, framesApplied: 0 };
+  window.__lastCapturePerf = perf;
+}
+
+async function loadCapture(seq) {
   const payload = await window.suira.capture.getData();
+  // 加载过程中又被唤起一次：这一轮的旧数据直接作废
+  if (seq !== showSeq) return;
   if (!payload) throw new Error('未获取到截图数据');
   state.payload = payload;
   state.scaleX = payload.scaleFactor || 1;
@@ -889,21 +1247,43 @@ async function loadCapture() {
   if (Array.isArray(payload.tiles) && payload.tiles.length > 0) {
     sourceUrl = await composeTiles(payload.tiles, payload.tileSize.width, payload.tileSize.height);
   }
+  if (seq !== showSeq) return;
 
-  const image = new Image();
-  image.onload = () => {
-    state.image = image;
-    state.scaleX = image.width / Math.max(1, payload.size?.width || root.clientWidth);
-    state.scaleY = image.height / Math.max(1, payload.size?.height || root.clientHeight);
-    resizeCanvases();
-    $('#loading-state').hidden = true;
-    applyIntent(payload.intent);
-  };
-  image.onerror = () => {
-    $('#loading-state').hidden = true;
-    showAction('屏幕画面载入失败', 'error');
-  };
-  image.src = sourceUrl;
+  await new Promise((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => {
+      if (seq !== showSeq) { resolve(); return; }
+      state.image = image;
+      imageSerial += 1;
+      mosaicPaletteKey = '';
+      mosaicPaletteData = null;
+      state.scaleX = image.width / Math.max(1, payload.size?.width || metrics.width);
+      state.scaleY = image.height / Math.max(1, payload.size?.height || metrics.height);
+      resizeCanvases();
+      setHidden(loadingState, true);
+      applyIntent(payload.intent);
+      if (perf) perf.imageReadyAt = performance.now();
+      resolve();
+    };
+    image.onerror = () => reject(new Error('屏幕画面载入失败'));
+    image.src = sourceUrl;
+  });
+}
+
+/**
+ * 主进程每次唤起截图都会发 capture:shown；收到后先重置，再取新的屏幕画面。
+ * 失败时保持可取消（Esc 在任何时候都走 cancel()）。
+ */
+async function handleShown() {
+  resetOverlay();
+  const seq = showSeq;
+  try {
+    await loadCapture(seq);
+  } catch (error) {
+    if (seq !== showSeq) return;
+    setHidden(loadingState, true);
+    showAction(error.message || '截图初始化失败', 'error');
+  }
 }
 
 /**
@@ -918,12 +1298,10 @@ function applyIntent(intent) {
   state.intent = intent;
   if (intent === 'ocr') {
     // 提示用户这一趟是要提字的，不必再找工具栏
-    const brand = $('.hint-brand span');
-    if (brand) brand.textContent = '截图提字';
+    if (hintBrand) hintBrand.textContent = '截图提字';
     showAction('框选要识别的区域，完成后自动识别');
   } else if (intent === 'pin') {
-    const brand = $('.hint-brand span');
-    if (brand) brand.textContent = '截图钉图';
+    if (hintBrand) hintBrand.textContent = '截图钉图';
     showAction('框选要钉住的区域，完成后直接钉在桌面');
   }
 }
@@ -942,8 +1320,13 @@ function autoAdvanceForIntent() {
 }
 
 setupEvents();
-loadCapture().catch((error) => {
-  $('#loading-state').hidden = true;
-  showAction(error.message || '截图初始化失败', 'error');
-});
+refreshMetrics();
+resizeCanvases();
+if (window.suira && window.suira.capture && typeof window.suira.capture.onShown === 'function') {
+  // 预热模式：页面加载完成后不主动取画面，等主进程每次唤起时通知
+  window.suira.capture.onShown(() => { handleShown(); });
+} else {
+  // 兼容尚未接入 capture:shown 的旧主进程：页面就绪后直接加载
+  handleShown();
+}
 

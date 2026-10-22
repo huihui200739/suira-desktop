@@ -46,6 +46,8 @@
 | [16-overlay-original.png](16-overlay-original.png) | 截图覆盖层「查看原图」回归截图（`npm run test:overlay` 自动更新） |
 | [17-island-collapsed.png](17-island-collapsed.png) | 浮引岛收起态 176×44：文件数 + 拖入策略 |
 | [18-island-expanded.png](18-island-expanded.png) | 浮引岛展开态 520×148：4 张文件卡片、图片缩略图、策略切换、清空 |
+| [19-clipboardbar.png](19-clipboardbar.png) | 底部剪贴板历史条（1180×196）：图片缩略图、文字摘要、文件条目 |
+| [20-clipboardbar-selected.png](20-clipboardbar-selected.png) | 底部剪贴板条选中态：高亮卡片 + 底部选中项信息 |
 
 ## 复现
 
@@ -64,6 +66,9 @@ node tools/panel-shot.js   # 12–15
 
 # 浮引岛视图：落在临时目录 %TEMP%\suira-island-shots\，需要时手动复制进本目录
 node tools/island-check.js # 17–18（同时跑 93 项渲染断言）
+
+# 底部剪贴板条视图：落在临时目录 %TEMP%\suira-clipboardbar-shots\
+node tools/clipboardbar-check.js # 19–20（同时跑 78 项渲染断言）
 ```
 
 出图脚本依赖本机 Chrome 或 Edge，找不到时会直接报错退出。

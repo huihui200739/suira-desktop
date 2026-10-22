@@ -101,6 +101,8 @@ const pinWindows = new Set();
 // 浮引岛（文件中转）与按住型唤起的状态
 let islandWindow = null;
 let islandExpanded = false;
+// 剪贴板历史条（屏幕底部浮层）
+let clipboardBarWindow = null;
 let momentaryProbe = null;
 let momentaryOpened = false;
 /** 最近一次按住型侦测启动失败的原因；成功时清空，设置页据此显示真实原因。 */
@@ -142,7 +144,8 @@ const SHORTCUT_SETTING_KEYS = {
   quick: 'shortcutQuick',
   capture: 'shortcutCapture',
   panelCycle: 'shortcutPanelCycle',
-  pinnedToggle: 'shortcutPinnedToggle'
+  pinnedToggle: 'shortcutPinnedToggle',
+  clipboardBar: 'shortcutClipboardBar'
 };
 
 /** 按住型唤起当前键位（清除绑定后为空串）。 */
@@ -818,6 +821,90 @@ function revealIslandItem(id) {
   return { ok: true };
 }
 
+/* ---------- 剪贴板历史条（屏幕底部浮层） ---------- */
+
+const CLIPBOARD_BAR_HEIGHT = 196;
+const CLIPBOARD_BAR_MARGIN = 20;
+const CLIPBOARD_BAR_MAX_WIDTH = 1180;
+
+function clipboardBarBounds() {
+  const area = screen.getPrimaryDisplay().workArea;
+  const width = Math.min(CLIPBOARD_BAR_MAX_WIDTH, Math.max(720, area.width - 160));
+  return {
+    x: Math.round(area.x + (area.width - width) / 2),
+    y: Math.round(area.y + area.height - CLIPBOARD_BAR_HEIGHT - CLIPBOARD_BAR_MARGIN),
+    width,
+    height: CLIPBOARD_BAR_HEIGHT
+  };
+}
+
+function createClipboardBarWindow() {
+  if (clipboardBarWindow && !clipboardBarWindow.isDestroyed()) return clipboardBarWindow;
+  clipboardBarWindow = new BrowserWindow({
+    ...clipboardBarBounds(),
+    show: false,
+    frame: false,
+    transparent: true,
+    backgroundColor: '#00000000',
+    hasShadow: false,
+    resizable: false,
+    movable: false,
+    maximizable: false,
+    minimizable: false,
+    skipTaskbar: true,
+    alwaysOnTop: true,
+    fullscreenable: false,
+    focusable: true,
+    title: '随序 · 剪贴板',
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.js'),
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: false
+    }
+  });
+  clipboardBarWindow.setAlwaysOnTop(true, 'floating');
+  if (process.platform === 'win32') {
+    try { clipboardBarWindow.setBackgroundMaterial('none'); } catch {}
+  }
+  clipboardBarWindow.loadFile(path.join(__dirname, 'src', 'clipboardbar.html'));
+  clipboardBarWindow.setMenuBarVisibility(false);
+  // 失焦即收起：底部条不该长期挡在屏幕上
+  clipboardBarWindow.on('blur', () => {
+    if (clipboardBarWindow && !clipboardBarWindow.isDestroyed() && clipboardBarWindow.isVisible()) clipboardBarWindow.hide();
+  });
+  clipboardBarWindow.on('closed', () => { clipboardBarWindow = null; });
+  clipboardBarWindow.webContents.setWindowOpenHandler(({ url }) => {
+    if (isSafeHttpUrl(url)) shell.openExternal(url);
+    return { action: 'deny' };
+  });
+  return clipboardBarWindow;
+}
+
+/** 唤出底部剪贴板历史条；先记录当前前台窗口，Enter 才能粘回原处。 */
+async function showClipboardBar() {
+  const win = createClipboardBarWindow();
+  if (!win || win.isDestroyed()) return { ok: false, error: '剪贴板历史条创建失败' };
+  await rememberReturnTarget('clipboard-bar');
+  win.setBounds(clipboardBarBounds());
+  win.show();
+  win.focus();
+  win.webContents.send('clipboard-bar:shown');
+  return { ok: true, visible: true };
+}
+
+function hideClipboardBar() {
+  if (clipboardBarWindow && !clipboardBarWindow.isDestroyed()) clipboardBarWindow.hide();
+  return { ok: true, visible: false };
+}
+
+function toggleClipboardBar() {
+  if (clipboardBarWindow && !clipboardBarWindow.isDestroyed() && clipboardBarWindow.isVisible()) {
+    return hideClipboardBar();
+  }
+  return showClipboardBar();
+}
+
 /* ---------- 面板布局轮换 / 钉图显隐 / 按住型唤起 ---------- */
 
 function toastToUser(message, type = 'info') {
@@ -940,7 +1027,15 @@ async function tryReturnToTarget(item, intent = 'return-and-paste') {
 
   // 无论是否能粘贴，都先完成复制——这是「已复制，切回目标后粘贴」的前提
   try {
-    await writeClipboardText(item?.text || item?.filePath || '');
+    // 图片条目要复制位图本身（底部剪贴板条选历史图片时就是这条路）；
+    // 之前固定 writeClipboardText，会把图片粘成文件路径文本。
+    if (item?.kind === 'image' && item.filePath && fs.existsSync(item.filePath)) {
+      const image = nativeImage.createFromPath(item.filePath);
+      if (image.isEmpty()) throw new Error('图片读取失败');
+      await writeClipboardImage(image);
+    } else {
+      await writeClipboardText(item?.text || item?.filePath || '');
+    }
   } catch (error) {
     // 复制本身失败时必须是失败结果：渲染层据此显示红色错误，
     // 不能返回 ok:true 把「复制失败」当成功提示出去。
@@ -1099,12 +1194,110 @@ function showMain(page = 'shelf') {
   mainWindow.webContents.send('app:navigate', page);
 }
 
+/* ---------- 截图覆盖层：预热常驻窗口 ---------- */
+
+/**
+ * 覆盖层窗口只在启动时创建一次，之后每次截图只 show/hide。
+ *
+ * 之前每次截图都新建 BrowserWindow + loadFile，冷启动 300–600ms 全压在热键之后，
+ * 体感就是「按下快捷键要等一会儿才出画面」。预热后第一次唤起也只剩截屏与解码时间。
+ */
+let overlayReady = false;
+let overlayDidLoad = null;
+
+function currentVirtualBounds() {
+  return unionBounds(screen.getAllDisplays()) || { ...screen.getPrimaryDisplay().bounds };
+}
+
+function sameBounds(a, b) {
+  return Boolean(a && b) && a.x === b.x && a.y === b.y && a.width === b.width && a.height === b.height;
+}
+
+function createOverlayWindow() {
+  if (overlayWindow && !overlayWindow.isDestroyed()) return overlayWindow;
+  const bounds = currentVirtualBounds();
+  overlayReady = false;
+  overlayWindow = new BrowserWindow({
+    x: bounds.x,
+    y: bounds.y,
+    width: bounds.width,
+    height: bounds.height,
+    show: false,
+    frame: false,
+    transparent: false,
+    backgroundColor: '#0b0e13',
+    alwaysOnTop: true,
+    skipTaskbar: true,
+    resizable: false,
+    movable: false,
+    fullscreen: false,
+    fullscreenable: false,
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.js'),
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: false
+    }
+  });
+  overlayWindow.setAlwaysOnTop(true, 'screen-saver');
+  overlayWindow.loadFile(path.join(__dirname, 'src', 'overlay.html'));
+  overlayDidLoad = new Promise((resolve) => {
+    let settled = false;
+    const done = (value) => {
+      if (settled) return;
+      settled = true;
+      overlayReady = value;
+      resolve(value);
+    };
+    overlayWindow.webContents.once('did-finish-load', () => done(true));
+    overlayWindow.webContents.once('did-fail-load', () => done(false));
+    const timer = setTimeout(() => done(false), 8000);
+    if (timer.unref) timer.unref();
+  });
+  overlayWindow.on('closed', () => {
+    overlayWindow = null;
+    overlayReady = false;
+  });
+  return overlayWindow;
+}
+
+/**
+ * 显示覆盖层：按当前显示器重设边界，再通知渲染层拉取这一帧画面。
+ * 渲染层收到 'capture:shown' 后自行 reset 并 loadCapture()。
+ */
+async function showOverlayWindow(payload) {
+  capturePayload = payload;
+  const win = createOverlayWindow();
+  const bounds = currentVirtualBounds();
+  if (!sameBounds(win.getBounds(), bounds)) win.setBounds(bounds);
+  if (!overlayReady) {
+    await Promise.race([
+      overlayDidLoad || Promise.resolve(false),
+      new Promise((resolve) => {
+        const timer = setTimeout(() => resolve(false), 4000);
+        if (timer.unref) timer.unref();
+      })
+    ]);
+  }
+  if (!overlayWindow || overlayWindow.isDestroyed()) throw new Error('截图覆盖层创建失败');
+  // 先通知渲染层 reset + 取新画面，再显示窗口：
+  // 反过来做会有一帧左右先露出上一轮的旧截图（预热窗口的副作用）。
+  overlayWindow.webContents.send('capture:shown');
+  overlayWindow.show();
+  overlayWindow.focus();
+  return overlayWindow;
+}
+
+/** 收起覆盖层：隐藏而不是销毁，下次唤起才能秒开。 */
+function hideOverlayWindow() {
+  capturePayload = null;
+  captureBusy = false;
+  if (overlayWindow && !overlayWindow.isDestroyed()) overlayWindow.hide();
+  restoreMainAfterCapture();
+}
+
 async function beginScreenCapture(source = 'panel', options = {}) {
   if (captureBusy) return { ok: true };
-  if (overlayWindow && !overlayWindow.isDestroyed()) {
-    overlayWindow.focus();
-    return { ok: true };
-  }
   // 入口意图：从 38 键面板按 O 进来，框完直接进识别；按 P 进来直接钉图。
   // 意图随 payload 交给覆盖层，覆盖层据此预选工具或自动完成。
   const intent = ['ocr', 'pin', 'copy', 'save', 'shelf'].includes(options?.intent) ? options.intent : 'copy';
@@ -1153,41 +1346,8 @@ async function beginScreenCapture(source = 'panel', options = {}) {
       intent,
       source
     };
-    overlayWindow = new BrowserWindow({
-      x: virtualBounds.x,
-      y: virtualBounds.y,
-      width: virtualBounds.width,
-      height: virtualBounds.height,
-      show: false,
-      frame: false,
-      transparent: false,
-      backgroundColor: '#0b0e13',
-      alwaysOnTop: true,
-      skipTaskbar: true,
-      resizable: false,
-      movable: false,
-      fullscreen: false,
-      fullscreenable: false,
-      webPreferences: {
-        preload: path.join(__dirname, 'preload.js'),
-        contextIsolation: true,
-        nodeIntegration: false,
-        sandbox: false
-      }
-    });
-    overlayWindow.setAlwaysOnTop(true, 'screen-saver');
-    overlayWindow.setBounds(virtualBounds);
-    overlayWindow.loadFile(path.join(__dirname, 'src', 'overlay.html'));
-    overlayWindow.once('ready-to-show', () => {
-      overlayWindow.show();
-      overlayWindow.focus();
-    });
-    overlayWindow.on('closed', () => {
-      overlayWindow = null;
-      capturePayload = null;
-      captureBusy = false;
-      restoreMainAfterCapture();
-    });
+    // 复用预热窗口：不再新建 BrowserWindow / loadFile
+    await showOverlayWindow(capturePayload);
     return { ok: true };
   } catch (error) {
     captureBusy = false;
@@ -1282,7 +1442,8 @@ async function completeCapture(dataUrl, action) {
     broadcast('content:changed', { itemId: item.id, outputId: result.output?.id || '' });
     return { ok: true, filePath, item, output: result.output, ocr: true };
   }
-  if (overlayWindow && !overlayWindow.isDestroyed()) overlayWindow.destroy();
+  // 收起（而不是销毁）预热覆盖层，下次唤起才快
+  hideOverlayWindow();
   broadcast('content:changed', { itemId: item?.id || '' });
   if (mainWindow && !mainWindow.isDestroyed()) {
     const messages = {
@@ -1538,8 +1699,7 @@ function registerIpc() {
   ipcMain.handle('quick:show-main', (_event, page) => { hideQuickPanel(); showMain(page); return { ok: true }; });
 
   /* ---- 浮引岛（文件中转） ---- */
-  ipcMain.handle('island:get-state', () => islandState());
-  ipcMain.handle('island:toggle', () => toggleIsland());
+  ipcMain.handle('island:get-state', () => islandState());  ipcMain.handle('island:toggle', () => toggleIsland());
   ipcMain.handle('island:add-paths', async (_event, paths) => addIslandPaths(paths));
   ipcMain.handle('island:remove-item', async (_event, id) => {
     const current = store.getIsland();
@@ -1567,6 +1727,11 @@ function registerIpc() {
   ipcMain.handle('island:reveal-item', (_event, id) => revealIslandItem(id));
   ipcMain.handle('island:start-drag', (_event, id) => startIslandDrag(id));
 
+  /* ---- 剪贴板历史条（底部浮层） ---- */
+  ipcMain.handle('clipboard-bar:show', () => showClipboardBar());
+  ipcMain.handle('clipboard-bar:hide', () => hideClipboardBar());
+  ipcMain.handle('clipboard-bar:toggle', () => toggleClipboardBar());
+
   ipcMain.handle('app:info', () => ({
     name: APP_NAME,
     version: app.getVersion(),
@@ -1580,13 +1745,14 @@ function registerIpc() {
   ipcMain.handle('capture:start', (_event, options) => beginScreenCapture('main', options || {}));
   ipcMain.handle('capture:get-data', () => capturePayload);
   ipcMain.handle('capture:cancel', () => {
-    if (overlayWindow && !overlayWindow.isDestroyed()) overlayWindow.destroy();
+    hideOverlayWindow();
     return { ok: true };
   });
   ipcMain.handle('capture:finish', async (_event, payload) => {
     try {
       const result = await completeCapture(payload?.dataUrl, payload?.action || 'copy');
-      if (result.ok && payload?.action !== 'ocr' && overlayWindow && !overlayWindow.isDestroyed()) overlayWindow.destroy();
+      // OCR 结果面板还要留在覆盖层里让用户编辑，其它动作成功即收起
+      if (result.ok && payload?.action !== 'ocr') hideOverlayWindow();
       return result;
     } catch (error) {
       return { ok: false, error: error.message || '截图处理失败' };
@@ -2018,6 +2184,7 @@ function registerShortcuts() {
       capture: () => beginScreenCapture('shortcut'),
       panelCycle: cyclePanelMode,
       pinnedToggle: togglePinnedVisibility,
+      clipboardBar: toggleClipboardBar,
       legacy: toggleQuickPanel
     },
     bindings: shortcutBindings(),
@@ -2104,6 +2271,10 @@ async function initialize() {
   // 浮引岛是常驻入口：启动即显示收起态，用 showInactive 不抢焦点。
   // 用户可在工具箱里点「浮引岛」显示/收起。
   showIsland();
+  // 剪贴板历史条预先创建但不显示：组合键唤出时才没有冷启动等待
+  createClipboardBarWindow();
+  // 预热前台窗口探测助手：面板/剪贴板条唤出时要立刻能记录返回目标
+  foregroundProbe.start().catch(() => {});
   // 按住型侦测失败不阻塞启动：设置页会显示原因，普通快捷键照常可用
   momentaryReady = setupMomentaryProbe().catch((error) => {
     momentaryError = error && error.message ? error.message : String(error);
@@ -2175,7 +2346,8 @@ async function collectDiagnostics() {
 
   section('窗口');
   const island = islandWindow && !islandWindow.isDestroyed() ? islandWindow : null;
-  for (const [name, win] of [['主窗口', mainWindow], ['面板', quickWindow], ['浮引岛', island]]) {
+  const clipboardBar = clipboardBarWindow && !clipboardBarWindow.isDestroyed() ? clipboardBarWindow : null;
+  for (const [name, win] of [['主窗口', mainWindow], ['面板', quickWindow], ['浮引岛', island], ['剪贴板历史条', clipboardBar]]) {
     if (!win || win.isDestroyed()) { add(name, '未创建'); continue; }
     const [w, h] = win.getSize();
     add(`${name} 尺寸`, `${w}×${h}`);

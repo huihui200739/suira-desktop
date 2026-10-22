@@ -100,7 +100,7 @@ t('报告包含排查真机问题所必需的字段', () => {
   const body = mainJs.slice(start, mainJs.indexOf('\n}', start));
   for (const required of [
     '数据目录', '数据目录可写', 'Electron', '屏幕数量', '显示器',
-    'OCR 引擎', '剪贴板监听', '托盘', '快捷键', '窗口状态记忆', '剪贴板采集范围'
+    'OCR 引擎', '剪贴板监听', '托盘', '快捷键', '窗口状态记忆', '剪贴板采集范围', '剪贴板历史条'
   ]) {
     assert.ok(body.includes(required), '自检缺少字段：' + required);
   }

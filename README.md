@@ -1,4 +1,4 @@
-# 随序 · SUIRA
+﻿# 随序 · SUIRA
 
 > 你的 Windows 随手工作台。**顺手接住，让工作继续。**
 
@@ -25,7 +25,7 @@ npm run diag       # 启动自检，生成环境报告
 > 启动遇到问题？先看 [docs/KNOWN-ISSUES.md](docs/KNOWN-ISSUES.md)。
 
 > **要在真机上验证？** 照着 [docs/REAL-MACHINE-CHECKLIST.md](docs/REAL-MACHINE-CHECKLIST.md)
-> 走一遍，20 项逐条列出预期结果。先跑 `npm run diag` 能省掉大半排查时间。
+> 走一遍，34 项逐条列出预期结果。先跑 `npm run diag` 能省掉大半排查时间。
 
 ---
 
@@ -62,6 +62,19 @@ npm run diag       # 启动自检，生成环境报告
   <tr>
     <td align="center"><b>展开态</b>（520×148）：文件卡片、拖入策略、清空；悬停展开、点外部收起</td>
     <td align="center"><b>收起态</b>（176×44）：屏幕顶部居中的细条，显示数量与策略</td>
+  </tr>
+</table>
+
+### 剪贴板历史条（屏幕底部横滑）
+
+<table>
+  <tr>
+    <td width="50%"><img src="docs/screenshots/19-clipboardbar.png" alt="剪贴板历史条"></td>
+    <td width="50%"><img src="docs/screenshots/20-clipboardbar-selected.png" alt="剪贴板历史条选中态"></td>
+  </tr>
+  <tr>
+    <td align="center"><code>Ctrl+Alt+V</code> 唤出：贴屏幕底部，图片缩略图 + 文字摘要</td>
+    <td align="center">← → 切换选中、滚轮/触控板横向滑动；Enter 复制并尝试粘回原窗口</td>
   </tr>
 </table>
 
@@ -124,8 +137,13 @@ npm run diag       # 启动自检，生成环境报告
 | `Ctrl+Shift+A` | 区域截图 |
 | `Ctrl+Alt+Q` | 面板布局轮换：动作 → 应用 → 工具箱 |
 | `Ctrl+Alt+H` | 钉图显隐：有可见钉图时全部隐藏，再按一次恢复 |
+| `Ctrl+Alt+V` | 底部剪贴板历史条：← → 选择，Enter 复制并尝试粘回原窗口 |
 | `Ctrl+Alt+Shift+Space` | 按住型唤起：按住显示面板，松手立刻收起 |
-| `Esc` | 关闭面板 / 取消截图 |
+| `Esc` | 关闭面板 / 取消截图 / 关闭剪贴板历史条 |
+
+> 截图覆盖层现在是**预热常驻窗口**：第一次唤起后，之后每次截图只做 show/hide，
+> 不再新建窗口和加载页面；拖动选区时的 pointermove 按屏幕帧合并、工具栏只在
+> **松开鼠标框选完成后**出现，全程不做强制布局读取。
 
 > `Alt+F` 作为历史兼容键也绑定了面板。以上键位都可在设置页改键、清除绑定、恢复默认；
 > 相机/截图类全局键冲突会给出原因并自动回滚。
@@ -156,13 +174,29 @@ Electron 的 `globalShortcut` 只在按下时回调，拿不到「松开」，�
 ## 核心框架（本轮补齐）
 
 按「先把截图 / 剪贴板 / 主体做完整，再加新功能」的顺序，本轮把三大基础框架的缺口
-逐项补齐，并用**真实 Electron** 跑通端到端链路（`npm run verify:core`，42 项）。
+逐项补齐，并用**真实 Electron** 跑通端到端链路（`npm run verify:core`，61 项）。
 
 | 框架 | 之前的状态 | 本轮补齐 |
 |---|---|---|
 | 截图 | 截图→标注→复制/钉图/OCR 代码齐全，但 **OCR 在 Electron 主进程会永久卡住** | 修正 tesseract.js 的环境误判（见下）；保存对话框不再以隐藏主窗口为父窗口；真机验证 复制 / 钉图 / 提字 全链路 |
 | 剪贴板 | 只采文本与图片；来源应用字段是空；同一内容复制两次会存两条 | 采集**文件引用**（`text/uri-list` → 多路径），记录**来源应用/窗口标题**（敏感应用排除真正生效），重复内容**置顶不新增**，启动与修改保留期时即时清理 |
 | 主体 | 四个页面可用，但缺预览、粘贴回原窗口、失败重试、窗口记忆 | 内容库**预览层**（图/文/文件）、**粘贴回原窗口**（复用放回子系统，失败降级为「已复制」）、轨迹**失败重试**、**窗口位置/尺寸/最大化记忆**（多屏校验后恢复） |
+
+### 本轮体验优化（截图手感 / 工具栏时序 / 底部剪贴板条）
+
+- **截图流畅度**：覆盖层窗口改为**启动时预创建、之后只 show/hide**（不再每次新建
+  `BrowserWindow` + `loadFile`）；两个 canvas 去掉 `willReadFrequently`（不再强制软件渲染）；
+  `pointermove` 用 `requestAnimationFrame` 合帧；拖动期不再每帧读
+  `getBoundingClientRect` / `offsetWidth`（会强制同步布局），工具栏尺寸改为惰性测量缓存；
+  选区外压暗从 `100vmax` 的 box-shadow（等于每帧整屏重绘）改成 **4 块矩形条带**。
+- **工具栏时序**：拖动框选时只显示橡皮筋与顶部提示，**松开鼠标形成有效选区后**才出现
+  编辑工具栏；在已有选区上移动/缩放时工具栏保持可见并跟随；重新框选时先收起。
+- **底部剪贴板历史条**：`Ctrl+Alt+V` 在屏幕底部弹出横向历史带（1180×196，贴工作区底部
+  20px）；图片显示缩略图、文字显示摘要、文件显示文件名；← → / Home / End 选择，
+  滚轮或触控板横向滑动，Enter **复制并尝试粘回打开前的应用**（回不去时提示「已复制」），
+  Esc 或失焦收起。图片条目复制的是**位图**，不是文件路径文本。
+
+---
 
 ### OCR 在 Electron 主进程里卡死的修复（重要）
 
@@ -227,7 +261,11 @@ Electron 的 `globalShortcut` 只在按下时回调，拿不到「松开」，�
   **清空剪贴板记录**（必须逐字输入确认词才允许提交）、文件条目可直接在资源管理器中定位
 - **主窗口记忆（主体补完整）**：记住位置 / 尺寸 / 最大化状态；显示器被拔掉或分辨率变化时
   回落到可见位置，不会让窗口「消失」在已不存在的屏幕上
-- **设置**：记录开关、保留策略、OCR 语言、敏感来源排除、数据目录、五组快捷键改键、
+- **截图流畅度（体验优化）**：覆盖层预热常驻、canvas 走硬件渲染、pointermove 合帧、
+  拖动期零强制布局、选区外压暗改 4 块条带；对应 `verify:core` 的预热复用/工具栏时序/合帧断言
+- **底部剪贴板历史条（体验优化）**：`Ctrl+Alt+V` 贴底弹出，横向浏览历史图片/文字/文件，
+  Enter 复制并尝试粘回原窗口；`test:clipboardbar` 78 项渲染断言
+- **设置**：记录开关、保留策略、OCR 语言、敏感来源排除、数据目录、六组快捷键改键、
   **内容加密开关**
 - **快捷键冲突检测**：注册失败会显示在设置页并给出原因；支持点击改键，
   改键失败自动回滚到原键位；避开 `Alt+Space` / `Win+V` / `Win+Shift+S` 等系统占用；
@@ -335,13 +373,14 @@ ShelfItem   = id + name + path + kind + addedAt（只存引用，lib/island-mode
 ## 测试
 
 ```powershell
-npm test                   # 全部 894 项
+npm test                   # 全部 1023 项
 npm run test:core          # 39 项：数据层、文本处理、保留策略、窗口状态、去重置顶
 npm run test:clipboard     # 74 项：剪贴板纯模型（file:// URI、文件条目、去重比较、归一化）
 npm run test:ocr           # 11 项：OCR 语言缓存预热（Electron 主进程兼容）与语言包完整性
 npm run test:island        # 88 项：浮引岛纯模型（75）+ 落盘层（13）
 npm run test:island-store  # 13 项：island 段清洗、容量、策略、重启恢复、清除绑定落盘
 npm run test:island-render # 93 项：浮引岛无头 Chrome 真实 DOM（收起/展开/24 文件滚动/拖拽时序）
+npm run test:clipboardbar  # 78 项：底部剪贴板历史条真实 DOM（横滑/键盘/Enter 提交/空态/窄屏）
 npm run test:keywatch      # 46 项：VK 映射、KeyWatchProbe 状态机、真实 PowerShell -SelfTest
 npm run test:actions       # 16 项：类型匹配、派生关系、失败路径
 npm run test:capabilities  # 43 项：拼音搜索、配方执行、剪贴板守卫
@@ -353,10 +392,10 @@ npm run test:security      # 82 项：快捷键冲突、恢复默认/清除、�
 npm run test:display       # 30 项：多屏并集、负坐标、混合 DPI、分块布局、窗口边界恢复
 npm run test:inject        # 20 项：SendInput 脚本、调用协议、失败处理
 npm run test:diagnostics   # 10 项：自检报告字段、只读性、--diag 接线
-npm run test:ui            # 129 项：IPC 通道一致性、键位接线、核心框架接线、缺陷回归
-npm run test:render        # 70 项：无头 Chrome 真实渲染断言（含预览层、轨迹重试、五组改键）
+npm run test:ui            # 135 项：IPC 通道一致性、键位接线、核心框架/体验优化接线、缺陷回归
+npm run test:render        # 71 项：无头 Chrome 真实渲染断言（含预览层、轨迹重试、六组改键）
 npm run test:confirm       # 12 项：确认词校验（真实 DOM，错误输入不得通过）
-npm run test:overlay       # 21 项：覆盖层 Ctrl+A 焦点隔离、查看原图、工具栏绑定
+npm run test:overlay       # 65 项：覆盖层工具栏时序、拖动期零强制布局、合帧、马赛克取色、Ctrl+A 隔离
 npm run test:shortcut      # 12 项：恢复默认/清除绑定的真实点击（真实 DOM）
 npm run audit:batch3       # 从保存的浮引切片提取第三批各模块的静态证据
 ```
@@ -398,6 +437,10 @@ canvas/布局像素；fixture 在运行时生成、结束后清理。浮引岛�
   超大图片批量暂存时未做缩略图降采样（后续可改为主进程生成小图）
 - 按住型侦测是轮询式：极短点按可能漏掉；UAC 安全桌面 / 锁屏期间读不到按键；
   左右修饰键不区分；非 US 布局下符号键按物理 VK 解释
+- 截图覆盖层为了「秒开」改为常驻：隐藏时仍占一个渲染进程（约 40–70MB）；
+  如果更在意内存，可以改成闲置 N 分钟后销毁、下次唤起重建
+- 底部剪贴板历史条固定出现在**主显示器**工作区底部（多屏时不会跟到光标所在屏）；
+  卡片数量上限 60 条，没做搜索框（需要按类型/关键词找旧内容仍用内容库）
 
 ---
 
@@ -416,9 +459,9 @@ canvas/布局像素；fixture 在运行时生成、结束后清理。浮引岛�
 ```powershell
 npm run verify:electron   # 启动并确认窗口
 npm run verify:ipc        # 20 项：preload / IPC / 渲染 / 面板交互
-npm run verify:capture    # 9 项：截图链路
+npm run verify:capture    # 11 项：截图链路（含预热窗口复用/隐藏）
 npm run verify:island     # 38 项：浮引岛增删改清落盘 + 窗口尺寸 + 按住型侦测真实运行
-npm run verify:core       # 42 项：截图复制/钉图/提字、剪贴板三类采集与去重、预览/粘贴/重试、窗口记忆
+npm run verify:core       # 61 项：截图/剪贴板/主体 + 预热覆盖层/工具栏时序/底部剪贴板条
 ```
 
 已通过的项目（真实 Electron，非模拟）：
@@ -447,6 +490,11 @@ npm run verify:core       # 42 项：截图复制/钉图/提字、剪贴板三�
 | **浮引岛暂存落盘到 `suira-data.json` 的 `island` 段** | ✅ |
 | **按住型侦测在真实主进程里 `watching`（真实 PowerShell 助手）** | ✅ |
 | **重启后内容（截图 / 文字 / 文件引用）仍在** | ✅ |
+| **截图覆盖层预热：取消后只是隐藏、第二次唤起复用同一窗口** | ✅ |
+| **工具栏时序：拖动中隐藏、松开后出现；选区外压暗为 4 块矩形** | ✅ |
+| **pointermove 合帧：帧数少于事件数（`window.__lastCapturePerf`）** | ✅ |
+| **底部剪贴板条：真实内容渲染、默认选中、→ 切换、Esc 收起、轨道可横滑** | ✅ |
+| **历史图片提交复制的是位图（系统剪贴板 `GetImage` 读回）** | ✅ |
 
 ## 仍需人工确认（只能人眼看）
 
@@ -471,9 +519,11 @@ npm run verify:core       # 42 项：截图复制/钉图/提字、剪贴板三�
 | 15 | **粘贴回原窗口** | 从别的应用按托盘/面板打开随序 → 内容库点「粘贴」，应回到原应用并粘贴（失败时给出「已复制」说明） |
 | 16 | **剪贴板文件条目** | 在资源管理器复制 2 个文件 → 内容库出现「文件」条目，标题是文件名、正文是两条路径 |
 | 17 | **窗口记忆** | 移动/缩放主窗口后退出再开，窗口回到上次的位置尺寸；最大化退出后应仍最大化 |
-| 18 | 面板视觉 | 字体、圆角、间距、图标与参考图的接近程度 |
+| 18 | **截图流畅度** | 连续截图第二次应明显秒开；拖动框选跟手不卡；拖动中不该出现工具栏 |
+| 19 | **底部剪贴板条** | `Ctrl+Alt+V` 贴底弹出，← →/滚轮横滑选择，Enter 粘回打开前的应用，失焦收起 |
+| 20 | 面板视觉 | 字体、圆角、间距、图标与参考图的接近程度 |
 
-> 详细步骤见 [docs/REAL-MACHINE-CHECKLIST.md](docs/REAL-MACHINE-CHECKLIST.md)（27 项）。
+> 详细步骤见 [docs/REAL-MACHINE-CHECKLIST.md](docs/REAL-MACHINE-CHECKLIST.md)（34 项）。
 > 自动化能证明「逻辑通了」，证明不了「手感对、看着像」——在你反馈前上述项保持未确认。
 
 ---

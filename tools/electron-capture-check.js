@@ -69,10 +69,19 @@ const check = (name, cond, detail) => {
   await panel.send('Runtime.enable');
 
   const before = await listWindows();
-  const hadOverlayBefore = before.some((t) => t.url.includes('overlay.html'));
+  const overlayBefore = before.find((t) => t.url.includes('overlay.html'));
   console.log('\n== 触发截图前的窗口 ==');
   before.forEach((t) => console.log('  ' + t.title + '  ' + t.url.split('/').pop()));
-  check('触发前没有残留的覆盖层', !hadOverlayBefore, '启动前已有 overlay 窗口');
+  // 覆盖层现在是「预热常驻窗口」：启动后就存在，只是隐藏。
+  check('覆盖层窗口已预热（启动后常驻）', Boolean(overlayBefore), '启动后没有 overlay 窗口');
+  let hiddenBefore = false;
+  if (overlayBefore) {
+    const ov0 = await connect(overlayBefore.webSocketDebuggerUrl);
+    await ov0.send('Runtime.enable');
+    hiddenBefore = (await evaluate(ov0.send, `document.visibilityState`)) === 'hidden';
+    ov0.ws.close();
+  }
+  check('预热覆盖层在未截图时是隐藏的', hiddenBefore);
 
   console.log('\n== 调用 capture 动作（等同按 Z）==');
   // capture 是已实现动作，主进程应启动截图覆盖层
@@ -95,8 +104,9 @@ const check = (name, cond, detail) => {
   const overlay = after.find((t) => t.url.includes('overlay.html'));
   check('截图覆盖层窗口真的被创建', Boolean(overlay),
     '窗口数 ' + before.length + ' → ' + after.length);
-  check('覆盖层是新出现的（之前没有）', Boolean(overlay) && !hadOverlayBefore,
-    '之前已有 overlay');
+  check('复用同一个预热覆盖层窗口（不是新建）',
+    Boolean(overlay) && Boolean(overlayBefore) && overlay.id === overlayBefore.id,
+    'before=' + (overlayBefore && overlayBefore.id) + ' after=' + (overlay && overlay.id));
 
   if (overlay) {
     const ov = await connect(overlay.webSocketDebuggerUrl);
@@ -118,8 +128,7 @@ const check = (name, cond, detail) => {
     check('截图画布有实际尺寸（截到了屏幕）', d.canvasW > 0 && d.canvasH > 0,
       d.canvasW + '×' + d.canvasH);
 
-    // 取消截图。注意：点取消后覆盖层窗口会被立即销毁，CDP 连接随之断开，
-    // 所以这里 evaluate 超时是正常现象，不能当失败。用 try/catch 吞掉。
+    // 取消截图：覆盖层现在只是隐藏（预热复用），CDP 连接不会断。
     try {
       await evaluate(ov.send, `(() => {
         const cancel = document.querySelector('[data-action="cancel"]');
@@ -128,12 +137,20 @@ const check = (name, cond, detail) => {
         return 'escaped';
       })()`);
     } catch {
-      // 窗口已关闭导致连接断开，符合预期
+      // 兼容旧实现（取消即销毁）时连接断开，不算失败
     }
-    await sleep(1500);
+    await sleep(1200);
     const cleaned = await listWindows();
     const stillOverlay = cleaned.find((t) => t.url.includes('overlay.html'));
-    check('取消后覆盖层被关闭', !stillOverlay, '仍有 overlay 窗口');
+    check('取消后覆盖层仍在（预热复用）', Boolean(stillOverlay), 'overlay 窗口消失了');
+    let hiddenAfter = false;
+    if (stillOverlay) {
+      const ov2 = await connect(stillOverlay.webSocketDebuggerUrl);
+      await ov2.send('Runtime.enable');
+      hiddenAfter = (await evaluate(ov2.send, `document.visibilityState`)) === 'hidden';
+      ov2.ws.close();
+    }
+    check('取消后覆盖层被隐藏（下次唤起秒开）', hiddenAfter);
     ov.ws.close();
   }
 

@@ -1,4 +1,4 @@
-# 真机验证清单
+﻿# 真机验证清单
 
 日期：2026-10-22。用途：在本机 Windows 上跑一遍，把结果反馈回来。
 
@@ -69,9 +69,9 @@ C:\temp\el45\electron.exe . --remote-debugging-port=9223
 ```powershell
 node tools/electron-real-check.js      # 启动并确认窗口
 node tools/electron-verify.js          # 20 项：preload / IPC / 渲染 / 面板交互
-node tools/electron-capture-check.js   # 9 项：截图链路
+node tools/electron-capture-check.js   # 11 项：截图链路（预热窗口复用）
 node tools/electron-island-check.js    # 38 项：浮引岛 + 按住型
-node tools/electron-core-check.js      # 42 项：截图 / 剪贴板 / 主体核心链路
+node tools/electron-core-check.js      # 61 项：截图 / 剪贴板 / 主体 + 体验优化
 ```
 
 ---
@@ -126,6 +126,19 @@ node tools/electron-core-check.js      # 42 项：截图 / 剪贴板 / 主体核
 > 12–28 与前面的 1–11 一样：在你反馈前一律保持未确认状态。
 > 按住型唤起依赖常驻 PowerShell 侦测：若设置页显示「按住型侦测未运行」，
 > 先把 `npm run diag` 的报告发我，看「按住型唤起」一行。
+
+## 体验优化项（本轮，需要人眼看）
+
+| # | 操作 | 预期 | 不对时告诉我 |
+|---|---|---|---|
+| 29 | 连续按两次 `Ctrl+Shift+A` 截图（第二次先 `Esc` 退出第一次） | 第二次覆盖层出现明显更快（预热窗口），不应该再看到长时间黑屏 | 第二次还是很慢 |
+| 30 | 按住鼠标拖动框选区域 | 选区跟手、不卡顿，放大镜跟随流畅 | 掉帧 / 卡，描述场景（多屏？4K？） |
+| 31 | 框选过程中观察下方 | **拖动时不出现**编辑工具栏；松开鼠标后才出现，且位于选区下方/上方 | 拖动中就出现 / 松开不出现 |
+| 32 | 按 `Ctrl+Alt+V` | 屏幕底部弹出横向剪贴板历史条，显示图片缩略图与文字摘要 | 没出现 / 位置不对 / 挡住任务栏 |
+| 33 | 在历史条里按 ← →、滚轮 | 选中项左右移动、卡片带横向滚动；Enter 后尝试粘回打开前的应用 | 不动 / 按 Enter 没反应 |
+| 34 | 点历史条外面 / 切到别的窗口 | 历史条自动收起 | 一直挡在屏幕上 |
+
+> 29–34 与前两批一样：在你反馈前保持未确认状态。
 
 ---
 

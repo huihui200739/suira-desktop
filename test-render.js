@@ -66,7 +66,7 @@ window.suira = {
   executions:{ list:async()=>executions, retry:async(id)=>{ window.__lastRetry = id; return {ok:true,output:{id:'r-'+id}}; }, onChanged:on('executions:changed') },
   settings:{ get:async()=>settings, update:async(p)=>({ok:true,settings}), onChanged:on('settings:changed') },
   search:{ query:async()=>[] },
-  shortcuts:{ get:async()=>({ bindings:{ quick:'CommandOrControl+Alt+Space', capture:'CommandOrControl+Shift+A', momentary:'CommandOrControl+Alt+Shift+Space', panelCycle:'CommandOrControl+Alt+Q', pinnedToggle:'CommandOrControl+Alt+H' }, status:{ quick:{ok:true,accelerator:'CommandOrControl+Alt+Space',error:'',reserved:null}, capture:{ok:false,accelerator:'CommandOrControl+Shift+A',error:'无法注册，可能已被占用',reserved:null}, momentary:{ok:momentaryWatching,accelerator:'CommandOrControl+Alt+Shift+Space',error:momentaryWatching ? '' : '按住型侦测未运行',reserved:null,watching:momentaryWatching}, panelCycle:{ok:true,accelerator:'CommandOrControl+Alt+Q',error:'',reserved:null}, pinnedToggle:{ok:true,accelerator:'CommandOrControl+Alt+H',error:'',reserved:null} } }), set:async()=>({ok:true}), clear:async()=>({ok:true}), restoreDefault:async()=>({ok:true}), onChanged:on('shortcuts:changed') },
+  shortcuts:{ get:async()=>({ bindings:{ quick:'CommandOrControl+Alt+Space', capture:'CommandOrControl+Shift+A', momentary:'CommandOrControl+Alt+Shift+Space', panelCycle:'CommandOrControl+Alt+Q', pinnedToggle:'CommandOrControl+Alt+H', clipboardBar:'CommandOrControl+Alt+V' }, status:{ quick:{ok:true,accelerator:'CommandOrControl+Alt+Space',error:'',reserved:null}, capture:{ok:false,accelerator:'CommandOrControl+Shift+A',error:'无法注册，可能已被占用',reserved:null}, momentary:{ok:momentaryWatching,accelerator:'CommandOrControl+Alt+Shift+Space',error:momentaryWatching ? '' : '按住型侦测未运行',reserved:null,watching:momentaryWatching}, panelCycle:{ok:true,accelerator:'CommandOrControl+Alt+Q',error:'',reserved:null}, pinnedToggle:{ok:true,accelerator:'CommandOrControl+Alt+H',error:'',reserved:null}, clipboardBar:{ok:true,accelerator:'CommandOrControl+Alt+V',error:'',reserved:null} } }), set:async()=>({ok:true}), clear:async()=>({ok:true}), restoreDefault:async()=>({ok:true}), onChanged:on('shortcuts:changed') },
   recipes:{ list:async()=>[], run:async()=>({ok:true,steps:[{action:'text.merge-lines',ok:true}],output:null}) },
   clipboard:{ list:async()=>[], copy:async()=>({ok:true}), remove:async()=>({ok:true}), clear:async()=>({ok:true}), togglePin:async()=>({ok:true}), onChanged:on('content:changed') }
 };
@@ -118,12 +118,16 @@ window.addEventListener('load', function () {
       momentaryStatusClass: (document.getElementById('status-momentary') || {}).className || '',
       panelCycleStatus: (document.getElementById('status-panelCycle') || {}).textContent || '',
       pinnedToggleStatus: (document.getElementById('status-pinnedToggle') || {}).textContent || '',
+      clipboardBarStatus: (document.getElementById('status-clipboardBar') || {}).textContent || '',
       hasMomentaryStatus: !!document.getElementById('status-momentary'),
       hasPanelCycleStatus: !!document.getElementById('status-panelCycle'),
       hasPinnedToggleStatus: !!document.getElementById('status-pinnedToggle'),
+      hasClipboardBarStatus: !!document.getElementById('status-clipboardBar'),
+      clipboardBarKeyValue: (document.getElementById('setting-key-clipboardBar') || {}).value || '',
       momentaryClear: !!document.querySelector('[data-shortcut-clear="momentary"]'),
       panelCycleClear: !!document.querySelector('[data-shortcut-clear="panelCycle"]'),
       pinnedToggleClear: !!document.querySelector('[data-shortcut-clear="pinnedToggle"]'),
+      clipboardBarClear: !!document.querySelector('[data-shortcut-clear="clipboardBar"]'),
       restoreTitle: (document.getElementById('shortcut-restore') || {}).title || '',
       hasEncryptToggle: !!document.getElementById('setting-encrypt'),
       encryptChecked: (document.getElementById('setting-encrypt') || {}).checked
@@ -530,7 +534,7 @@ try {
 
   const set = probe(runChrome('__fx_main.html', [], '?page=settings'), 'P');
   t('设置：当前页正确', () => assert.strictEqual(set.activePage, 'page-settings'));
-  t('设置：渲染出五个改键输入框', () => assert.strictEqual(set.shortcutInputs, 5));
+  t('设置：渲染出六个改键输入框', () => assert.strictEqual(set.shortcutInputs, 6));
   t('设置：改键框显示当前键位（Ctrl + Alt + Space）', () => {
     assert.ok(set.quickKeyValue.includes('Ctrl'), '实际: ' + set.quickKeyValue);
     assert.ok(set.quickKeyValue.includes('Space'), '实际: ' + set.quickKeyValue);
@@ -554,10 +558,17 @@ try {
     assert.strictEqual(set.hasPinnedToggleStatus, true);
     assert.match(set.pinnedToggleStatus, /已生效/);
   });
-  t('设置：新增三个键位都有「清除绑定」', () => {
+  t('设置：剪贴板历史条输入框与状态元素存在且已生效', () => {
+    assert.strictEqual(set.hasClipboardBarStatus, true);
+    assert.ok(set.clipboardBarKeyValue.includes('Ctrl'), '实际: ' + set.clipboardBarKeyValue);
+    assert.ok(set.clipboardBarKeyValue.includes('V'), '实际: ' + set.clipboardBarKeyValue);
+    assert.match(set.clipboardBarStatus, /已生效/);
+  });
+  t('设置：新增四个键位都有「清除绑定」', () => {
     assert.strictEqual(set.momentaryClear, true);
     assert.strictEqual(set.panelCycleClear, true);
     assert.strictEqual(set.pinnedToggleClear, true);
+    assert.strictEqual(set.clipboardBarClear, true);
   });
   t('设置：恢复默认按钮覆盖全部快捷键', () => assert.match(set.restoreTitle, /全部快捷键/));
   t('设置：加密开关存在且默认开启', () => {

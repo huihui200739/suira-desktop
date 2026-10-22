@@ -80,7 +80,16 @@ contextBridge.exposeInMainWorld('suira', {
     start: (options) => ipcRenderer.invoke('capture:start', options),
     getData: () => ipcRenderer.invoke('capture:get-data'),
     finish: (payload) => ipcRenderer.invoke('capture:finish', payload),
-    cancel: () => ipcRenderer.invoke('capture:cancel')
+    cancel: () => ipcRenderer.invoke('capture:cancel'),
+    // 覆盖层是预热常驻窗口：每次唤起主进程发这个事件，渲染层 reset 后重新拉画面
+    onShown: (callback) => subscribe('capture:shown', callback)
+  },
+  // 剪贴板历史条（屏幕底部浮层）
+  clipboardBar: {
+    show: () => ipcRenderer.invoke('clipboard-bar:show'),
+    hide: () => ipcRenderer.invoke('clipboard-bar:hide'),
+    toggle: () => ipcRenderer.invoke('clipboard-bar:toggle'),
+    onShown: (callback) => subscribe('clipboard-bar:shown', callback)
   },
   content: {
     list: (options) => ipcRenderer.invoke('content:list', options),

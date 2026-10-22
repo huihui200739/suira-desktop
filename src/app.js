@@ -673,7 +673,8 @@ function bindShortcutEditors() {
     { name: 'capture', input: $('#setting-key-capture'), status: $('#status-capture') },
     { name: 'momentary', input: $('#setting-key-momentary'), status: $('#status-momentary') },
     { name: 'panelCycle', input: $('#setting-key-panelCycle'), status: $('#status-panelCycle') },
-    { name: 'pinnedToggle', input: $('#setting-key-pinnedToggle'), status: $('#status-pinnedToggle') }
+    { name: 'pinnedToggle', input: $('#setting-key-pinnedToggle'), status: $('#status-pinnedToggle') },
+    { name: 'clipboardBar', input: $('#setting-key-clipboardBar'), status: $('#status-clipboardBar') }
   ];
 
   for (const editor of editors) {
@@ -784,6 +785,7 @@ async function refreshShortcuts() {
     render('capture', '#setting-key-capture', '#status-capture');
     render('panelCycle', '#setting-key-panelCycle', '#status-panelCycle');
     render('pinnedToggle', '#setting-key-pinnedToggle', '#status-pinnedToggle');
+    render('clipboardBar', '#setting-key-clipboardBar', '#status-clipboardBar');
 
     // 按住型：状态来自 snapshot.status.momentary，除了注册结果还多一个 watching
     // （按住/松手侦测是否在运行）。不能用上面的通用渲染，文案与样式都不同。
