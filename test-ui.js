@@ -379,10 +379,13 @@ t('右键范围已在差距表中纠正（原件指键帽/钉图，非 Explorer�
   }
   if (!doc.includes('PinClipboardReceiverRightClickView')) throw new Error('缺少右键类的证据');
 });
-t('差距表声明第三批当前实现量为 0，不虚报', () => {
+t('差距表如实标注第三批实现进度（不把未完成写成已完成）', () => {
   const doc = read('docs/BATCH3-GAP-ANALYSIS.md');
-  const rows = doc.split('\n').filter((line) => line.includes('| **0**'));
-  if (rows.length < 8) throw new Error('应有 8 个模块标注当前实现量为 0，实际 ' + rows.length);
+  const zeroRows = doc.split('\n').filter((line) => line.includes('| **0**'));
+  // 本轮交付 2 项（浮引岛 MVP、自定义唤起增量），其余 6 项仍为 0，不能虚报
+  if (zeroRows.length !== 6) throw new Error('应仍有 6 个模块实现量为 0，实际 ' + zeroRows.length);
+  if (!doc.includes('**MVP**') && !doc.includes('**增量已实现**')) throw new Error('缺少已实现项的状态标注');
+  if (doc.includes('已复刻全部')) throw new Error('差距表出现夸大表述');
 });
 
 t('快捷键恢复默认/清除绑定已接到界面', () => {
@@ -695,6 +698,64 @@ t('payload 携带每块的位置与尺寸', () => {
   const overlay = read('src/overlay.js');
   if (!overlay.includes('tile.x') || !overlay.includes('tile.width')) {
     throw new Error('合成时未使用分块偏移/尺寸');
+  }
+});
+
+console.log('\n== 第三批：浮引岛与自定义唤起接线 ==');
+
+t('浮引岛窗口与主进程接线存在', () => {
+  if (!mainJs.includes('createIslandWindow')) throw new Error('缺少浮引岛窗口创建');
+  if (!mainJs.includes("loadFile(path.join(__dirname, 'src', 'island.html'))")) throw new Error('未加载 island.html');
+  for (const channel of ['island:get-state', 'island:add-paths', 'island:remove-item', 'island:clear', 'island:set-policy', 'island:set-expanded', 'island:open-item', 'island:start-drag', 'island:toggle']) {
+    if (!mainJs.includes(channel)) throw new Error('缺少 IPC ' + channel);
+  }
+  if (!mainJs.includes('startDrag')) throw new Error('拖出未走 webContents.startDrag');
+});
+
+t('浮引岛持久化走 store 的 island 段', () => {
+  const store = read('lib/store.js');
+  if (!store.includes('getIsland') || !store.includes('updateIsland')) throw new Error('store 未实现 island 方法');
+  if (!store.includes('cleanIsland')) throw new Error('缺少 island 落盘清洗');
+  if (!store.includes('shortcutMomentary')) throw new Error('设置未持久化按住型键位');
+});
+
+t('浮引岛只收路径，渲染进程不读文件系统', () => {
+  const preload = read('preload.js');
+  if (!preload.includes('webUtils.getPathForFile')) throw new Error('未使用 webUtils 取真实路径');
+  if (!preload.includes('island')) throw new Error('preload 未暴露 island');
+  const islandJs = read('src/island.js');
+  if (/\breadFile\b|require\('node:fs'\)/.test(islandJs)) throw new Error('渲染层不应直接读写文件系统');
+});
+
+t('按住型唤起：侦测助手与状态机已接线', () => {
+  const watch = read('lib/key-watch.js');
+  if (!watch.includes('class KeyWatchProbe')) throw new Error('缺少 KeyWatchProbe');
+  if (!mainJs.includes('setupMomentaryProbe')) throw new Error('主进程未接线');
+  if (!mainJs.includes('momentaryStatus')) throw new Error('未向设置页暴露按住型状态');
+  if (!fs.existsSync('assets/key-watch.ps1')) throw new Error('缺少 key-watch.ps1');
+});
+
+t('面板布局轮换与钉图显隐已注册为快捷键', () => {
+  for (const name of ['panelCycle', 'pinnedToggle']) {
+    if (!mainJs.includes(name + ':')) throw new Error('缺少 handler ' + name);
+  }
+  if (!mainJs.includes("'quick:mode'")) throw new Error('未下发面板模式');
+  if (!mainJs.includes('togglePinnedVisibility')) throw new Error('缺少钉图显隐');
+  const shortcuts = read('lib/shortcuts.js');
+  if (!shortcuts.includes('panelCycle')) throw new Error('快捷键模型缺 panelCycle 默认值');
+  if (!shortcuts.includes('validateMomentaryAccelerator')) throw new Error('快捷键模型缺按住型校验');
+});
+
+t('浮引岛在工具箱里有独立入口', () => {
+  const kb = read('lib/keybindings.js');
+  if (!kb.includes("id: 'island'")) throw new Error('工具箱缺浮引岛入口');
+  if (!kb.includes('toggleIsland: true')) throw new Error('浮引岛入口未标注为浮层切换');
+});
+
+t('面板空格键不再吃掉带修饰键的组合（按住型唤起不被面板截断）', () => {
+  const qp = read('src/quickpanel.js');
+  if (!qp.includes("event.key === ' ' && !event.ctrlKey && !event.altKey && !event.metaKey")) {
+    throw new Error('空格处理未排除修饰键');
   }
 });
 

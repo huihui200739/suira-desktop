@@ -8,9 +8,9 @@ const path = require('path');
 const crypto = require('crypto');
 
 const {
-  DEFAULT_BINDINGS, LEGACY_BINDINGS, RESERVED_COMBOS,
-  normalizeAccelerator, validateAccelerator, findReserved, ShortcutManager,
-  MomentaryWatcher
+  DEFAULT_BINDINGS, DEFAULT_MOMENTARY_BINDINGS, LEGACY_BINDINGS, RESERVED_COMBOS,
+  normalizeAccelerator, validateAccelerator, validateMomentaryAccelerator,
+  findReserved, momentaryConflict, ShortcutManager, MomentaryWatcher
 } = require('./lib/shortcuts');
 const {
   KEY_BYTES, isEncrypted, encryptText, decryptText, generateKey,
@@ -580,6 +580,87 @@ const waitSave = () => new Promise((r) => setTimeout(r, 120));
     const w = new MomentaryWatcher();
     assert.ok(w.gapMs > 0, '默认间隔应为正数');
     w.dispose();
+  });
+
+  /* ---------- 第三批增量：布局轮换 / 钉图显隐 / 按住型校验 ---------- */
+  console.log('\n== 第三批增量：面板布局轮换 / 钉图显隐 / 按住型校验 ==');
+
+  t('默认键位包含面板布局轮换与钉图显隐', () => {
+    assert.ok(DEFAULT_BINDINGS.panelCycle, '缺少 panelCycle 出厂键位');
+    assert.ok(DEFAULT_BINDINGS.pinnedToggle, '缺少 pinnedToggle 出厂键位');
+    for (const [name, acc] of [
+      ['panelCycle', DEFAULT_BINDINGS.panelCycle],
+      ['pinnedToggle', DEFAULT_BINDINGS.pinnedToggle]
+    ]) {
+      assert.strictEqual(validateAccelerator(acc).ok, true, name + ' 应通过校验');
+      assert.strictEqual(findReserved(acc), null, name + ' 不应命中系统保留组合');
+    }
+  });
+
+  t('四个全局默认键位互不重复', () => {
+    const normalized = Object.values(DEFAULT_BINDINGS).map(normalizeAccelerator);
+    assert.strictEqual(new Set(normalized).size, normalized.length, '默认键位存在重复：' + normalized.join(' / '));
+  });
+
+  t('按住型默认键位存在且通过校验', () => {
+    assert.deepStrictEqual(Object.keys(DEFAULT_MOMENTARY_BINDINGS), ['momentary']);
+    const acc = DEFAULT_MOMENTARY_BINDINGS.momentary;
+    assert.ok(acc, '缺少 momentary 出厂键位');
+    assert.strictEqual(validateAccelerator(acc).ok, true);
+    assert.strictEqual(validateMomentaryAccelerator(acc).ok, true);
+    assert.strictEqual(findReserved(acc), null);
+  });
+
+  t('按住型拒绝单修饰键组合（易误触）', () => {
+    const r = validateMomentaryAccelerator('Control+Space');
+    assert.strictEqual(r.ok, false);
+    assert.match(r.error, /两个修饰键/);
+  });
+
+  t('按住型拒绝空串与空主键', () => {
+    assert.strictEqual(validateMomentaryAccelerator('').ok, false);
+    assert.strictEqual(validateMomentaryAccelerator('   ').ok, false);
+    assert.strictEqual(validateMomentaryAccelerator('Control+Alt').ok, false);
+  });
+
+  t('按住型沿用普通键位校验', () => {
+    assert.strictEqual(validateMomentaryAccelerator('Shift+A').ok, false);
+    assert.strictEqual(validateMomentaryAccelerator('A').ok, false);
+    assert.strictEqual(validateMomentaryAccelerator('Control+Alt+Space').ok, true, '两个修饰键 + 主键应合法');
+  });
+
+  t('按住型冲突能报出与 quick 重复', () => {
+    const bindings = { ...DEFAULT_BINDINGS, ...DEFAULT_MOMENTARY_BINDINGS };
+    const conflict = momentaryConflict(DEFAULT_BINDINGS.quick, bindings);
+    assert.ok(conflict, '应检测到与 quick 的冲突');
+    assert.match(conflict, /重复/);
+    assert.match(conflict, /quick|随手面板/);
+  });
+
+  t('按住型无冲突时返回空串', () => {
+    const bindings = { ...DEFAULT_BINDINGS, ...DEFAULT_MOMENTARY_BINDINGS };
+    assert.strictEqual(momentaryConflict(DEFAULT_MOMENTARY_BINDINGS.momentary, bindings), '');
+    assert.strictEqual(momentaryConflict('Control+Alt+Shift+K', bindings), '');
+    assert.strictEqual(momentaryConflict('', bindings), '');
+  });
+
+  t('restoreDefault 之后四个全局键位都回到默认', () => {
+    const gs = makeFakeShortcut();
+    const handlers = { quick() {}, capture() {}, panelCycle() {}, pinnedToggle() {} };
+    const mgr = new ShortcutManager({ globalShortcut: gs, handlers });
+    mgr.registerAll();
+    mgr.rebind('quick', 'Control+Alt+1');
+    mgr.rebind('capture', 'Control+Alt+2');
+    mgr.rebind('panelCycle', 'Control+Alt+3');
+    mgr.rebind('pinnedToggle', 'Control+Alt+4');
+    const r = mgr.restoreDefault();
+    assert.strictEqual(r.ok, true, r.error);
+    assert.deepStrictEqual(r.restored.slice().sort(), ['capture', 'panelCycle', 'pinnedToggle', 'quick']);
+    const snap = mgr.snapshot();
+    for (const name of ['quick', 'capture', 'panelCycle', 'pinnedToggle']) {
+      assert.strictEqual(snap.bindings[name], DEFAULT_BINDINGS[name], name + ' 未回到出厂默认');
+      assert.strictEqual(gs.isRegistered(DEFAULT_BINDINGS[name]), true, name + ' 的默认键位应已重新注册');
+    }
   });
 
   console.log('\n========== ' + pass + ' 通过 / ' + fail + ' 失败 ==========');

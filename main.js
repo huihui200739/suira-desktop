@@ -46,12 +46,15 @@ const { readWithRetry, shouldExcludeCapture, summarizeLargeText } = require('./l
 const { captureTarget, validateTarget, decideCommit, normalizeHwnd, ClipboardWriteLedger } = require('./lib/return-target');
 const { AppIndex } = require('./lib/app-index');
 const { ForegroundProbe } = require('./lib/foreground-probe');
-const { DEFAULT_BINDINGS, ShortcutManager } = require('./lib/shortcuts');
+const { DEFAULT_BINDINGS, DEFAULT_MOMENTARY_BINDINGS, ShortcutManager, normalizeAccelerator, validateMomentaryAccelerator, momentaryConflict } = require('./lib/shortcuts');
 const { KeyVault, encryptItem, decryptItem, encryptText, decryptText } = require('./lib/crypto-store');
 const { unionBounds, maxScaleFactor, tileLayout } = require('./lib/display-geometry');
 const { InputInjector } = require('./lib/input-injector');
 const { keyLayout, TOOLBOX_TOOLS, PANEL_ACTIONS } = require('./lib/keybindings');
 const { createPanelActions } = require('./lib/panel-actions');
+// 第三批：按住型唤起用常驻 PowerShell 助手拿「松开」事件；浮引岛纯模型负责暂存语义
+const { KeyWatchProbe } = require('./lib/key-watch');
+const islandModel = require('./lib/island-model');
 const { execFileSync } = require('node:child_process');
 
 const APP_NAME = '随序 SUIRA';
@@ -61,6 +64,13 @@ const MAIN_HEIGHT = 820;
 // 38 键面板需要装下 12/10/9/7 四行键位 + 搜索条 + 底部提示
 const QUICK_WIDTH = 720;
 const QUICK_HEIGHT = 620;
+// 浮引岛：收起是一根细条，悬停展开成卡片。尺寸固定，动画交给渲染层。
+const ISLAND_COLLAPSED = { width: 176, height: 44 };
+const ISLAND_EXPANDED = { width: 520, height: 148 };
+const ISLAND_MARGIN_TOP = 12;
+const ISLAND_MAX_ITEMS = 24;
+// 面板布局轮换的顺序（对应原产品 onPanelCycleLayout）
+const PANEL_MODES = ['actions', 'apps', 'toolbox'];
 const TEXT_HISTORY_LIMIT = 2000;
 // 应用图标缓存：开始菜单路径 → data URL。图标是静态资源，随进程生命周期复用。
 const appIconCache = new Map();
@@ -85,6 +95,16 @@ let captureBusy = false;
 let captureGeneration = 0;
 let mainWasVisible = false;
 const pinWindows = new Set();
+// 浮引岛（文件中转）与按住型唤起的状态
+let islandWindow = null;
+let islandExpanded = false;
+let momentaryProbe = null;
+let momentaryOpened = false;
+/** 最近一次按住型侦测启动失败的原因；成功时清空，设置页据此显示真实原因。 */
+let momentaryError = '';
+/** 按住型侦测的启动 Promise：自检要等它落定，否则会把「正在启动」误报成「未运行」。 */
+let momentaryReady = Promise.resolve({ ok: true });
+let panelModeIndex = 0;
 
 // 放回子系统：唤起前的目标窗口，以及剪贴板自写回环账本
 let returnTarget = null;
@@ -98,13 +118,35 @@ let keyVault = null;
 /** 置前目标窗口后等待焦点稳定的时间（毫秒）。太短按键会落到随序自己身上。 */
 const RETURN_FOCUS_DELAY = 120;
 
-/** 从设置读取当前键位，回落到出厂默认。 */
+/** 从设置读取当前键位，回落到出厂默认。清除绑定（空串）的项不注册。 */
 function shortcutBindings() {
   const settings = store ? store.getSettings() : {};
-  return {
-    quick: settings.shortcutQuick || DEFAULT_BINDINGS.quick,
-    capture: settings.shortcutCapture || DEFAULT_BINDINGS.capture
+  const map = {
+    quick: settings.shortcutQuick ?? DEFAULT_BINDINGS.quick,
+    capture: settings.shortcutCapture ?? DEFAULT_BINDINGS.capture,
+    panelCycle: settings.shortcutPanelCycle ?? DEFAULT_BINDINGS.panelCycle,
+    pinnedToggle: settings.shortcutPinnedToggle ?? DEFAULT_BINDINGS.pinnedToggle
   };
+  const bindings = {};
+  for (const [name, accelerator] of Object.entries(map)) {
+    if (accelerator) bindings[name] = accelerator;
+  }
+  return bindings;
+}
+
+/** 快捷键名 → 设置字段。设置页与主进程共用同一张映射。 */
+const SHORTCUT_SETTING_KEYS = {
+  quick: 'shortcutQuick',
+  capture: 'shortcutCapture',
+  panelCycle: 'shortcutPanelCycle',
+  pinnedToggle: 'shortcutPinnedToggle'
+};
+
+/** 按住型唤起当前键位（清除绑定后为空串）。 */
+function momentaryAccelerator() {
+  const settings = store ? store.getSettings() : {};
+  if (settings.shortcutMomentary === undefined) return DEFAULT_MOMENTARY_BINDINGS.momentary;
+  return String(settings.shortcutMomentary || '');
 }
 
 app.setName(APP_NAME);
@@ -426,6 +468,301 @@ function hideQuickPanel() {
 function toggleQuickPanel() {
   if (quickWindow && quickWindow.isVisible() && quickWindow.isFocused()) hideQuickPanel();
   else showQuickPanel();
+}
+
+/* ---------- 浮引岛（文件中转） ---------- */
+
+/**
+ * 浮引岛的完整状态。渲染层只拿引用与元数据，文件本体不进入渲染进程。
+ * @returns {{ok:boolean, items:object[], policy:'copy'|'move', expanded:boolean, maxItems:number, visible:boolean}}
+ */
+function islandState() {
+  const snapshot = store ? store.getIsland() : { items: [], policy: 'copy' };
+  return {
+    ok: true,
+    items: snapshot.items,
+    policy: snapshot.policy,
+    expanded: islandExpanded,
+    maxItems: ISLAND_MAX_ITEMS,
+    visible: Boolean(islandWindow && !islandWindow.isDestroyed() && islandWindow.isVisible())
+  };
+}
+
+function broadcastIsland() {
+  broadcast('island:state', islandState());
+}
+
+/** 岛窗口边界：主屏顶部居中；展开时向两侧变宽。 */
+function islandBounds(expanded) {
+  const area = screen.getPrimaryDisplay().workArea;
+  const size = expanded ? ISLAND_EXPANDED : ISLAND_COLLAPSED;
+  return {
+    x: Math.round(area.x + (area.width - size.width) / 2),
+    y: Math.round(area.y + ISLAND_MARGIN_TOP),
+    width: size.width,
+    height: size.height
+  };
+}
+
+function createIslandWindow() {
+  if (islandWindow && !islandWindow.isDestroyed()) return islandWindow;
+  islandWindow = new BrowserWindow({
+    ...islandBounds(false),
+    show: false,
+    frame: false,
+    transparent: true,
+    backgroundColor: '#00000000',
+    hasShadow: false,
+    resizable: false,
+    movable: false,
+    maximizable: false,
+    minimizable: false,
+    skipTaskbar: true,
+    alwaysOnTop: true,
+    fullscreenable: false,
+    // 岛要能被点击与拖放；但不能抢走用户正在打字的窗口焦点
+    focusable: true,
+    title: '随序 · 浮引岛',
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.js'),
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: false,
+      backgroundThrottling: false
+    }
+  });
+  islandWindow.setAlwaysOnTop(true, 'floating');
+  if (process.platform === 'win32') {
+    try { islandWindow.setBackgroundMaterial('none'); } catch {}
+  }
+  islandWindow.loadFile(path.join(__dirname, 'src', 'island.html'));
+  islandWindow.setMenuBarVisibility(false);
+  islandWindow.webContents.once('did-finish-load', () => {
+    islandWindow.webContents.send('island:state', islandState());
+    islandWindow.webContents.send('island:expanded', islandExpanded);
+  });
+  // 失焦即收起：点别处不该留一张展开的卡片挡在屏幕上
+  islandWindow.on('blur', () => {
+    if (islandExpanded) setIslandExpanded(false);
+  });
+  islandWindow.on('closed', () => { islandWindow = null; });
+  islandWindow.webContents.setWindowOpenHandler(({ url }) => {
+    if (isSafeHttpUrl(url)) shell.openExternal(url);
+    return { action: 'deny' };
+  });
+  return islandWindow;
+}
+
+function showIsland() {
+  const win = createIslandWindow();
+  if (!win || win.isDestroyed()) return { ok: false, error: '浮引岛窗口创建失败' };
+  win.setBounds(islandBounds(islandExpanded));
+  // 用 showInactive：岛是常驻入口，出现时不能打断用户当前输入
+  win.showInactive();
+  win.webContents.send('island:state', islandState());
+  return { ok: true, visible: true };
+}
+
+function hideIsland() {
+  setIslandExpanded(false);
+  if (islandWindow && !islandWindow.isDestroyed()) islandWindow.hide();
+  return { ok: true, visible: false };
+}
+
+function toggleIsland() {
+  if (islandWindow && !islandWindow.isDestroyed() && islandWindow.isVisible()) return hideIsland();
+  return showIsland();
+}
+
+function setIslandExpanded(expanded) {
+  const target = Boolean(expanded);
+  const win = islandWindow;
+  if (islandExpanded === target) {
+    if (win && !win.isDestroyed()) win.webContents.send('island:expanded', target);
+    return { ok: true, expanded: target };
+  }
+  islandExpanded = target;
+  if (!win || win.isDestroyed()) return { ok: true, expanded: target };
+  win.setBounds(islandBounds(target));
+  win.webContents.send('island:expanded', target);
+  return { ok: true, expanded: target };
+}
+
+/** 把路径加入暂存。去重、容量上限由 lib/island-model.js 决定。 */
+async function addIslandPaths(paths) {
+  if (!store) return { ...islandState(), ok: false, error: '数据层尚未就绪' };
+  const incoming = (Array.isArray(paths) ? paths : [paths])
+    .filter((value) => typeof value === 'string')
+    .filter((value) => islandModel.isShelfablePath(value));
+  if (!incoming.length) return { ...islandState(), ok: false, error: '没有可暂存的文件路径' };
+  const current = store.getIsland();
+  // island-model 的入参是条目对象：这里把路径包装成只带 path 的条目，
+  // 名称、类型、时间戳都由模型补齐（保持纯函数、便于测试）
+  const result = islandModel.addShelfItems(current.items, incoming.map((filePath) => ({ path: filePath })), {
+    cap: ISLAND_MAX_ITEMS
+  });
+  if (!result.added) return { ...islandState(), ok: true, added: 0, dropped: result.dropped };
+  await store.updateIsland({ items: result.items });
+  broadcastIsland();
+  const win = islandWindow;
+  if (win && !win.isDestroyed()) setIslandExpanded(true);
+  return { ...islandState(), ok: true, added: result.added, dropped: result.dropped };
+}
+
+/** 找到暂存条目并确认文件还在。 */
+function findIslandItem(id) {
+  if (!store) return null;
+  const item = store.getIsland().items.find((entry) => entry.id === String(id || ''));
+  if (!item) return null;
+  return { item, exists: fs.existsSync(item.path) };
+}
+
+/**
+ * 拖出：Electron 只能由主进程发起原生拖放。
+ * 图标用应用图标缩小一档，资源管理器会据此显示拖动预览。
+ */
+async function startIslandDrag(id) {
+  const found = findIslandItem(id);
+  if (!found) return false;
+  if (!found.exists) {
+    toastToUser('文件已被移动或删除，无法拖出', 'error');
+    return false;
+  }
+  const win = islandWindow;
+  if (!win || win.isDestroyed()) return false;
+  try {
+    let icon = nativeImage.createFromPath(assetPath('suira-icon.png'));
+    if (icon && !icon.isEmpty()) icon = icon.resize({ width: 32, height: 32 });
+    else icon = undefined;
+    win.webContents.startDrag({ file: found.item.path, icon });
+    return true;
+  } catch (error) {
+    console.warn('拖出浮引岛失败:', error && error.message ? error.message : error);
+    return false;
+  }
+}
+
+async function openIslandItem(id) {
+  const found = findIslandItem(id);
+  if (!found) return { ok: false, error: '暂存条目不存在' };
+  if (!found.exists) return { ok: false, error: '文件已被移动或删除' };
+  try {
+    const error = await shell.openPath(found.item.path);
+    if (error) return { ok: false, error };
+    return { ok: true };
+  } catch (error) {
+    return { ok: false, error: error.message || '打开失败' };
+  }
+}
+
+function revealIslandItem(id) {
+  const found = findIslandItem(id);
+  if (!found) return { ok: false, error: '暂存条目不存在' };
+  shell.showItemInFolder(found.item.path);
+  return { ok: true };
+}
+
+/* ---------- 面板布局轮换 / 钉图显隐 / 按住型唤起 ---------- */
+
+function toastToUser(message, type = 'info') {
+  broadcast('app:toast', { message, type });
+}
+
+/**
+ * 面板布局轮换（原产品 onPanelCycleLayout）：动作 → 应用 → 工具箱 → 动作。
+ * 面板没显示时先显示，并停在第一个布局，避免「按一下只换了个看不见的东西」。
+ */
+function cyclePanelMode() {
+  if (!quickWindow || quickWindow.isDestroyed()) createQuickWindow();
+  if (!quickWindow.isVisible()) {
+    panelModeIndex = 0;
+    showQuickPanel();
+    quickWindow.webContents.send('quick:mode', PANEL_MODES[panelModeIndex]);
+    return { ok: true, mode: PANEL_MODES[panelModeIndex] };
+  }
+  panelModeIndex = (panelModeIndex + 1) % PANEL_MODES.length;
+  const mode = PANEL_MODES[panelModeIndex];
+  quickWindow.webContents.send('quick:mode', mode);
+  return { ok: true, mode };
+}
+
+/**
+ * 钉图显隐（原产品 onPinnedImageVisibilityShortcut）：
+ * 有可见的钉图就全部隐藏，全部隐藏时再按一次全部恢复。
+ */
+function togglePinnedVisibility() {
+  const windows = [...pinWindows].filter((win) => win && !win.isDestroyed());
+  if (!windows.length) {
+    toastToUser('还没有钉图窗口，先按 P 钉一张', 'warn');
+    return { ok: false, error: '还没有钉图窗口' };
+  }
+  const visibleCount = windows.filter((win) => win.isVisible()).length;
+  const shouldHide = visibleCount > 0;
+  for (const win of windows) {
+    if (shouldHide) win.hide();
+    else win.showInactive();
+  }
+  toastToUser(shouldHide ? `已隐藏 ${windows.length} 张钉图` : `已恢复 ${windows.length} 张钉图`, 'info');
+  return { ok: true, hidden: shouldHide, count: windows.length };
+}
+
+/** 按住型唤起的下发给设置页的状态。 */
+function momentaryStatus() {
+  const accelerator = momentaryAccelerator();
+  if (!accelerator) return { ok: true, accelerator: '', error: '', watching: false, cleared: true };
+  const watching = Boolean(momentaryProbe && momentaryProbe.status === 'watching');
+  return {
+    ok: watching,
+    accelerator,
+    // 失败原因要具体：设置页直接展示这一句，不能只说「未运行」
+    error: watching ? '' : (momentaryError || '按住型侦测未运行'),
+    watching
+  };
+}
+
+/**
+ * 启动/重启按住型侦测。
+ * 键位为空（用户清除绑定）时只停掉侦测，不报错。
+ */
+async function setupMomentaryProbe() {
+  const accelerator = momentaryAccelerator();
+  if (momentaryProbe) {
+    try { await momentaryProbe.stop(); } catch {}
+    momentaryProbe = null;
+  }
+  if (!accelerator) {
+    momentaryOpened = false;
+    momentaryError = '';
+    return { ok: true, watching: false };
+  }
+  momentaryProbe = new KeyWatchProbe({
+    accelerator,
+    scriptPath: assetPath('key-watch.ps1'),
+    onDown: () => {
+      if (quickWindow && !quickWindow.isDestroyed() && quickWindow.isVisible()) return;
+      momentaryOpened = true;
+      showQuickPanel();
+    },
+    onUp: () => {
+      if (!momentaryOpened) return;
+      momentaryOpened = false;
+      hideQuickPanel();
+    },
+    onError: (message) => console.warn('按住型唤起侦测失败:', message)
+  });
+  const result = await momentaryProbe.start();
+  const ok = Boolean(result && result.ok);
+  if (ok) {
+    momentaryError = '';
+  } else {
+    momentaryError = (result && result.error) || '按键侦测助手没有启动';
+    console.warn('按住型侦测启动失败:', momentaryError);
+  }
+  return {
+    ok,
+    watching: momentaryProbe && momentaryProbe.status === 'watching',
+    error: ok ? '' : momentaryError
+  };
 }
 
 /**
@@ -909,7 +1246,9 @@ function createPinWindow(dataUrl, size = {}) {
   pin.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
   pinWindows.add(pin);
   pin.on('closed', () => pinWindows.delete(pin));
-}function registerIpc() {
+}
+
+function registerIpc() {
   /* ---- 钉图窗口控制 ---- */
   // 每个钉图窗口独立保存收起前的边界，便于恢复
   const pinState = new WeakMap();
@@ -969,7 +1308,8 @@ function createPinWindow(dataUrl, size = {}) {
     if (win && !win.isDestroyed()) win.close();
   });
 
-  ipcMain.handle('window:minimize', () => mainWindow?.minimize());  ipcMain.handle('window:maximize', () => {
+  ipcMain.handle('window:minimize', () => mainWindow?.minimize());
+  ipcMain.handle('window:maximize', () => {
     if (!mainWindow) return false;
     if (mainWindow.isMaximized()) mainWindow.unmaximize();
     else mainWindow.maximize();
@@ -985,6 +1325,36 @@ function createPinWindow(dataUrl, size = {}) {
   ipcMain.handle('quick:open-main', (_event, page) => { hideQuickPanel(); showMain(page || 'shelf'); return { ok: true }; });
   ipcMain.handle('quick:capture', () => beginScreenCapture('quick'));
   ipcMain.handle('quick:show-main', (_event, page) => { hideQuickPanel(); showMain(page); return { ok: true }; });
+
+  /* ---- 浮引岛（文件中转） ---- */
+  ipcMain.handle('island:get-state', () => islandState());
+  ipcMain.handle('island:toggle', () => toggleIsland());
+  ipcMain.handle('island:add-paths', async (_event, paths) => addIslandPaths(paths));
+  ipcMain.handle('island:remove-item', async (_event, id) => {
+    const current = store.getIsland();
+    const next = islandModel.removeShelfItem(current.items, String(id || ''));
+    if (next.length === current.items.length) return { ...islandState(), ok: false, error: '暂存条目不存在' };
+    await store.updateIsland({ items: next });
+    // 空岛只留细条：没有内容时展开成一张空卡片没有意义
+    if (!next.length) setIslandExpanded(false);
+    broadcastIsland();
+    return islandState();
+  });
+  ipcMain.handle('island:clear', async () => {
+    await store.updateIsland({ items: [] });
+    setIslandExpanded(false);
+    broadcastIsland();
+    return islandState();
+  });
+  ipcMain.handle('island:set-policy', async (_event, policy) => {
+    await store.updateIsland({ policy: policy === 'move' ? 'move' : 'copy' });
+    broadcastIsland();
+    return islandState();
+  });
+  ipcMain.handle('island:set-expanded', (_event, expanded) => setIslandExpanded(Boolean(expanded)));
+  ipcMain.handle('island:open-item', async (_event, id) => openIslandItem(id));
+  ipcMain.handle('island:reveal-item', (_event, id) => revealIslandItem(id));
+  ipcMain.handle('island:start-drag', (_event, id) => startIslandDrag(id));
 
   ipcMain.handle('app:info', () => ({
     name: APP_NAME,
@@ -1114,7 +1484,8 @@ function createPinWindow(dataUrl, size = {}) {
       for (const app of await appIndex.candidates()) candidates.push(app);
     } catch {
       // 索引不可用时不影响命令与内容搜索
-    }    for (const item of store.listItems({ limit: 200 })) {
+    }
+    for (const item of store.listItems({ limit: 200 })) {
       candidates.push({
         id: item.id,
         kind: 'content',
@@ -1184,16 +1555,50 @@ function createPinWindow(dataUrl, size = {}) {
     return icons;
   });
 
-  ipcMain.handle('shortcuts:get', () => (shortcutManager ? shortcutManager.snapshot() : { bindings: {}, status: {} }));
+  /* ---- 快捷键：全局键位 + 按住型侦测 ---- */
+  ipcMain.handle('shortcuts:get', () => {
+    const snapshot = shortcutManager ? shortcutManager.snapshot() : { bindings: {}, status: {} };
+    const momentary = momentaryStatus();
+    return {
+      bindings: { ...snapshot.bindings, momentary: momentary.accelerator },
+      status: { ...snapshot.status, momentary }
+    };
+  });
 
   ipcMain.handle('shortcuts:set', async (_event, payload) => {
     if (!shortcutManager) return { ok: false, error: '快捷键尚未初始化' };
     const name = String(payload?.name || '');
     const accelerator = String(payload?.accelerator || '').trim();
-    if (name !== 'quick' && name !== 'capture') return { ok: false, error: '未知的快捷键名称' };
+
+    // 按住型唤起不走 globalShortcut：它由常驻 PowerShell 助手侦测按下/松开
+    if (name === 'momentary') {
+      const validation = validateMomentaryAccelerator(accelerator);
+      if (!validation.ok) return { ok: false, error: validation.error };
+      const conflict = momentaryConflict(accelerator, shortcutManager.snapshot().bindings);
+      if (conflict) return { ok: false, error: conflict };
+      const previous = store.getSettings().shortcutMomentary;
+      await store.updateSettings({ shortcutMomentary: accelerator });
+      const started = await setupMomentaryProbe();
+      if (!started.ok) {
+        // 新键位起不来就回滚，不能让设置页显示成功但实际不工作
+        await store.updateSettings({
+          shortcutMomentary: previous === undefined ? DEFAULT_MOMENTARY_BINDINGS.momentary : previous
+        });
+        await setupMomentaryProbe();
+        return { ok: false, error: `按住型侦测启动失败：${started.error || '未知原因'}` };
+      }
+      return { ok: true, status: momentaryStatus() };
+    }
+
+    if (!SHORTCUT_SETTING_KEYS[name]) return { ok: false, error: '未知的快捷键名称' };
+    // 与按住型唤起撞组合会互相抢键：两边都是全局监听，必须提前拒绝
+    const momentaryCurrent = momentaryAccelerator();
+    if (momentaryCurrent && normalizeAccelerator(momentaryCurrent) === normalizeAccelerator(accelerator)) {
+      return { ok: false, error: '与「按住型唤起」的快捷键重复' };
+    }
     const result = shortcutManager.rebind(name, accelerator);
     if (!result.ok) return { ok: false, error: result.error, status: result.status };
-    await store.updateSettings(name === 'quick' ? { shortcutQuick: accelerator } : { shortcutCapture: accelerator });
+    await store.updateSettings({ [SHORTCUT_SETTING_KEYS[name]]: accelerator });
     return { ok: true, status: result.status };
   });
 
@@ -1201,28 +1606,46 @@ function createPinWindow(dataUrl, size = {}) {
   ipcMain.handle('shortcuts:restore-default', async (_event, payload) => {
     if (!shortcutManager) return { ok: false, error: '快捷键尚未初始化' };
     const name = payload?.name ? String(payload.name) : '';
-    if (name && name !== 'quick' && name !== 'capture') {
+    if (name && name !== 'momentary' && !SHORTCUT_SETTING_KEYS[name]) {
       return { ok: false, error: '未知的快捷键名称' };
+    }
+    if (name === 'momentary') {
+      await store.updateSettings({ shortcutMomentary: DEFAULT_MOMENTARY_BINDINGS.momentary });
+      const started = await setupMomentaryProbe();
+      if (!started.ok) return { ok: false, error: started.error || '按住型侦测启动失败' };
+      return { ok: true, restored: ['momentary'], status: momentaryStatus() };
     }
     const result = shortcutManager.restoreDefault(name || undefined);
     if (!result.ok) return { ok: false, error: result.error, status: result.status };
     const patch = {};
+    const bindings = shortcutManager.snapshot().bindings;
     for (const restored of result.restored) {
-      if (restored === 'quick') patch.shortcutQuick = shortcutManager.snapshot().bindings.quick;
-      if (restored === 'capture') patch.shortcutCapture = shortcutManager.snapshot().bindings.capture;
+      const key = SHORTCUT_SETTING_KEYS[restored];
+      if (key) patch[key] = bindings[restored];
     }
+    // 无参 = 恢复全部：按住型唤起也要回到出厂键
+    if (!name) patch.shortcutMomentary = DEFAULT_MOMENTARY_BINDINGS.momentary;
     if (Object.keys(patch).length) await store.updateSettings(patch);
-    return { ok: true, status: result.status, restored: result.restored };
+    if (!name) {
+      await setupMomentaryProbe();
+      result.restored.push('momentary');
+    }
+    return { ok: true, status: { ...result.status, momentary: momentaryStatus() }, restored: result.restored };
   });
 
   // 清除绑定（对应原产品 clearShortcut）：解绑后不再响应，但保留条目
   ipcMain.handle('shortcuts:clear', async (_event, payload) => {
     if (!shortcutManager) return { ok: false, error: '快捷键尚未初始化' };
     const name = String(payload?.name || '');
-    if (name !== 'quick' && name !== 'capture') return { ok: false, error: '未知的快捷键名称' };
+    if (name === 'momentary') {
+      await store.updateSettings({ shortcutMomentary: '' });
+      await setupMomentaryProbe();
+      return { ok: true, status: momentaryStatus() };
+    }
+    if (!SHORTCUT_SETTING_KEYS[name]) return { ok: false, error: '未知的快捷键名称' };
     const result = shortcutManager.clear(name);
     if (!result.ok) return { ok: false, error: result.error, status: result.status };
-    await store.updateSettings(name === 'quick' ? { shortcutQuick: '' } : { shortcutCapture: '' });
+    await store.updateSettings({ [SHORTCUT_SETTING_KEYS[name]]: '' });
     return { ok: true, status: result.status };
   });
 
@@ -1348,6 +1771,8 @@ function registerShortcuts() {
     handlers: {
       quick: toggleQuickPanel,
       capture: () => beginScreenCapture('shortcut'),
+      panelCycle: cyclePanelMode,
+      pinnedToggle: togglePinnedVisibility,
       legacy: toggleQuickPanel
     },
     bindings: shortcutBindings(),
@@ -1362,7 +1787,15 @@ function registerShortcuts() {
       console.warn(`快捷键 ${name} (${entry.accelerator}) 注册失败：${entry.error}`);
     }
   }
-  return status;
+  // 清除过的绑定要能在重启后保持「未绑定」：设置里存的是空串，
+  // 而空串不会被注册，这里把状态补回 cleared，设置页才不会显示成空白。
+  const settings = store ? store.getSettings() : {};
+  for (const [name, key] of Object.entries(SHORTCUT_SETTING_KEYS)) {
+    if (settings[key] === '' && !shortcutManager.bindings[name]) {
+      shortcutManager.status[name] = { ok: true, accelerator: '', error: '', cleared: true };
+    }
+  }
+  return shortcutManager.status;
 }
 
 async function initialize() {
@@ -1420,6 +1853,15 @@ async function initialize() {
   createQuickWindow();
   createTray();
   registerShortcuts();
+  // 浮引岛是常驻入口：启动即显示收起态，用 showInactive 不抢焦点。
+  // 用户可在工具箱里点「浮引岛」显示/收起。
+  showIsland();
+  // 按住型侦测失败不阻塞启动：设置页会显示原因，普通快捷键照常可用
+  momentaryReady = setupMomentaryProbe().catch((error) => {
+    momentaryError = error && error.message ? error.message : String(error);
+    console.warn('按住型唤起初始化失败:', momentaryError);
+    return { ok: false, error: momentaryError };
+  });
   // 剪贴板监听失败时不能只写日志：剪贴板历史会完全失效，用户必须知道
   clipboardWatcherReady = startClipboardWatcher().catch((error) => {
     clipboardWatcherError = error && error.message ? error.message : String(error);
@@ -1439,6 +1881,7 @@ app.whenReady().then(initialize).then(async () => {
     // 剪贴板监听是异步启动的：不等它完成，报告会把「正在启动」误报成「未运行」。
     // 这类误报会直接误导排查，必须等。
     try { await clipboardWatcherReady; } catch { /* 错误已记录在 clipboardWatcherError */ }
+    try { await momentaryReady; } catch { /* 错误已记录在 momentaryError */ }
     try {
       const report = await collectDiagnostics();
       const target = path.join(app.getPath('userData'), 'diag-report.txt');
@@ -1483,7 +1926,8 @@ async function collectDiagnostics() {
   add('启动方式', process.argv.includes('--diag') ? '含 --diag' : '普通');
 
   section('窗口');
-  for (const [name, win] of [['主窗口', mainWindow], ['面板', quickWindow]]) {
+  const island = islandWindow && !islandWindow.isDestroyed() ? islandWindow : null;
+  for (const [name, win] of [['主窗口', mainWindow], ['面板', quickWindow], ['浮引岛', island]]) {
     if (!win || win.isDestroyed()) { add(name, '未创建'); continue; }
     const [w, h] = win.getSize();
     add(`${name} 尺寸`, `${w}×${h}`);
@@ -1498,6 +1942,16 @@ async function collectDiagnostics() {
     add(name, `${accelerator || '—'} ${state}`);
   }
   if (!shortcutManager) add('管理器', '未初始化');
+  const momentaryInfo = momentaryStatus();
+  add('按住型唤起', !momentaryInfo.accelerator
+    ? '未绑定'
+    : `${momentaryInfo.accelerator} ${momentaryInfo.watching ? '侦测中' : '未运行'}`);
+
+  section('浮引岛');
+  const islandInfo = islandState();
+  add('可见', islandInfo.visible ? '是' : '否');
+  add('暂存条目', `${islandInfo.items.length} / ${islandInfo.maxItems}`);
+  add('拖入策略', islandInfo.policy === 'move' ? '移动' : '复制');
 
   section('能力');
   add('屏幕数量', String(screen.getAllDisplays().length));
@@ -1548,6 +2002,7 @@ app.on('will-quit', () => {
   globalShortcut.unregisterAll();
   ocr?.terminate().catch(() => {});
   foregroundProbe.dispose();
+  try { momentaryProbe?.stop().catch(() => {}); } catch {}
 });
 app.on('window-all-closed', () => { if (process.platform !== 'darwin' && isQuitting) app.quit(); });
 

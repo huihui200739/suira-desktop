@@ -240,10 +240,17 @@ function renderTools() {
     </button>
   `).join('');
   $$('.tool-item').forEach((button) => {
-    button.addEventListener('click', () => {
+    button.addEventListener('click', async () => {
       const tool = state.tools.find((entry) => entry.id === button.dataset.id);
       if (!tool) return;
       if (!tool.implemented) { toast(`「${tool.label}」尚未实现`); return; }
+      // 浮引岛是浮层，不是主窗口页面：显示/收起后回到原来的工作面
+      if (tool.toggleIsland) {
+        const result = await window.suira.island.toggle();
+        if (result && result.ok === false) { toast(result.error || '浮引岛不可用', 'error'); return; }
+        window.suira.quick.hide();
+        return;
+      }
       if (tool.open) { window.suira.quick.showMain(tool.open); return; }
       runAction(tool.id);
     });
@@ -462,8 +469,9 @@ function installEvents() {
       else window.suira.quick.hide();
       return;
     }
-    if (event.key === ' ' && !state.query) {
-      // 搜索条为空时空格是面板切换键，不写入内容
+    if (event.key === ' ' && !state.query && !event.ctrlKey && !event.altKey && !event.metaKey) {
+      // 搜索条为空时空格是面板切换键，不写入内容。
+      // 带修饰键的空格要放过去：那是「按住型唤起」的键位，不能被面板吃掉。
       event.preventDefault();
       toggleApps();
       return;
@@ -535,7 +543,11 @@ function installEvents() {
       }
       return;
     }
-    if (event.key === ' ') { event.preventDefault(); toggleApps(); return; }
+    if (event.key === ' ' && !event.ctrlKey && !event.altKey && !event.metaKey) {
+      event.preventDefault();
+      toggleApps();
+      return;
+    }
     if (event.key === '/' || event.key === 'F3') { event.preventDefault(); focusSearch(); return; }
     if (event.ctrlKey || event.altKey || event.metaKey) return;
     if (event.key.length === 1) {
@@ -602,6 +614,12 @@ function installEvents() {
   });
 
   window.suira.content.onChanged(() => loadRecent());
+  // 主进程的「面板布局轮换」快捷键：动作 / 应用 / 工具箱 之间切换
+  window.suira.quick.onMode((mode) => {
+    if (typeof mode !== 'string' || !mode) return;
+    clearSearch();
+    setMode(mode);
+  });
   window.suira.quick.onShown(async () => {
     clearSearch();
     setMode('actions');

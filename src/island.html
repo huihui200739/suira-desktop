@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="color-scheme" content="dark">
+  <title>随序 · 文件中转</title>
+  <link rel="stylesheet" href="island.css">
+</head>
+<body>
+  <!--
+    浮引岛：屏幕顶部中央的常驻文件暂存条。
+    收起 176×44 / 悬停展开 520×148，窗口尺寸由主进程改，渲染层只切 data-expanded。
+    所有内容都在这两个尺寸内排布，根元素裁掉溢出，不出现滚动条。
+  -->
+  <main class="island" id="island" data-expanded="false" data-policy="copy" aria-label="文件中转（浮引岛）">
+    <!-- 收起态：岛图标 + 文件数 + 当前策略 -->
+    <button class="rail" id="rail" type="button" title="文件中转：悬停展开，把文件拖进来暂存">
+      <span class="rail-mark" aria-hidden="true">
+        <svg viewBox="0 0 24 24"><rect x="3.5" y="6" width="17" height="4" rx="2"/><path d="M5.5 12.5h13l-1.4 5.2a2 2 0 0 1-1.9 1.3H8.8a2 2 0 0 1-1.9-1.3z"/></svg>
+      </span>
+      <span class="rail-count" id="rail-count">0</span>
+      <span class="rail-policy" id="rail-policy">复制</span>
+    </button>
+
+    <!-- 展开态：文件卡片网格 + 底部策略切换与清空 -->
+    <section class="sheet" id="sheet" hidden aria-label="暂存文件">
+      <div class="shelf-wrap">
+        <div class="shelf" id="shelf" role="list" aria-label="暂存文件列表"></div>
+        <div class="empty" id="empty" data-mode="empty">
+          <b id="empty-title">把文件拖进来暂存</b>
+          <p id="empty-hint">从资源管理器拖入文件，之后可以点开或拖出去。</p>
+          <button class="retry-btn" id="retry" type="button" hidden>重试</button>
+        </div>
+      </div>
+      <footer class="sheet-foot">
+        <span class="foot-count" id="foot-count">暂存 0 个</span>
+        <div class="policy" role="group" aria-label="拖出策略">
+          <button class="policy-btn is-active" id="policy-copy" type="button" data-policy="copy" aria-pressed="true">复制</button>
+          <button class="policy-btn" id="policy-move" type="button" data-policy="move" aria-pressed="false">移动</button>
+        </div>
+        <button class="clear-btn" id="clear" type="button" title="清空暂存" disabled>清空</button>
+      </footer>
+    </section>
+
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  </main>
+  <script src="island.js"></script>
+</body>
+</html>

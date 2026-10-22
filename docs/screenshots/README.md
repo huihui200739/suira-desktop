@@ -1,11 +1,13 @@
 # 界面截图
 
-这套图对应仓库当前提交（`main`），分两组：
+这套图对应仓库当前提交（`main`），分四组：
 
 - **设计稿视图（01–07）**：无头 Chrome 加载真实页面 + 注入 mock 数据桥，用于稳定展示「有内容时」的界面。
 - **真实运行视图（08–11）**：Electron 应用真实启动后，通过 DevTools 协议直接截取主窗口。
+- **面板与工具箱视图（12–15）**：无头 Chrome 加载真实 `quickpanel` 页面，展示 38 键动作面板、应用面板、工具箱与 OCR 结果。
+- **浮引岛视图（17–18）**：无头 Chrome 加载真实 `island` 页面（176×44 / 520×148 两种窗口尺寸）；16 是覆盖层回归截图。
 
-两张图组共用同一份 `src/` 代码与 `src/styles.css`，差别只在数据与渲染器（Chrome vs Electron）。
+各图组共用同一份 `src/` 代码与样式，差别只在数据与渲染器（Chrome vs Electron）。
 
 ## 设计稿视图
 
@@ -28,6 +30,23 @@
 | [10-live-process-trail.png](10-live-process-trail.png) | 真实主窗口 · 处理轨迹 |
 | [11-live-settings.png](11-live-settings.png) | 真实主窗口 · 设置（注意开关是蓝色实心「开」，与设计稿视图的灰色不同——设计稿里 mock 重新赋值了 settings 对象，属渲染脚本问题而非产品缺陷） |
 
+## 面板与工具箱视图
+
+| 图 | 说明 |
+|---|---|
+| [12-panel-actions.png](12-panel-actions.png) | 38 键动作面板：4 行（12/10/9/7）、彩色图标、角标键帽、未绑定键显示「绑定」 |
+| [13-panel-apps.png](13-panel-apps.png) | 应用面板：空格切换后的开始菜单应用网格 |
+| [14-panel-toolbox.png](14-panel-toolbox.png) | 工具箱：13 项，未实现工具标注「尚未实现」 |
+| [15-panel-ocr-result.png](15-panel-ocr-result.png) | 面板内 OCR 结果：可编辑文字 + 复制 / 合并换行 / 加入任务匣 |
+
+## 浮引岛与回归截图
+
+| 图 | 说明 |
+|---|---|
+| [16-overlay-original.png](16-overlay-original.png) | 截图覆盖层「查看原图」回归截图（`npm run test:overlay` 自动更新） |
+| [17-island-collapsed.png](17-island-collapsed.png) | 浮引岛收起态 176×44：文件数 + 拖入策略 |
+| [18-island-expanded.png](18-island-expanded.png) | 浮引岛展开态 520×148：4 张文件卡片、图片缩略图、策略切换、清空 |
+
 ## 复现
 
 ```powershell
@@ -39,6 +58,12 @@ node tools/shots3.js       # 07
 # 真实运行视图（需先以调试端口启动应用）
 #   electron . --remote-debugging-port=9223
 node tools/cdp-shot.js     # 08–11
+
+# 面板 / 工具箱视图
+node tools/panel-shot.js   # 12–15
+
+# 浮引岛视图：落在临时目录 %TEMP%\suira-island-shots\，需要时手动复制进本目录
+node tools/island-check.js # 17–18（同时跑 93 项渲染断言）
 ```
 
 出图脚本依赖本机 Chrome 或 Edge，找不到时会直接报错退出。

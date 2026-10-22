@@ -106,6 +106,15 @@ t('报告包含排查真机问题所必需的字段', () => {
   }
 });
 
+t('自检包含第三批新增能力的可观测字段', () => {
+  const mainJs = fs.readFileSync('main.js', 'utf8');
+  const start = mainJs.indexOf('async function collectDiagnostics(');
+  const body = mainJs.slice(start, mainJs.indexOf('\n}', start));
+  for (const required of ['浮引岛', '按住型唤起', '暂存条目', '拖入策略']) {
+    assert.ok(body.includes(required), '自检缺少字段：' + required);
+  }
+});
+
 t('自检是只读的，不改设置也不写用户数据', () => {
   const mainJs = fs.readFileSync('main.js', 'utf8');
   const start = mainJs.indexOf('async function collectDiagnostics(');

@@ -8,8 +8,12 @@
   "scripts": {
     "start": "electron .",
     "dev": "electron . --dev",
-    "test": "node test-core.js && node test-actions.js && node test-capabilities.js && node test-keybindings.js && node test-panel-flows.js && node test-return.js && node test-foreground.js && node test-security.js && node test-display.js && node test-inject.js && node test-diagnostics.js && node test-ui.js && node test-render.js && node tools/confirm-check.js && node tools/overlay-check.js && node tools/shortcut-check.js",
+    "test": "node test-core.js && node test-island-store.js && node test-island.js && node test-actions.js && node test-capabilities.js && node test-keybindings.js && node test-panel-flows.js && node test-return.js && node test-foreground.js && node test-security.js && node test-key-watch.js && node test-display.js && node test-inject.js && node test-diagnostics.js && node test-ui.js && node test-render.js && node tools/island-check.js && node tools/confirm-check.js && node tools/overlay-check.js && node tools/shortcut-check.js",
     "test:core": "node test-core.js",
+    "test:island": "node test-island.js && node test-island-store.js",
+    "test:island-store": "node test-island-store.js",
+    "test:island-render": "node tools/island-check.js",
+    "test:keywatch": "node test-key-watch.js",
     "test:actions": "node test-actions.js",
     "test:capabilities": "node test-capabilities.js",
     "test:keybindings": "node test-keybindings.js",
@@ -31,7 +35,8 @@
     "verify:capture": "node tools/electron-capture-check.js",
     "audit:batch3": "node tools/fuyin-modules.js",
     "dist": "electron-builder --win nsis",
-    "dist:portable": "electron-builder --win portable"
+    "dist:portable": "electron-builder --win portable",
+    "verify:island": "node tools/electron-island-check.js"
   },
   "devDependencies": {
     "electron": "^45.0.0",
@@ -54,12 +59,14 @@
       "assets/suira-icon.png",
       "assets/icon.ico",
       "assets/foreground-helper.ps1",
+      "assets/key-watch.ps1",
       "assets/tessdata/**/*",
       "package.json"
     ],
     "asarUnpack": [
       "assets/tessdata/**/*",
-      "assets/foreground-helper.ps1"
+      "assets/foreground-helper.ps1",
+      "assets/key-watch.ps1"
     ],
     "win": {
       "icon": "assets/icon.ico",

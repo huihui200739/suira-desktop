@@ -29,6 +29,8 @@ const t = (n, f) => { try { f(); console.log('  PASS  ' + n); pass++; } catch (e
 
 const MOCK = `
 const now = Date.now();
+// 用查询参数切换「按住型侦测是否在运行」，便于验证降级文案
+const momentaryWatching = location.search.indexOf('momentary=off') < 0;
 const items = [
   { id:'i1', kind:'text', title:'产品需求摘要', text:'随序的核心承诺是顺手接住，让工作继续。', source:{type:'clipboard',confidence:'inferred'}, createdAt:now-120000, parentIds:[], meta:{}, pinned:true },
   { id:'i2', kind:'image', title:'屏幕截图', text:'', filePath:'x.png', thumbnail:'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="240" height="130"><rect width="240" height="130" fill="%23dfe5ef"/></svg>', source:{type:'screenshot',confidence:'certain'}, createdAt:now-300000, parentIds:[], meta:{width:1920,height:1080} },
@@ -52,7 +54,8 @@ const handlers = {};
 const on = (ch) => (cb) => { (handlers[ch] = handlers[ch] || []).push(cb); return () => {}; };
 window.suira = {
   window:{ minimize(){}, maximize(){}, close(){}, hide(){}, isMaximized:async()=>false },
-  quick:{ hide:async()=>({ok:true}), show:async()=>({ok:true}), toggle:async()=>({ok:true}), capture:async()=>({ok:true}), openMain:async()=>({ok:true}), showMain:async()=>({ok:true}), onShown:on('quick:shown') },
+  quick:{ hide:async()=>({ok:true}), show:async()=>({ok:true}), toggle:async()=>({ok:true}), capture:async()=>({ok:true}), openMain:async()=>({ok:true}), showMain:async()=>({ok:true}), onShown:on('quick:shown'), onMode:on('quick:mode') },
+  island:{ toggle:async()=>({ok:true}), getState:async()=>({items:[],expanded:false}), onState:on('island:state'), onExpanded:on('island:expanded') },
   app:{ info:async()=>({name:'随序 SUIRA',version:'0.2.0',userData:'C:\\\\demo\\\\Suira',dataPath:'C:\\\\demo\\\\Suira\\\\suira-data.json',runtime:'test'}), openDataDir:async()=>{}, onNavigate:on('app:navigate'), onToast:on('app:toast') },
   capture:{ start:async()=>({ok:true}), getData:async()=>null, finish:async()=>({ok:true}), cancel:async()=>({ok:true}) },
   content:{ list:async(o={})=>items.slice(0,(o.limit||80)), get:async(id)=>items.find(x=>x.id===id), addText:async(p)=>({ok:true,item:{id:'new',...p}}), remove:async()=>({ok:true}), togglePin:async()=>({ok:true}), onChanged:on('content:changed') },
@@ -62,7 +65,7 @@ window.suira = {
   executions:{ list:async()=>executions, onChanged:on('executions:changed') },
   settings:{ get:async()=>settings, update:async(p)=>({ok:true,settings}), onChanged:on('settings:changed') },
   search:{ query:async()=>[] },
-  shortcuts:{ get:async()=>({ bindings:{ quick:'CommandOrControl+Alt+Space', capture:'CommandOrControl+Shift+A' }, status:{ quick:{ok:true,accelerator:'CommandOrControl+Alt+Space',error:'',reserved:null}, capture:{ok:false,accelerator:'CommandOrControl+Shift+A',error:'无法注册，可能已被占用',reserved:null} } }), set:async()=>({ok:true}), onChanged:on('shortcuts:changed') },
+  shortcuts:{ get:async()=>({ bindings:{ quick:'CommandOrControl+Alt+Space', capture:'CommandOrControl+Shift+A', momentary:'CommandOrControl+Alt+Shift+Space', panelCycle:'CommandOrControl+Alt+Q', pinnedToggle:'CommandOrControl+Alt+H' }, status:{ quick:{ok:true,accelerator:'CommandOrControl+Alt+Space',error:'',reserved:null}, capture:{ok:false,accelerator:'CommandOrControl+Shift+A',error:'无法注册，可能已被占用',reserved:null}, momentary:{ok:momentaryWatching,accelerator:'CommandOrControl+Alt+Shift+Space',error:momentaryWatching ? '' : '按住型侦测未运行',reserved:null,watching:momentaryWatching}, panelCycle:{ok:true,accelerator:'CommandOrControl+Alt+Q',error:'',reserved:null}, pinnedToggle:{ok:true,accelerator:'CommandOrControl+Alt+H',error:'',reserved:null} } }), set:async()=>({ok:true}), clear:async()=>({ok:true}), restoreDefault:async()=>({ok:true}), onChanged:on('shortcuts:changed') },
   recipes:{ list:async()=>[], run:async()=>({ok:true,steps:[{action:'text.merge-lines',ok:true}],output:null}) },
   clipboard:{ list:async()=>[], copy:async()=>({ok:true}), remove:async()=>({ok:true}), clear:async()=>({ok:true}), togglePin:async()=>({ok:true}), onChanged:on('content:changed') }
 };
@@ -100,6 +103,18 @@ window.addEventListener('load', function () {
       quickStatus: (document.getElementById('status-quick') || {}).textContent || '',
       captureStatus: (document.getElementById('status-capture') || {}).textContent || '',
       captureStatusClass: (document.getElementById('status-capture') || {}).className || '',
+      momentaryKeyValue: (document.getElementById('setting-key-momentary') || {}).value || '',
+      momentaryStatus: (document.getElementById('status-momentary') || {}).textContent || '',
+      momentaryStatusClass: (document.getElementById('status-momentary') || {}).className || '',
+      panelCycleStatus: (document.getElementById('status-panelCycle') || {}).textContent || '',
+      pinnedToggleStatus: (document.getElementById('status-pinnedToggle') || {}).textContent || '',
+      hasMomentaryStatus: !!document.getElementById('status-momentary'),
+      hasPanelCycleStatus: !!document.getElementById('status-panelCycle'),
+      hasPinnedToggleStatus: !!document.getElementById('status-pinnedToggle'),
+      momentaryClear: !!document.querySelector('[data-shortcut-clear="momentary"]'),
+      panelCycleClear: !!document.querySelector('[data-shortcut-clear="panelCycle"]'),
+      pinnedToggleClear: !!document.querySelector('[data-shortcut-clear="pinnedToggle"]'),
+      restoreTitle: (document.getElementById('shortcut-restore') || {}).title || '',
       hasEncryptToggle: !!document.getElementById('setting-encrypt'),
       encryptChecked: (document.getElementById('setting-encrypt') || {}).checked
     };
@@ -384,7 +399,7 @@ try {
 
   const set = probe(runChrome('__fx_main.html', [], '?page=settings'), 'P');
   t('设置：当前页正确', () => assert.strictEqual(set.activePage, 'page-settings'));
-  t('设置：渲染出两个改键输入框', () => assert.strictEqual(set.shortcutInputs, 2));
+  t('设置：渲染出五个改键输入框', () => assert.strictEqual(set.shortcutInputs, 5));
   t('设置：改键框显示当前键位（Ctrl + Alt + Space）', () => {
     assert.ok(set.quickKeyValue.includes('Ctrl'), '实际: ' + set.quickKeyValue);
     assert.ok(set.quickKeyValue.includes('Space'), '实际: ' + set.quickKeyValue);
@@ -394,9 +409,36 @@ try {
     assert.match(set.captureStatus, /占用|失败/);
     assert.ok(set.captureStatusClass.includes('is-error'), '实际 class: ' + set.captureStatusClass);
   });
+  t('设置：按住型唤起输入框与状态元素存在', () => {
+    assert.ok(set.momentaryKeyValue.includes('Ctrl'), '实际: ' + set.momentaryKeyValue);
+    assert.ok(set.momentaryKeyValue.includes('Space'), '实际: ' + set.momentaryKeyValue);
+    assert.strictEqual(set.hasMomentaryStatus, true);
+    assert.match(set.momentaryStatus, /按住生效，松手收起/);
+  });
+  t('设置：面板布局轮换状态元素存在且已生效', () => {
+    assert.strictEqual(set.hasPanelCycleStatus, true);
+    assert.match(set.panelCycleStatus, /已生效/);
+  });
+  t('设置：钉图显隐状态元素存在且已生效', () => {
+    assert.strictEqual(set.hasPinnedToggleStatus, true);
+    assert.match(set.pinnedToggleStatus, /已生效/);
+  });
+  t('设置：新增三个键位都有「清除绑定」', () => {
+    assert.strictEqual(set.momentaryClear, true);
+    assert.strictEqual(set.panelCycleClear, true);
+    assert.strictEqual(set.pinnedToggleClear, true);
+  });
+  t('设置：恢复默认按钮覆盖全部快捷键', () => assert.match(set.restoreTitle, /全部快捷键/));
   t('设置：加密开关存在且默认开启', () => {
     assert.strictEqual(set.hasEncryptToggle, true);
     assert.strictEqual(set.encryptChecked, true);
+  });
+
+  const setOff = probe(runChrome('__fx_main.html', [], '?page=settings&momentary=off'), 'P');
+  t('设置：按住型侦测未运行时显示原因与警告/错误样式', () => {
+    assert.match(setOff.momentaryStatus, /按住型侦测未运行/);
+    assert.ok(!/按住型侦测未运行：按住型侦测未运行/.test(setOff.momentaryStatus), '不应重复拼接同一句：' + setOff.momentaryStatus);
+    assert.ok(/is-error|is-warn/.test(setOff.momentaryStatusClass), '实际 class: ' + setOff.momentaryStatusClass);
   });
 
   console.log('\n== 截图覆盖层渲染断言 ==');

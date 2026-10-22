@@ -475,10 +475,48 @@ function prettyAccelerator(accelerator) {
     .join(' + ');
 }
 
+/**
+ * 按住型唤起的本地前置校验：与 lib/shortcuts.js 的
+ * validateMomentaryAccelerator 保持一致。
+ *
+ * 渲染层没有 require 能力，所以复制一份逻辑，在录制阶段先拦一次，
+ * 不满足「至少两个修饰键」时直接写状态框、不调用 IPC。
+ * @returns {{ok:boolean, error:string}}
+ */
+function validateMomentaryAccelerator(accelerator) {
+  const text = String(accelerator || '').trim();
+  if (!text) return { ok: false, error: '快捷键不能为空' };
+  const parts = text.split('+').map((part) => part.trim()).filter(Boolean);
+  if (parts.length < 2) return { ok: false, error: '快捷键至少需要一个修饰键加一个主键' };
+
+  const modifiers = new Set();
+  let hasMainKey = false;
+  for (const part of parts) {
+    const lower = part.toLowerCase();
+    if (['commandorcontrol', 'control', 'ctrl', 'command', 'cmd', 'alt', 'shift', 'super', 'meta'].includes(lower)) {
+      modifiers.add(lower === 'ctrl' ? 'control' : lower === 'cmd' ? 'command' : lower);
+    } else {
+      hasMainKey = true;
+    }
+  }
+  if (!hasMainKey) return { ok: false, error: '快捷键缺少主键' };
+  if (modifiers.size === 0) return { ok: false, error: '快捷键至少需要一个修饰键' };
+  if (modifiers.size === 1 && modifiers.has('shift')) {
+    return { ok: false, error: '只用 Shift 会干扰正常输入，请再加一个修饰键' };
+  }
+  if (modifiers.size < 2) {
+    return { ok: false, error: '按住型快捷键至少需要两个修饰键，避免单修饰键按住误触' };
+  }
+  return { ok: true, error: '' };
+}
+
 function bindShortcutEditors() {
   const editors = [
     { name: 'quick', input: $('#setting-key-quick'), status: $('#status-quick') },
-    { name: 'capture', input: $('#setting-key-capture'), status: $('#status-capture') }
+    { name: 'capture', input: $('#setting-key-capture'), status: $('#status-capture') },
+    { name: 'momentary', input: $('#setting-key-momentary'), status: $('#status-momentary') },
+    { name: 'panelCycle', input: $('#setting-key-panelCycle'), status: $('#status-panelCycle') },
+    { name: 'pinnedToggle', input: $('#setting-key-pinnedToggle'), status: $('#status-pinnedToggle') }
   ];
 
   for (const editor of editors) {
@@ -492,6 +530,15 @@ function bindShortcutEditors() {
         editor.status.textContent = '请按下「修饰键 + 主键」的组合';
         editor.status.className = 'shortcut-status is-warn';
         return;
+      }
+      // 按住型：单修饰键按住太易误触，先在渲染层拦一次，不调用 IPC
+      if (editor.name === 'momentary') {
+        const check = validateMomentaryAccelerator(accelerator);
+        if (!check.ok) {
+          editor.status.textContent = check.error;
+          editor.status.className = 'shortcut-status is-error';
+          return;
+        }
       }
       const result = await window.suira.shortcuts.set({ name: editor.name, accelerator });
       if (result?.ok) {
@@ -530,7 +577,7 @@ function bindShortcutEditors() {
     });
   }
 
-  // 恢复默认：两个快捷键都回到出厂值
+  // 恢复默认：全部快捷键都回到出厂值
   const restoreButton = $('#shortcut-restore');
   if (restoreButton) {
     restoreButton.addEventListener('click', async () => {
@@ -578,6 +625,43 @@ async function refreshShortcuts() {
     };
     render('quick', '#setting-key-quick', '#status-quick');
     render('capture', '#setting-key-capture', '#status-capture');
+    render('panelCycle', '#setting-key-panelCycle', '#status-panelCycle');
+    render('pinnedToggle', '#setting-key-pinnedToggle', '#status-pinnedToggle');
+
+    // 按住型：状态来自 snapshot.status.momentary，除了注册结果还多一个 watching
+    // （按住/松手侦测是否在运行）。不能用上面的通用渲染，文案与样式都不同。
+    const momentaryInput = $('#setting-key-momentary');
+    const momentaryStatus = $('#status-momentary');
+    if (momentaryInput && momentaryStatus) {
+      const accelerator = snapshot?.bindings?.momentary || '';
+      const entry = snapshot?.status?.momentary;
+      momentaryInput.value = prettyAccelerator(accelerator);
+      momentaryInput.placeholder = '点击后按下组合键';
+      if (!accelerator && entry?.cleared) {
+        momentaryStatus.textContent = '未绑定，点击输入框可重新设置';
+        momentaryStatus.className = 'shortcut-status is-warn';
+      } else if (entry && entry.watching === false) {
+        // 侦测没跑起来时「按住显示、松手收起」无法兑现，必须如实告知。
+        // 主进程的 error 可能已经是「按住型侦测未运行」本身，避免拼出重复文案；
+        // 主进程没给具体原因时，按 helper 未启动来表述。
+        const reason = String(entry.error || '').trim();
+        const detail = reason && !reason.includes('按住型侦测未运行') ? reason : '按键侦测助手没有启动';
+        momentaryStatus.textContent = `按住型侦测未运行：${detail}`;
+        momentaryStatus.className = entry.ok ? 'shortcut-status is-warn' : 'shortcut-status is-error';
+      } else if (entry && !entry.ok) {
+        momentaryStatus.textContent = entry.error || '注册失败';
+        momentaryStatus.className = 'shortcut-status is-error';
+      } else if (entry?.reserved) {
+        momentaryStatus.textContent = `注意：${entry.reserved} 已被系统占用`;
+        momentaryStatus.className = 'shortcut-status is-warn';
+      } else if (entry?.ok) {
+        momentaryStatus.textContent = '按住生效，松手收起';
+        momentaryStatus.className = 'shortcut-status is-ok';
+      } else {
+        momentaryStatus.textContent = '';
+        momentaryStatus.className = 'shortcut-status';
+      }
+    }
   } catch {
     // 快捷键信息不可用时不阻塞设置页
   }

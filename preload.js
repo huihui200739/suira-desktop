@@ -1,11 +1,27 @@
 'use strict';
 
-const { contextBridge, ipcRenderer } = require('electron');
+const { contextBridge, ipcRenderer, webUtils } = require('electron');
 
 function subscribe(channel, callback) {
   const handler = (_event, value) => callback(value);
   ipcRenderer.on(channel, handler);
   return () => ipcRenderer.removeListener(channel, handler);
+}
+
+/**
+ * 从渲染进程的 File 对象取真实磁盘路径。
+ * Electron 32 起 File.path 被移除，必须走 webUtils.getPathForFile；
+ * 老版本回落到 file.path，取不到就返回空串（调用方负责过滤）。
+ */
+function pathForFile(file) {
+  try {
+    if (webUtils && typeof webUtils.getPathForFile === 'function') {
+      return webUtils.getPathForFile(file) || '';
+    }
+    return (file && file.path) || '';
+  } catch {
+    return '';
+  }
 }
 
 contextBridge.exposeInMainWorld('suira', {
@@ -24,7 +40,25 @@ contextBridge.exposeInMainWorld('suira', {
     openMain: (page) => ipcRenderer.invoke('quick:open-main', page),
     showMain: (page) => ipcRenderer.invoke('quick:show-main', page),
     openApp: (filePath) => ipcRenderer.invoke('quick:open-app', filePath),
-    onShown: (callback) => subscribe('quick:shown', callback)
+    onShown: (callback) => subscribe('quick:shown', callback),
+    // 主进程轮换面板布局时下发目标模式（动作 / 应用 / 工具箱）
+    onMode: (callback) => subscribe('quick:mode', callback)
+  },
+  // 浮引岛：文件中转浮层。只传路径与元数据，文件本体不进渲染进程。
+  island: {
+    getState: () => ipcRenderer.invoke('island:get-state'),
+    addPaths: (paths) => ipcRenderer.invoke('island:add-paths', paths),
+    pathForFile,
+    removeItem: (id) => ipcRenderer.invoke('island:remove-item', id),
+    clear: () => ipcRenderer.invoke('island:clear'),
+    setPolicy: (policy) => ipcRenderer.invoke('island:set-policy', policy),
+    setExpanded: (expanded) => ipcRenderer.invoke('island:set-expanded', expanded),
+    openItem: (id) => ipcRenderer.invoke('island:open-item', id),
+    revealItem: (id) => ipcRenderer.invoke('island:reveal-item', id),
+    startDrag: (id) => ipcRenderer.invoke('island:start-drag', id),
+    toggle: () => ipcRenderer.invoke('island:toggle'),
+    onState: (callback) => subscribe('island:state', callback),
+    onExpanded: (callback) => subscribe('island:expanded', callback)
   },
   // 38 键动作面板：键位表与执行通道
   panel: {
