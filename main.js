@@ -1,9 +1,36 @@
 'use strict';
 
+const electron = require('electron');
+
+/*
+ * 环境自检：ELECTRON_RUN_AS_NODE 会让 Electron 以纯 Node 模式启动。
+ * 此时 require('electron') 返回的只是一个路径字符串，解构出来的 app 是 undefined，
+ * 后面会在 app.setName() 处抛出难以理解的
+ *   TypeError: Cannot read properties of undefined (reading 'setName')
+ * 直接给出一句能看懂的说明，并告诉用户怎么修。
+ */
+if (!electron || typeof electron !== 'object' || !electron.app) {
+  const reason = process.env.ELECTRON_RUN_AS_NODE
+    ? '检测到环境变量 ELECTRON_RUN_AS_NODE 已设置，Electron 会以纯 Node 模式运行，无法创建窗口。'
+    : '未能加载 Electron 运行时。';
+  console.error([
+    '',
+    '随序启动失败：' + reason,
+    '',
+    '修复方式（在当前终端执行后重试）：',
+    '  PowerShell:  Remove-Item Env:\\ELECTRON_RUN_AS_NODE',
+    '  CMD:         set ELECTRON_RUN_AS_NODE=',
+    '',
+    '然后重新运行：npm start',
+    ''
+  ].join('\n'));
+  process.exit(1);
+}
+
 const {
   app, BrowserWindow, ipcMain, screen, desktopCapturer, clipboard,
   nativeImage, ClipboardItem, globalShortcut, Tray, Menu, shell, dialog
-} = require('electron');
+} = electron;
 const path = require('node:path');
 const fs = require('node:fs');
 const fsp = require('node:fs/promises');

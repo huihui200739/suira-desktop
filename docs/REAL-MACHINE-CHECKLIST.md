@@ -17,6 +17,8 @@ STATUS_BREAKPOINT），所有验证都只做到「代码 + 无头 Chrome 渲染�
 ### 0.2 先确认没有 `ELECTRON_RUN_AS_NODE`
 
 这个环境变量会让 Electron 以 Node 模式启动，**窗口不会出现**。
+2026-10-22 实测：带着这个变量启动会直接报
+`TypeError: Cannot read properties of undefined (reading 'setName')`。
 
 ```powershell
 echo $env:ELECTRON_RUN_AS_NODE
@@ -29,6 +31,9 @@ echo $env:ELECTRON_RUN_AS_NODE
 Remove-Item Env:\ELECTRON_RUN_AS_NODE
 ```
 
+> 新版已把这个报错换成中文说明，看到「检测到环境变量 ELECTRON_RUN_AS_NODE」
+> 就是没清掉，重做一次即可。
+
 ### 0.3 进入项目目录并启动
 
 ```powershell
@@ -39,6 +44,21 @@ npm start
 **预期**：主窗口出现，右下角托盘出现随序图标。
 
 如果没出现窗口，先跑自检（见第 3 节），别急着逐项测。
+
+### 0.4 怎么判断「真的启动了」
+
+**不要只看截图或窗口有没有闪一下**，看数据目录是否被创建：
+
+```powershell
+Test-Path "$env:APPDATA\随序"
+```
+
+| 结果 | 含义 |
+|---|---|
+| `True` | 应用真的启动过，数据目录已建立 |
+| `False` | 从未成功启动 —— 按第 3 节排查 |
+
+应用只要成功启动一次，就一定会创建这个目录。
 
 ---
 
@@ -143,6 +163,14 @@ cd 'C:\Users\huihui\Desktop\截图工具'
 .\node_modules\electron\dist\electron.exe .
 echo "退出码: $LASTEXITCODE"
 ```
+
+常见退出码：
+
+| 退出码 | 含义 |
+|---|---|
+| 无输出、立刻返回 | 见 3.1，多半是环境变量没清 |
+| `1` + 中文说明 | 新版会直接告诉你原因，照着改 |
+| `-2147483645`（`0x80000003`） | STATUS_BREAKPOINT。开发环境里出现过，属沙箱限制；真机上若出现请告诉我 |
 
 ### 3.3 换一个数据目录（排除用户数据损坏）
 
