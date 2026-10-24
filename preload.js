@@ -44,20 +44,6 @@ contextBridge.exposeInMainWorld('suira', {
     // 主进程轮换面板布局时下发目标模式（动作 / 应用 / 工具箱）
     onMode: (callback) => subscribe('quick:mode', callback)
   },
-  recording: {
-    region: selection => ipcRenderer.invoke('recording:region', { selection }),
-    config: () => ipcRenderer.invoke('recording:config'),
-    prepare: options => ipcRenderer.invoke('recording:prepare', options),
-    begin: () => ipcRenderer.invoke('recording:begin'),
-    append: payload => ipcRenderer.invoke('recording:append', payload),
-    finish: id => ipcRenderer.invoke('recording:finish', id),
-    abandon: () => ipcRenderer.invoke('recording:abandon'),
-    close: () => ipcRenderer.invoke('recording:close'),
-    open: () => ipcRenderer.invoke('recording:open'),
-    reveal: () => ipcRenderer.invoke('recording:reveal'),
-    export: () => ipcRenderer.invoke('recording:export'),
-    onStopRequested: callback => subscribe('recording:stop-requested', callback)
-  },
   // 浮引岛：文件中转浮层。只传路径与元数据，文件本体不进渲染进程。
   island: {
     getState: () => ipcRenderer.invoke('island:get-state'),
@@ -98,7 +84,10 @@ contextBridge.exposeInMainWorld('suira', {
   // 38 键动作面板：键位表与执行通道
   panel: {
     state: () => ipcRenderer.invoke('panel:state'),
-    run: (actionId) => ipcRenderer.invoke('panel:run', actionId)
+    run: (actionId) => ipcRenderer.invoke('panel:run', actionId),
+    // 自定义键位绑定：设置/清除（binding 传 null 表示清除）与选择本机目标
+    setBinding: (payload) => ipcRenderer.invoke('panel:binding:set', payload),
+    pickPath: (options) => ipcRenderer.invoke('panel:binding:pick', options)
   },
   // 应用面板：开始菜单应用目录（图标按需取，保证首帧快）
   apps: {

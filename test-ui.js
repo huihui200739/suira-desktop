@@ -355,7 +355,7 @@ console.log('\n== 第三批差距表与证据链 ==');
 t('第三批差距表存在且覆盖全部模块', () => {
   if (!fs.existsSync('docs/BATCH3-GAP-ANALYSIS.md')) throw new Error('缺少 docs/BATCH3-GAP-ANALYSIS.md');
   const doc = read('docs/BATCH3-GAP-ANALYSIS.md');
-  for (const module of ['文件中转', '边缘入口', '自定义唤起', '右键', '长截图', '录屏', '速记', '翻译']) {
+  for (const module of ['文件中转', '边缘入口', '自定义唤起', '右键', '长截图', '速记', '翻译']) {
     if (!doc.includes(module)) throw new Error('差距表缺少模块：' + module);
   }
   // 方案要求：不以占位界面宣称完成。差距表必须写边界声明
@@ -940,7 +940,7 @@ t('剪贴板历史条：窗口 / 组合键 / IPC 接线', () => {
   }
   if (!mainJs.includes("title: '随序 · 剪贴板'")) throw new Error('窗口标题缺失');
   const shortcuts = read('lib/shortcuts.js');
-  if (!shortcuts.includes("clipboardBar: 'CommandOrControl+Alt+V'")) throw new Error('缺省组合键未注册');
+  if (!shortcuts.includes("clipboardBar: 'Alt+V'")) throw new Error('缺省组合键未注册');
   const store = read('lib/store.js');
   if (!store.includes('shortcutClipboardBar')) throw new Error('设置未持久化底部条键位');
   if (!mainJs.includes('clipboardBar: toggleClipboardBar')) throw new Error('快捷键 handler 未接');

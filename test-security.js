@@ -36,8 +36,9 @@ t('只用 Shift 被拒（会干扰输入）', () => {
   assert.strictEqual(r.ok, false);
   assert.match(r.error, /Shift/);
 });
-t('Ctrl+Alt+Space 合法', () => assert.strictEqual(validateAccelerator('Control+Alt+Space').ok, true));
-t('Ctrl+Shift+A 合法', () => assert.strictEqual(validateAccelerator('Control+Shift+A').ok, true));
+t('两键组合合法（一个修饰键 + 主键）', () => assert.strictEqual(validateAccelerator('Alt+Q').ok, true));
+t('三键组合被拒（组合键只用两个）', () => assert.strictEqual(validateAccelerator('Control+Alt+Space').ok, false));
+t('三键组合的提示写明两键约定', () => assert.match(validateAccelerator('Control+Shift+A').error, /只用两个/));
 
 console.log('\n== 系统占用检测 ==');
 t('识别 Alt+Space', () => assert.ok(findReserved('Alt+Space')));
@@ -126,9 +127,9 @@ t('改键成功并更新键位', () => {
   const gs = makeFakeShortcut();
   const mgr = new ShortcutManager({ globalShortcut: gs, handlers: { quick() {}, capture() {} } });
   mgr.registerAll();
-  const r = mgr.rebind('quick', 'Control+Alt+Q');
+  const r = mgr.rebind('quick', 'Alt+K');
   assert.strictEqual(r.ok, true);
-  assert.strictEqual(mgr.bindings.quick, 'Control+Alt+Q');
+  assert.strictEqual(mgr.bindings.quick, 'Alt+K');
 });
 t('改键到被占用的组合时失败并回滚', () => {
   const gs = makeFakeShortcut(['Control+Alt+Z']);
@@ -461,8 +462,8 @@ const waitSave = () => new Promise((r) => setTimeout(r, 120));
 
   t('恢复默认把单个键位改回出厂值', () => {
     const { m } = makeManager();
-    m.rebind('quick', 'Control+Alt+Q');
-    assert.strictEqual(m.snapshot().bindings.quick, 'Control+Alt+Q');
+    m.rebind('quick', 'Alt+K');
+    assert.strictEqual(m.snapshot().bindings.quick, 'Alt+K');
     const r = m.restoreDefault('quick');
     assert.strictEqual(r.ok, true);
     assert.deepStrictEqual(r.restored, ['quick']);
@@ -471,8 +472,8 @@ const waitSave = () => new Promise((r) => setTimeout(r, 120));
 
   t('恢复默认可一次恢复全部', () => {
     const { m } = makeManager();
-    m.rebind('quick', 'Control+Alt+Q');
-    m.rebind('capture', 'Control+Alt+W');
+    m.rebind('quick', 'Alt+K');
+    m.rebind('capture', 'Alt+J');
     const r = m.restoreDefault();
     assert.strictEqual(r.ok, true);
     assert.deepStrictEqual(r.restored.sort(), ['capture', 'quick']);
@@ -602,19 +603,14 @@ const waitSave = () => new Promise((r) => setTimeout(r, 120));
     assert.strictEqual(new Set(normalized).size, normalized.length, '默认键位存在重复：' + normalized.join(' / '));
   });
 
-  t('按住型默认键位存在且通过校验', () => {
+  t('按住型默认不绑定（可选进阶功能，不占系统按键）', () => {
     assert.deepStrictEqual(Object.keys(DEFAULT_MOMENTARY_BINDINGS), ['momentary']);
-    const acc = DEFAULT_MOMENTARY_BINDINGS.momentary;
-    assert.ok(acc, '缺少 momentary 出厂键位');
-    assert.strictEqual(validateAccelerator(acc).ok, true);
-    assert.strictEqual(validateMomentaryAccelerator(acc).ok, true);
-    assert.strictEqual(findReserved(acc), null);
+    assert.strictEqual(DEFAULT_MOMENTARY_BINDINGS.momentary, '', '出厂不绑定，由用户在设置里启用');
   });
 
-  t('按住型拒绝单修饰键组合（易误触）', () => {
-    const r = validateMomentaryAccelerator('Control+Space');
-    assert.strictEqual(r.ok, false);
-    assert.match(r.error, /两个修饰键/);
+  t('按住型与普通键位同一规则：两键合法、三键被拒', () => {
+    assert.strictEqual(validateMomentaryAccelerator('Control+Space').ok, true);
+    assert.strictEqual(validateMomentaryAccelerator('Control+Alt+Space').ok, false);
   });
 
   t('按住型拒绝空串与空主键', () => {
@@ -626,7 +622,7 @@ const waitSave = () => new Promise((r) => setTimeout(r, 120));
   t('按住型沿用普通键位校验', () => {
     assert.strictEqual(validateMomentaryAccelerator('Shift+A').ok, false);
     assert.strictEqual(validateMomentaryAccelerator('A').ok, false);
-    assert.strictEqual(validateMomentaryAccelerator('Control+Alt+Space').ok, true, '两个修饰键 + 主键应合法');
+    assert.strictEqual(validateMomentaryAccelerator('Control+Alt+Space').ok, false, '三键组合被统一拒绝');
   });
 
   t('按住型冲突能报出与 quick 重复', () => {
@@ -649,10 +645,10 @@ const waitSave = () => new Promise((r) => setTimeout(r, 120));
     const handlers = { quick() {}, capture() {}, panelCycle() {}, pinnedToggle() {} };
     const mgr = new ShortcutManager({ globalShortcut: gs, handlers });
     mgr.registerAll();
-    mgr.rebind('quick', 'Control+Alt+1');
-    mgr.rebind('capture', 'Control+Alt+2');
-    mgr.rebind('panelCycle', 'Control+Alt+3');
-    mgr.rebind('pinnedToggle', 'Control+Alt+4');
+    mgr.rebind('quick', 'Alt+K');
+    mgr.rebind('capture', 'Alt+J');
+    mgr.rebind('panelCycle', 'Alt+L');
+    mgr.rebind('pinnedToggle', 'Alt+U');
     const r = mgr.restoreDefault();
     assert.strictEqual(r.ok, true, r.error);
     assert.deepStrictEqual(r.restored.slice().sort(), ['capture', 'panelCycle', 'pinnedToggle', 'quick']);

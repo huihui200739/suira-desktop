@@ -48,11 +48,11 @@ const shelfItem = (id, filePath, extra = {}) => ({
     assert.deepStrictEqual(island.items, []);
     assert.strictEqual(island.policy, 'copy');
   });
-  t('设置里带有第三批快捷键项', () => {
+  t('设置里带有快捷键项（两键组合默认值）', () => {
     const settings = store.getSettings();
-    assert.strictEqual(settings.shortcutPanelCycle, 'CommandOrControl+Alt+Q');
-    assert.strictEqual(settings.shortcutPinnedToggle, 'CommandOrControl+Alt+H');
-    assert.strictEqual(settings.shortcutMomentary, 'CommandOrControl+Alt+Shift+Space');
+    assert.strictEqual(settings.shortcutPanelCycle, 'Alt+E');
+    assert.strictEqual(settings.shortcutPinnedToggle, 'Alt+H');
+    assert.strictEqual(settings.shortcutMomentary, '', '按住型默认不绑定');
   });
 
   console.log('\n== 写入与清洗 ==');

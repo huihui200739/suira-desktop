@@ -49,15 +49,16 @@ const { AppIndex } = require('./lib/app-index');
 const { createAppIconLoader, extractResourceBatch } = require('./lib/app-icons');
 const { createIconDiskCache } = require('./lib/icon-disk-cache');
 const { captureNative, nativeDesktopTiles } = require('./lib/native-capture');
-const { recordingRegion, RecordingWriter } = require('./lib/recording');
 const { ForegroundProbe } = require('./lib/foreground-probe');
 const { DEFAULT_BINDINGS, DEFAULT_MOMENTARY_BINDINGS, ShortcutManager, normalizeAccelerator, validateMomentaryAccelerator, momentaryConflict } = require('./lib/shortcuts');
 const { KeyVault, encryptItem, decryptItem, encryptText, decryptText } = require('./lib/crypto-store');
 const { unionBounds, maxScaleFactor, tileLayout, sanitizeWindowBounds, QUICK_PANEL_SIZE, quickPanelBounds,
   clipboardShelfBounds, roundedWindowShape } = require('./lib/display-geometry');
 const { InputInjector } = require('./lib/input-injector');
-const { keyLayout, TOOLBOX_TOOLS, PANEL_ACTIONS } = require('./lib/keybindings');
+const { keyLayout, TOOLBOX_TOOLS, PANEL_ACTIONS, DEFAULT_KEY_BINDINGS, KEY_ROWS, normalizeKey, implementedPanelActions } = require('./lib/keybindings');
 const { createPanelActions } = require('./lib/panel-actions');
+// 38 键面板的自定义键位绑定：清洗与换位是纯模型，主进程只负责落盘与执行
+const { assignPanelBinding, effectiveBinding } = require('./lib/panel-bindings');
 // 第三批：按住型唤起用常驻 PowerShell 助手拿「松开」事件；浮引岛纯模型负责暂存语义
 const { KeyWatchProbe, ensureNativeHost } = require('./lib/key-watch');
 const islandModel = require('./lib/island-model');
@@ -90,13 +91,6 @@ const TEXT_HISTORY_LIMIT = 2000;
 let appIconLoader = null;
 let appIconHost = null;
 let captureHost = null;
-let recordingWindow = null;
-let recordingConfig = null;
-let recordingWriter = null;
-let recordingLastFile = '';
-let recordingAudio = false;
-let recordingQuitAfterSave = false;
-let recordingRestoreMain = false;
 
 let store = null;
 let ocr = null;
@@ -284,6 +278,33 @@ function momentaryAccelerator() {
   const settings = store ? store.getSettings() : {};
   if (settings.shortcutMomentary === undefined) return DEFAULT_MOMENTARY_BINDINGS.momentary;
   return String(settings.shortcutMomentary || '');
+}
+
+/**
+ * 旧版出厂键位 → 两键键位的一次性迁移。
+ * 每个键位可以列多个旧值：三键旧默认、以及本机探测发现被占用后换掉的中间默认值，
+ * 只要「仍等于其中某个旧值」就迁移到当前默认；用户自己改过键的不动。
+ * 按住型唤起不再默认启用（旧默认是四键组合，与「只用两键」的约定冲突），清空处理。
+ */
+async function migrateShortcutDefaults() {
+  const settings = store.getSettings();
+  const migrations = {
+    shortcutQuick: { legacy: ['CommandOrControl+Alt+Space', 'Alt+Q'], next: DEFAULT_BINDINGS.quick },
+    shortcutCapture: { legacy: ['CommandOrControl+Shift+A', 'Alt+A'], next: DEFAULT_BINDINGS.capture },
+    shortcutPanelCycle: { legacy: ['CommandOrControl+Alt+Q'], next: DEFAULT_BINDINGS.panelCycle },
+    shortcutPinnedToggle: { legacy: ['CommandOrControl+Alt+H'], next: DEFAULT_BINDINGS.pinnedToggle },
+    shortcutClipboardBar: { legacy: ['CommandOrControl+Alt+V'], next: DEFAULT_BINDINGS.clipboardBar },
+    shortcutMomentary: { legacy: ['CommandOrControl+Alt+Shift+Space'], next: DEFAULT_MOMENTARY_BINDINGS.momentary }
+  };
+  const patch = {};
+  for (const [key, { legacy, next }] of Object.entries(migrations)) {
+    if (settings[key] === undefined) continue;
+    const current = normalizeAccelerator(settings[key]);
+    if (legacy.some((value) => normalizeAccelerator(value) === current)) {
+      patch[key] = next;
+    }
+  }
+  if (Object.keys(patch).length) await store.updateSettings(patch);
 }
 
 app.setName(APP_NAME);
@@ -1619,6 +1640,14 @@ function createMainWindow() {
     return { action: 'deny' };
   });
 
+  // 渲染进程崩溃（GPU 异常 / OOM 等）后窗口会留下一块再也画不出来的白屏。
+  // 必须自动重载把页面救回来，否则用户看到的就是桌面上挂着一块白砖。
+  mainWindow.webContents.on('render-process-gone', (_event, details) => {
+    if (isQuitting || !mainWindow || mainWindow.isDestroyed()) return;
+    console.warn(`[窗口] 主窗口渲染进程退出（${details.reason}），自动重载恢复`);
+    try { mainWindow.webContents.reload(); } catch { /* 窗口正在销毁 */ }
+  });
+
   // 移动/缩放结束后记忆窗口状态（500ms 防抖，避免拖动过程中频繁写盘）
   let saveTimer = null;
   const scheduleSave = () => {
@@ -1782,7 +1811,7 @@ async function beginScreenCapture(source = 'panel', options = {}) {
   if (captureBusy) return { ok: true };
   // 入口意图：从 38 键面板按 O 进来，框完直接进识别；按 P 进来直接钉图。
   // 意图随 payload 交给覆盖层，覆盖层据此预选工具或自动完成。
-  const intent = ['ocr', 'pin', 'copy', 'save', 'shelf', 'record'].includes(options?.intent) ? options.intent : 'copy';
+  const intent = ['ocr', 'pin', 'copy', 'save', 'shelf'].includes(options?.intent) ? options.intent : 'copy';
   captureBusy = true;
   try {
     // 页面加载与屏幕采集并行；启动预热尚未完成时也不串行冷建。
@@ -2003,7 +2032,7 @@ function getPanelActions() {
     panelActions = createPanelActions({
       store,
       actions,
-      capture: (intent) => intent === 'record' ? openRecordingSelection() : beginScreenCapture('panel', { intent }),
+      capture: (intent) => beginScreenCapture('panel', { intent }),
       pin: (filePath, size) => createPinWindow(pathToFileURL(filePath).href, size),
       switchToDesktop,
       lockWorkstation,
@@ -2014,73 +2043,35 @@ function getPanelActions() {
   return panelActions;
 }
 
-/* ---------- 区域录屏：专用浮层负责编码，主进程按块顺序落盘 ---------- */
-async function openRecordingSelection() {
-  if (recordingWindow && !recordingWindow.isDestroyed()) {
-    recordingWindow.show(); recordingWindow.focus();
-    return { ok: true, closePanel: true };
-  }
-  return beginScreenCapture('panel', { intent: 'record' });
-}
-
-function createRecordingWindow(config) {
-  if (recordingWindow && !recordingWindow.isDestroyed()) throw Error('已有录屏窗口，请先完成当前录制');
-  recordingConfig = config; recordingLastFile = ''; recordingAudio = false;
-  recordingWriter = new RecordingWriter(path.join(userRoot(), 'recordings'));
-  const display = screen.getAllDisplays().find(d => String(d.id) === config.displayId) || screen.getPrimaryDisplay();
-  const area = display.workArea, width = Math.min(520, area.width), height = 166;
-  const region = { x:config.displayBounds.x + config.area.x, y:config.displayBounds.y + config.area.y, width:config.area.width, height:config.area.height };
-  const desiredY = region.y + region.height + 14 + height <= area.y + area.height ? region.y + region.height + 14 : region.y - height - 14;
-  const win = new BrowserWindow({ width, height,
-    x: Math.max(area.x, Math.min(area.x + area.width - width, Math.round(region.x + (region.width - width) / 2))),
-    y: Math.max(area.y, Math.min(area.y + area.height - height, Math.round(desiredY))),
-    show:false, frame:false, transparent:true, backgroundColor:'#00000000', resizable:false,
-    alwaysOnTop:true, skipTaskbar:false, title:'随序 · 录屏',
-    webPreferences:{preload:path.join(__dirname,'preload.js'),contextIsolation:true,nodeIntegration:false,sandbox:false,spellcheck:false,backgroundThrottling:false}
-  });
-  recordingWindow = win;
-  prepareFloatingSurface(win);
-  // 支持的 Windows 版本从采集画面中排除控制条，避免把按钮录进视频。
-  win.setContentProtection(true);
-  win.setAlwaysOnTop(true,'floating');
-  win.loadFile(path.join(__dirname,'src','recorder.html'));
-  win.once('ready-to-show',()=>{ if(!win.isDestroyed()) {win.show();win.focus();} });
-  win.on('close', event => {
-    if (recordingWriter?.current) { event.preventDefault(); win.__closeAfterRecording=true; win.webContents.send('recording:stop-requested'); }
-  });
-  win.on('closed',()=>{
-    recordingWriter?.abandon().catch(error=>console.warn('录屏中断:',error.message));
-    if(recordingWindow===win){recordingWindow=null;recordingConfig=null;}
-    if(recordingRestoreMain){recordingRestoreMain=false;if(mainWindow&&!mainWindow.isDestroyed()){mainWindow.show();mainWindow.focus();}}
-  });
-  win.webContents.on('render-process-gone',()=>{
-    recordingWriter?.abandon().finally(()=>{if(!win.isDestroyed())win.destroy();});
-  });
-  win.webContents.setWindowOpenHandler(()=>({action:'deny'}));
-  return win;
-}
-
-function setupRecordingMedia() {
-  session.defaultSession.setDisplayMediaRequestHandler(async (request, callback) => {
-    // 只有当前录屏页面可取得之前明确选择的屏幕源。
-    if (!recordingWindow || recordingWindow.isDestroyed() || request.frame !== recordingWindow.webContents.mainFrame || !recordingConfig) { callback({}); return; }
-    const owner=recordingWindow,config=recordingConfig,audio=recordingAudio;
-    try {
-      const sources = await desktopCapturer.getSources({types:['screen'],thumbnailSize:{width:0,height:0},fetchWindowIcons:false});
-      if(owner!==recordingWindow||owner.isDestroyed()){callback({});return;}
-      const source = sources.find(item=>String(item.display_id)===config.displayId);
-      if (!source) { callback({}); return; }
-      callback(audio ? {video:source,audio:'loopback'} : {video:source});
-    } catch (error) { console.warn('屏幕录制源不可用:',error.message); callback({}); }
-  });
-}
-
 /**
  * 执行面板动作。这是 38 个按键唯一的执行入口：
  * 鼠标点击和键盘直达走同一条通道，保证「按键与鼠标调用同一动作」。
  */
 async function runPanelAction(actionId) {
   return getPanelActions().run(actionId);
+}
+
+/**
+ * 执行某个键位当前的有效绑定（自定义优先，回落出厂默认）。
+ * 自定义绑定支持：内置动作 / 应用 / 文件夹 / 网页 / 任意文件。
+ */
+async function runBindingKey(key) {
+  if (!store) return { ok: false, error: '数据层尚未就绪' };
+  const binding = effectiveBinding(store.getPanelBindings(), key);
+  if (!binding || binding.type === 'none') return { ok: false, error: '这个键还没有绑定内容' };
+  if (binding.type === 'action') return runPanelAction(binding.id);
+  if (binding.type === 'url') {
+    if (!isSafeHttpUrl(binding.target)) return { ok: false, error: '不是可打开的网址' };
+    await shell.openExternal(binding.target);
+    return { ok: true, closePanel: true, message: `已打开网页：${binding.name || binding.target}` };
+  }
+  // app / folder / file 都交给系统默认方式打开
+  if (!binding.target || !fs.existsSync(binding.target)) {
+    return { ok: false, error: `「${binding.name || binding.target}」不存在或已被移动` };
+  }
+  const error = await shell.openPath(binding.target);
+  if (error) return { ok: false, error };
+  return { ok: true, closePanel: true, message: `已打开：${binding.name || binding.target}` };
 }
 
 /**
@@ -2103,17 +2094,25 @@ function getAppIconLoader() {
   return appIconLoader;
 }
 
+// 每个钉图窗口的期望尺寸：透明窗在 Windows 上被拖动时可能被系统悄悄改大，
+// 移动/缩放后按这里记录的期望值核对，发现漂移立即拉回。
+const pinExpectedSize = new WeakMap();
+
 function createPinWindow(dataUrl, size = {}) {
   const display=screen.getDisplayNearestPoint(screen.getCursorScreenPoint());
   const ratio=(size.height||600)/Math.max(1,size.width||800);
   const width=Math.max(100,Math.min(560,size.width||800,display.workArea.width-40,(display.workArea.height-60)/ratio));
   const height=Math.max(60,Math.round(width*ratio));
   const pin=new BrowserWindow({
-    width:Math.round(width),height,frame:false,alwaysOnTop:true,resizable:true,skipTaskbar:false,
+    // resizable 必须关：Windows 下 transparent + resizable 的无边框窗带 WS_THICKFRAME，
+    // 程序化移动时系统会反复改写窗口尺寸，表现为「一拖就越来越大」。
+    // 缩放一律走 zoom() → pin:resize 的 setBounds，不依赖原生边缘拖拽。
+    width:Math.round(width),height,frame:false,alwaysOnTop:true,resizable:false,skipTaskbar:false,
     transparent:true,hasShadow:false,backgroundColor:'#00000000',title:'随序 · 钉图',
     webPreferences:{contextIsolation:true,nodeIntegration:false,sandbox:false,spellcheck:false,preload: path.join(__dirname, 'pin-preload.js')}
   });
   pin.__pinData={url:String(dataUrl),width:Math.round(width),height};
+  pinExpectedSize.set(pin,{width:Math.round(width),height});
   prepareFloatingSurface(pin);
   pin.on('resize',()=>clipFloatingSurface(pin));
   pin.loadFile(path.join(__dirname,'src','pin.html'));
@@ -2279,52 +2278,6 @@ function closeNoteWindow(noteId) {
 }
 
 function registerIpc() {
-  /* ---- 录屏：写盘和屏幕源仅供专用录屏窗口 ---- */
-  const recordingOnly = handler => async (event, payload) => {
-    if (!recordingWindow || recordingWindow.isDestroyed() || event.sender !== recordingWindow.webContents) return {ok:false,error:'录屏窗口已关闭'};
-    try { return await handler(payload); } catch(error) { return {ok:false,error:error.message || '录制操作失败'}; }
-  };
-  ipcMain.handle('recording:region',async(event,payload)=>{
-    if(!overlayWindow||overlayWindow.isDestroyed()||event.sender!==overlayWindow.webContents||!captureBusy||!capturePayload) return {ok:false,error:'请先框选录屏区域'};
-    try {
-      const config=recordingRegion(payload?.selection,capturePayload.bounds,screen.getAllDisplays());
-      createRecordingWindow(config);
-      recordingRestoreMain=mainWasVisible;mainWasVisible=false;
-      hideOverlayWindow();
-      return {ok:true};
-    } catch(error) {return {ok:false,error:error.message};}
-  });
-  ipcMain.handle('recording:config',recordingOnly(()=>({ok:true,config:recordingConfig})));
-  ipcMain.handle('recording:prepare',recordingOnly(payload=>{
-    if(recordingWriter.current)throw Error('录制已在进行中');
-    recordingAudio=Boolean(payload?.systemAudio);return {ok:true};
-  }));
-  ipcMain.handle('recording:begin',recordingOnly(async()=>({ok:true,...await recordingWriter.begin()})));
-  ipcMain.handle('recording:append',recordingOnly(async payload=>({ok:true,...await recordingWriter.append(payload?.id,payload?.data)})));
-  ipcMain.handle('recording:finish',recordingOnly(async id=>{
-    const result=await recordingWriter.finish(id);recordingLastFile=result.filePath;
-    if(recordingWindow?.__closeAfterRecording)setImmediate(()=>recordingWindow?.close());
-    if(recordingQuitAfterSave){recordingQuitAfterSave=false;setImmediate(()=>app.quit());}
-    return {ok:true,...result};
-  }));
-  ipcMain.handle('recording:abandon',recordingOnly(async()=>{
-    const partial=recordingWriter.current?.partial;
-    await recordingWriter.abandon();if(partial&&fs.existsSync(partial))recordingLastFile=partial;
-    if(recordingWindow?.__closeAfterRecording)setImmediate(()=>recordingWindow?.close());
-    if(recordingQuitAfterSave){recordingQuitAfterSave=false;setImmediate(()=>app.quit());}
-    return {ok:true};
-  }));
-  ipcMain.handle('recording:close',recordingOnly(()=>{recordingWindow.close();return {ok:true};}));
-  const recordedFile = () => { if(!recordingLastFile||!fs.existsSync(recordingLastFile))throw Error('录屏文件不存在');return recordingLastFile; };
-  ipcMain.handle('recording:open',recordingOnly(async()=>{const error=await shell.openPath(recordedFile());return error?{ok:false,error}:{ok:true};}));
-  ipcMain.handle('recording:reveal',recordingOnly(()=>{shell.showItemInFolder(recordedFile());return {ok:true};}));
-  ipcMain.handle('recording:export',recordingOnly(async()=>{
-    const source=recordedFile();
-    const result=await dialog.showSaveDialog(recordingWindow,{title:'保存录屏',defaultPath:path.join(app.getPath('videos'),path.basename(source)),filters:[{name:'WebM 视频',extensions:['webm']}]});
-    if(result.canceled||!result.filePath)return {ok:false,canceled:true};
-    if(path.resolve(source)!==path.resolve(result.filePath))await fsp.copyFile(source,result.filePath);
-    return {ok:true,filePath:result.filePath};
-  }));
   /* ---- 钉图窗口控制 ---- */
   // 每个钉图窗口独立保存收起前的边界，便于恢复
   const pinState = new WeakMap();
@@ -2357,6 +2310,14 @@ function registerIpc() {
     const x=Math.round(point.x),y=Math.round(point.y),area=screen.getDisplayNearestPoint({x,y}).workArea;
     const bounds=win.getBounds();
     win.setPosition(Math.max(area.x-bounds.width+40,Math.min(area.x+area.width-40,x)),Math.max(area.y,Math.min(area.y+area.height-40,y)));
+    // 拖动后被系统改了尺寸（透明窗在部分环境下会这样）：立即按期望尺寸纠正
+    const expected=pinExpectedSize.get(win);
+    if(expected){
+      const current=win.getBounds();
+      if(current.width!==expected.width||current.height!==expected.height){
+        win.setBounds({x:current.x,y:current.y,width:expected.width,height:expected.height});
+      }
+    }
   });
 
   ipcMain.on('pin:resize', (event, payload) => {
@@ -2368,6 +2329,7 @@ function registerIpc() {
     const bounds = win.getBounds();
     // 以左上角为锚点缩放，避免窗口跑到屏幕外
     win.setBounds({ x: bounds.x, y: bounds.y, width, height });
+    pinExpectedSize.set(win, { width, height });
   });
 
   ipcMain.on('pin:opacity', (event, value) => {
@@ -2389,13 +2351,18 @@ function registerIpc() {
       pinState.set(win, state);
       const b = state.savedBounds;
       // 收成一条细窄条，仍可见可点回
-      win.setBounds({ x: b.x, y: b.y, width: Math.max(72, Math.min(b.width, 120)), height: 40 });
+      const collapsedWidth = Math.max(72, Math.min(b.width, 120));
+      win.setBounds({ x: b.x, y: b.y, width: collapsedWidth, height: 40 });
+      pinExpectedSize.set(win, { width: collapsedWidth, height: 40 });
       win.setOpacity(0.85);
     } else {
       if (!state.collapsed) return;
       state.collapsed = false;
       pinState.set(win, state);
-      if (state.savedBounds) win.setBounds(state.savedBounds);
+      if (state.savedBounds) {
+        win.setBounds(state.savedBounds);
+        pinExpectedSize.set(win, { width: state.savedBounds.width, height: state.savedBounds.height });
+      }
       win.setOpacity(state.savedOpacity || 1);
     }
   });
@@ -2487,7 +2454,7 @@ function registerIpc() {
     version: app.getVersion(),
     userData: userRoot(),
     dataPath: dataPath(),
-    shortcuts: { quick: 'Ctrl+Alt+Space', capture: 'Ctrl+Shift+A' },
+    shortcuts: shortcutBindings(),
     runtime: 'Electron prototype'
   }));
   ipcMain.handle('app:open-data-dir', () => shell.openPath(userRoot()));
@@ -2701,11 +2668,21 @@ function registerIpc() {
 
   /* ---- 38 键动作面板 ---- */
   ipcMain.handle('panel:state', () => ({
-    ...keyLayout(appIndexReady),
+    ...keyLayout(appIndexReady, store.getPanelBindings()),
+    // 绑定编辑器可分配的内置动作目录
+    actions: implementedPanelActions(),
     tools: TOOLBOX_TOOLS
   }));
   ipcMain.handle('panel:run', async (_event, actionId) => {
     const id = String(actionId || '');
+    // 自定义绑定（应用/文件夹/网页/文件）走 binding:<键位> 通道
+    if (id.startsWith('binding:')) {
+      let result;
+      try { result = await runBindingKey(normalizeKey(id.slice('binding:'.length))); }
+      catch (error) { result = { ok: false, error: error.message || '动作执行失败' }; }
+      if (result?.closePanel) hideQuickPanel();
+      return result;
+    }
     if (!PANEL_ACTIONS[id]) return { ok: false, error: '未知动作' };
     if (!PANEL_ACTIONS[id].implemented) return { ok: false, error: `「${PANEL_ACTIONS[id].label}」尚未实现` };
     try {
@@ -2715,6 +2692,33 @@ function registerIpc() {
       return result;
     } catch (error) {
       return { ok: false, error: error.message || '动作执行失败' };
+    }
+  });
+
+  /* ---- 键位自定义绑定：设置 / 清除 / 选择本机目标 ---- */
+  ipcMain.handle('panel:binding:set', async (_event, payload) => {
+    const key = normalizeKey(payload?.key);
+    const outcome = assignPanelBinding(store.getPanelBindings(), key, payload?.binding || null);
+    if (!outcome.ok) return { ok: false, error: outcome.error };
+    if (outcome.changed) await store.setPanelBindings(outcome.bindings);
+    return { ok: true, message: outcome.message };
+  });
+  ipcMain.handle('panel:binding:pick', async (_event, options) => {
+    const type = String(options?.type || 'file');
+    const properties = type === 'folder' ? ['openDirectory', 'promptToCreate'] : ['openFile'];
+    const filters = type === 'app'
+      ? [{ name: '应用与快捷方式', extensions: ['exe', 'lnk', 'url'] }, { name: '所有文件', extensions: ['*'] }]
+      : undefined;
+    try {
+      const result = await dialog.showOpenDialog({
+        title: type === 'folder' ? '选择要绑定的文件夹' : type === 'app' ? '选择要绑定的应用' : '选择要绑定的文件',
+        properties,
+        filters
+      });
+      if (result.canceled || !result.filePaths.length) return { ok: false, canceled: true };
+      return { ok: true, path: result.filePaths[0] };
+    } catch (error) {
+      return { ok: false, error: error.message || '无法打开选择窗口' };
     }
   });
 
@@ -2999,12 +3003,19 @@ function registerIpc() {
 
 }
 
+/** 加速键转托盘/界面展示文案。 */
+function prettyAcceleratorLabel(accelerator) {
+  return String(accelerator || '').replace(/CommandOrControl/gi, 'Ctrl') || '未绑定';
+}
+
 function createTray() {
   const trayImage = nativeImage.createFromPath(assetPath('suira-icon.png')).resize({ width: 32, height: 32 });
   tray = new Tray(trayImage);
   tray.setToolTip(`${APP_NAME} · 顺手接住，让工作继续。`);
+  const bindings = shortcutBindings();
   const menu = Menu.buildFromTemplate([
-    { label: '随手面板  Ctrl+Alt+Space', click: showQuickPanel },
+    { label: `随手面板  ${prettyAcceleratorLabel(bindings.quick)}`, click: showQuickPanel },
+    { label: `剪贴板历史  ${prettyAcceleratorLabel(bindings.clipboardBar)}`, click: () => toggleClipboardBar() },
     { label: '浮引岛 · 文件暂存（临时打开）', click: () => toggleIsland() },
     { label: '速记（接着上一条写）', click: () => openLatestNote() },
     { label: '重启并应用更新', click: () => restartApplication() },
@@ -3014,7 +3025,7 @@ function createTray() {
     { label: '处理轨迹', click: () => showMain('trail') },
     { label: '设置', click: () => showMain('settings') },
     { type: 'separator' },
-    { label: '开始截图  Ctrl+Shift+A', click: () => beginScreenCapture('tray') },
+    { label: `开始截图  ${prettyAcceleratorLabel(bindings.capture)}`, click: () => beginScreenCapture('tray') },
     { type: 'separator' },
     { label: '退出随序', click: () => { isQuitting = true; app.quit(); } }
   ]);
@@ -3107,6 +3118,8 @@ async function initialize() {
   }
   // 主题要在建任何窗口之前定下来，否则首帧会闪一下系统默认色
   applyTheme();
+  // 旧版三键默认键位迁移到两键组合；改过键的用户不受影响
+  await migrateShortcutDefaults();
   // 全局关掉拼写检查：各窗口已经传了 spellcheck:false，这里再兜一层底，
   // 避免任何渲染进程加载/初始化系统拼写词典（一个常驻的词库 + 后台线程）。
   try { session.defaultSession.setSpellCheckerEnabled(false); } catch { /* 会话未就绪时忽略 */ }
@@ -3139,7 +3152,6 @@ async function initialize() {
     makeId
   });
   registerIpc();
-  setupRecordingMedia();
   if (!process.argv.includes('--background')) createMainWindow();
   createTray();
   registerShortcuts();
@@ -3365,11 +3377,7 @@ function restartApplication() {
   setTimeout(() => app.quit(), 150);
 }
 
-app.on('before-quit', event => {
-  if(recordingWriter?.current&&recordingWindow&&!recordingWindow.isDestroyed()){
-    event.preventDefault();recordingQuitAfterSave=true;
-    recordingWindow.webContents.send('recording:stop-requested');return;
-  }
+app.on('before-quit', () => {
   isQuitting = true;
 });
 app.on('will-quit', () => {

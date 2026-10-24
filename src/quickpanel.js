@@ -15,7 +15,6 @@ const $ = (selector, root = document) => root.querySelector(selector);
 const $$ = (selector, root = document) => Array.from(root.querySelectorAll(selector));
 
 const GLYPHS = {
-  record: '<svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="3"/><circle cx="12" cy="12" r="3"/></svg>',
   capture: '<svg viewBox="0 0 24 24"><rect x="4" y="5.8" width="16" height="12.4" rx="2.6" stroke-dasharray="3.5 2.7"/><circle cx="12" cy="12" r="2.5"/></svg>',
   annotate: '<svg viewBox="0 0 24 24"><path d="M4 20.5 5.2 16 16.4 4.8a2 2 0 0 1 2.8 2.8L8 18.8z"/><path d="m14 7.2 2.8 2.8"/></svg>',
   ocr: '<svg viewBox="0 0 24 24"><path d="M4 8V6a2 2 0 0 1 2-2h2"/><path d="M16 4h2a2 2 0 0 1 2 2v2"/><path d="M20 16v2a2 2 0 0 1-2 2h-2"/><path d="M8 20H6a2 2 0 0 1-2-2v-2"/><path d="M8.2 9.2h7.6"/><path d="M8.2 12.5h5.6"/><path d="M8.2 15.8h3.6"/></svg>',
@@ -28,6 +27,14 @@ const GLYPHS = {
   note: '<svg viewBox="0 0 24 24"><path d="M5 5.8A1.8 1.8 0 0 1 6.8 4h10.4A1.8 1.8 0 0 1 19 5.8v7.2L13.2 19H6.8A1.8 1.8 0 0 1 5 17.2z"/><path d="M18.8 13.4h-3.9a1.7 1.7 0 0 0-1.7 1.7v3.7"/><path d="M8.6 9h6.8"/></svg>'
 };
 
+// 自定义绑定（应用/文件夹/网页/文件）的键帽图标
+const BINDING_GLYPHS = {
+  app: '<svg viewBox="0 0 24 24"><rect x="4" y="4" width="7" height="7" rx="1.8"/><rect x="13" y="4" width="7" height="7" rx="1.8"/><rect x="4" y="13" width="7" height="7" rx="1.8"/><path d="M16.5 13.5v6M13.5 16.5h6"/></svg>',
+  folder: '<svg viewBox="0 0 24 24"><path d="M3.5 7A1.8 1.8 0 0 1 5.3 5.2h4l2 2.3h7.4A1.8 1.8 0 0 1 20.5 9.3v8A1.8 1.8 0 0 1 18.7 19H5.3A1.8 1.8 0 0 1 3.5 17.3z"/></svg>',
+  url: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M4 12h16"/><path d="M12 4a12.4 12.4 0 0 1 0 16M12 4a12.4 12.4 0 0 0 0 16"/></svg>',
+  file: '<svg viewBox="0 0 24 24"><path d="M6 4.8A1.8 1.8 0 0 1 7.8 3h6L19 8.2v10A1.8 1.8 0 0 1 17.2 20H7.8A1.8 1.8 0 0 1 6 18.2z"/><path d="M13.5 3v5.5H19"/></svg>'
+};
+
 const PLANNED_GLYPH = '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="7.5" stroke-dasharray="3 3"/><path d="M12 8.5v4M12 15.2v.6"/></svg>';
 
 const APP_PAGE_SIZE = 28;
@@ -38,6 +45,7 @@ const state = {
   keys: [],
   count: 0,
   tools: [],
+  actions: [],
   query: '',
   commandResults: [],
   commandIndex: 0,
@@ -134,22 +142,34 @@ function renderKeys() {
   `).join('');
   $$('.key', grid).forEach((button) => {
     button.addEventListener('click', () => pressKey(button.dataset.key));
+    // 右键任意键位：打开绑定编辑器（换功能、绑应用/文件夹/网页/清除）
+    button.addEventListener('contextmenu', (event) => {
+      event.preventDefault();
+      openBindingEditor(button.dataset.key);
+    });
   });
 }
 
 function keyMarkup(key) {
   const bound = key.state === 'bound';
-  const classes = ['key', bound ? 'is-bound' : key.state === 'unimplemented' ? 'is-unimplemented' : 'is-unbound'];
-  const glyph = bound ? (GLYPHS[key.actionId] || `<span class="glyph-text">${escapeHtml(key.label.slice(0, 1))}</span>`) : '';
+  const custom = key.state === 'custom';
+  const classes = ['key', bound ? 'is-bound' : custom ? 'is-custom' : key.state === 'unimplemented' ? 'is-unimplemented' : 'is-unbound'];
+  let glyph = '';
+  if (bound) glyph = GLYPHS[key.actionId] || `<span class="glyph-text">${escapeHtml(key.label.slice(0, 1))}</span>`;
+  else if (custom) glyph = BINDING_GLYPHS[key.hint === '打开网页' ? 'url' : key.hint === '打开文件夹' ? 'folder' : key.hint === '打开应用' ? 'app' : 'file'] || '';
   // 绑定键：图标块 + 功能名 + 键位角标，功能不用靠悬停提示猜；
   // 未实现键也标出名字（淡色），让整个面板可扫读。
-  const inner = bound
+  const inner = bound || custom
     ? `<span class="key-glyph">${glyph}<i class="key-badge">${escapeHtml(key.key)}</i></span><span class="key-name">${escapeHtml(key.label)}</span>`
     : key.state === 'unimplemented'
       ? `<span class="key-letter">${escapeHtml(key.key)}</span><span class="key-name">${escapeHtml(key.label)}</span>`
       : `<span class="key-letter">${escapeHtml(key.key)}</span>`;
-  const title = bound ? `${key.label}${key.hint ? `：${key.hint}` : ''}` : key.state === 'unimplemented' ? `${key.label}：尚未实现` : '这个键还没有绑定动作';
-  const aria = bound ? `${key.key}：${key.label}` : key.state === 'unimplemented' ? `${key.key}：${key.label}（尚未实现）` : `${key.key}：未绑定`;
+  const title = bound ? `${key.label}${key.hint ? `：${key.hint}` : ''}`
+    : custom ? `${key.label}：${key.hint}（右键可改绑）`
+    : key.state === 'unimplemented' ? `${key.label}：尚未实现` : '这个键还没有绑定动作，点击或右键可绑定';
+  const aria = bound ? `${key.key}：${key.label}`
+    : custom ? `${key.key}：${key.label}`
+    : key.state === 'unimplemented' ? `${key.key}：${key.label}（尚未实现）` : `${key.key}：未绑定`;
   return `<button class="${classes.join(' ')}" type="button" data-key="${escapeHtml(key.key)}" data-action="${escapeHtml(key.actionId)}" data-state="${escapeHtml(key.state)}" aria-label="${escapeHtml(aria)}" data-hint="${escapeHtml(title)}">
     <span class="key-card" data-glass>${inner}</span>
   </button>`;
@@ -167,11 +187,87 @@ function pressKey(char) {
     runAction(key.actionId);
     return;
   }
+  if (key.state === 'custom') {
+    runAction(`binding:${key.key}`);
+    return;
+  }
   if (key.state === 'unimplemented') {
     toast(`「${key.label}」尚未实现，不会假装可用`);
     return;
   }
-  toast(`按键 ${key.key} 还没有绑定动作`);
+  // 未绑定的键：直接进入绑定编辑，让「空键」成为自定义入口
+  openBindingEditor(key.key);
+}
+
+/* ---------- 键位绑定编辑器 ---------- */
+
+const bindingState = { key: '' };
+
+function bindingEditorOpen() {
+  return !$('#binding-editor').hidden;
+}
+
+function openBindingEditor(keyChar) {
+  const key = keyByChar(keyChar);
+  if (!key) return;
+  bindingState.key = key.key;
+  $('#binding-key').textContent = key.key;
+  $('#binding-hint').textContent = key.state === 'custom'
+    ? `当前：${key.label}（${key.hint}）`
+    : key.state === 'bound' ? `当前：${key.label}` : '这个键还没有绑定内容';
+  $('#binding-url-row').hidden = true;
+  $('#binding-editor').hidden = false;
+  renderBindingActions();
+  $('#binding-app').focus({ preventScroll: true });
+}
+
+function closeBindingEditor() {
+  $('#binding-editor').hidden = true;
+  bindingState.key = '';
+}
+
+/** 可指派的内置动作按钮（由主进程 panel:state 提供）。 */
+function renderBindingActions() {
+  const list = $('#binding-action-list');
+  const actions = state.actions || [];
+  list.innerHTML = actions.map((action) => `
+    <button type="button" data-binding-action="${escapeHtml(action.id)}" title="${escapeHtml(action.hint || action.label)}">${escapeHtml(action.label)}</button>
+  `).join('');
+  $$('#binding-action-list [data-binding-action]').forEach((button) => {
+    listen(button, 'click', async () => {
+      await setKeyBinding({ type: 'action', id: button.dataset.bindingAction });
+    });
+  });
+}
+
+async function setKeyBinding(binding) {
+  const key = bindingState.key;
+  if (!key) return;
+  try {
+    const result = await window.suira.panel.setBinding({ key, binding });
+    if (!result?.ok) { toast(result?.error || '绑定失败', 'error'); return; }
+    toast(result.message || '已绑定');
+    closeBindingEditor();
+    await loadState();
+  } catch (error) {
+    toast(error?.message || '绑定失败', 'error');
+  }
+}
+
+/** 应用/文件夹/文件：弹系统选择窗口后绑定所选路径。 */
+async function pickAndBind(type) {
+  const key = bindingState.key;
+  if (!key) return;
+  try {
+    const picked = await window.suira.panel.pickPath({ type });
+    if (!picked?.ok) {
+      if (picked && picked.error) toast(picked.error, 'error');
+      return;
+    }
+    await setKeyBinding({ type, target: picked.path });
+  } catch (error) {
+    toast(error?.message || '选择失败', 'error');
+  }
 }
 
 /* ---------- 应用面板 ---------- */
@@ -401,7 +497,6 @@ async function runCommand(index) {
   if (kind === 'content') { window.suira.quick.showMain('library'); return; }
   const action = String(entry.action || '');
   if (action === 'capture') { runAction('capture'); return; }
-  if (action === 'record') { runAction('record'); return; }
   if (action === 'quick') { clearSearch(); return; }
   if (action === 'note') { runAction('note'); return; }
   if (action.startsWith('navigate:')) { window.suira.quick.showMain(action.slice('navigate:'.length)); return; }
@@ -548,11 +643,28 @@ async function loadState() {
     state.keys = snapshot?.keys || [];
     state.count = snapshot?.count || state.keys.length;
     state.tools = snapshot?.tools || [];
+    state.actions = snapshot?.actions || [];
   } catch (error) {
     state.keys = [];
     toast(error?.message || '面板加载失败，请重新打开', 'error');
   }
   renderKeys();
+  syncShortcutChip();
+}
+
+/** 底部截图角标显示真实的全局键位（用户改过键时不再显示写死的 Ctrl Shift A）。 */
+async function syncShortcutChip() {
+  const el = $('#capture-kbd');
+  if (!el) return;
+  try {
+    const snapshot = await window.suira.shortcuts.get();
+    const accelerator = String(snapshot?.bindings?.capture || '');
+    el.textContent = accelerator
+      ? accelerator.replace(/CommandOrControl/gi, 'Ctrl').split('+').join(' ')
+      : '未绑定';
+  } catch {
+    /* 读不到键位时保留默认文案 */
+  }
 }
 
 function focusSearch() {
@@ -611,6 +723,11 @@ function installEvents() {
     }
     if (!$('#translate-panel').hidden) {
       if (event.key === 'Escape') { event.preventDefault(); closeTranslate(); }
+      return;
+    }
+    // 绑定编辑器打开时按键只服务编辑器：字母不再触发面板动作
+    if (bindingEditorOpen()) {
+      if (event.key === 'Escape') { event.preventDefault(); closeBindingEditor(); }
       return;
     }
     const inInput = event.target === input;
@@ -693,6 +810,31 @@ function installEvents() {
   });
 
   $('#ocr-close').addEventListener('click', closeOcr);
+
+  /* ---- 键位绑定编辑器 ---- */
+  $('#binding-close').addEventListener('click', closeBindingEditor);
+  $('#binding-editor').addEventListener('click', (event) => {
+    if (event.target === $('#binding-editor')) closeBindingEditor();
+  });
+  $('#binding-app').addEventListener('click', () => pickAndBind('app'));
+  $('#binding-folder').addEventListener('click', () => pickAndBind('folder'));
+  $('#binding-file').addEventListener('click', () => pickAndBind('file'));
+  $('#binding-url').addEventListener('click', () => {
+    const row = $('#binding-url-row');
+    row.hidden = !row.hidden;
+    if (!row.hidden) $('#binding-url-input').focus();
+  });
+  listen($('#binding-url-save'), 'click', async () => {
+    const value = $('#binding-url-input').value.trim();
+    if (!value) { toast('先粘贴要绑定的网址', 'error'); return; }
+    // 不带协议的网址按 https 处理；主进程会再校验协议白名单
+    await setKeyBinding({ type: 'url', target: /^https?:\/\//i.test(value) ? value : `https://${value}` });
+  });
+  $('#binding-url-input').addEventListener('keydown', (event) => {
+    if (event.key === 'Enter') { event.preventDefault(); $('#binding-url-save').click(); }
+    if (event.key === 'Escape') { event.preventDefault(); closeBindingEditor(); }
+  });
+  $('#binding-clear').addEventListener('click', () => setKeyBinding(null));
 
   $('#translate-close').addEventListener('click', closeTranslate);
   // 换目标语言：拿同一段原文再翻一次，不重新取词

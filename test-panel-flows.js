@@ -82,11 +82,6 @@ function makePanel(overrides = {}) {
 
   const panel = makePanel();
 
-  await ta('S 录屏：进入区域选择，保留 record 意图并收起面板',async()=>{
-    const result=await panel.run('record');
-    assert.equal(result.ok,true);assert.equal(result.closePanel,true);assert.equal(calls.capture.at(-1),'record');
-  });
-
   await ta('Z 截图：进入覆盖层并收起面板', async () => {
     const r = await panel.run('capture');
     assert.strictEqual(r.ok, true);

@@ -281,7 +281,6 @@ function showAction(message, type = '') {
 }
 
 function setTool(tool) {
-  if (state.intent === 'record' && tool !== 'select') return;
   if (tool === 'select') {
     state.mode = 'select';
     state.tool = 'pen';
@@ -632,15 +631,6 @@ function drawMosaicToContext(ctx, item) {
 }
 
 async function finish(action = 'copy') {
-  if (state.intent === 'record') {
-    if (!hasSelection()) { showAction('请先选择录屏区域', 'error'); return; }
-    try {
-      const s = state.selection;
-      const result = await window.suira.recording.region({ x:s.x, y:s.y, width:s.w, height:s.h });
-      if (!result.ok) showAction(result.error || '无法开始录屏', 'error');
-    } catch(error) { showAction(error.message, 'error'); }
-    return;
-  }
   const output = compositeSelection();
   if (!output) {
     showAction('请先拖拽选择一个区域', 'error');
@@ -1372,14 +1362,7 @@ async function handleShown() {
 function applyIntent(intent) {
   if (!intent || intent === 'copy' || intent === 'save' || intent === 'shelf') return;
   state.intent = intent;
-  if (intent === 'record') {
-    root.dataset.intent = 'record';
-    dockMetrics.width = dockMetrics.height = 0;
-    if (hintBrand) hintBrand.textContent = '区域录屏';
-    showAction('框选录屏区域，按 Enter 确认');
-    const label = document.querySelector('.complete-button span');
-    if (label) label.textContent = '录制此区域';
-  } else if (intent === 'ocr') {
+  if (intent === 'ocr') {
     // 提示用户这一趟是要提字的，不必再找工具栏
     if (hintBrand) hintBrand.textContent = '截图提字';
     showAction('框选要识别的区域，完成后自动识别');

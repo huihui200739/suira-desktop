@@ -745,39 +745,9 @@ function prettyAccelerator(accelerator) {
 }
 
 /**
- * 按住型唤起的本地前置校验：与 lib/shortcuts.js 的
- * validateMomentaryAccelerator 保持一致。
- *
- * 渲染层没有 require 能力，所以复制一份逻辑，在录制阶段先拦一次，
- * 不满足「至少两个修饰键」时直接写状态框、不调用 IPC。
- * @returns {{ok:boolean, error:string}}
+ * 按住型唤起不再有额外的本地校验：主进程与普通快捷键同一套规则
+ * （一个修饰键 + 一个主键），录制结果直接交给 `shortcuts:set` 校验。
  */
-function validateMomentaryAccelerator(accelerator) {
-  const text = String(accelerator || '').trim();
-  if (!text) return { ok: false, error: '快捷键不能为空' };
-  const parts = text.split('+').map((part) => part.trim()).filter(Boolean);
-  if (parts.length < 2) return { ok: false, error: '快捷键至少需要一个修饰键加一个主键' };
-
-  const modifiers = new Set();
-  let hasMainKey = false;
-  for (const part of parts) {
-    const lower = part.toLowerCase();
-    if (['commandorcontrol', 'control', 'ctrl', 'command', 'cmd', 'alt', 'shift', 'super', 'meta'].includes(lower)) {
-      modifiers.add(lower === 'ctrl' ? 'control' : lower === 'cmd' ? 'command' : lower);
-    } else {
-      hasMainKey = true;
-    }
-  }
-  if (!hasMainKey) return { ok: false, error: '快捷键缺少主键' };
-  if (modifiers.size === 0) return { ok: false, error: '快捷键至少需要一个修饰键' };
-  if (modifiers.size === 1 && modifiers.has('shift')) {
-    return { ok: false, error: '只用 Shift 会干扰正常输入，请再加一个修饰键' };
-  }
-  if (modifiers.size < 2) {
-    return { ok: false, error: '按住型快捷键至少需要两个修饰键，避免单修饰键按住误触' };
-  }
-  return { ok: true, error: '' };
-}
 
 function bindShortcutEditors() {
   const editors = [
@@ -800,15 +770,6 @@ function bindShortcutEditors() {
         editor.status.textContent = '请按下「修饰键 + 主键」的组合';
         editor.status.className = 'shortcut-status is-warn';
         return;
-      }
-      // 按住型：单修饰键按住太易误触，先在渲染层拦一次，不调用 IPC
-      if (editor.name === 'momentary') {
-        const check = validateMomentaryAccelerator(accelerator);
-        if (!check.ok) {
-          editor.status.textContent = check.error;
-          editor.status.className = 'shortcut-status is-error';
-          return;
-        }
       }
       const result = await window.suira.shortcuts.set({ name: editor.name, accelerator });
       if (result?.ok) {
@@ -1150,6 +1111,8 @@ function installEvents() {
   });
   window.suira.app.onToast((payload) => showGlobalToast(payload.message || '', payload.type || ''));
   window.suira.app.onNavigate((page) => navigate(page));
+  // 改键后顶栏提示同步刷新
+  window.suira.shortcuts.onChanged(() => syncShortcutPills());
   window.suira.ocr.onProgress((payload) => {
     if (payload?.status === 'recognizing text' && state.page !== 'trail') {
       showGlobalToast(`正在识别文字 ${Math.round((payload.progress || 0) * 100)}%`);
@@ -1159,8 +1122,29 @@ function installEvents() {
 
 /* ---------- init ---------- */
 
+/** 顶栏快捷键提示跟随真实键位：用户改过键后不再显示写死的组合。 */
+async function syncShortcutPills() {
+  try {
+    const snapshot = await window.suira.shortcuts.get();
+    const render = (name, elId) => {
+      const host = document.getElementById(elId);
+      if (!host) return;
+      const accelerator = String(snapshot?.bindings?.[name] || '');
+      host.innerHTML = accelerator
+        ? accelerator.replace(/CommandOrControl/gi, 'Ctrl').split('+')
+          .map((part) => `<kbd>${escapeHtml(part)}</kbd>`).join('<span>+</span>')
+        : '<kbd>未绑定</kbd>';
+    };
+    render('quick', 'pill-quick-keys');
+    render('capture', 'pill-capture-keys');
+  } catch {
+    /* 读不到键位时保留页面里的默认提示 */
+  }
+}
+
 async function init() {
   installEvents();
+  syncShortcutPills();
   const info = await window.suira.app.info();
   if (info?.version) {
     $('#app-version').textContent = `版本 ${info.version}，${info.runtime || ''}`;

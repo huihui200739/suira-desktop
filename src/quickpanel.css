@@ -237,7 +237,6 @@ kbd { font-family: var(--font-ui); font-size: var(--text-1); font-weight: 600; }
 .key[data-action="ocr"], .key[data-action="clipboard"] { --key-tint: var(--action-blue); }
 .key[data-action="pin"], .key[data-action="desktop"], .key[data-action="lock"] { --key-tint: var(--action-violet); }
 .key[data-action="text-clean"] { --key-tint: var(--action-amber); }
-.key[data-action="record"] { --key-tint: var(--danger); }
 
 /* ---------- 应用面板 ---------- */
 
@@ -424,3 +423,96 @@ kbd { font-family: var(--font-ui); font-size: var(--text-1); font-weight: 600; }
   .translate-block:first-child { align-self: stretch; }
   .translate-source { flex: 1; max-height: none; }
 }
+
+/* ---------- 自定义键位绑定 ---------- */
+
+/* 自定义键帽（应用/文件夹/网页/文件）：青灰色调，与内置动作的彩色区分 */
+.key.is-custom { --key-tint: var(--ink-muted); }
+.key.is-custom .key-card {
+  border: 1px solid color-mix(in srgb, var(--key-tint) 24%, var(--floating-edge));
+  background: linear-gradient(165deg,var(--control-top),var(--control-bottom));
+  box-shadow: var(--control-shadow);
+}
+.key.is-custom .key-glyph {
+  color: var(--key-tint);
+  background: color-mix(in srgb, var(--key-tint) 13%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--key-tint) 18%, transparent);
+}
+
+/* 编辑器：盖在面板上的遮罩 + 居中卡片 */
+.binding-editor {
+  position: absolute;
+  inset: 0;
+  z-index: 30;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: color-mix(in srgb, var(--floating-surface) 55%, transparent);
+  backdrop-filter: blur(6px);
+}
+.binding-card {
+  width: min(430px, 100%);
+  max-height: 100%;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 16px;
+  border-radius: 16px;
+  border: 1px solid var(--floating-edge);
+  background: var(--surface);
+  box-shadow: var(--shadow-lift);
+}
+.binding-head { display: flex; align-items: center; justify-content: space-between; }
+.binding-head b { font-size: var(--text-3); }
+.binding-key {
+  display: inline-grid;
+  place-items: center;
+  min-width: 26px;
+  height: 26px;
+  padding: 0 6px;
+  margin-left: 4px;
+  border-radius: 8px;
+  background: var(--control-selected);
+  box-shadow: inset 0 0 0 1px var(--line);
+  font-variant-numeric: tabular-nums;
+}
+#binding-close { width: 28px; height: 28px; border-radius: 8px; font-size: var(--text-3); color: var(--ink-soft); }
+#binding-close:hover { background: var(--control-selected); }
+.binding-section-title { font-size: var(--text-1); font-weight: 600; letter-spacing: .04em; color: var(--ink-muted); }
+.binding-action-grid { display: flex; flex-wrap: wrap; gap: 6px; }
+.binding-action-grid button {
+  padding: 6px 11px;
+  border-radius: 9px;
+  border: 1px solid var(--line);
+  background: var(--surface-soft);
+  font-weight: 600;
+  font-size: var(--text-1);
+}
+.binding-action-grid button:hover { background: var(--control-selected); border-color: var(--floating-edge); }
+.binding-custom-row { display: flex; gap: 6px; flex-wrap: wrap; }
+.binding-custom-row button {
+  flex: 1 1 auto;
+  padding: 7px 10px;
+  border-radius: 9px;
+  border: 1px solid color-mix(in srgb, var(--accent) 26%, var(--line));
+  background: color-mix(in srgb, var(--accent) 7%, var(--surface-soft));
+  font-weight: 600;
+}
+.binding-custom-row button:hover { background: var(--control-selected); }
+.binding-url-row { display: flex; gap: 6px; }
+.binding-url-row input {
+  flex: 1;
+  min-width: 0;
+  padding: 7px 10px;
+  border-radius: 9px;
+  border: 1px solid var(--line);
+  background: var(--surface-soft);
+  color: var(--ink);
+}
+.binding-url-row input:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+.binding-url-row button { padding: 7px 14px; border-radius: 9px; background: var(--accent); color: #fff; font-weight: 650; }
+.binding-foot { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 2px; }
+.binding-hint { min-width: 0; font-size: var(--text-1); color: var(--ink-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.binding-clear { padding: 6px 11px; border-radius: 9px; border: 1px solid color-mix(in srgb, var(--danger) 30%, var(--line)); color: var(--danger); font-weight: 600; }
+.binding-clear:hover { background: color-mix(in srgb, var(--danger) 10%, transparent); }
