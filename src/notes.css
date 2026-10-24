@@ -1,0 +1,175 @@
+/*
+ * 速记窗口。
+ * 配色只写令牌：src/theme.css 是唯一换肤入口，这里不出现具体色值。
+ */
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+  background: transparent;
+  color: var(--ink);
+  font-family: var(--font-ui);
+}
+
+.note {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  border-radius: var(--radius-panel);
+  background: radial-gradient(ellipse at 0 0, var(--floating-light), transparent 60%), var(--floating-surface);
+  border: 1px solid var(--floating-edge);
+  box-shadow: inset 0 1px 0 var(--floating-edge);
+}
+
+/* ---------- 顶栏 ---------- */
+
+.note-head {
+  display: flex;
+  align-items: center;
+  gap: var(--gap);
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--line);
+  /* 标题栏是拖动区；按钮要单独声明 no-drag，否则点不动 */
+  -webkit-app-region: drag;
+  user-select: none;
+}
+
+.note-mark { display: flex; width: 18px; height: 18px; color: var(--accent); }
+.note-mark svg { width: 100%; height: 100%; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+
+.note-title {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  font-size: 12.5px;
+  font-weight: 600;
+  letter-spacing: .01em;
+  color: var(--ink-soft);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.note-tools { display: flex; gap: 2px; -webkit-app-region: no-drag; }
+
+.note-tools button {
+  min-width: 24px;
+  height: 24px;
+  padding: 0 6px;
+  border: 0;
+  border-radius: var(--radius-chip);
+  background: transparent;
+  color: var(--ink-muted);
+  font: 12px/1 var(--font-ui);
+  cursor: pointer;
+}
+
+.note-tools button:hover { background: var(--surface-hover); color: var(--ink); }
+
+.note-tools button[aria-pressed="true"] {
+  background: var(--accent-soft);
+  color: var(--accent-deep);
+  font-weight: 600;
+}
+
+/* ---------- 正文 ---------- */
+
+.note-body {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  padding: 12px 14px;
+  border: 0;
+  outline: none;
+  resize: none;
+  background: transparent;
+  color: var(--ink);
+  font: 13.5px/1.7 var(--font-ui);
+  tab-size: 2;
+}
+
+.note-body::placeholder { color: var(--ink-faint); }
+
+/* ---------- 底栏 ---------- */
+
+.note-foot {
+  display: flex;
+  align-items: center;
+  gap: var(--gap);
+  padding: 6px 10px;
+  border-top: 1px solid var(--line);
+  font-size: var(--text-1);
+  color: var(--ink-muted);
+}
+
+.note-count { font-variant-numeric: tabular-nums; }
+.note-saved { flex: 1; color: var(--ink-faint); }
+.note-saved[data-state="saving"] { color: var(--ink-muted); }
+.note-saved[data-state="error"] { color: var(--danger); }
+
+#note-delete {
+  height: 22px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: var(--radius-chip);
+  background: transparent;
+  color: var(--ink-muted);
+  font: 11.5px/1 var(--font-ui);
+  cursor: pointer;
+}
+
+#note-delete:hover { background: var(--danger-soft); color: var(--danger); }
+
+/* ---------- 全部速记 ---------- */
+
+.note {
+  position: relative;
+}
+
+.note-index {
+  position: absolute;
+  z-index: 2;
+  top: 40px;
+  right: 10px;
+  left: 10px;
+  max-height: 58%;
+  overflow-y: auto;
+  padding: 4px;
+  border-radius: var(--radius-card);
+  background: var(--surface-raised);
+  box-shadow: var(--shadow-float);
+}
+
+.note-index button {
+  display: block;
+  width: 100%;
+  padding: 6px 8px;
+  border: 0;
+  border-radius: var(--radius-chip);
+  background: transparent;
+  color: var(--ink-soft);
+  font: 12px/1.5 var(--font-ui);
+  text-align: left;
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.note-index button:hover { background: var(--surface-hover); color: var(--ink); }
+.note-index button[aria-current="true"] { background: var(--accent-soft); color: var(--accent-deep); font-weight: 600; }
+.note-index .note-index-empty { padding: 8px; color: var(--ink-faint); font-size: var(--text-1); }
+
+.note-error {
+  margin: 0;
+  padding: 6px 12px;
+  background: var(--danger-soft);
+  color: var(--danger);
+  font-size: var(--text-1);
+}
+
+/* 钉在桌面时给一圈强调描边，一眼能区分「浮着的」和「普通窗口」 */
+.note[data-pinned="true"] { box-shadow: inset 0 0 0 1px var(--accent-glow); }

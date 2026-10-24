@@ -28,6 +28,19 @@ const ta = async (n, f) => { try { await f(); console.log('  PASS  ' + n); pass+
     const probe = new ForegroundProbe({ scriptPath: path.join(os.tmpdir(), 'nope-xyz.ps1') });
     assert.strictEqual(probe.isAvailable(), false);
   });
+  t('isReady 在未启动时为 false（剪贴板来源标注据此避免拉起 80MB 助手）', () => {
+    const probe = new ForegroundProbe();
+    assert.strictEqual(probe.isReady(), false);
+  });
+  t('isReady 需要 ready 且有子进程两个条件同时成立', () => {
+    const probe = new ForegroundProbe();
+    probe.ready = true;
+    assert.strictEqual(probe.isReady(), false, '只有 ready 标记不算就绪');
+    probe.child = { pid: 1 };
+    assert.strictEqual(probe.isReady(), true);
+    probe.ready = false;
+    assert.strictEqual(probe.isReady(), false, '进程没了但 ready 残留也不算就绪');
+  });
   ta('不可用时 query 直接返回 null', async () => {
     const probe = new ForegroundProbe({ scriptPath: path.join(os.tmpdir(), 'nope-xyz.ps1') });
     assert.strictEqual(await probe.query(), null);
@@ -68,6 +81,13 @@ const ta = async (n, f) => { try { await f(); console.log('  PASS  ' + n); pass+
       assert.ok(results.every((r) => r && r.hwnd), '存在空结果');
     });
 
+    await ta('stop() 放掉常驻进程后，下一次查询会重新拉起', async () => {
+      probe.stop();
+      assert.strictEqual(probe.ready, false, 'stop 之后应标记为未就绪');
+      const again = await probe.query();
+      assert.ok(again && again.hwnd, '闲置释放后应能重新拉起并查回结果');
+    });
+
     await ta('dispose 后不再返回结果', async () => {
       probe.dispose();
       assert.strictEqual(await probe.query(), null);
@@ -77,6 +97,31 @@ const ta = async (n, f) => { try { await f(); console.log('  PASS  ' + n); pass+
   }
 
   console.log('\n== 超时与异常处理 ==');
+  if (process.platform === 'win32') {
+    await ta('原生助手快速启动、按句柄校验，并拒绝失效目标', async () => {
+      const { ensureNativeHost } = require('./lib/key-watch');
+      const sourcePath = path.join(__dirname, 'assets/foreground-host.cs');
+      const hash = require('crypto').createHash('sha256').update(fs.readFileSync(sourcePath)).digest('hex').slice(0, 12);
+      const nativeHost = await ensureNativeHost({ sourcePath, targetPath: path.join(os.tmpdir(), `suira-foreground-test-${hash}.exe`), references: ['System.Web.Extensions.dll'] });
+      assert.ok(nativeHost, '原生助手应成功编译');
+      const probe = new ForegroundProbe({ nativeHost });
+      try {
+        const started = Date.now();
+        assert.ok(await probe.start());
+        assert.ok(Date.now() - started < 1500, '不得固定等待 4 秒');
+        const snapshot = await probe.query();
+        assert.ok(snapshot?.hwnd);
+        const checked = await probe.query(snapshot.hwnd);
+        assert.equal(checked.pid, snapshot.pid);
+        assert.equal(checked.title, snapshot.title, 'UTF-8 窗口标题必须完整返回');
+        const refused = await probe.pasteTo({ ...snapshot, processStartedAt: snapshot.processStartedAt + 1 });
+        assert.equal(refused.ok, false, '目标进程实例改变时不得注入');
+        assert.equal(await probe.query('0'), null);
+        assert.equal(await probe.query('1; echo unsafe'), null);
+        assert.ok(await probe.query(), '非法句柄请求不得破坏后续查询');
+      } finally { probe.dispose(); }
+    });
+  }
   await ta('助手无响应时 query 在超时内返回 null', async () => {
     const tmp = path.join(os.tmpdir(), 'suira-hang-' + Date.now() + '.ps1');
     // 一个只读 stdin 但从不回话的脚本

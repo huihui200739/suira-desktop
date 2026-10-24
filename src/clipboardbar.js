@@ -3,13 +3,13 @@
 /**
  * 剪贴板历史条渲染层。
  *
- * 契约：主进程创建 1180×196 的置顶无边框透明窗口，贴着主显示器工作区底部；
+ * 契约：主进程适配唤出所在显示器工作区，创建宽幅底部内容架；
  * 页面只适配这个视口，不自己改窗口尺寸。隐藏与失焦由主进程负责，页面不额外处理。
  *
  * 职责：
  * - 从 window.suira.content 拉取内容库列表，按类型渲染卡片：
  *   图片用 thumbnail 缩略图，文字用前 90 字摘要，files 用文件名 + 文件数，link 用域名；
- * - 键盘（← → Home End Enter Esc）与滚轮横向浏览，单击选中、双击提交；
+ * - 键盘（← → Home End Enter Esc）与滚轮横向浏览，单击复制并粘贴；
  * - Enter 调 window.suira.returnTo.commit({ itemId, intent: 'return-and-paste' })：
  *   直接粘回成功就关闭，只是复制兜底就在底部提示行显示原因并保留窗口；
  * - clipboardBar.onShown 时重新拉取并重置选中项，content.onChanged 仅在可见时刷新。
@@ -37,8 +37,15 @@
     contentApi: null,
     returnApi: null,
     items: [],
+    allItems: [],
+    query: '',
+    filter: 'all',
+    pinning: false,
+    interactionRevision: 0,
     selected: -1,
     loading: true,
+    refreshing: false,
+    refreshError: '',
     loaded: false,
     error: '',
     offline: false,
@@ -92,7 +99,9 @@
       filePath: typeof raw.filePath === 'string' ? raw.filePath : '',
       thumbnail: typeof raw.thumbnail === 'string' ? raw.thumbnail : '',
       appName: source && typeof source.appName === 'string' ? source.appName : '',
-      createdAt: Number(raw.createdAt) || 0
+      createdAt: Number(raw.createdAt) || 0,
+      pinned: Boolean(raw.pinned),
+      meta: raw.meta && typeof raw.meta === 'object' ? raw.meta : {}
     };
   }
 
@@ -162,8 +171,10 @@
     const bits = [];
     if (item.appName) bits.push(`来源 ${item.appName}`);
     const time = relativeTime(item.createdAt);
+    const dimensions = item.meta.width && item.meta.height ? `${item.meta.width} × ${item.meta.height}` : '';
+    if (dimensions) bits.push(dimensions);
     if (time) bits.push(time);
-    return bits.join(' · ');
+    return bits.join('，');
   }
 
   /* ---------- 渲染 ---------- */
@@ -186,9 +197,7 @@
       if (!item.thumbnail) visualClass += ' is-placeholder';
     } else if (item.kind === 'files') {
       visualClass += ' is-stack';
-      visual = `<span class="card-glyph">${GLYPHS.file}</span>
-        <b class="card-name" title="${escapeHtml(filesTitle(item))}">${escapeHtml(filesTitle(item))}</b>
-        <span class="card-count">${fileCount(item)} 个文件</span>`;
+      visual = `<span class="card-glyph">${GLYPHS.file}</span><span class="card-count">${fileCount(item)} 个文件</span>`;
     } else if (item.kind === 'link') {
       visualClass += ' is-stack';
       visual = `<span class="card-glyph">${GLYPHS.link}</span>
@@ -197,11 +206,13 @@
       visual = `<p class="card-snippet">${escapeHtml(textSummary(item))}</p>`;
     }
 
-    const tooltip = [label, selectionTitle(item), time].filter(Boolean).join(' · ');
+    const tooltip = [label, selectionTitle(item), time].filter(Boolean).join('，');
     return `<article class="bar-card" id="bar-card-${index}" role="option" aria-selected="false" tabindex="-1" data-index="${index}" data-id="${escapeHtml(item.id)}" data-kind="${escapeHtml(item.kind)}" title="${escapeHtml(tooltip)}">
+      <div class="card-head"><span class="card-type">${label}${item.pinned ? ' ★' : ''}</span><span class="card-index">${index + 1}</span></div>
       <div class="${visualClass}">${visual}</div>
+      <div class="card-caption">${escapeHtml(selectionTitle(item))}</div>
       <div class="card-foot">
-        <span class="card-kind">${label}</span>
+        <span class="card-source">${escapeHtml(item.appName || label)}</span>
         <span class="card-time">${escapeHtml(time)}</span>
       </div>
     </article>`;
@@ -209,6 +220,8 @@
 
   function bindImageFallbacks() {
     $$('.card-thumb').forEach((img) => {
+      if (img.dataset.fallbackBound) return;
+      img.dataset.fallbackBound = 'true';
       const fallback = () => {
         const holder = img.parentElement;
         if (!holder) return;
@@ -231,21 +244,28 @@
     if (state.offline) {
       mode = 'offline';
       title.textContent = '剪贴板历史暂不可用';
-      hint.textContent = '主进程没有提供剪贴板历史接口，重启随序后再试。';
+      hint.hidden = false;
+      hint.textContent = '重启随序后再试。';
       retry.hidden = true;
     } else if (state.loading) {
       mode = 'loading';
       title.textContent = '正在读取剪贴板历史…';
-      hint.textContent = '马上就好';
+      hint.hidden = true;
       retry.hidden = true;
     } else if (state.error) {
       mode = 'error';
       title.textContent = '暂时读不到剪贴板历史';
+      hint.hidden = false;
       hint.textContent = state.error;
       retry.hidden = false;
+    } else if (state.allItems.length && (state.query || state.filter !== 'all')) {
+      mode = 'filtered';
+      title.textContent = state.filter === 'favorite' && !state.query ? '还没有收藏内容' : '没有找到匹配的内容';
+      hint.hidden = true;
+      retry.hidden = true;
     } else {
       title.textContent = EMPTY_COPY;
-      hint.textContent = '唤出后用 ← → 浏览，Enter 复制并返回。';
+      hint.hidden = true;
       retry.hidden = true;
     }
     empty.dataset.mode = mode;
@@ -257,7 +277,7 @@
     const item = state.items[state.selected];
     if (!item) {
       line.classList.add('is-empty');
-      line.textContent = state.loading ? '正在读取剪贴板历史…' : '用 ← → 选择一条记录';
+      line.textContent = state.loading ? '正在读取剪贴板历史…' : '← → 选择';
       return;
     }
     line.classList.remove('is-empty');
@@ -281,6 +301,15 @@
       else track.removeAttribute('aria-activedescendant');
     }
     renderSelectionLine();
+    const item = state.items[state.selected];
+    const pin = $('#bar-pin');
+    const submit = $('#bar-submit');
+    if (pin) {
+      pin.disabled = !item || state.loading || state.pinning || typeof state.contentApi?.togglePin !== 'function';
+      pin.textContent = item?.pinned ? '已收藏' : '收藏';
+      pin.setAttribute('aria-pressed', String(Boolean(item?.pinned)));
+    }
+    if (submit) submit.disabled = !item || state.loading || state.committing || !state.returnApi;
   }
 
   function render() {
@@ -293,14 +322,50 @@
     track.hidden = !showItems;
     if (empty) empty.hidden = showItems;
     if (showItems) {
-      track.innerHTML = state.items.map(cardMarkup).join('');
+      // 用条目 ID 复用同一个卡片，后台刷新不销毁正在浏览或聚焦的内容。
+      const existing = new Map(Array.from(track.children).map(card => [card.dataset.id, card]));
+      state.items.forEach((item,index) => {
+        let card = existing.get(item.id);
+        const markup = cardMarkup(item,index);
+        if (!card) {
+          const template = document.createElement('template');
+          template.innerHTML = markup;
+          card = template.content.firstElementChild;
+        } else if (card._contentMarkup !== markup) {
+          const template = document.createElement('template');
+          template.innerHTML = markup;
+          const next = template.content.firstElementChild;
+          // 外层不变，索引变化也不替换缩略图。
+          const unchanged = card._recordSignature === JSON.stringify(item);
+          if (!unchanged) card.innerHTML = next.innerHTML;
+          card.id = next.id;
+          card.dataset.index = String(index);
+          card.title = next.title;
+          const number = card.querySelector('.card-index');
+          if (number) number.textContent = String(index+1);
+        }
+        card._contentMarkup = markup;
+        card._recordSignature = JSON.stringify(item);
+        existing.delete(item.id);
+        if (track.children[index] !== card) track.insertBefore(card,track.children[index] || null);
+      });
+      existing.forEach(card => card.remove());
       bindImageFallbacks();
     } else {
       track.innerHTML = '';
     }
-    if (count) {
-      count.textContent = state.offline ? '—' : (state.loading ? '…' : `${state.items.length} 条`);
+    track.setAttribute('aria-busy', String(state.refreshing || state.loading));
+    const refresh = $('#bar-refresh-retry');
+    if (refresh) {
+      refresh.hidden = !state.refreshError;
+      refresh.disabled = state.refreshing;
+      refresh.title = state.refreshError;
     }
+    if (count) {
+      count.textContent = state.offline ? '—' : (state.loading ? '…' : state.query || state.filter !== 'all' ? `${state.items.length} / ${state.allItems.length} 条` : `最近 ${state.items.length} 条`);
+      count.title = '显示最近 120 条记录，打开内容库可搜索更多内容';
+    }
+    $$('[data-filter]').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.filter === state.filter)));
     configureEmpty();
     syncSelection();
   }
@@ -309,7 +374,7 @@
     const card = document.getElementById(`bar-card-${index}`);
     if (!card || typeof card.scrollIntoView !== 'function') return;
     try {
-      card.scrollIntoView({ block: 'nearest', inline: 'center', behavior });
+      card.scrollIntoView({ block: 'nearest', inline: 'center', behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : behavior });
     } catch {
       /* 极旧内核不支持 options 时退回默认定位 */
       try { card.scrollIntoView(); } catch {}
@@ -329,6 +394,7 @@
   function selectIndex(index, options = {}) {
     const total = state.items.length;
     if (!total) return;
+    state.interactionRevision++;
     const next = Math.max(0, Math.min(total - 1, Number(index) || 0));
     state.selected = next;
     syncSelection();
@@ -379,11 +445,31 @@
 
   let loadToken = 0;
 
+  function applyFilters(keepId = '', { reset = true } = {}) {
+    const query = state.query.trim().toLocaleLowerCase();
+    state.items = state.allItems.filter(item => {
+      const kindMatch = state.filter === 'all' || (state.filter === 'favorite' ? item.pinned : item.kind === state.filter);
+      return kindMatch && (!query || [item.title, item.text, item.filePath, item.appName].join(' ').toLocaleLowerCase().includes(query));
+    });
+    const index = keepId ? state.items.findIndex(item => item.id === keepId) : -1;
+    state.selected = index >= 0 ? index : state.items.length ? 0 : -1;
+    render();
+    if (reset) {
+      resetScroll();
+      if (state.selected >= 0) scrollCardIntoView(state.selected, 'auto');
+    }
+  }
+
   async function load(options = {}) {
     const api = state.contentApi;
     const token = ++loadToken;
-    state.loading = true;
+    const interactionAtStart = state.interactionRevision;
+    const cached = state.loaded && state.allItems.length > 0;
+    state.loading = !cached;
+    state.refreshing = cached;
     state.error = '';
+    state.refreshError = '';
+    if (cached && options.resetSelection) applyFilters();
     render();
 
     if (!api) {
@@ -396,28 +482,43 @@
     }
 
     try {
-      const payload = await api.list({ limit: 60 });
+      const payload = await api.list({ limit: 120 });
       if (token !== loadToken) return;
+      const interacted = state.interactionRevision !== interactionAtStart;
+      const keepId = interacted ? currentSelectedId() : options.keepItemId || '';
+      const track = $('#bar-track');
+      const bounds = track.getBoundingClientRect();
+      const anchor = $$('.bar-card',track).find(card => {
+        const rect = card.getBoundingClientRect();
+        return rect.right > bounds.left + 1 && rect.left < bounds.right - 1;
+      });
+      const anchorLeft = anchor?.getBoundingClientRect().left;
+      const anchorId = anchor?.dataset.id;
       const items = (Array.isArray(payload) ? payload : []).map(normalizeItem).filter(Boolean);
-      state.items = items;
+      state.allItems = items;
       state.loading = false;
+      state.refreshing = false;
       state.loaded = true;
       state.error = '';
-      const keepId = options.keepItemId || '';
-      let next = keepId ? items.findIndex((item) => item.id === keepId) : -1;
-      if (next < 0) next = items.length ? 0 : -1;
-      state.selected = next;
-      render();
-      if (next >= 0) {
-        if (options.resetSelection) resetScroll();
-        scrollCardIntoView(next, options.resetSelection ? 'auto' : 'smooth');
+      const reset = !cached || Boolean(options.resetSelection && !interacted);
+      applyFilters(keepId, { reset });
+      if (cached && !reset && anchorId) {
+        const preserved = $$('.bar-card',track).find(card => card.dataset.id === anchorId);
+        if (preserved) track.scrollTo({ left: track.scrollLeft + preserved.getBoundingClientRect().left-anchorLeft, behavior:'instant' });
       }
     } catch (error) {
       if (token !== loadToken) return;
       state.loading = false;
+      state.refreshing = false;
       state.loaded = true;
+      if (cached) {
+        state.refreshError = errorText(error, '刷新失败');
+        render();
+        return;
+      }
       state.error = errorText(error, '读取剪贴板历史失败');
       state.items = [];
+      state.allItems = [];
       state.selected = -1;
       render();
     }
@@ -436,7 +537,7 @@
   }
 
   async function submitSelected() {
-    if (state.committing) return;
+    if (state.committing || state.loading) return;
     const item = state.items[state.selected];
     if (!item) return;
     const api = state.returnApi;
@@ -445,6 +546,7 @@
       return;
     }
     state.committing = true;
+    syncSelection();
     try {
       const result = await api.commit({ itemId: item.id, intent: 'return-and-paste' });
       if (result && result.ok) {
@@ -454,8 +556,8 @@
             await hideBar();
             return;
           }
-          // 只复制成功、没能自动粘贴：保留窗口并说明下一步
-          showNotice(result.message || '已复制，切回目标后粘贴', false);
+          // 系统剪贴板已经更新；收起条，后续 Ctrl+V 使用同一条内容。
+          await hideBar();
           return;
         }
         showNotice(result.error || result.message || '复制失败', true);
@@ -466,7 +568,26 @@
       showNotice(errorText(error, '复制失败'), true);
     } finally {
       state.committing = false;
+      syncSelection();
     }
+  }
+
+  async function toggleSelectedPin() {
+    const item = state.items[state.selected];
+    if (!item || state.pinning || typeof state.contentApi?.togglePin !== 'function') return;
+    state.interactionRevision++;
+    state.pinning = true;
+    syncSelection();
+    try {
+      const result = await state.contentApi.togglePin(item.id);
+      if (!result?.ok) throw new Error(result?.error || '内容已不存在');
+      // 与 content.onChanged 并发刷新时，以这次写入返回的状态为准。
+      const stored = state.allItems.find(record => record.id === item.id);
+      if (stored) stored.pinned = Boolean(result.pinned);
+      applyFilters(item.id);
+      showNotice(result.pinned ? '已收藏，可在「收藏」中找到' : '已取消收藏', false);
+    } catch (error) { showNotice(errorText(error, '收藏失败'), true); }
+    finally { state.pinning = false; syncSelection(); }
   }
 
   /* ---------- 用户操作 ---------- */
@@ -475,6 +596,22 @@
     if (event.defaultPrevented) return;
     if (event.isComposing || event.keyCode === 229) return;
     const key = event.key;
+    // 按钮的 Enter / Space 交给原生点击，不能被全局 Enter 抢走去粘贴。
+    if (event.target.closest?.('button') && (key === 'Enter' || key === ' ')) return;
+    const search = $('#bar-search');
+    if ((event.ctrlKey || event.metaKey) && key.toLowerCase() === 'f') {
+      event.preventDefault(); search?.focus(); search?.select(); return;
+    }
+    if (event.target instanceof HTMLInputElement) {
+      // 光标键留给输入框，Enter 才提交；Esc 先退出搜索，再关闭面板。
+      if (key === 'Escape' || key === 'Esc') {
+        event.preventDefault();
+        if (search.value) { state.interactionRevision++; search.value = ''; state.query = ''; clearNotice(); applyFilters(); }
+        else search.blur();
+        return;
+      }
+      if (key !== 'Enter') return;
+    }
     if (key === 'ArrowLeft' || key === 'ArrowRight' || key === 'Home' || key === 'End') {
       event.preventDefault();
       const total = state.items.length;
@@ -505,6 +642,7 @@
     const deltaX = Number(event.deltaX) || 0;
     const deltaY = Number(event.deltaY) || 0;
     if (!deltaX && !deltaY) return;
+    state.interactionRevision++;
     // 竖直滚轮转换成横向浏览；水平触控板的 deltaX 交给浏览器原生滚动
     if (Math.abs(deltaY) >= Math.abs(deltaX)) {
       track.scrollLeft += deltaY;
@@ -513,20 +651,12 @@
   }
 
   function onTrackClick(event) {
+    if (state.committing || event.detail > 1) return;
     const card = closestFrom(event.target, '.bar-card');
     if (!card) return;
-    const index = Number(card.dataset.index);
-    if (Number.isFinite(index)) selectIndex(index);
-  }
-
-  function onTrackDoubleClick(event) {
-    const card = closestFrom(event.target, '.bar-card');
-    if (!card) return;
-    event.preventDefault();
     const index = Number(card.dataset.index);
     if (!Number.isFinite(index)) return;
-    state.selected = Math.max(0, Math.min(state.items.length - 1, index));
-    syncSelection();
+    selectIndex(index);
     submitSelected();
   }
 
@@ -540,6 +670,8 @@
           state.hasOnShown = true;
           state.visible = true;
           clearNotice();
+          state.query = ''; state.filter = 'all';
+          if ($('#bar-search')) $('#bar-search').value = '';
           load({ resetSelection: true });
         });
         if (typeof off === 'function') state.offShown = off;
@@ -568,9 +700,28 @@
   function bindStaticEvents() {
     const track = $('#bar-track');
     document.addEventListener('keydown', onKeyDown);
+    $('#bar-search')?.addEventListener('input', event => {
+      state.interactionRevision++;
+      state.query = event.target.value; clearNotice(); applyFilters();
+    });
+    $$('[data-filter]').forEach(button => button.addEventListener('click', () => {
+      state.interactionRevision++;
+      state.filter = button.dataset.filter; clearNotice(); applyFilters();
+    }));
+    $('#bar-close')?.addEventListener('click', hideBar);
+    $('#bar-submit')?.addEventListener('click', submitSelected);
+    $('#bar-pin')?.addEventListener('click', toggleSelectedPin);
+    $('#bar-refresh-retry')?.addEventListener('click', () => load({ keepItemId: currentSelectedId() }));
+    $('#bar-library')?.addEventListener('click', async () => {
+      try {
+        if (typeof window.suira?.quick?.showMain !== 'function') throw new Error('内容库接口不可用');
+        const result = await window.suira.quick.showMain('library');
+        if (result?.ok === false) throw new Error(result.error || '打开失败');
+        await hideBar();
+      } catch (error) { showNotice(errorText(error, '无法打开内容库'), true); }
+    });
     if (track) {
       track.addEventListener('click', onTrackClick);
-      track.addEventListener('dblclick', onTrackDoubleClick);
       track.addEventListener('wheel', onWheel, { passive: false });
     }
     const retry = $('#bar-retry');

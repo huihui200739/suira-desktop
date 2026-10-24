@@ -17,7 +17,7 @@ const assert = require('assert');
 const path = require('path');
 const fs = require('fs');
 const { spawn } = require('node:child_process');
-const { parseAcceleratorToVk, KeyWatchProbe, resolveScriptPath } = require('./lib/key-watch');
+const { parseAcceleratorToVk, KeyWatchProbe, resolveScriptPath, findCsc, ensureNativeHost, NATIVE_HOST_NAME } = require('./lib/key-watch');
 
 const POWERSHELL = 'powershell.exe';
 const SCRIPT_PATH = path.join(__dirname, 'assets', 'key-watch.ps1');
@@ -311,6 +311,73 @@ function runSelfTestRaw() {
     await starting;
     assert.deepStrictEqual(await probe.start(), { ok: true, error: '' });
     assert.strictEqual(calls.length, 1);
+  });
+
+  console.log('\n== 轻量原生宿主（替代常驻 PowerShell，省 ~67MB）==');
+  await t('提供 nativeHost 时直接 spawn 它，参数只剩 -VkCodes / -PollMs', async () => {
+    const { calls, spawnImpl } = makeSpawner();
+    const probe = new KeyWatchProbe({
+      accelerator: 'Control+Alt+Space',
+      pollMs: 25,
+      nativeHost: 'C:\\fake\\key-watch-host.exe',
+      spawnImpl
+    });
+    const starting = probe.start();
+    await feed(calls[0].child, 'READY\n');
+    assert.deepStrictEqual(await starting, { ok: true, error: '' });
+    assert.strictEqual(calls[0].command, 'C:\\fake\\key-watch-host.exe');
+    assert.deepStrictEqual(calls[0].args, ['-VkCodes', '17,18,32', '-PollMs', '25']);
+    assert.strictEqual(calls[0].options.windowsHide, true);
+  });
+  await t('原生宿主起不来时自动回退 PowerShell，功能不丢', async () => {
+    const calls = [];
+    const spawnImpl = (command, args, options) => {
+      const child = createFakeChild();
+      calls.push({ command, args, options, child });
+      if (command !== 'powershell.exe') throw new Error('blocked by antivirus');
+      return child;
+    };
+    const probe = new KeyWatchProbe({
+      accelerator: 'Control+Alt+Space',
+      nativeHost: 'C:\\fake\\blocked.exe',
+      spawnImpl
+    });
+    const starting = probe.start();
+    // 第一次原生启动同步失败 → 立即重试 PowerShell
+    await waitFor(() => calls.length === 2, 1000, '回退到 PowerShell');
+    await feed(calls[1].child, 'READY\n');
+    assert.deepStrictEqual(await starting, { ok: true, error: '' });
+    assert.strictEqual(calls[0].command, 'C:\\fake\\blocked.exe');
+    assert.strictEqual(calls[1].command, 'powershell.exe');
+    assert.ok(calls[1].args.includes('-File'), '应带 -File 走 ps1 兜底');
+    assert.strictEqual(probe.nativeHost, '');
+  });
+  await t('findCsc 找不到编译器时返回空串，不抛错', () => {
+    const fakeFs = { existsSync: () => false };
+    assert.strictEqual(findCsc({ WINDIR: 'C:\\Windows' }, fakeFs), '');
+  });
+  await t('findCsc 优先 Framework64 的 csc.exe', () => {
+    const seen = [];
+    const fakeFs = { existsSync: (p) => { seen.push(p); return p.endsWith('Framework64\\v4.0.30319\\csc.exe'); } };
+    const found = findCsc({ WINDIR: 'C:\\Windows' }, fakeFs);
+    assert.ok(found.endsWith('Framework64\\v4.0.30319\\csc.exe'), found);
+    assert.ok(seen[0].includes('Framework64'));
+  });
+  await t('ensureNativeHost 命中已编译产物时直接复用（不编译）', async () => {
+    const tmpExe = path.join(require('node:os').tmpdir(), 'suira-keywatch-test-' + process.pid + '.exe');
+    fs.writeFileSync(tmpExe, Buffer.alloc(4096));
+    try {
+      const result = await ensureNativeHost({ sourcePath: __filename, targetPath: tmpExe });
+      assert.strictEqual(result, tmpExe);
+    } finally {
+      // 同上：清理失败（受管控环境的 EPERM）不该让整轮测试失败
+      try { fs.rmSync(tmpExe, { force: true, maxRetries: 2 }); } catch {}
+    }
+    assert.strictEqual(NATIVE_HOST_NAME, 'key-watch-host.exe');
+  });
+  await t('ensureNativeHost 参数缺失时返回 null', async () => {
+    assert.strictEqual(await ensureNativeHost({}), null);
+    assert.strictEqual(await ensureNativeHost({ sourcePath: __filename }), null);
   });
   await t('READY 被拆成多块到达也能正确拼行', async () => {
     const { calls, spawnImpl } = makeSpawner();

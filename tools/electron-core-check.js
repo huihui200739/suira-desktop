@@ -6,7 +6,7 @@
  * 本脚本只连现有实例做黑盒验证，不替代 npm test。
  *
  * 前置启动（数据目录指到工作区内，别污染真实用户数据）：
- *   C:\temp\el45\electron.exe . --remote-debugging-port=9223 --user-data-dir=.udata/core
+ *   npm start -- --remote-debugging-port=9223 --user-data-dir=.udata/core
  *   （路径可为绝对路径；脚本默认从 .udata/core/suira-data.json 读落盘结果，
  *     可用环境变量 SUIRA_E2E_USERDATA 覆盖）
  *

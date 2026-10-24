@@ -5,7 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="color-scheme" content="light dark">
   <title>随序 SUIRA</title>
+  <link rel="stylesheet" href="theme.css">
   <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="ui-motion.css">
 </head>
 <body>
   <div class="app-shell">
@@ -33,30 +35,25 @@
     <div class="app-body">
       <aside class="sidebar">
         <div class="sidebar-label">工作台</div>
-        <nav class="nav">
+        <nav class="nav" data-selection-group>
           <button class="nav-item is-active" type="button" data-page="shelf">
             <svg viewBox="0 0 24 24"><path d="M4 7.5h16v12H4z"/><path d="M3 4.5h18v3H3zM9 11.5h6"/></svg>
-            <span><b>任务匣</b><small>接住待处理的内容</small></span>
+            <span><b>任务匣</b></span>
           </button>
           <button class="nav-item" type="button" data-page="library">
             <svg viewBox="0 0 24 24"><rect x="4" y="4" width="7" height="7" rx="1.2"/><rect x="13" y="4" width="7" height="7" rx="1.2"/><rect x="4" y="13" width="7" height="7" rx="1.2"/><rect x="13" y="13" width="7" height="7" rx="1.2"/></svg>
-            <span><b>内容库</b><small>文字、图片与文件</small></span>
+            <span><b>内容库</b></span>
           </button>
           <button class="nav-item" type="button" data-page="trail">
             <svg viewBox="0 0 24 24"><circle cx="6" cy="6" r="2.2"/><circle cx="18" cy="18" r="2.2"/><path d="M8 6h5a5 5 0 0 1 0 10h-2a5 5 0 0 0 0 10"/></svg>
-            <span><b>处理轨迹</b><small>每一步都有记录</small></span>
+            <span><b>处理轨迹</b></span>
           </button>
           <button class="nav-item" type="button" data-page="settings">
             <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 3v2.2M12 18.8V21M3 12h2.2M18.8 12H21M5.6 5.6l1.6 1.6M16.8 16.8l1.6 1.6M18.4 5.6l-1.6 1.6M7.2 16.8l-1.6 1.6"/></svg>
-            <span><b>设置</b><small>记录、保留与快捷键</small></span>
+            <span><b>设置</b></span>
           </button>
         </nav>
 
-        <div class="sidebar-note">
-          <div class="note-mark">S</div>
-          <b>顺手接住，<br>让工作继续。</b>
-          <p>截图、文字和文件共用一套内容与动作，不在工具之间反复搬运。</p>
-        </div>
         <div class="sidebar-foot"><span class="live-dot"></span><span>本地数据</span><b id="side-version">—</b></div>
       </aside>
 
@@ -64,9 +61,7 @@
         <section class="page is-active" id="page-shelf" aria-label="任务匣">
           <div class="page-head">
             <div>
-              <div class="eyebrow">TASK SHELF</div>
               <h1>任务匣</h1>
-              <p>把稍后要用的文字、图片和文件先接住，处理结果按来源留在同一处。</p>
             </div>
             <div class="page-actions">
               <button class="quiet-btn" id="shelf-import" type="button">加入剪贴板内容</button>
@@ -81,11 +76,11 @@
             </div>
             <div class="task-detail" id="task-detail">
               <div class="detail-empty" id="task-empty">
-                <span>匣</span><b>选择一个任务开始整理</b><p>或新建一个任务，把当前内容放进去。</p>
+                <span>匣</span><b>选择一个任务开始整理</b>
               </div>
               <div class="detail-body" id="task-body" hidden>
                 <div class="detail-head">
-                  <div><div class="eyebrow">CURRENT TASK</div><h2 id="task-title">临时收集</h2><p id="task-subtitle"></p></div>
+                  <div><h2 id="task-title">临时收集</h2><p id="task-subtitle"></p></div>
                   <div class="detail-actions">
                     <button class="icon-text-btn" id="task-copy" type="button">复制全部文字</button>
                     <button class="icon-text-btn" id="task-export" type="button">导出 Markdown</button>
@@ -102,15 +97,13 @@
         <section class="page" id="page-library" aria-label="内容库">
           <div class="page-head">
             <div>
-              <div class="eyebrow">CONTENT LIBRARY</div>
               <h1>内容库</h1>
-              <p>所有捕获、识别和整理结果都在这里；派生文字保留与原图的关联。</p>
             </div>
             <div class="page-actions"><button class="quiet-btn" id="library-clear" type="button">清空剪贴板记录</button><button class="primary-btn" id="library-capture" type="button"><span>⌁</span> 截图</button></div>
           </div>
           <div class="toolbar">
             <div class="searchbox"><svg viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6.2"/><path d="m15.2 15.2 4.1 4.1"/></svg><input id="library-search" type="search" placeholder="搜索文字、文件或来源" autocomplete="off"></div>
-            <div class="filter-chips" id="library-filters">
+            <div class="filter-chips" id="library-filters" data-selection-group>
               <button class="chip is-active" type="button" data-filter="all">全部</button>
               <button class="chip" type="button" data-filter="text">文字</button>
               <button class="chip" type="button" data-filter="image">图片</button>
@@ -124,9 +117,7 @@
         <section class="page" id="page-trail" aria-label="处理轨迹">
           <div class="page-head">
             <div>
-              <div class="eyebrow">PROCESS TRAIL</div>
               <h1>处理轨迹</h1>
-              <p>截图、提字、合并换行、复制，每一步都留下可回看的记录；失败不会覆盖原内容。</p>
             </div>
             <button class="quiet-btn" id="trail-refresh" type="button">刷新</button>
           </div>
@@ -137,18 +128,66 @@
         <section class="page" id="page-settings" aria-label="设置">
           <div class="page-head">
             <div>
-              <div class="eyebrow">PREFERENCES</div>
               <h1>设置</h1>
-              <p>记录方式、保留周期与快捷键；所有内容默认只保存在这台电脑。</p>
             </div>
           </div>
           <div class="settings-grid">
             <section class="setting-card">
-              <div class="setting-title"><b>剪贴板记录</b><span>控制内容进入随序的方式</span></div>
+              <div class="setting-title"><b>剪贴板记录</b></div>
               <label class="setting-row"><span><b>记录剪贴板历史</b><small>复制文字或图片后自动接住</small></span><input type="checkbox" id="setting-record"></label>
               <label class="setting-row"><span><b>敏感来源提示</b><small>密码管理器等来源建议暂停记录</small></span><input type="checkbox" id="setting-sensitive"></label>
-              <label class="setting-row"><span><b>复制后返回粘贴</b><small>原型版仅在明确操作时尝试</small></span><input type="checkbox" id="setting-paste"></label>
+              <label class="setting-row"><span><b>复制后返回粘贴</b><small>仅在明确操作时尝试粘贴</small></span><input type="checkbox" id="setting-paste"></label>
               <label class="setting-row"><span><b>加密本地内容</b><small>正文用当前用户密钥保护，换用户无法读取</small></span><input type="checkbox" id="setting-encrypt"></label>
+            </section>
+            <section class="setting-card">
+              <div class="setting-title"><b>外观</b></div>
+              <div class="setting-row"><span><b>主题</b><small>浮卡、浮引岛、剪贴板条同时生效</small></span><select id="setting-theme"><option value="light">浅色</option><option value="dark">深色</option><option value="system">跟随系统</option></select></div>
+            </section>
+            <section class="setting-card">
+              <div class="setting-title"><b>翻译</b></div>
+              <div class="setting-row">
+                <span><b>翻译引擎</b><small>没有内置免费引擎，需要自己提供密钥</small></span>
+                <select id="setting-translate-provider">
+                  <option value="none">未配置</option>
+                  <option value="openai">OpenAI 兼容接口</option>
+                  <option value="deepl">DeepL</option>
+                  <option value="microsoft">微软翻译</option>
+                </select>
+              </div>
+              <div class="setting-row" data-translate-row="openai">
+                <span><b>Base URL</b><small>OpenAI 兼容地址，例如 https://api.deepseek.com/v1</small></span>
+                <input class="text-input" type="text" id="setting-translate-base" placeholder="https://api.openai.com/v1" spellcheck="false">
+              </div>
+              <div class="setting-row" data-translate-row="openai">
+                <span><b>模型</b><small>留空用默认值</small></span>
+                <input class="text-input" type="text" id="setting-translate-model" placeholder="gpt-4o-mini" spellcheck="false">
+              </div>
+              <div class="setting-row" data-translate-row="microsoft">
+                <span><b>资源区域</b><small>Azure 翻译资源的 region，例如 eastasia</small></span>
+                <input class="text-input" type="text" id="setting-translate-region" placeholder="eastasia" spellcheck="false">
+              </div>
+              <label class="setting-row">
+                <span><b>API 密钥</b><small id="setting-translate-keyhint">尚未保存；粘贴后离开输入框即保存</small></span>
+                <input class="text-input" type="password" id="setting-translate-key" placeholder="粘贴密钥" spellcheck="false" autocomplete="off">
+              </label>
+              <div class="setting-row">
+                <span><b>目标语言</b><small>翻译结果默认翻成这个语言</small></span>
+                <select id="setting-translate-target">
+                  <option value="zh">中文</option>
+                  <option value="en">英文</option>
+                  <option value="ja">日文</option>
+                  <option value="ko">韩文</option>
+                  <option value="fr">法文</option>
+                  <option value="de">德文</option>
+                  <option value="es">西班牙文</option>
+                  <option value="ru">俄文</option>
+                </select>
+              </div>
+              <div class="setting-actions">
+                <button class="quiet-btn" id="setting-translate-test" type="button" title="用一句固定短句验证密钥与网络">测试连接</button>
+                <button class="quiet-btn" id="setting-translate-clear" type="button" title="删除已保存的密钥">清除密钥</button>
+                <span class="setting-hint" id="setting-translate-status">—</span>
+              </div>
             </section>
             <section class="setting-card">
               <div class="setting-title"><b>保留策略</b><span>固定内容与任务内容不会被自动清理</span></div>
@@ -197,11 +236,11 @@
                 <button class="quiet-btn" data-shortcut-clear="clipboardBar" type="button" title="解除绑定后不再响应该快捷键">清除绑定</button>
                 <button class="quiet-btn" id="shortcut-restore" type="button" title="把全部快捷键改回出厂默认">恢复默认</button>
               </div>
-              <div class="shortcut-row"><span><b>兼容入口</b><small>沿用旧习惯</small></span><kbd>Alt</kbd><kbd>F</kbd></div>
+              <div class="shortcut-row"><span><b>兼容入口</b><small>旧版快捷键</small></span><kbd>Alt</kbd><kbd>F</kbd></div>
             </section>
             <section class="setting-card about-card">
               <div class="about-mark"><img src="../assets/suira-icon.png" alt=""></div>
-              <div><b>随序 SUIRA</b><span>你的 Windows 随手工作台</span><small id="app-version">—</small></div>
+              <div><b>随序 SUIRA</b><span>Windows 随手工作台</span><small id="app-version">—</small></div>
               <button class="quiet-btn" id="open-data" type="button">打开数据目录</button>
               <p id="user-data-path"></p>
             </section>
@@ -211,8 +250,8 @@
     </div>
     <div class="global-toast" id="global-toast"></div>
     <div class="modal" id="modal" hidden>
-      <div class="modal-card">
-        <div class="modal-head"><div><div class="eyebrow" id="modal-eyebrow">NEW TASK</div><h2 id="modal-title">新建任务</h2></div><button type="button" id="modal-close">×</button></div>
+      <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+        <div class="modal-head"><div><h2 id="modal-title">新建任务</h2></div><button type="button" id="modal-close">×</button></div>
         <input class="modal-input" id="modal-input" type="text" placeholder="例如：竞品研究">
         <p class="modal-hint" id="modal-hint" hidden></p>
         <div class="modal-foot"><button class="quiet-btn" type="button" id="modal-cancel">取消</button><button class="primary-btn" type="button" id="modal-confirm">创建</button></div>
@@ -227,6 +266,7 @@
             <time id="preview-time"></time>
           </div>
           <div class="preview-actions">
+            <button class="quiet-btn" type="button" id="preview-pixels" hidden aria-pressed="false">原始像素</button>
             <button class="quiet-btn" type="button" id="preview-copy">复制</button>
             <button class="quiet-btn" type="button" id="preview-paste">粘贴</button>
             <button class="preview-close" type="button" id="preview-close" aria-label="关闭预览">×</button>
@@ -236,6 +276,7 @@
       </div>
     </div>
   </div>
+  <script src="ui-motion.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

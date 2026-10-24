@@ -36,6 +36,7 @@
 param(
   [string]$VkCodes = '',
   [int]$PollMs = 25,
+  [int]$ParentPid = 0,
   [switch]$SelfTest
 )
 
@@ -72,6 +73,24 @@ using System.Threading;
 
 public class SuiraKeyWatch {
   [DllImport("user32.dll")] public static extern short GetAsyncKeyState(int vKey);
+
+  // Second safety net next to the stdin EOF watcher: if the parent is
+  // force-killed the pipe can survive long enough for this helper to keep
+  // polling, and a leaked helper costs ~90MB until the machine reboots.
+  public static void WatchParent(int pid) {
+    if (pid <= 0) return;
+    var thread = new Thread(() => {
+      while (true) {
+        Thread.Sleep(2000);
+        try {
+          var parent = System.Diagnostics.Process.GetProcessById(pid);
+          if (parent.HasExited) { parentGone = true; return; }
+        } catch { parentGone = true; return; }
+      }
+    });
+    thread.IsBackground = true;
+    thread.Start();
+  }
 
   private static volatile bool parentGone = false;
   private static Thread stdinThread = null;
@@ -125,6 +144,8 @@ function Test-ParentGone {
 }
 
 try {
+  try { [SuiraKeyWatch]::WatchParent($ParentPid) } catch {}
+
   # Clamp the poll interval: below 5ms wastes a core, above 5s makes the
   # helper useless for a hold interaction.
   if ($PollMs -lt 5) { $PollMs = 5 }

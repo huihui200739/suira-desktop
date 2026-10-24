@@ -109,8 +109,8 @@ t('所有主要结构类都有样式', () => {
   const miss = need.filter((c) => !new RegExp('\\.' + c + '\\b').test(css));
   if (miss.length) throw new Error('缺少: ' + miss.join(', '));
 });
-t('使用雾蓝品牌色而非旧的绿色', () => {
-  if (!css.includes('#506f9e') && !css.includes('#506F9E')) throw new Error('缺少雾蓝主色');
+t('颜色走 Radix 令牌而非自带色板', () => {
+  if (!css.includes('var(--ink)')) throw new Error('未引用语义令牌');
   if (/#62dba0|#64dca2/i.test(css)) throw new Error('仍含旧绿色');
 });
 t('定义了深浅两套配色', () => {
@@ -215,8 +215,12 @@ t('应用面板走开始菜单索引并带图标', () => {
   if (!qpJs.includes('window.suira.apps.icons')) throw new Error('渲染层未按需取图标');
 });
 t('面板图标缓存避免每次打开都重新提取', () => {
-  if (!mainJs.includes('appIconCache.has')) throw new Error('缺少图标缓存读取');
-  if (!mainJs.includes('appIconCache.set')) throw new Error('缺少图标缓存写入');
+  // 图标缓存已下沉到 lib/app-icons.js（闭包内的 Map），main.js 只负责惰性复用同一个 loader。
+  const iconsLib = read('lib/app-icons.js');
+  if (!/\bnew Map\(\)/.test(iconsLib)) throw new Error('缺少图标缓存容器');
+  if (!iconsLib.includes('cache.has')) throw new Error('缺少图标缓存读取');
+  if (!iconsLib.includes('cache.set')) throw new Error('缺少图标缓存写入');
+  if (!/if\s*\(\s*!appIconLoader\s*\)/.test(mainJs)) throw new Error('主进程未复用图标 loader');
 });
 t('工具箱未完成工具显示明确状态', () => {
   if (!qpJs.includes('is-todo')) throw new Error('缺少未完成样式标记');
@@ -228,8 +232,7 @@ t('面板状态接口暴露 rows/keys/tools', () => {
   if (!mainJs.includes('tools: TOOLBOX_TOOLS')) throw new Error('panel:state 未返回工具箱目录');
 });
 t('面板尺寸能装下 38 键与搜索条', () => {
-  const width = Number((mainJs.match(/const QUICK_WIDTH = (\d+)/) || [])[1]);
-  const height = Number((mainJs.match(/const QUICK_HEIGHT = (\d+)/) || [])[1]);
+  const { width, height } = require('./lib/display-geometry').QUICK_PANEL_SIZE;
   if (!(width >= 700)) throw new Error('面板过窄：' + width);
   if (!(height >= 560)) throw new Error('面板过矮：' + height);
 });
@@ -310,7 +313,7 @@ t('确认文字必须逐字匹配才允许提交', () => {
 t('面板截图入口带意图，O 提字 / P 钉图框完即出结果', () => {
   // 意图由 lib/panel-actions.js 决定（可测），main.js 只负责把 capture 接上
   if (!mainJs.includes('intent')) throw new Error('主进程未传递入口意图');
-  if (!/capture: \(intent\) => beginScreenCapture\('panel', \{ intent \}\)/.test(mainJs)) {
+  if (!/capture: \(intent\).*beginScreenCapture\('panel', \{ intent \}\)/.test(mainJs)) {
     throw new Error('main.js 未把入口意图交给截图');
   }
   const panelActions = read('lib/panel-actions.js');
@@ -360,6 +363,8 @@ t('第三批差距表存在且覆盖全部模块', () => {
 });
 t('差距表依据的原始证据文件确实存在', () => {
   const base = 'Suira-Windows-Docs/Suira-Windows-Docs/research/function-analysis';
+  // 逆向研究二进制在 .gitignore 中，新克隆的仓库不包含这份可选资料。
+  if(!fs.existsSync(base)){console.log('  NOTE  本地研究资料未安装，跳过原始证据校验');return;}
   for (const file of ['fuyin-arm64.macho', 'objc-methods.json', 'otool-objc.txt']) {
     if (!fs.existsSync(path.join(base, file))) throw new Error('缺少证据文件 ' + file);
   }
@@ -382,9 +387,14 @@ t('右键范围已在差距表中纠正（原件指键帽/钉图，非 Explorer�
 t('差距表如实标注第三批实现进度（不把未完成写成已完成）', () => {
   const doc = read('docs/BATCH3-GAP-ANALYSIS.md');
   const zeroRows = doc.split('\n').filter((line) => line.includes('| **0**'));
-  // 本轮交付 2 项（浮引岛 MVP、自定义唤起增量），其余 6 项仍为 0，不能虚报
-  if (zeroRows.length !== 6) throw new Error('应仍有 6 个模块实现量为 0，实际 ' + zeroRows.length);
-  if (!doc.includes('**MVP**') && !doc.includes('**增量已实现**')) throw new Error('缺少已实现项的状态标注');
+  // 录屏和钉图右键已有真实实现；独立边缘入口与长截图仍为 0。
+  if (zeroRows.length !== 2 || !zeroRows.some(row=>row.includes('长截图')) || !zeroRows.some(row=>row.includes('边缘入口'))) throw new Error('独立边缘入口与长截图应仍标记为 0');
+  if(!doc.includes('钉图已交付，键帽右键未完成')||!doc.includes('摄像头、麦克风混音等未完成'))throw Error('缺少部分交付能力的具体边界');
+  for (const mark of ['**增量已实现**', '**MVP**', '**B 支已交付**']) {
+    if (!doc.includes(mark)) throw new Error('缺少已实现项的状态标注：' + mark);
+  }
+  // 翻译只交付了 B 支（图片取词），A 支实时语音必须仍写明未做
+  if (!/A 支实时语音翻译/.test(doc)) throw new Error('翻译 A 支未标注为未实现');
   if (doc.includes('已复刻全部')) throw new Error('差距表出现夸大表述');
 });
 
@@ -487,19 +497,12 @@ t('剪贴板自写回环接入账本', () => {
 t('退出时释放前台探测进程', () => {
   if (!mainJs.includes('foregroundProbe.dispose()')) throw new Error('未释放辅助进程');
 });
-t('随手面板放回条元素齐备', () => {
-  for (const id of ['return-bar', 'return-target-text', 'return-commit']) {
-    if (!qpIds.has(id)) throw new Error('缺少 ' + id);
-  }
-});t('随手面板放回条样式已定义', () => {
-  const qcss = read('src/quickpanel.css');
-  for (const sel of ['.return-bar', '.return-target']) {
-    if (!qcss.includes(sel)) throw new Error('缺少样式 ' + sel);
+t('随手面板不再显示底部内容和放回条', () => {
+  for (const id of ['source-card', 'return-bar', 'return-commit']) {
+    if (qpIds.has(id)) throw new Error('仍包含 ' + id);
   }
 });
-t('随手面板调用放回提交接口', () => {
-  if (!qpJs.includes('window.suira.returnTo.commit')) throw new Error('未调用 returnTo.commit');
-});
+
 t('应用搜索接入 search:query', () => {
   if (!mainJs.includes('appIndex.candidates')) throw new Error('应用索引未接入搜索');
 });
@@ -573,7 +576,7 @@ t('preload 的每个 invoke 通道都有 main handler', () => {
   if (missing.length) throw new Error('缺少 handler：' + missing.join(', '));
 });
 t('main 没有前端用不到的孤儿 handler', () => {
-  const invoked = new Set([...preload.matchAll(/invoke\('([^']+)'/g)].map((m) => m[1]));
+  const invoked = new Set([...(preload + read('pin-preload.js')).matchAll(/invoke\('([^']+)'/g)].map((m) => m[1]));
   const handled = [...new Set([...mainJs.matchAll(/ipcMain\.handle\('([^']+)'/g)].map((m) => m[1]))];
   const orphans = handled.filter((ch) => !invoked.has(ch));
   if (orphans.length) throw new Error('孤儿 handler：' + orphans.join(', '));
@@ -643,7 +646,7 @@ t('钉图窗口注册了全部 pin:* 通道', () => {
   }
 });
 t('缩放有上下限（不会缩到不可见或撑爆屏幕）', () => {
-  if (!/Math\.min\(3, Math\.max\(0\.25/.test(mainJs)) throw new Error('渲染侧缩放未限幅');
+  if (!/Math\.min\(3, Math\.max\(0\.25/.test(read('src/pin.js'))) throw new Error('渲染侧缩放未限幅');
   if (!/Math\.max\(80, Math\.min\(4000/.test(mainJs)) throw new Error('主进程尺寸未限幅');
 });
 t('透明度有下限（不会变成完全不可见）', () => {
@@ -663,7 +666,7 @@ t('pin-preload 已纳入打包清单', () => {
 });
 t('钉图界面有缩放/透明度/收起控件', () => {
   for (const id of ['zoom-in', 'zoom-out', 'opacity-up', 'opacity-down', 'collapse']) {
-    if (!mainJs.includes(`id="${id}"`)) throw new Error('缺少控件 ' + id);
+    if (!read('src/pin.html').includes(`id="${id}"`)) throw new Error('缺少控件 ' + id);
   }
 });
 
@@ -760,6 +763,51 @@ t('面板空格键不再吃掉带修饰键的组合（按住型唤起不被面�
   }
 });
 
+console.log('\n== 第三批：速记（Quick Note）接线 ==');
+
+t('速记窗口与主进程接线存在', () => {
+  if (!mainJs.includes('createNoteWindow')) throw new Error('缺少速记窗口创建');
+  if (!mainJs.includes("loadFile(path.join(__dirname, 'src', 'notes.html'))")) throw new Error('未加载 notes.html');
+  for (const channel of ['notes:list', 'notes:get', 'notes:open', 'notes:create', 'notes:update', 'notes:toggle-pin', 'notes:delete']) {
+    if (!mainJs.includes(channel)) throw new Error('缺少 IPC ' + channel);
+  }
+  if (!fs.existsSync('src/notes.js') || !fs.existsSync('src/notes.css')) throw new Error('速记页面资源缺失');
+});
+
+t('速记落盘走 store 的 notes 段并随内容加密', () => {
+  const store = read('lib/store.js');
+  if (!store.includes('createNote') || !store.includes('updateNoteText')) throw new Error('store 未实现速记方法');
+  if (!store.includes('cleanNote')) throw new Error('缺少速记落盘清洗');
+  if (!store.includes('notes: encrypting')) throw new Error('速记正文未随内容加密落盘');
+});
+
+t('速记语义收敛在纯模型里（可测，不依赖窗口）', () => {
+  const model = read('lib/notes.js');
+  for (const fn of ['noteTitle', 'cleanNote', 'capNotes', 'cleanBounds']) {
+    if (!model.includes(fn)) throw new Error('缺少模型函数 ' + fn);
+  }
+  if (!fs.existsSync('test-notes.js')) throw new Error('缺少速记测试');
+  const pkg = JSON.parse(read('package.json'));
+  if (!pkg.scripts.test.includes('test-notes.js')) throw new Error('npm test 未纳入速记测试');
+});
+
+t('速记在 38 键面板与工具箱都有入口，且不再是「尚未实现」', () => {
+  const kb = read('lib/keybindings.js');
+  const note = /note:\s*\{[^}]*\}/.exec(kb);
+  if (!note) throw new Error('键位目录缺速记');
+  if (!/implemented:\s*true/.test(note[0])) throw new Error('速记仍标注为未实现');
+  if (!/key:\s*'N'/.test(note[0])) throw new Error('速记未绑定 N 键');
+  const tools = /\{\s*id:\s*'note'[^}]*\}/.exec(kb);
+  if (!tools || !/implemented:\s*true/.test(tools[0])) throw new Error('工具箱速记入口未启用');
+});
+
+t('速记动作走 panel 执行层（键盘与鼠标同一条通道）', () => {
+  const actions = read('lib/panel-actions.js');
+  if (!actions.includes("case 'note'")) throw new Error('执行层未处理速记');
+  if (!actions.includes('openNote')) throw new Error('未注入速记依赖');
+  if (!mainJs.includes('openNote: () => openLatestNote()')) throw new Error('主进程未把速记接到执行层');
+});
+
 console.log('\n== 核心框架：截图 / 剪贴板 / 主体 ==');
 
 t('剪贴板采集覆盖文本 / 文件引用 / 图片三条路径', () => {
@@ -793,7 +841,12 @@ t('保留期在启动与设置变更时立即生效', () => {
   const initEnd = mainJs.indexOf('async function collectDiagnostics(');
   if (initStart < 0 || initEnd < 0) throw new Error('找不到 initialize / collectDiagnostics');
   if (!/store\.prune\(\)/.test(mainJs.slice(initStart, initEnd))) throw new Error('启动时未清理过期内容');
-  if (!mainJs.includes('patch.retentionDays !== undefined')) throw new Error('设置变更后未触发清理');
+  // 不看变量叫什么，只看设置更新这条通道里有没有「保留期/上限变了就立刻 prune」
+  const updateStart = mainJs.indexOf("ipcMain.handle('settings:update'");
+  if (updateStart < 0) throw new Error('找不到 settings:update 处理器');
+  const updateHandler = mainJs.slice(updateStart, updateStart + 2400);
+  if (!/retentionDays\s*!==\s*undefined/.test(updateHandler)) throw new Error('设置变更后未触发清理');
+  if (!/store\.prune\(\)/.test(updateHandler)) throw new Error('设置变更后没有真的调用 prune');
 });
 
 t('主窗口记忆尺寸 / 位置 / 最大化，并校验多屏', () => {
@@ -833,7 +886,7 @@ t('诊断报告不再把异步剪贴板读取写成同步', () => {
 });
 
 t('托盘提供浮引岛入口且函数不再粘连', () => {
-  if (!mainJs.includes('浮引岛（显示/隐藏）')) throw new Error('托盘缺浮引岛入口');
+  if (!/label: '浮引岛[^']*'.*click:.*toggleIsland\(\)/.test(mainJs)) throw new Error('托盘缺浮引岛入口');
   if (mainJs.includes('}function createTray')) throw new Error('createTray 仍与前一个函数粘连');
   if (mainJs.includes('}    for (const item')) throw new Error('search:query 仍有粘连格式问题');
 });

@@ -6,23 +6,33 @@
  * 职责边界：
  * - 只负责「画」与「传递用户意图」：状态由主进程（window.suira.island）持有，
  *   文件移动/打开/拖出都由主进程完成，渲染层不碰文件系统。
- * - 窗口尺寸由主进程改：展开/收起时渲染层只切 data-expanded 并调用 setExpanded，
- *   不自己改窗口。
+ * - 窗口尺寸由主进程改：渲染层只切 data-mode 并调 setMode，不自己改窗口。
  * - 缺少 island 接口时进入「不可用」态：给出可读提示、按钮明确禁用，不允许点了没反应。
  *
- * 交互节奏（对应 docs/BATCH3-GAP-ANALYSIS.md 第 1 节「悬停展开」的证据）：
- * mouseenter 立即展开；mouseleave 180ms 后收起，期间重入会取消计时；dragover 也展开。
+ * 三态（由主进程按窗口尺寸配套）：
+ *   sleep  隐形热区 —— 屏幕上什么都没有，只等文件拖进来
+ *   rail   胶囊     —— 保留兼容形态，普通悬停不会唤醒
+ *   sheet  暂存卡片 —— 拖入文件或点击胶囊后出现，闲置几秒自动回休眠
+ *
+ * 交互节奏：
+ *   - 普通悬停、已有暂存内容都不唤醒；文件拖入才展开
+ *   - 指针离开 320ms 回休眠：留出从胶囊移到卡片的时间
+ *   - 拖入立刻展开、离开立刻收起：拖放过程中不能有"展示动画"挡路
  */
 
 (() => {
   const $ = (selector, root = document) => root.querySelector(selector);
   const $$ = (selector, root = document) => Array.from(root.querySelectorAll(selector));
 
+  // 指针离开后的收起延迟。island-check 会检查这个值，改动要同步说明。
   const COLLAPSE_DELAY = 180;
+  // 胶囊回收成休眠的延迟：比收起卡片更宽容，避免从胶囊点到卡片时闪一下
+  const REST_DELAY = 320;
   const TOAST_DURATION = 2200;
 
   const POLICY_TEXT = { copy: '复制', move: '移动' };
   const KIND_TEXT = { image: '图片', document: '文档', archive: '压缩包', folder: '文件夹', file: '文件' };
+  const MODES = ['sleep', 'sheet'];
 
   const GLYPHS = {
     image: '<svg viewBox="0 0 24 24"><rect x="3.5" y="4.5" width="17" height="15" rx="2.5"/><circle cx="9" cy="10" r="1.6"/><path d="m4.6 17 4.4-4.4 3.5 3.5 3-3 3.9 3.9"/></svg>',
@@ -36,18 +46,23 @@
     api: null,
     items: [],
     policy: 'copy',
-    expanded: false,
+    mode: 'sleep',
     maxItems: 24,
     loaded: false,
+    canUndo: false,
     loading: false,
     error: '',
     hovering: false,
     draggingOut: false,
+    receiving: false,
     dragDepth: 0,
-    collapseTimer: 0,
+    hoverTimer: 0,
+    restTimer: 0,
     toastTimer: 0,
+    lastPingAt: 0,
     offState: null,
-    offExpanded: null
+    offExpanded: null,
+    offMode: null
   };
 
   /* ---------- 小工具 ---------- */
@@ -87,8 +102,17 @@
     return candidate;
   }
 
-  function canExpand() {
-    return Boolean(state.api && typeof state.api.setExpanded === 'function');
+  function canSetMode() {
+    return Boolean(state.api && typeof state.api.setMode === 'function');
+  }
+
+  function hasFiles(dataTransfer) {
+    if (!dataTransfer) return false;
+    try {
+      return Array.from(dataTransfer.types || []).indexOf('Files') >= 0;
+    } catch {
+      return false;
+    }
   }
 
   function fileUrl(target) {
@@ -99,15 +123,6 @@
       return 'file://' + encodeURI(normalized).replace(/#/g, '%23').replace(/\?/g, '%3F');
     } catch {
       return '';
-    }
-  }
-
-  function hasFiles(dataTransfer) {
-    if (!dataTransfer) return false;
-    try {
-      return Array.from(dataTransfer.types || []).indexOf('Files') >= 0;
-    } catch {
-      return false;
     }
   }
 
@@ -126,11 +141,14 @@
   function applyPayload(payload) {
     if (!payload || typeof payload !== 'object' || !Array.isArray(payload.items)) return false;
     state.items = payload.items.map(normalizeItem).filter(Boolean);
+    state.canUndo = Boolean(payload.canUndo);
     if (payload.policy === 'copy' || payload.policy === 'move') state.policy = payload.policy;
     const max = Number(payload.maxItems);
     if (Number.isFinite(max) && max > 0) state.maxItems = Math.floor(max);
-    // 指针还停在场内时不要被一次旧快照收起来（初始 getState 与悬停可能并发）
-    if (typeof payload.expanded === 'boolean' && !state.hovering) state.expanded = payload.expanded && canExpand();
+    // 指针还停在场内时不要被一次旧快照打回休眠（初始 getState 与悬停可能并发）
+    if (typeof payload.mode === 'string' && MODES.includes(payload.mode) && !state.hovering && !state.dragDepth && !state.receiving) {
+      state.mode = payload.mode;
+    }
     state.error = '';
     state.loaded = true;
     render();
@@ -169,53 +187,71 @@
     }
   }
 
-  /* ---------- 展开 / 收起 ---------- */
+  /* ---------- 三态切换 ---------- */
 
-  function cancelCollapse() {
-    if (!state.collapseTimer) return;
-    clearTimeout(state.collapseTimer);
-    state.collapseTimer = 0;
+  function clearHoverTimer() {
+    if (!state.hoverTimer) return;
+    clearTimeout(state.hoverTimer);
+    state.hoverTimer = 0;
   }
 
-  function syncExpanded(expanded) {
+  function clearRestTimer() {
+    if (!state.restTimer) return;
+    clearTimeout(state.restTimer);
+    state.restTimer = 0;
+  }
+
+  /** 还有交互就把主进程的「回休眠」计时往后推 */
+  function ping() {
     const api = state.api;
-    if (!api || typeof api.setExpanded !== 'function') return;
-    try {
-      const result = api.setExpanded(expanded);
-      if (result && typeof result.then === 'function') {
-        result.then(() => {
-          // 请求期间状态又被改了：补一次，避免窗口尺寸和界面不一致。
-          if (state.expanded !== expanded && canExpand()) syncExpanded(state.expanded);
-        }).catch(() => {});
-      }
-    } catch {
-      /* 主进程窗口已销毁之类的失败不阻塞界面 */
+    if (api && typeof api.ping === 'function') {
+      try {
+        const request = api.ping();
+        if (request?.catch) request.catch(() => {});
+      } catch { /* 主进程已退出时不阻塞界面 */ }
     }
   }
 
-  function requestExpanded(expanded) {
-    if (!canExpand()) return false;
-    const next = Boolean(expanded);
-    if (state.expanded === next) {
-      syncExpanded(next);
+  /**
+   * 请求切换形态。渲染层先乐观更新再通知主进程，
+   * 主进程改完窗口尺寸再回推一次 island:mode 做最终对齐。
+   */
+  function requestMode(mode) {
+    const next = MODES.includes(mode) ? mode : 'sleep';
+    if (next !== 'sleep') ping();
+    if (state.mode === next) {
+      // 拖动穿过子元素时不重建卡片 DOM，避免制造新的 enter/leave 循环。
       return true;
     }
-    state.expanded = next;
-    if (next) cancelCollapse();
+    state.mode = next;
     render();
-    if (next && !state.loaded) loadState();
-    syncExpanded(next);
+    if (next === 'sheet' && !state.loaded) loadState();
+
+    const api = state.api;
+    if (!api) return false;
+    try {
+      if (typeof api.setMode === 'function') {
+        const result = api.setMode(next);
+        if (result && typeof result.then === 'function') result.catch(() => {});
+      } else if (typeof api.setExpanded === 'function') {
+        // 旧版主进程只有两态：sheet / rail
+        api.setExpanded(next === 'sheet');
+      }
+    } catch {
+      /* 窗口正在销毁时忽略 */
+    }
     return true;
   }
 
-  function scheduleCollapse() {
-    cancelCollapse();
-    if (state.dragDepth > 0) return;
-    state.collapseTimer = window.setTimeout(() => {
-      state.collapseTimer = 0;
-      if (state.draggingOut) return;
-      requestExpanded(false);
-    }, COLLAPSE_DELAY);
+  /** 指针离开后延迟回收：从胶囊挪到卡片、或拖放途经的空档都不该闪 */
+  function scheduleRest(delay = REST_DELAY) {
+    clearRestTimer();
+    if (state.dragDepth > 0 || state.receiving) return;
+    state.restTimer = window.setTimeout(() => {
+      state.restTimer = 0;
+      if (state.hovering || state.draggingOut || state.dragDepth > 0 || state.receiving) return;
+      requestMode('sleep');
+    }, delay);
   }
 
   /* ---------- 渲染 ---------- */
@@ -225,21 +261,23 @@
     const rail = $('#rail');
     const sheet = $('#sheet');
     const offline = !state.api;
-    const expanded = state.expanded && canExpand();
+    const mode = offline || state.mode !== 'sheet' ? 'sleep' : 'sheet';
 
     root.classList.toggle('is-offline', offline);
-    root.dataset.expanded = expanded ? 'true' : 'false';
+    root.dataset.mode = mode;
+    root.dataset.expanded = mode === 'sheet' ? 'true' : 'false';
     root.dataset.policy = state.policy;
+    root.dataset.empty = String(state.items.length === 0);
 
     const count = state.items.length;
     $('#rail-count').textContent = offline ? '—' : String(count);
     $('#rail-policy').textContent = offline ? '离线' : policyText();
 
-    rail.hidden = expanded;
-    sheet.hidden = !expanded;
+    rail.hidden = true;
+    sheet.hidden = mode !== 'sheet';
     const railLabel = offline
       ? '文件中转服务未就绪'
-      : `文件中转：暂存 ${count} 个文件，拖出时${policyText()}；悬停展开`;
+      : `文件中转：暂存 ${count} 个文件；点击展开，实际拖出操作由目标应用决定`;
     rail.title = railLabel;
     rail.setAttribute('aria-label', railLabel);
 
@@ -254,7 +292,7 @@
     const mark = kind === 'image' && thumb
       ? `<span class="file-mark is-thumb"><img class="file-thumb" src="${escapeHtml(thumb)}" alt="" draggable="false" decoding="async"></span>`
       : `<span class="file-mark">${GLYPHS[kind] || GLYPHS.file}</span>`;
-    const title = `${name}（${KIND_TEXT[kind]}）· 点击打开，可拖出或移除`;
+    const title = `${name}（${KIND_TEXT[kind]}），拖动可移除`;
     return `<div class="file-card" role="listitem" draggable="true" data-id="${escapeHtml(item.id)}" title="${escapeHtml(title)}">
       <button class="file-open" type="button" data-open="${escapeHtml(item.id)}" aria-label="打开 ${escapeHtml(name)}">
         ${mark}<span class="file-name">${escapeHtml(name)}</span>
@@ -322,6 +360,7 @@
     const clear = $('#clear');
     clear.disabled = offline || count === 0;
     clear.title = count === 0 ? '暂存是空的' : '清空暂存';
+    $('#undo').disabled = offline || !state.canUndo || typeof state.api.undo !== 'function';
   }
 
   function updateScrollHint() {
@@ -391,6 +430,18 @@
     }
   }
 
+  async function onUndo() {
+    if (!state.api || typeof state.api.undo !== 'function') return;
+    try {
+      const payload = await state.api.undo();
+      const message = payloadError(payload);
+      if (message) { toast(message); return; }
+      commitPayload(payload);
+      toast(payload?.dropped > 0 ? '已找回；容量已满，最早的暂存引用已移出' : '已找回暂存引用，原文件未改变');
+      ping();
+    } catch (error) { toast(errorText(error, '找回失败')); }
+  }
+
   async function onPolicy(policy) {
     if (policy !== 'copy' && policy !== 'move') return;
     const api = state.api;
@@ -410,7 +461,7 @@
         state.policy = previous;
         render();
         toast(message);
-      }
+      } else toast(`已记录${policyText()}偏好，实际拖放操作由目标应用决定`);
     } catch (error) {
       state.policy = previous;
       render();
@@ -425,9 +476,10 @@
   async function onDrop(event) {
     if (!hasFiles(event.dataTransfer)) return;
     event.preventDefault();
+    if (state.receiving) return;
     state.dragDepth = 0;
     setDropClass(false);
-    cancelCollapse();
+    clearRestTimer();
 
     const api = state.api;
     const shelf = $('#shelf');
@@ -450,6 +502,7 @@
     }
 
     try {
+      state.receiving = true;
       const before = new Set(state.items.map((item) => item.id));
       const payload = await api.addPaths(paths);
       const message = payloadError(payload);
@@ -461,16 +514,25 @@
         return;
       }
       const added = state.items.filter((item) => !before.has(item.id)).length;
-      if (added === 0) {
+      if (payload?.skipped > 0) {
+        toast(`已暂存 ${added} 个文件，${payload.skipped} 个文件不存在或无法读取`);
+      } else if (added === 0) {
         toast('这些文件已经在暂存里了');
+      } else if (payload?.dropped > 0) {
+        toast(`已暂存 ${added} 个文件；超出容量，移除了 ${payload.dropped} 条最早的暂存引用，原文件不受影响`);
       } else if (state.items.length >= state.maxItems) {
         toast(`已暂存 ${added} 个文件，最多 ${state.maxItems} 个`);
       } else {
         toast(`已暂存 ${added} 个文件`);
       }
       if (shelf) shelf.scrollTop = 0;
+      // 让用户看清"接住了什么"：主进程会在几秒无交互后自动回休眠
+      requestMode('sheet');
     } catch (error) {
       toast(errorText(error, '暂存失败'));
+    } finally {
+      state.receiving = false;
+      if (!state.hovering) scheduleRest(1200);
     }
   }
 
@@ -521,30 +583,41 @@
     const root = $('#island');
     const shelf = $('#shelf');
 
+    // 普通指针进入只维持已有卡片，不能把休眠岛唤醒。
     root.addEventListener('mouseenter', () => {
       state.hovering = true;
-      cancelCollapse();
-      if (!state.expanded) requestExpanded(true);
+      clearRestTimer();
     });
     root.addEventListener('mouseleave', () => {
       state.hovering = false;
-      scheduleCollapse();
+      clearHoverTimer();
+      scheduleRest();
     });
+    // 指针在岛里移动 = 还在用：把主进程的回收计时不断往后推（500ms 节流）
+    root.addEventListener('mousemove', () => {
+      if (state.mode === 'sleep') return;
+      const now = Date.now();
+      if (now - state.lastPingAt < 500) return;
+      state.lastPingAt = now;
+      ping();
+    }, { passive: true });
 
+    // 拖入：立刻展开成卡片，这是岛存在的主要理由
     root.addEventListener('dragenter', (event) => {
       if (!hasFiles(event.dataTransfer)) return;
       event.preventDefault();
       state.dragDepth += 1;
-      cancelCollapse();
-      if (!state.expanded) requestExpanded(true);
+      clearHoverTimer();
+      clearRestTimer();
+      requestMode('sheet');
       setDropClass(true);
     });
     root.addEventListener('dragover', (event) => {
       if (!hasFiles(event.dataTransfer)) return;
       event.preventDefault();
       try { event.dataTransfer.dropEffect = 'copy'; } catch {}
-      cancelCollapse();
-      if (!state.expanded) requestExpanded(true);
+      clearRestTimer();
+      if (state.mode !== 'sheet') requestMode('sheet');
       setDropClass(true);
     });
     root.addEventListener('dragleave', (event) => {
@@ -552,7 +625,8 @@
       state.dragDepth = Math.max(0, state.dragDepth - 1);
       if (state.dragDepth === 0) {
         setDropClass(false);
-        scheduleCollapse();
+        state.hovering = false;
+        scheduleRest(COLLAPSE_DELAY);
       }
     });
     root.addEventListener('drop', onDrop);
@@ -577,14 +651,11 @@
         toast('文件中转服务未就绪，重启随序后再试');
         return;
       }
-      if (!canExpand()) {
-        toast('当前版本不支持展开暂存条');
-        return;
-      }
-      requestExpanded(true);
+      requestMode('sheet');
     });
 
     $('#clear').addEventListener('click', onClear);
+    $('#undo').addEventListener('click', onUndo);
     $('#retry').addEventListener('click', () => { loadState(); });
 
     $$('.policy-btn').forEach((button) => {
@@ -592,16 +663,19 @@
     });
 
     document.addEventListener('keydown', (event) => {
-      if (event.key !== 'Escape' || !state.expanded) return;
+      if (event.key !== 'Escape') return;
+      if (state.mode === 'sleep') return;
       event.preventDefault();
-      cancelCollapse();
-      requestExpanded(false);
+      state.dragDepth = 0;
+      setDropClass(false);
+      requestMode('sleep');
     });
 
     window.addEventListener('resize', () => window.requestAnimationFrame(updateScrollHint));
     window.addEventListener('beforeunload', () => {
       if (typeof state.offState === 'function') state.offState();
       if (typeof state.offExpanded === 'function') state.offExpanded();
+      if (typeof state.offMode === 'function') state.offMode();
     });
   }
 
@@ -620,17 +694,43 @@
         if (typeof off === 'function') state.offState = off;
       } catch {}
     }
-    if (typeof state.api.onExpanded === 'function') {
+    // 旧通道：只有「展开 / 收起」两态，映射成卡片 / 胶囊
+    if (typeof state.api.onMode !== 'function' && typeof state.api.onExpanded === 'function') {
       try {
         const off = state.api.onExpanded((expanded) => {
-          state.expanded = Boolean(expanded) && canExpand();
-          if (state.expanded) cancelCollapse();
+          const next = expanded ? 'sheet' : 'sleep';
+          if (state.mode === next) return;
+          state.mode = next;
+          if (next === 'sheet') clearRestTimer();
           render();
         });
         if (typeof off === 'function') state.offExpanded = off;
       } catch {}
     }
+    // 新通道：主进程改完窗口尺寸后回推最终形态，渲染层以此为准
+    if (typeof state.api.onMode === 'function') {
+      try {
+        const off = state.api.onMode((mode) => {
+          const next = MODES.includes(mode) ? mode : 'sleep';
+          if (next === 'sleep') {
+            state.dragDepth = 0;
+            state.hovering = false;
+            setDropClass(false);
+            clearHoverTimer();
+            clearRestTimer();
+          }
+          if (state.mode === next) return;
+          state.mode = next;
+          render();
+        });
+        if (typeof off === 'function') state.offMode = off;
+      } catch {}
+    }
 
+    if (!canSetMode() && state.api && typeof state.api.setExpanded === 'function') {
+      // 旧接口也从隐藏态开始，不主动显示胶囊。
+      state.api.setExpanded(false);
+    }
     loadState();
   }
 

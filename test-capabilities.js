@@ -12,6 +12,7 @@ const {
   readWithRetry,
   shouldExcludeCapture,
   summarizeLargeText,
+  sameBytes,
   LARGE_TEXT_THRESHOLD
 } = require('./lib/clipboard-guard');
 const { SuiraStore } = require('./lib/store');
@@ -237,6 +238,29 @@ const ta = async (n, f) => { try { await f(); console.log('  PASS  ' + n); pass+
     assert.strictEqual(r.truncated, true);
     assert.ok(r.text.length < big.length);
     assert.match(r.text, /内容过长/);
+  });
+
+  console.log('\n== 剪贴板守卫：图片字节比对（未变就不解码）==');
+  t('内容相同判为没变', () => {
+    assert.strictEqual(sameBytes(Buffer.from([1, 2, 3]), Buffer.from([1, 2, 3])), true);
+  });
+  t('长度不同直接判为变了', () => {
+    assert.strictEqual(sameBytes(Buffer.from([1, 2]), Buffer.from([1, 2, 3])), false);
+  });
+  t('同长度不同内容判为变了', () => {
+    assert.strictEqual(sameBytes(Buffer.from([1, 2, 3]), Buffer.from([1, 2, 4])), false);
+  });
+  t('任一侧为空判为变了（首次读到图片）', () => {
+    assert.strictEqual(sameBytes(null, Buffer.from([1])), false);
+    assert.strictEqual(sameBytes(Buffer.from([1]), null), false);
+    assert.strictEqual(sameBytes(null, null), false);
+  });
+  t('大 buffer 比较不走编码（只做字节比较）', () => {
+    const a = Buffer.alloc(4 * 1024 * 1024, 7);
+    const b = Buffer.from(a);
+    assert.strictEqual(sameBytes(a, b), true);
+    b[1024] = 8;
+    assert.strictEqual(sameBytes(a, b), false);
   });
 
   fs.rmSync(tmp, { recursive: true, force: true });

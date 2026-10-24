@@ -5,9 +5,9 @@
  * 分两段：
  * 1. 静态约束：文件齐备、不引用网络资源、不 require 模块、不用 eval、
  *    JS 引用的 DOM ID 都存在、中文文案、quickpanel 同源设计令牌、
- *    140×120 卡片、轨道横向滚动且隐藏滚动条、根元素裁掉溢出。
+ *    大预览卡片、轨道横向滚动且隐藏滚动条、根元素裁掉溢出。
  * 2. 无头 Chrome 真实加载 src/clipboardbar.html，注入 mock 的 window.suira，
- *    在真实的 1180×196 视口里断言：空态、8 条数据渲染、图片缩略图、
+ *    在与主进程共用的宽幅视口里断言：空态、8 条数据渲染、图片缩略图、
  *    默认选中第一条、←/→/End 浏览、滚动位置、滚轮横向滚动、
  *    Enter 提交 payload 与成功后 hide、复制兜底与失败提示、Esc 关闭、
  *    onShown 重置、页面无整体滚动条 / 卡片不溢出。
@@ -19,6 +19,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const { spawn } = require('child_process');
+const { CLIPBOARD_SHELF_SIZE } = require('../lib/display-geometry');
 
 const ROOT = path.join(__dirname, '..');
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'suira-clipboardbar-'));
@@ -76,25 +77,29 @@ const missingIds = [...jsIds].filter((id) => !htmlIds.has(id));
 check('clipboardbar.js 引用的 ID 都存在于 HTML', missingIds.length === 0, '缺失: ' + missingIds.join(', '));
 
 check('界面文案为中文（标题 / 快捷键提示）',
-  ['剪贴板历史', '← → 选择', 'Enter 复制并返回', 'Esc 关闭'].every((text) => (barHtml + barJs).includes(text)));
+  ['剪贴板历史', '← → 选择', '粘贴到原窗口'].every((text) => (barHtml + barJs).includes(text)));
 check('空态文案符合规格', (barHtml + barJs).includes('还没有剪贴板记录，复制一段文字或一张图再试'));
 check('渲染层带 API 不可用提示', barJs.includes('剪贴板历史暂不可用'));
 check('渲染层按契约传 intent', barJs.includes("intent: 'return-and-paste'"));
 check('渲染层订阅 onShown 与 content.onChanged', barJs.includes('onShown') && barJs.includes('onChanged'));
 check('渲染层过滤不可见时的内容刷新', barJs.includes('state.visible'));
 
+const themeCss = fs.readFileSync(path.join(ROOT, 'src', 'theme.css'), 'utf8');
+check('HTML 引用共享主题层 theme.css', barHtml.includes('href="theme.css"'));
+
 const tokens = [
-  /--graphite:\s*#252b35/i,
-  /--paper:\s*#f4f6fa/i,
-  /--ink-light:\s*#263040/i,
-  /--mist:\s*#506f9e/i,
-  /--ice:\s*#b7cbea/i,
+  /--slate-12:\s*#1c2024/i,
+  /--blue-9:\s*#0090ff/i,
+  /--violet-9:\s*#6e56cf/i,
+  /--text-1:\s*12px/,
   /Segoe UI/,
-  /--radius-bar:\s*16px/,
+  /--radius-panel:\s*24px/,
   /--gap:\s*8px/
 ];
-check('使用 quickpanel 同源设计令牌', tokens.every((pattern) => pattern.test(barCss)));
-check('卡片尺寸为 140×120', /\.bar-card\s*\{[^}]*width:\s*140px/.test(barCss) && /\.bar-card\s*\{[^}]*height:\s*120px/.test(barCss));
+check('设计令牌集中在 theme.css（与浮引岛 / 动作面板同一套）', tokens.every((pattern) => pattern.test(themeCss)));
+check('剪贴板条不写死色值（只消费令牌）', !/#[0-9a-f]{6}\b/i.test(barCss.replace(/rgba?\([^)]*\)/g, '')),
+  (barCss.match(/#[0-9a-f]{6}\b/i) || [''])[0]);
+check('卡片为宽幅预览，并跟随轨道高度', /width:\s*220px/.test(barCss) && /height:\s*100%/.test(barCss));
 check('轨道横向滚动 / 隐藏滚动条',
   /\.bar-track\s*\{[^}]*overflow-x:\s*auto/.test(barCss)
   && barCss.includes('scrollbar-width: none')
@@ -144,11 +149,20 @@ const MOCK = `
 
   window.suira = window.suira || {};
   window.suira.content = {
+    togglePin: function(id){
+      if(window.__pinThrow) return Promise.reject(new Error('写入失败'));
+      var item = ALL.find(function(record){ return record.id === id; });
+      if(!item) return Promise.resolve({ok:false});
+      item.pinned = !item.pinned;
+      return Promise.resolve({ok:true,pinned:item.pinned});
+    },
     list: function(options){
       calls.list += 1;
       calls.lastListOptions = clone(options || {});
       if (scenario === 'error') return Promise.reject(new Error('主进程内容库读取失败'));
       if (scenario === 'empty') return Promise.resolve([]);
+      if (window.__listThrow) return Promise.reject(new Error('暂时离线'));
+      if (window.__listDelay) return new Promise(resolve => setTimeout(()=>resolve(clone(ALL)),window.__listDelay));
       return Promise.resolve(clone(ALL));
     },
     onChanged: function(callback){
@@ -173,6 +187,7 @@ const MOCK = `
   window.__fireShown = function(){
     shownCallbacks.forEach(function(callback){ try { callback(); } catch (error) {} });
   };
+  window.__addFirst = function(){ ALL.unshift(mk('added','text','新记录','新增内容','','','',0)); };
   window.__fireChanged = function(){
     changedCallbacks.forEach(function(callback){ try { callback(); } catch (error) {} });
   };
@@ -337,8 +352,10 @@ const PROBE = `
 `;
 
 function buildFixtures() {
+  for (const asset of ['ui-motion.css','ui-motion.js']) fs.copyFileSync(path.join(ROOT,'src',asset),path.join(TMP,asset));
   fs.writeFileSync(path.join(TMP, '__bar_mock.js'), MOCK, 'utf8');
   fs.writeFileSync(path.join(TMP, '__bar_probe.js'), PROBE, 'utf8');
+  fs.copyFileSync(path.join(ROOT, 'src', 'theme.css'), path.join(TMP, 'theme.css'));
   fs.copyFileSync(path.join(ROOT, 'src', 'clipboardbar.css'), path.join(TMP, 'clipboardbar.css'));
   fs.copyFileSync(path.join(ROOT, 'src', 'clipboardbar.js'), path.join(TMP, 'clipboardbar.js'));
   const page = barHtml
@@ -455,10 +472,12 @@ async function waitForResult(send, token, timeoutMs = 40000) {
   throw new Error('等待页面探针超时：' + token);
 }
 
-async function runScenario(send, scenario, width = 1180, height = 196, scaleFactor = 1) {
+async function runScenario(send, scenario, width = CLIPBOARD_SHELF_SIZE.width, height = CLIPBOARD_SHELF_SIZE.height, scaleFactor = 1) {
   runSequence += 1;
   const token = 'run-' + runSequence;
   await send('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: scaleFactor, mobile: false });
+  // 测试不依赖本机系统主题：显式指定浅色，否则深色系统上截出来的图会变样
+  await send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: 'light' }] });
   await send('Page.navigate', {
     url: fileUrl(path.join(TMP, '__bar_check.html')) + '?scenario=' + encodeURIComponent(scenario) + '&run=' + token
   });
@@ -484,7 +503,7 @@ async function runChecks(send) {
   console.log('\n== 空态（没有任何剪贴板记录）==');
   const empty = await runScenario(send, 'empty');
   const emptyView = empty.initial;
-  check('视口为 1180×196', emptyView.innerW === 1180 && emptyView.innerH === 196,
+  check('视口使用主进程共用的宽幅尺寸', emptyView.innerW === CLIPBOARD_SHELF_SIZE.width && emptyView.innerH === CLIPBOARD_SHELF_SIZE.height,
     emptyView.innerW + '×' + emptyView.innerH);
   check('空态不渲染卡片', emptyView.cardCount === 0, 'cards=' + emptyView.cardCount);
   check('空态隐藏轨道、显示空态区', emptyView.trackHidden === true && emptyView.emptyHidden === false);
@@ -519,7 +538,7 @@ async function runChecks(send) {
   check('渲染出 8 张卡片', initial.cardCount === 8, 'cards=' + initial.cardCount);
   check('有内容时隐藏空态、显示轨道', initial.emptyHidden === true && initial.trackHidden === false,
     'emptyHidden=' + initial.emptyHidden + ' trackHidden=' + initial.trackHidden);
-  check('卡片尺寸 140×120', initial.cardRects.every((rect) => rect.w === 140 && rect.h === 120),
+  check('卡片宽 220 且有充足预览高度', initial.cardRects.every((rect) => rect.w === 220 && rect.h >= 170),
     JSON.stringify(initial.cardRects));
   check('3 张图片卡片都有 img 且 src 为 thumbnail', initial.imageCount === 3
     && initial.imageSrcs.length === 3 && initial.imageSrcs.every((src) => src === THUMB),
@@ -578,9 +597,8 @@ async function runChecks(send) {
   check('直接粘回成功后不显示提示行', afterEnter.noticeHidden === true);
 
   const fallback = main.afterFallback;
-  check('复制兜底时不再调用 hide', fallback.calls.hide === 1, 'hide=' + fallback.calls.hide);
-  check('复制兜底时提示行显示 message',
-    fallback.noticeHidden === false && fallback.noticeText === '已复制，切回目标后粘贴', fallback.noticeText);
+  check('复制成功即收起，后续 Ctrl+V 使用所选历史', fallback.calls.hide === 2, 'hide=' + fallback.calls.hide);
+  check('收起后不留下提示行', fallback.noticeHidden === true);
   check('复制兜底提示不是错误样式', fallback.noticeError === false);
   check('提示行 2 秒后恢复原来的选中项信息', main.afterFallbackRestore.noticeHidden === true
     && main.afterFallbackRestore.selectionHidden === false, JSON.stringify({
@@ -595,23 +613,23 @@ async function runChecks(send) {
   const thrown = main.afterThrow;
   check('commit 抛异常时给出兜底提示', thrown.noticeHidden === false
     && thrown.noticeText.includes('复制失败') && thrown.noticeError === true, thrown.noticeText);
-  check('异常兜底不关闭窗口', thrown.calls.hide === 1, 'hide=' + thrown.calls.hide);
+  check('异常兜底不关闭窗口', thrown.calls.hide === 2, 'hide=' + thrown.calls.hide);
 
   const changed = main.afterChanged;
   check('content.onChanged 后刷新（选中项保留）', changed.calls.list >= afterEnter.calls.list
     && changed.cardCount === 8, 'list=' + changed.calls.list + ' cards=' + changed.cardCount);
 
   const afterEsc = main.afterEsc;
-  check('Esc 调用 hide', afterEsc.calls.hide === 2, 'hide=' + afterEsc.calls.hide);
+  check('Esc 调用 hide', afterEsc.calls.hide === 3, 'hide=' + afterEsc.calls.hide);
   check('Esc 后提示行清理', afterEsc.noticeHidden === true);
   check('交互全过程无页面溢出', noOverflow(afterEsc));
   check('交互全过程无脚本错误', afterEsc.errors.length === 0, JSON.stringify(afterEsc.errors));
 
-  console.log('\n== 720×196 窄屏布局（主进程按工作区收窄时的最小宽度）==');
-  const narrow = await runScenario(send, 'layout', 720, 196);
+  console.log('\n== 720×310 窄屏布局 ==');
+  const narrow = await runScenario(send, 'layout', 720, 310);
   const narrowView = narrow.initial;
   check('窄屏仍渲染 8 张卡片', narrowView.cardCount === 8, 'cards=' + narrowView.cardCount);
-  check('窄屏卡片仍是 140×120', narrowView.cardRects.every((rect) => rect.w === 140 && rect.h === 120),
+  check('窄屏保留完整预览尺寸', narrowView.cardRects.every((rect) => rect.w === 220 && rect.h >= 170),
     JSON.stringify(narrowView.cardRects));
   check('窄屏无页面级滚动条 / 溢出', noOverflow(narrowView),
     JSON.stringify([narrowView.docScrollW, narrowView.docClientW, narrowView.docScrollH, narrowView.docClientH]));
@@ -620,13 +638,119 @@ async function runChecks(send) {
     narrowView.trackScrollWidth + ' > ' + narrowView.trackClientWidth);
   check('窄屏底部信息不溢出', narrowView.selectionText.length > 0 && narrowView.cardOverflow.every((value) => value === 0));
 
+  console.log('\n== 搜索、分类、收藏与输入焦点 ==');
+  const toolbar = await evaluate(send, `(async function(){
+    var wait = function(){return new Promise(r=>setTimeout(r,100));};
+    var search = document.getElementById('bar-search');
+    var pin = document.getElementById('bar-pin');
+    var ids = function(){return Array.from(document.querySelectorAll('.bar-card')).map(c=>c.dataset.id);};
+    var query = async function(value){search.value=value;search.dispatchEvent(new Event('input',{bubbles:true}));await wait();};
+    var filter = async function(value){document.querySelector('[data-filter="'+value+'"]').click();await wait();};
+    var result={};
+    var filterButton=document.querySelector('[data-filter="text"]');
+    var enter=new KeyboardEvent('keydown',{key:'Enter',bubbles:true,cancelable:true});
+    var commits=window.__calls.commit.length;
+    filterButton.dispatchEvent(enter);await wait();
+    result.buttonEnterPreserved=!enter.defaultPrevented && window.__calls.commit.length===commits;
+    await filter('text');result.textOnly=ids().length===3&&ids().every(id=>id.startsWith('text-'));
+    await query('Chrome');result.sourceSearch=ids().join()==='text-1';
+    search.focus();search.dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowRight',bubbles:true,cancelable:true}));
+    result.inputArrowsPreserved=document.querySelector('.is-selected').dataset.id==='text-1';
+    await query('不存在的关键词');result.emptySearch=!ids().length && document.getElementById('bar-empty').dataset.mode==='filtered' && pin.disabled;
+    await query('');await filter('all');
+    pin.click();await wait();result.pinSaved=pin.getAttribute('aria-pressed')==='true';
+    await filter('favorite');result.favoriteFilter=ids().join()==='img-1';
+    window.__pinThrow=true;pin.click();await wait();
+    result.pinFailure=document.getElementById('bar-notice').textContent.includes('收藏失败') && ids().join()==='img-1' && pin.getAttribute('aria-pressed')==='true';
+    window.__pinThrow=false;pin.click();await wait();
+    result.unpinRemovesFavorite=!ids().length && document.getElementById('bar-empty-title').textContent==='还没有收藏内容';
+    await query('未命中');window.__fireShown();await wait();
+    result.reopenResets=ids().length===8 && search.value==='' && document.querySelector('[data-filter="all"]').getAttribute('aria-pressed')==='true';
+    document.dispatchEvent(new KeyboardEvent('keydown',{key:'f',ctrlKey:true,bubbles:true,cancelable:true}));
+    result.searchShortcut=document.activeElement===search;
+    return result;
+  })()`);
+  for (const [name, passed] of Object.entries(toolbar)) check(name, passed);
+  console.log('\n== 后台刷新保持卡片、焦点与浏览位置 ==');
+  const stable = await evaluate(send, `(async function(){
+    const wait=ms=>new Promise(r=>setTimeout(r,ms)), track=document.getElementById('bar-track');
+    document.getElementById('bar-search').blur();
+    document.querySelector('[data-filter="all"]').click();await wait(80);
+    track.scrollTo({left:180,behavior:'instant'});
+    const anchor=Array.from(track.children).find(c=>c.dataset.id==='img-2');
+    anchor.focus({preventScroll:true});
+    const oldLeft=anchor.getBoundingClientRect().left;
+    window.__listDelay=250;window.__fireChanged();await wait(30);
+    const pending=track.hidden===false && track.contains(anchor) && track.getAttribute('aria-busy')==='true';
+    await wait(300);
+    const sameNode=document.querySelector('[data-id="img-2"]')===anchor;
+    const focus=document.activeElement===anchor;
+    const samePosition=Math.abs(anchor.getBoundingClientRect().left-oldLeft)<2;
+    window.__listThrow=true;window.__fireChanged();await wait(100);
+    const retainedOnError=track.hidden===false && track.contains(anchor) && !document.getElementById('bar-refresh-retry').hidden;
+    window.__listThrow=false;window.__listDelay=0;window.__addFirst();window.__fireChanged();await wait(100);
+    const appendKeepsAnchor=document.querySelector('[data-id="img-2"]')===anchor && Math.abs(anchor.getBoundingClientRect().left-oldLeft)<2;
+    const recovered=document.getElementById('bar-refresh-retry').hidden;
+    return {pending,sameNode,focus,samePosition,retainedOnError,appendKeepsAnchor,recovered};
+  })()`);
+  for (const [name, passed] of Object.entries(stable)) check(name, passed);
+  const lateRefresh = await evaluate(send, `(async function(){
+    const wait=ms=>new Promise(r=>setTimeout(r,ms));
+    window.__listDelay=220;window.__fireChanged();await wait(30);
+    document.querySelector('[data-id="text-1"]').click();await wait(280);
+    const selection=document.querySelector('.bar-card.is-selected')?.dataset.id==='text-1';
+    const singleClickCommitted=window.__calls.commit.at(-1)?.itemId==='text-1';
+    const hiddenAfterClick=window.__calls.hide>0;
+    window.__fireShown();await wait(30);
+    const search=document.getElementById('bar-search');search.value='微信';search.dispatchEvent(new Event('input',{bubbles:true}));
+    await wait(280);
+    const query=search.value==='微信' && document.querySelectorAll('.bar-card').length===1 && document.querySelector('.bar-card').dataset.id==='img-1';
+    search.value='';search.dispatchEvent(new Event('input',{bubbles:true}));window.__listDelay=0;
+    return {selectionDuringRefresh:selection,singleClickCommitted,hiddenAfterClick,queryDuringReopen:query};
+  })()`);
+  for (const [name, passed] of Object.entries(lateRefresh)) check(name, passed);
+  const shared = await evaluate(send, `(async function(){
+    const group=document.querySelector('[data-selection-group]');
+    for(const filter of ['text','image','files','all']) group.querySelector('[data-filter="'+filter+'"]').click();
+    await new Promise(r=>setTimeout(r,240));
+    const active=group.querySelector('[aria-pressed="true"]'), indicator=group.querySelector('.shared-selection');
+    const a=active.getBoundingClientRect(),b=indicator.getBoundingClientRect();
+    const toast=document.createElement('div');
+    window.SuiraUI.notify(toast,'已复制');window.SuiraUI.notify(toast,'已复制');
+    return {oneIndicator:group.querySelectorAll('.shared-selection').length===1,
+      rapidSelection:active.dataset.filter==='all' && Math.abs(a.left-b.left)<1 && Math.abs(a.width-b.width)<1,
+      repeatedFeedback:toast.textContent==='已复制（2 次）' && toast.getAttribute('aria-live')==='polite'};
+  })()`);
+  for (const [name, passed] of Object.entries(shared)) check(name, passed);
+  await send('Emulation.setEmulatedMedia',{features:[{name:'prefers-reduced-motion',value:'reduce'}]});
+  const reduced=await evaluate(send, `getComputedStyle(document.querySelector('.shared-selection')).transitionDuration==='0s'`);
+  check('减少动态效果立即切换状态',reduced);
+  const reducedScroll=await evaluate(send, `(function(){
+    const original=Element.prototype.scrollIntoView;let behavior='';
+    Element.prototype.scrollIntoView=function(options){behavior=options.behavior;};
+    document.dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowRight',bubbles:true,cancelable:true}));
+    Element.prototype.scrollIntoView=original;return behavior==='instant';
+  })()`);
+  check('减少动态效果也关闭键盘平滑滚动',reducedScroll);
+  await send('Emulation.setEmulatedMedia',{features:[{name:'prefers-color-scheme',value:'light'}]});
+  for (const [width,height] of [[464,310],[720,210]]) {
+    const compact = await runScenario(send, 'layout', width, height);
+    check('小屏 '+width+'×'+height+' 不溢出且可浏览', noOverflow(compact.initial) && compact.initial.cardCount===8 && compact.initial.errors.length===0);
+  }
+
   console.log('\n== 截图（临时目录，不污染仓库）==');
   runSequence += 1;
-  await send('Emulation.setDeviceMetricsOverride', { width: 1180, height: 196, deviceScaleFactor: 2, mobile: false });
+  await send('Emulation.setDeviceMetricsOverride', { ...CLIPBOARD_SHELF_SIZE, deviceScaleFactor: 2, mobile: false });
   await send('Page.navigate', {
     url: fileUrl(path.join(TMP, '__bar_check.html')) + '?scenario=main&probe=0&run=shot-' + runSequence
   });
   await sleep(900);
+  if (process.argv.includes('--preview')) {
+    const thumbs = ['12-panel-actions.png','14-panel-toolbox.png','22-panel-actions-dark.png'].map(name =>
+      'data:image/png;base64,' + fs.readFileSync(path.join(ROOT,'docs','screenshots',name)).toString('base64'));
+    await evaluate(send, `Array.from(document.querySelectorAll('.card-thumb')).forEach((img,index)=>{img.src=${JSON.stringify(thumbs)}[index%3];})`);
+    await sleep(150);
+  }
   const shotInitial = await capture(send, 'clipboardbar-main.png');
   await evaluate(send, `(function(){
     for (var i = 0; i < 2; i += 1) {

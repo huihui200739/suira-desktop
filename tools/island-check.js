@@ -75,19 +75,25 @@ check('拖入走 pathForFile + addPaths', islandJs.includes('pathForFile') && is
 check('拖出走 startDrag', islandJs.includes('startDrag'));
 check('订阅 state / expanded 广播', islandJs.includes('onState') && islandJs.includes('onExpanded'));
 
+const themeCss = fs.readFileSync(path.join(ROOT, 'src', 'theme.css'), 'utf8');
+
+check('HTML 引用共享主题层 theme.css', islandHtml.includes('href="theme.css"'));
+
 const tokens = [
-  /--graphite:\s*#252b35/i,
-  /--paper:\s*#f4f6fa/i,
-  /--ink-light:\s*#263040/i,
-  /--mist:\s*#506f9e/i,
-  /--ice:\s*#b7cbea/i,
+  /--slate-12:\s*#1c2024/i,
+  /--blue-9:\s*#0090ff/i,
+  /--text-1:\s*12px/i,
   /Segoe UI/,
-  /--radius-island:\s*16px/,
+  /--radius-panel:\s*24px/,
   /--gap:\s*8px/
 ];
-check('使用 quickpanel 同源设计令牌', tokens.every((pattern) => pattern.test(islandCss)));
-check('卡片网格隐藏滚动条', islandCss.includes('scrollbar-width: none') && islandCss.includes('::-webkit-scrollbar'));
+check('设计令牌集中在 theme.css（品牌基色 + 语义层）', tokens.every((pattern) => pattern.test(themeCss)));
+check('页面样式不再写死色值（只消费令牌）', !/#[0-9a-f]{6}\b/i.test(islandCss.replace(/rgba?\([^)]*\)/g, '')),
+  (islandCss.match(/#[0-9a-f]{6}\b/i) || [''])[0]);
+check('浮引岛自带 16px 圆角令牌', /--radius-island:\s*16px/.test(islandCss));
+check('卡片网格隐藏滚动条', /scrollbar-width:\s*none/.test(islandCss) && islandCss.includes('::-webkit-scrollbar'));
 check('根元素裁掉溢出', /\.island\s*\{[^}]*overflow:\s*hidden/.test(islandCss));
+check('三态样式齐备（休眠 / 胶囊 / 卡片）', ['.island[data-mode="sleep"]', '.rail {', '.sheet {'].every((text) => islandCss.includes(text)));
 
 const model = require(path.join(ROOT, 'lib', 'island-model.js'));
 check('模型导出与主进程契约一致', ['MAX_ITEMS', 'classifyPath', 'normalizeShelfItem', 'addShelfItems', 'removeShelfItem', 'clearShelf', 'isShelfablePath', 'summarizeShelf']
@@ -109,8 +115,8 @@ const MOCK = `
   var scenario = params.get('scenario') || 'four';
   if (scenario === 'offline') return;
   var calls = window.__calls = {
-    startDrag: [], openItem: [], removeItem: [], clear: 0,
-    setPolicy: [], addPaths: [], pathForFile: [], setExpanded: []
+    startDrag: [], openItem: [], removeItem: [], clear: 0, undo:0,
+    setPolicy: [], addPaths: [], pathForFile: [], setExpanded: [], setMode: [], ping: 0
   };
   var seq = 0;
   function clone(value){ return JSON.parse(JSON.stringify(value)); }
@@ -143,10 +149,14 @@ const MOCK = `
       makeItem('待整理素材', 'C:/demo/shelf/待整理素材/', 'folder')
     ];
   }
-  var state = { items: initialItems(), policy: 'copy', expanded: false, maxItems: 24 };
+  // 岛的初始形态：默认休眠；hover 场景从休眠起步验证「悬停浮现胶囊」的节奏
+  var initialMode = scenario === 'collapsed' ? 'rail' : 'sleep';
+  var state = { items: initialItems(), policy: 'copy', expanded: false, mode: initialMode, maxItems: 24 };
+  var undoStack = [];
   if (scenario === 'actions') state.items = state.items.slice(0, 2);
   var stateCallbacks = [];
   var expandedCallbacks = [];
+  var modeCallbacks = [];
   function emitState(){
     var payload = clone(state);
     stateCallbacks.forEach(function(callback){ try { callback(payload); } catch (error) {} });
@@ -154,6 +164,10 @@ const MOCK = `
   function emitExpanded(){
     expandedCallbacks.forEach(function(callback){ try { callback(state.expanded); } catch (error) {} });
   }
+  function emitMode(){
+    modeCallbacks.forEach(function(callback){ try { callback(state.mode); } catch (error) {} });
+  }
+  window.__pushMode = function(mode){ state.mode=mode; state.expanded=mode==='sheet'; emitMode(); emitExpanded(); };
   window.__pushState = function(next){
     if (next && Array.isArray(next.items)) state.items = next.items;
     if (next && (next.policy === 'copy' || next.policy === 'move')) state.policy = next.policy;
@@ -186,13 +200,24 @@ const MOCK = `
     },
     removeItem: function(id){
       calls.removeItem.push(id);
+      undoStack.push(clone(state.items));
+      state.canUndo = true;
       state.items = state.items.filter(function(entry){ return entry.id !== id; });
       emitState();
       return Promise.resolve(clone(state));
     },
     clear: function(){
       calls.clear += 1;
+      if (state.items.length) undoStack.push(clone(state.items));
+      state.canUndo = undoStack.length > 0;
       state.items = [];
+      emitState();
+      return Promise.resolve(clone(state));
+    },
+    undo: function(){
+      calls.undo += 1;
+      state.items = undoStack.pop() || state.items;
+      state.canUndo = undoStack.length > 0;
       emitState();
       return Promise.resolve(clone(state));
     },
@@ -207,6 +232,20 @@ const MOCK = `
       state.expanded = Boolean(value);
       emitExpanded();
       return Promise.resolve();
+    },
+    // 三态：主进程改窗口尺寸后回推最终形态
+    setMode: function(mode){
+      calls.setMode.push(mode);
+      state.mode = mode;
+      state.expanded = mode === 'sheet';
+      emitMode();
+      emitExpanded();
+      return Promise.resolve({ ok: true, mode: mode });
+    },
+    ping: function(){ calls.ping += 1; },
+    onMode: function(callback){
+      if (typeof callback === 'function') modeCallbacks.push(callback);
+      return function(){ modeCallbacks = modeCallbacks.filter(function(fn){ return fn !== callback; }); };
     },
     openItem: function(id){
       calls.openItem.push(id);
@@ -253,6 +292,7 @@ const PROBE = `
       bodyScrollW: body.scrollWidth,
       bodyScrollH: body.scrollHeight,
       expanded: island ? island.dataset.expanded : '',
+      mode: island ? island.dataset.mode : '',
       railHidden: rail ? rail.hidden : null,
       sheetHidden: sheet ? sheet.hidden : null,
       railCount: document.getElementById('rail-count') ? document.getElementById('rail-count').textContent : '',
@@ -261,6 +301,10 @@ const PROBE = `
       railOverflow: rail ? Math.max(0, rail.scrollWidth - rail.clientWidth) : -1,
       sheetRect: sheetRect ? { w: Math.round(sheetRect.width), h: Math.round(sheetRect.height) } : null,
       sheetRadius: sheet ? getComputedStyle(sheet).borderRadius : '',
+      sheetTop: sheetRect ? sheetRect.top : null,
+      sheetLeft: sheetRect ? sheetRect.left : null,
+      sheetShadow: sheet ? getComputedStyle(sheet).boxShadow : '',
+      emptyBorder: document.getElementById('empty') ? getComputedStyle(document.getElementById('empty')).borderTopStyle : '',
       cards: cards.length,
       names: names,
       removeButtons: document.querySelectorAll('.file-remove').length,
@@ -290,8 +334,13 @@ const PROBE = `
   async function main(){
     var output = { scenario: scenario, errors: (window.__errs || []).slice() };
     var root = document.getElementById('island');
-    function expand(){ root.dispatchEvent(new MouseEvent('mouseenter')); }
+    function enter(){ root.dispatchEvent(new MouseEvent('mouseenter')); }
     function leave(){ root.dispatchEvent(new MouseEvent('mouseleave')); }
+    // 模拟用户从工具箱/托盘显式打开，不靠普通悬停唤醒。
+    async function openSheet(){
+      await window.suira.island.setMode('sheet');
+      enter();
+    }
 
     await sleep(180);
     output.initial = metrics();
@@ -299,37 +348,53 @@ const PROBE = `
     if (scenario === 'collapsed') {
       output.after = metrics();
     } else if (scenario === 'offline') {
-      expand();
+      enter();
       await sleep(120);
       output.afterHover = metrics();
       document.getElementById('rail').click();
       await sleep(80);
       output.afterClick = metrics();
     } else if (scenario === 'hover') {
-      expand();
-      await sleep(60);
+      // 普通悬停/文字拖拽保持隐藏；只有 Files 拖入才展开。
+      output.before = metrics();
+      enter();
+      await sleep(220);
       output.afterEnter = metrics();
-      leave();
-      await sleep(100);
-      expand();
-      await sleep(240);
-      output.afterReenter = metrics();
-      leave();
-      await sleep(300);
+      var textTransfer = new DataTransfer();
+      textTransfer.setData('text/plain', '不是文件');
+      root.dispatchEvent(new DragEvent('dragenter', {bubbles:true,cancelable:true,dataTransfer:textTransfer}));
+      await sleep(60);
+      output.afterText = metrics();
+      var fileTransfer = new DataTransfer();
+      fileTransfer.items.add(new File(['test'], 'test.txt', {type:'text/plain'}));
+      root.dispatchEvent(new DragEvent('dragenter', {bubbles:true,cancelable:true,dataTransfer:fileTransfer}));
+      await sleep(120);
+      output.afterClick = metrics();
+      root.dispatchEvent(new DragEvent('dragleave', {bubbles:true,cancelable:true,dataTransfer:fileTransfer}));
+      await sleep(80);
+      output.afterLeaveShort = metrics();
+      await sleep(350);
       output.afterLeave = metrics();
+      window.__pushMode('sleep');
+      await sleep(80);
+      output.afterSleepBroadcast = metrics();
+      await openSheet();
+      document.dispatchEvent(new KeyboardEvent('keydown', {key:'Escape',bubbles:true,cancelable:true}));
+      await sleep(40);
+      output.afterEscape = metrics();
     } else if (scenario === 'empty') {
-      expand();
+      openSheet();
       await sleep(160);
       output.expanded = metrics();
     } else if (scenario === 'error') {
-      expand();
+      openSheet();
       await sleep(240);
       output.expanded = metrics();
       document.getElementById('retry').click();
       await sleep(160);
       output.afterRetry = metrics();
     } else if (scenario === 'four' || scenario === 'full') {
-      expand();
+      openSheet();
       await sleep(200);
       output.expanded = metrics();
       if (scenario === 'full') {
@@ -342,7 +407,7 @@ const PROBE = `
         await sleep(80);
       }
     } else if (scenario === 'state') {
-      expand();
+      openSheet();
       await sleep(160);
       output.beforePush = metrics();
       window.__pushState({
@@ -358,7 +423,7 @@ const PROBE = `
       await sleep(120);
       output.afterPush = metrics();
     } else if (scenario === 'actions') {
-      expand();
+      openSheet();
       await sleep(160);
       output.afterExpand = metrics();
 
@@ -407,6 +472,9 @@ const PROBE = `
       document.getElementById('clear').click();
       await sleep(120);
       output.afterClear = metrics();
+      document.getElementById('undo').click();
+      await sleep(80);
+      output.afterUndo = metrics();
     }
 
     window.__islandResult = output;
@@ -426,6 +494,7 @@ const PROBE = `
 function buildFixtures() {
   fs.writeFileSync(path.join(TMP, '__island_mock.js'), MOCK, 'utf8');
   fs.writeFileSync(path.join(TMP, '__island_probe.js'), PROBE, 'utf8');
+  fs.copyFileSync(path.join(ROOT, 'src', 'theme.css'), path.join(TMP, 'theme.css'));
   fs.copyFileSync(path.join(ROOT, 'src', 'island.css'), path.join(TMP, 'island.css'));
   fs.copyFileSync(path.join(ROOT, 'src', 'island.js'), path.join(TMP, 'island.js'));
   const page = islandHtml
@@ -547,6 +616,8 @@ async function runScenario(send, scenario, width, height, scaleFactor = 1) {
   runSequence += 1;
   const token = 'run-' + runSequence;
   await send('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: scaleFactor, mobile: false });
+  // 测试不依赖本机系统主题：显式指定浅色，否则深色系统上截出来的图会变样
+  await send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: 'light' }] });
   await send('Page.navigate', {
     url: fileUrl(path.join(TMP, '__island_check.html')) + '?scenario=' + encodeURIComponent(scenario) + '&run=' + token
   });
@@ -570,12 +641,11 @@ function noOverflow(metrics) {
 
 async function runChecks(send) {
   console.log('\n== 收起态 176×44 ==');
-  const collapsed = await runScenario(send, 'collapsed', 176, 44);
-  check('视口为 176×44', collapsed.initial.innerW === 176 && collapsed.initial.innerH === 44,
+  const collapsed = await runScenario(send, 'collapsed', 200, 68);
+  check('视口为 200×68（胶囊 176×44 + 12px 阴影留白）', collapsed.initial.innerW === 200 && collapsed.initial.innerH === 68,
     collapsed.initial.innerW + '×' + collapsed.initial.innerH);
-  check('收起态显示细条、隐藏卡片', collapsed.after.railHidden === false && collapsed.after.sheetHidden === true);
-  check('细条尺寸铺满窗口', collapsed.after.railRect && collapsed.after.railRect.w === 176 && collapsed.after.railRect.h === 44,
-    JSON.stringify(collapsed.after.railRect));
+  check('旧 rail 快照不能恢复常驻入口', collapsed.after.railHidden === true && collapsed.after.sheetHidden === true);
+  check('休眠时没有可见胶囊尺寸', collapsed.after.railRect === null);
   check('细条显示文件数与策略', collapsed.after.railCount === '2' && collapsed.after.railPolicy === '复制',
     collapsed.after.railCount + ' / ' + collapsed.after.railPolicy);
   check('细条内容不溢出', collapsed.after.railOverflow === 0, 'overflow=' + collapsed.after.railOverflow);
@@ -586,7 +656,7 @@ async function runChecks(send) {
   console.log('\n== 展开态 520×148（4 个文件）==');
   const four = await runScenario(send, 'four', 520, 148);
   const fourView = four.expanded;
-  check('视口为 520×148', four.initial.innerW === 520 && four.initial.innerH === 148,
+  check('窗口与托盘同尺寸，不再留外圈底板', four.initial.innerW === 520 && four.initial.innerH === 148,
     four.initial.innerW + '×' + four.initial.innerH);
   check('展开态隐藏细条、显示卡片区', fourView.expanded === 'true' && fourView.railHidden === true && fourView.sheetHidden === false);
   check('展开卡片尺寸铺满窗口', fourView.sheetRect && fourView.sheetRect.w === 520 && fourView.sheetRect.h === 148,
@@ -608,7 +678,8 @@ async function runChecks(send) {
   check('展开态无页面滚动条 / 溢出', noOverflow(fourView), JSON.stringify(fourView.docScrollW + '/' + fourView.docClientW));
   check('4 个文件时不需要内部滚动', fourView.shelfScrollH <= fourView.shelfClientH && fourView.scrollHint === false,
     fourView.shelfScrollH + ' / ' + fourView.shelfClientH);
-  check('卡片圆角 16px', fourView.sheetRadius === '16px', fourView.sheetRadius);
+  check('顶部平齐贴边、底部圆角收口', fourView.sheetRadius === '0px 0px 16px 16px', fourView.sheetRadius);
+  check('托盘紧贴窗口上沿，没有悬浮留白和厚阴影', fourView.sheetTop === 0 && fourView.sheetLeft === 0 && fourView.sheetShadow === 'none');
   check('展开态无脚本错误', four.errors.length === 0, JSON.stringify(four.errors));
 
   console.log('\n== 展开态 520×148（24 个文件，满额）==');
@@ -629,7 +700,7 @@ async function runChecks(send) {
   check('24 个文件时无脚本错误', full.errors.length === 0, JSON.stringify(full.errors));
 
   console.log('\n== 空态 ==');
-  const empty = await runScenario(send, 'empty', 520, 148);
+  const empty = await runScenario(send, 'empty', 440, 108);
   const emptyView = empty.expanded;
   check('空态无卡片', emptyView.cards === 0);
   check('空态显示拖入提示', emptyView.emptyHidden === false && emptyView.emptyMode === 'empty' && emptyView.emptyTitle === '把文件拖进来暂存',
@@ -638,10 +709,11 @@ async function runChecks(send) {
   check('空态不显示重试按钮', emptyView.retryHidden === true);
   check('空态清空按钮禁用', emptyView.clearDisabled === true);
   check('空态无页面溢出', noOverflow(emptyView));
+  check('空态接收区紧凑，无大虚线框', emptyView.innerW === 440 && emptyView.innerH === 108 && emptyView.emptyBorder === 'none');
 
   console.log('\n== API 不可用 ==');
-  const offline = await runScenario(send, 'offline', 176, 44);
-  check('不可用时不显示离线标记以外的假内容', offline.afterHover.railPolicy === '离线', offline.afterHover.railPolicy);
+  const offline = await runScenario(send, 'offline', 200, 68);
+  check('不可用时仍保持隐藏，不在顶部常驻离线条', offline.afterHover.mode === 'sleep' && offline.afterHover.railHidden === true);
   check('不可用时不假装展开', offline.afterHover.expanded === 'false' && offline.afterHover.sheetHidden === true);
   check('点击细条给出可读提示（不是没反应）',
     offline.afterClick.toastVisible === true && offline.afterClick.toastText.includes('未就绪'),
@@ -650,7 +722,7 @@ async function runChecks(send) {
   check('不可用态无页面溢出', noOverflow(offline.afterClick));
 
   console.log('\n== 读取失败（有接口但 getState 拒绝）==');
-  const errored = await runScenario(send, 'error', 520, 148);
+  const errored = await runScenario(send, 'error', 440, 108);
   const errorView = errored.expanded;
   check('读取失败时仍可展开', errorView.expanded === 'true');
   check('读取失败显示可读错误', errorView.emptyMode === 'error' && errorView.emptyTitle === '暂时读不到暂存内容',
@@ -659,26 +731,37 @@ async function runChecks(send) {
   check('重试后仍保持可读错误（不白屏）', errored.afterRetry.emptyTitle === '暂时读不到暂存内容');
   check('读取失败无未捕获错误', errored.errors.length === 0, JSON.stringify(errored.errors));
 
-  console.log('\n== 悬停展开 / 180ms 收起 / 重入取消 ==');
-  const hover = await runScenario(send, 'hover', 520, 148);
-  check('mouseenter 立即展开', hover.afterEnter.expanded === 'true');
-  check('mouseleave 未满 180ms 重入会取消收起', hover.afterReenter.expanded === 'true');
-  check('离开超过 180ms 后收起', hover.afterLeave.expanded === 'false');
-  check('setExpanded 收到 true 与 false', hover.afterLeave.calls.setExpanded[0] === true
-    && hover.afterLeave.calls.setExpanded[hover.afterLeave.calls.setExpanded.length - 1] === false,
-    JSON.stringify(hover.afterLeave.calls.setExpanded));
+  console.log('\n== 隐藏式：普通悬停不显示 → 文件拖近才展开 → 离开回收 ==');
+  const hover = await runScenario(send, 'hover', 544, 172);
+  check('初始为休眠态：细条与卡片都不显示', hover.before.mode === 'sleep'
+    && hover.before.railHidden === true && hover.before.sheetHidden === true,
+    hover.before.mode + ' / rail:' + hover.before.railHidden + ' / sheet:' + hover.before.sheetHidden);
+  check('普通悬停不显示胶囊或卡片', hover.afterEnter.mode === 'sleep'
+    && hover.afterEnter.railHidden === true && hover.afterEnter.sheetHidden === true,
+    hover.afterEnter.mode);
+  check('拖拽文字不会唤醒文件中转', hover.afterText.mode === 'sleep');
+  check('文件拖入时展开成暂存卡片', hover.afterClick.mode === 'sheet' && hover.afterClick.sheetHidden === false,
+    hover.afterClick.mode);
+  check('指针刚离开时卡片仍保留（留出移动到卡片的时间）', hover.afterLeaveShort.mode === 'sheet',
+    hover.afterLeaveShort.mode);
+  check('离开超过回收延迟后自动回到休眠', hover.afterLeave.mode === 'sleep', hover.afterLeave.mode);
+  const modes = hover.afterLeave.calls.setMode || [];
+  check('只请求 sheet / sleep，不留下胶囊', modes.includes('sheet') && modes.includes('sleep') && !modes.includes('rail'),
+    JSON.stringify(modes));
+  check('mode=sleep 后旧 expanded=false 广播不能把胶囊重新显示', hover.afterSleepBroadcast.mode === 'sleep' && hover.afterSleepBroadcast.railHidden === true);
+  check('Esc 一次就完全隐藏，不停在胶囊态', hover.afterEscape.mode === 'sleep');
 
   console.log('\n== 主进程广播（island:state）==');
-  const pushed = await runScenario(send, 'state', 520, 148);
+  const pushed = await runScenario(send, 'state', 544, 172);
   check('广播前渲染 2 张卡片', pushed.beforePush.cards === 2, 'cards=' + pushed.beforePush.cards);
   check('收到广播后重绘为 5 张卡片', pushed.afterPush.cards === 5, 'cards=' + pushed.afterPush.cards);
   check('收到广播后策略同步为「移动」', pushed.afterPush.railPolicy === '移动' && pushed.afterPush.activePolicy === 'policy-move',
     pushed.afterPush.activePolicy);
 
   console.log('\n== 用户操作：打开 / 移除 / 策略 / 拖出 / 拖入 / 清空 ==');
-  const actions = await runScenario(send, 'actions', 520, 148);
-  check('展开后调用 setExpanded(true)', actions.afterExpand.calls.setExpanded.includes(true),
-    JSON.stringify(actions.afterExpand.calls.setExpanded));
+  const actions = await runScenario(send, 'actions', 544, 172);
+  check('展开后调用 setMode(sheet)', actions.afterExpand.calls.setMode.includes('sheet'),
+    JSON.stringify(actions.afterExpand.calls.setMode));
   check('点击卡片调用 openItem', actions.openCalls.length === 1, JSON.stringify(actions.openCalls));
   check('openItem 返回 ok:false 时给出可读提示（不是没反应）',
     actions.openErrorToast.toastVisible === true && actions.openErrorToast.toastText.includes('移动或删除'),
@@ -703,11 +786,12 @@ async function runChecks(send) {
   check('清空调用 clear 并回到空态', actions.afterClear.calls.clear === 1
     && actions.afterClear.cards === 0 && actions.afterClear.emptyHidden === false,
     'cards=' + actions.afterClear.cards);
+  check('点击撤销找回清空前的文件卡片', actions.afterUndo.cards === 2 && actions.afterUndo.calls.undo === 1);
   check('操作过程无页面溢出', noOverflow(actions.afterClear));
   check('操作过程无脚本错误', actions.errors.length === 0, JSON.stringify(actions.errors));
 
   console.log('\n== 截图（临时目录，不污染仓库）==');
-  await runScenario(send, 'collapsed', 176, 44, 2);
+  await runScenario(send, 'collapsed', 200, 68, 2);
   const shotCollapsed = await capture(send, 'island-collapsed.png');
   await runScenario(send, 'four', 520, 148, 2);
   const shotExpanded = await capture(send, 'island-expanded.png');

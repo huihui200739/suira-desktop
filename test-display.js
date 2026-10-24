@@ -2,7 +2,7 @@
 /* 虚拟桌面几何：多屏并集、缩放、分块布局。 */
 
 const assert = require('assert');
-const { unionBounds, maxScaleFactor, tileLayout, sanitizeWindowBounds } = require('./lib/display-geometry');
+const { unionBounds, maxScaleFactor, tileLayout, sanitizeWindowBounds, quickPanelBounds, clipboardShelfBounds, roundedWindowShape } = require('./lib/display-geometry');
 
 let pass = 0, fail = 0;
 const t = (n, f) => { try { f(); console.log('  PASS  ' + n); pass++; } catch (e) { console.log('  FAIL  ' + n + ' -> ' + e.message); fail++; } };
@@ -157,6 +157,43 @@ t('优先使用 workArea（避开任务栏）', () => {
 t('没有显示器信息时给一个可用的默认值', () => {
   const r = sanitizeWindowBounds(null, [], fallback);
   assert.deepStrictEqual({ x: r.x, y: r.y, width: r.width, height: r.height }, { x: 0, y: 0, width: 1180, height: 820 });
+});
+
+console.log('\n== 加宽面板的工作区适配 ==');
+t('标准屏幕居中显示加宽面板', () => {
+  const bounds = quickPanelBounds({ x: 0, y: 0, width: 1920, height: 1040 });
+  assert.strictEqual(bounds.width, 1160);
+  assert.strictEqual(bounds.x, 380);
+});
+t('低分辨率、高 DPI 与负坐标副屏：四边都留在工作区内', () => {
+  for (const area of [
+    { x: 0, y: 0, width: 800, height: 560 },
+    { x: -1280, y: -40, width: 1280, height: 680 },
+    { x: 20, y: 30, width: 640, height: 480 }
+  ]) {
+    const b = quickPanelBounds(area);
+    assert.ok(b.x >= area.x + 12);
+    assert.ok(b.y >= area.y + 12);
+    assert.ok(b.x + b.width <= area.x + area.width - 12);
+    assert.ok(b.y + b.height <= area.y + area.height - 12);
+  }
+});
+
+t('底部内容架跟随负坐标副屏、小屏和任务栏工作区，始终完整可见', () => {
+  for (const area of [{x:0,y:0,width:1920,height:1040}, {x:-1280,y:-40,width:1280,height:680}, {x:20,y:40,width:640,height:480}]) {
+    const b = clipboardShelfBounds(area);
+    assert.ok(b.x >= area.x && b.y >= area.y);
+    assert.ok(b.x + b.width <= area.x + area.width);
+    assert.strictEqual(b.y + b.height, area.y + area.height - 16);
+    assert.ok(b.width >= Math.min(1600, area.width - 32));
+  }
+});
+t('原生圆角在四角都裁掉矩形底板，并保持中间连续', () => {
+  const shape = roundedWindowShape(1160, 620);
+  const covers = (x,y) => shape.some(r => x >= r.x && x < r.x+r.width && y >= r.y && y < r.y+r.height);
+  for (const [x,y] of [[0,0],[1159,0],[0,619],[1159,619]]) assert.ok(!covers(x,y));
+  for (let y=0;y<620;y++) assert.ok(covers(580,y));
+  for (const r of shape) assert.ok(r.x>=0 && r.y>=0 && r.x+r.width<=1160 && r.y+r.height<=620);
 });
 
 console.log('\n========== ' + pass + ' 通过 / ' + fail + ' 失败 ==========');

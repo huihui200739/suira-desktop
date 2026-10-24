@@ -1,0 +1,49 @@
+/* 状态共享的轻量实现：不引入动画框架、不在常驻后台运行动画循环。 */
+[data-selection-group] { position: relative; isolation: isolate; }
+.shared-selection {
+  position: absolute; top: 0; left: 0; z-index: -1; pointer-events: none;
+  border-radius: inherit;
+  background: var(--selection-fill, var(--ice-soft, var(--accent-soft)));
+  border: 1px solid var(--selection-edge, var(--line));
+  box-shadow: inset 0 1px 0 var(--selection-light, var(--floating-edge, transparent));
+}
+.selection-ready > .shared-selection { transition: transform 180ms cubic-bezier(.2,.8,.3,1), width 180ms cubic-bezier(.2,.8,.3,1), height 180ms cubic-bezier(.2,.8,.3,1); }
+.has-shared-selection > button[aria-pressed="true"], .has-shared-selection > button.is-active { background: transparent; border-color: transparent; box-shadow: none; }
+.has-shared-selection > .shared-selection { border-radius: 9px; }
+.nav.has-shared-selection > .shared-selection { border-radius: 11px; }
+.bar-filters { --selection-fill: var(--shelf-selected); --selection-edge: var(--shelf-highlight); --selection-light: var(--shelf-line); }
+[data-glass] { position: relative; }
+[data-glass]::after {
+  content: ''; position: absolute; inset: 0; border-radius: inherit; padding: 1px;
+  pointer-events: none; opacity: 0; transition: opacity 140ms ease;
+  background: radial-gradient(ellipse 160px 80px at var(--glass-x,50%) var(--glass-y,0%), var(--glass-light,var(--floating-edge,var(--line-strong))), transparent 85%);
+  mask: linear-gradient(currentColor 0 0) content-box, linear-gradient(currentColor 0 0);
+  mask-composite: exclude;
+}
+[data-glass].glass-active::after { opacity: 1; }
+.bar-search, .bar-actions { --glass-light: var(--shelf-accent); }
+.surface-hint { position: fixed; z-index: 20; max-width: min(260px,calc(100vw - 24px)); padding: 7px 10px; border-radius: 9px; border: 1px solid var(--line-strong); background: var(--surface); color: var(--ink-soft); box-shadow: var(--shadow-lift); font-size: var(--text-1); line-height: 1.5; overflow-wrap: anywhere; pointer-events: none; }
+.surface-hint[hidden] { display: none; }
+.modal-card { max-height: calc(100dvh - 40px); overflow-y: auto; }
+/* 反馈不阻塞操作；浮层唤起不等动画，内容直接可点。 */
+:where(button, [role="option"]) { transition-timing-function: var(--ease-out); }
+:where(button):active:not(:disabled) { scale: .97; }
+:where(.tool-dock, .color-popover, .ocr-result, .text-editor, .pin-menu):not([hidden]) { animation: surface-appear 140ms var(--ease-out); }
+@keyframes surface-appear { from { opacity: .35; translate: 0 3px; } to { opacity: 1; translate: 0 0; } }
+@media (prefers-reduced-motion: reduce) {
+  .selection-ready > .shared-selection, [data-glass]::after { transition: none; }
+  .modal, .modal-card, .preview, .preview-card { animation: none !important; }
+  *, *::before, *::after { animation-duration: 0s !important; transition-duration: 0s !important; }
+  :where(button):active:not(:disabled) { scale: none; }
+  [data-glass]::after { display: none; }
+}
+@media (prefers-reduced-transparency: reduce) {
+  [data-glass]::after { display: none; }
+  .panel { background: var(--surface-raised); }
+  .bar, .sheet, .note, .recorder, .pin-surface, .pin-menu, .tool-dock { background: var(--surface-raised); backdrop-filter: none; }
+  .modal, .preview { backdrop-filter: none; }
+}
+@media (forced-colors: active) {
+  .shared-selection, [data-glass]::after { display: none; }
+  .has-shared-selection > button[aria-pressed="true"], .has-shared-selection > button.is-active { outline: 2px solid Highlight; color: Highlight; }
+}

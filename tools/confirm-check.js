@@ -35,15 +35,18 @@ const modalSrc = appJs.slice(modalStart, modalEnd);
 
 const PAGE = `<!doctype html><html><head><meta charset="utf-8">
 <link rel="stylesheet" href="styles.css">
+<link rel="stylesheet" href="ui-motion.css">
 </head><body>
 <div class="modal" id="modal" hidden>
   <div class="modal-card">
-    <div class="modal-head"><div><div class="eyebrow" id="modal-eyebrow">NEW TASK</div><h2 id="modal-title">新建任务</h2></div><button type="button" id="modal-close">×</button></div>
+    <div class="modal-head"><div><h2 id="modal-title">新建任务</h2></div><button type="button" id="modal-close">×</button></div>
     <input class="modal-input" id="modal-input" type="text" placeholder="例如：竞品研究">
     <p class="modal-hint" id="modal-hint" hidden></p>
     <div class="modal-foot"><button class="quiet-btn" type="button" id="modal-cancel">取消</button><button class="primary-btn" type="button" id="modal-confirm">创建</button></div>
   </div>
 </div>
+<script src="ui-motion.js"></script>
+<button id="dialog-origin" type="button">打开确认</button>
 <script>
 const $ = (s, r = document) => r.querySelector(s);
 ${modalSrc}
@@ -96,6 +99,7 @@ const check = (name, cond, detail) => {
   if (!CHROME) throw new Error('未找到 Chrome/Edge');
   fs.writeFileSync(path.join(TMP, 'confirm.html'), PAGE, 'utf8');
   fs.copyFileSync(path.join(ROOT, 'src', 'styles.css'), path.join(TMP, 'styles.css'));
+  for (const asset of ['ui-motion.css','ui-motion.js']) fs.copyFileSync(path.join(ROOT,'src',asset),path.join(TMP,asset));
 
   const userDataDir = path.join(TMP, 'profile-confirm');
   const child = spawn(CHROME, [
@@ -133,7 +137,7 @@ const check = (name, cond, detail) => {
     })`);
 
     // 打开一个要求输入「清空」的确认框
-    await evaluate(send, `window.__openModal('清空剪贴板记录','CLEAR CLIPBOARD','输入「清空」以确认',
+    await evaluate(send, `window.__openModal('清空剪贴板记录','输入「清空」以确认',
       async (v)=>{ window.__confirmed = v; }, { expect:'清空' }), 'ok'`);
     await sleep(120);
     let s = JSON.parse(await state());
@@ -188,7 +192,7 @@ const check = (name, cond, detail) => {
     check('确认后弹窗关闭', oc.closed === true, okConfirm);
 
     console.log('\n== 无确认词时行为不变 ==');
-    await evaluate(send, `window.__openModal('新建任务','NEW TASK','例如：竞品研究',
+    await evaluate(send, `window.__openModal('新建任务','例如：竞品研究',
       async (v)=>{ window.__created = v; }), 'ok'`);
     await sleep(120);
     s = JSON.parse(await state());
@@ -201,6 +205,23 @@ const check = (name, cond, detail) => {
     await sleep(250);
     const created = JSON.parse(await evaluate(send, `JSON.stringify({ v: window.__created })`));
     check('普通弹窗输入即创建', created.v === '竞品研究', JSON.stringify(created));
+
+    console.log('\n== 弹层来源与键盘焦点 ==');
+    const focus = await evaluate(send, `(function(){
+      const origin=document.getElementById('dialog-origin');origin.focus();
+      window.__openModal('新建任务','名称',async()=>{});
+      const input=document.getElementById('modal-input');
+      const first=document.getElementById('modal-close');
+      const last=document.getElementById('modal-confirm');
+      const initial=document.activeElement===input;
+      last.focus();document.dispatchEvent(new KeyboardEvent('keydown',{key:'Tab',bubbles:true,cancelable:true}));
+      const forward=document.activeElement===first;
+      document.dispatchEvent(new KeyboardEvent('keydown',{key:'Tab',shiftKey:true,bubbles:true,cancelable:true}));
+      const backward=document.activeElement===last;
+      document.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true,cancelable:true}));
+      return {initial,forward,backward,closed:document.getElementById('modal').hidden,restored:document.activeElement===origin};
+    })()`);
+    for(const [name,ok] of Object.entries(focus)) check('焦点 '+name,ok);
 
     console.log('\n========== ' + pass + ' 通过 / ' + fail + ' 失败 ==========');
     ws.close();

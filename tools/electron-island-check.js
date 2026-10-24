@@ -8,7 +8,7 @@
  *
  * 用法：
  *   1) 带调试口启动应用（数据目录指到工作区内，别污染真实用户数据）：
- *      C:\\temp\\el45\\electron.exe . --remote-debugging-port=9223 --user-data-dir=.udata/verify
+ *      npm start -- --remote-debugging-port=9223 --user-data-dir=.udata/verify
  *   2) node tools/electron-island-check.js
  *
  * 这个脚本只读/只写临时文件，结束时清空浮引岛暂存，不删用户数据。
@@ -76,12 +76,23 @@ async function evaluate(send, expression) {
 }
 
 (async () => {
-  const targets = await listTargets();
+  let targets = await listTargets();
   if (!targets) {
     console.error('连不上 ' + PORT + '。请先带 --remote-debugging-port=' + PORT + ' 启动应用。');
     process.exit(1);
   }
   const mainTarget = targets.find((t) => t.type === 'page' && t.url.includes('index.html'));
+  if (!mainTarget) throw new Error('找不到主窗口');
+  const main = await connect(mainTarget.webSocketDebuggerUrl);
+  const info = JSON.parse(await evaluate(main.send, `JSON.stringify(await window.suira.app.info())`));
+  const isolatedRoot = path.resolve('.udata') + path.sep;
+  if (!path.resolve(info.userData).startsWith(isolatedRoot)) {
+    main.ws.close();
+    throw new Error('此验证会改动暂存引用，只能连接 --user-data-dir=.udata/... 的独立测试实例');
+  }
+  await evaluate(main.send, 'window.suira.quick.show()');
+  await sleep(350);
+  targets = await listTargets();
   const panelTarget = targets.find((t) => t.type === 'page' && t.url.includes('quickpanel.html'));
   const islandTarget = targets.find((t) => t.type === 'page' && t.url.includes('island.html'));
   console.log('\n== 真实 Electron 窗口 ==');
@@ -91,7 +102,6 @@ async function evaluate(send, expression) {
   check('浮引岛窗口已创建（island.html 真实加载）', Boolean(islandTarget));
   if (!mainTarget || !islandTarget) throw new Error('缺少必要的窗口，无法继续');
 
-  const main = await connect(mainTarget.webSocketDebuggerUrl);
   const island = await connect(islandTarget.webSocketDebuggerUrl);
   await main.send('Runtime.enable');
   await island.send('Runtime.enable');
@@ -99,7 +109,7 @@ async function evaluate(send, expression) {
   console.log('\n== preload 契约 ==');
   const apiKeys = await evaluate(island.send, `JSON.stringify(Object.keys(window.suira.island || {}).sort())`);
   const keys = JSON.parse(apiKeys);
-  for (const method of ['getState', 'addPaths', 'pathForFile', 'removeItem', 'clear', 'setPolicy', 'setExpanded', 'openItem', 'startDrag', 'onState', 'onExpanded', 'toggle']) {
+  for (const method of ['getState', 'addPaths', 'pathForFile', 'removeItem', 'clear', 'undo', 'setPolicy', 'setExpanded', 'openItem', 'startDrag', 'onState', 'onExpanded', 'toggle']) {
     check('preload 暴露 island.' + method, keys.includes(method), apiKeys);
   }
   const panelHasMode = await (async () => {
@@ -114,10 +124,25 @@ async function evaluate(send, expression) {
   console.log('\n== 浮引岛：窗口尺寸与状态 ==');
   const collapsedSize = await evaluate(island.send, `JSON.stringify({ w: window.innerWidth, h: window.innerHeight })`);
   const collapsed = JSON.parse(collapsedSize);
-  check('收起态窗口 176×44', collapsed.w === 176 && collapsed.h === 44, collapsedSize);
+  check('隐藏接收窗口尺寸有效（容纳 Windows 最小非客户区）', Math.abs(collapsed.w - 440) <= 4 && collapsed.h >= 36 && collapsed.h <= 40, collapsedSize);
   const initial = JSON.parse(await evaluate(island.send, `JSON.stringify(await window.suira.island.getState())`));
   check('初始状态带 items / policy / expanded / maxItems', Array.isArray(initial.items) && typeof initial.policy === 'string' && typeof initial.expanded === 'boolean' && initial.maxItems === 24, JSON.stringify(initial));
-  check('浮引岛在屏幕上可见', initial.visible === true, JSON.stringify(initial));
+  check('启动时完全隐藏，不常驻胶囊', initial.mode === 'sleep' && initial.visible === false);
+  const beforeHover = JSON.parse(await evaluate(island.send, `JSON.stringify({mode:document.getElementById('island').dataset.mode})`));
+  check('真实页面未被旧 expanded=false 广播改回胶囊', beforeHover.mode === 'sleep');
+  await evaluate(island.send, `document.getElementById('island').dispatchEvent(new MouseEvent('mouseenter'))`);
+  await sleep(220);
+  const hoverMode = await evaluate(island.send, `document.getElementById('island').dataset.mode`);
+  check('真实页面普通悬停保持隐藏', hoverMode === 'sleep');
+  await evaluate(island.send, `document.getElementById('island').dispatchEvent(new MouseEvent('mouseleave'))`);
+  let wake;
+  for (let attempt=0; attempt<30; attempt++) {
+    wake = JSON.parse(await evaluate(island.send, `JSON.stringify((await window.suira.island.getState()).wake)`));
+    if (wake.ready || wake.error) break;
+    await sleep(200);
+  }
+  check('真实原生拖动侦测已就绪', wake.ready === true, JSON.stringify(wake));
+  check('有常驻接收能力但不显示界面', initial.visible === false, JSON.stringify(initial));
 
   console.log('\n== 浮引岛：加入 / 去重 / 拖入策略 ==');
   const sandbox = path.join(os.tmpdir(), 'suira-island-e2e-' + process.pid);
@@ -134,7 +159,14 @@ async function evaluate(send, expression) {
   check('图片按扩展名分类为 image', dupResult.items.some((i) => i.kind === 'image'), JSON.stringify(dupResult.items));
   const expandedSize = await evaluate(island.send, `JSON.stringify({ w: window.innerWidth, h: window.innerHeight })`);
   const expanded = JSON.parse(expandedSize);
-  check('加入文件后自动展开为 520×148', expanded.w === 520 && expanded.h === 148, expandedSize);
+  check('展开时托盘与窗口同为 520×148，无外圈底板', expanded.w === 520 && expanded.h === 148, expandedSize);
+  const invalid = JSON.parse(await evaluate(island.send, `JSON.stringify(await window.suira.island.addPaths(${JSON.stringify([path.join(sandbox,'missing.txt')])}))`));
+  check('不存在的路径被拒绝，不生成假文件卡', invalid.ok === false && invalid.items.length === 2);
+  const folder = path.join(sandbox, 'real-folder');
+  fs.mkdirSync(folder, {recursive:true});
+  const folderResult = JSON.parse(await evaluate(island.send, `JSON.stringify(await window.suira.island.addPaths(${JSON.stringify([folder])}))`));
+  check('没有尾部斜杠的真实文件夹也正确识别', folderResult.items.some(item=>item.path === folder && item.kind === 'folder'));
+  await evaluate(island.send, `window.suira.island.removeItem(${JSON.stringify(folderResult.items.find(item=>item.path===folder).id)})`);
   const policy = JSON.parse(await evaluate(island.send, `JSON.stringify(await window.suira.island.setPolicy('move'))`));
   check('拖入策略可切到 move', policy.policy === 'move', JSON.stringify(policy));
   await evaluate(island.send, `window.suira.island.setPolicy('copy')`);
@@ -147,8 +179,16 @@ async function evaluate(send, expression) {
   check('打开不存在的条目返回失败原因', missing.ok === false && Boolean(missing.error), JSON.stringify(missing));
   const afterClear = JSON.parse(await evaluate(island.send, `JSON.stringify(await window.suira.island.clear())`));
   check('清空后暂存为空', afterClear.items.length === 0, JSON.stringify(afterClear.items));
+  check('清空可撤销，不删除源文件', afterClear.canUndo === true && fs.existsSync(fileA) && fs.existsSync(fileB));
+  const undoClear = JSON.parse(await evaluate(island.send, `JSON.stringify(await window.suira.island.undo())`));
+  check('撤销清空找回最后一条引用', undoClear.items.length === 1);
+  const undoRemove = JSON.parse(await evaluate(island.send, `JSON.stringify(await window.suira.island.undo())`));
+  check('可连续撤销之前的移除', undoRemove.items.length === 2);
+  await evaluate(island.send, `window.suira.island.setMode('sleep')`);
+  await sleep(80);
   const collapsedAgain = JSON.parse(await evaluate(island.send, `JSON.stringify({ w: window.innerWidth, h: window.innerHeight })`));
-  check('收起后窗口回到 176×44', collapsedAgain.w === 176 && collapsedAgain.h === 44, JSON.stringify(collapsedAgain));
+  check('收起后回到隐藏接收尺寸，不停留胶囊', Math.abs(collapsedAgain.w - 440) <= 4 && collapsedAgain.h >= 36 && collapsedAgain.h <= 40, JSON.stringify(collapsedAgain));
+  check('收起后真实页面仍为 sleep', await evaluate(island.send, `document.getElementById('island').dataset.mode`) === 'sleep');
 
   console.log('\n== 快捷键：布局轮换 / 钉图显隐 / 按住型 ==');
   const shortcuts = JSON.parse(await evaluate(main.send, `JSON.stringify(await window.suira.shortcuts.get())`));

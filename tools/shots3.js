@@ -38,7 +38,7 @@ const BG = `
   <rect x="60" y="430" width="1320" height="380" rx="14" fill="#ffffff"/>
   <text x="92" y="486" font-family="Microsoft YaHei,sans-serif" font-size="21" fill="#2b3442">本月工作概览</text>
   <rect x="92" y="520" width="1256" height="1" fill="#e7ebf3"/>
-  <text x="92" y="576" font-family="Microsoft YaHei,sans-serif" font-size="17" fill="#6f7b8d">截图 128 张 · 提字 64 次 · 入匣 39 条 · 导出 12 份</text>
+  <text x="92" y="576" font-family="Microsoft YaHei,sans-serif" font-size="17" fill="#6f7b8d">截图 128 张，提字 64 次，入匣 39 条，导出 12 份</text>
   <rect x="92" y="614" width="240" height="150" rx="10" fill="#f4f6fa"/>
   <rect x="356" y="614" width="240" height="150" rx="10" fill="#f4f6fa"/>
   <rect x="620" y="614" width="240" height="150" rx="10" fill="#f4f6fa"/>

@@ -3,8 +3,8 @@
 这套图对应仓库当前提交（`main`），分四组：
 
 - **设计稿视图（01–07）**：无头 Chrome 加载真实页面 + 注入 mock 数据桥，用于稳定展示「有内容时」的界面。
-- **真实运行视图（08–11）**：Electron 应用真实启动后，通过 DevTools 协议直接截取主窗口。
-- **面板与工具箱视图（12–15）**：无头 Chrome 加载真实 `quickpanel` 页面，展示 38 键动作面板、应用面板、工具箱与 OCR 结果。
+- **真实运行视图（08–11）**：使用独立空数据目录启动 Electron，通过 DevTools 协议截取主窗口，不读取个人剪贴板历史。
+- **面板与工具箱视图（12–15、21–22）**：无头 Chrome 加载真实 `quickpanel` 页面，960×660 DIP、2× 输出；展示动作、应用、工具箱、OCR、翻译和深色面板。接口数据为 fixture，键位与工具箱来自生产模型。
 - **浮引岛视图（17–18）**：无头 Chrome 加载真实 `island` 页面（176×44 / 520×148 两种窗口尺寸）；16 是覆盖层回归截图。
 
 各图组共用同一份 `src/` 代码与样式，差别只在数据与渲染器（Chrome vs Electron）。
@@ -28,24 +28,26 @@
 | [08-live-task-shelf.png](08-live-task-shelf.png) | 真实主窗口 · 任务匣（首次启动，空数据状态） |
 | [09-live-content-library.png](09-live-content-library.png) | 真实主窗口 · 内容库（空状态文案） |
 | [10-live-process-trail.png](10-live-process-trail.png) | 真实主窗口 · 处理轨迹 |
-| [11-live-settings.png](11-live-settings.png) | 真实主窗口 · 设置（注意开关是蓝色实心「开」，与设计稿视图的灰色不同——设计稿里 mock 重新赋值了 settings 对象，属渲染脚本问题而非产品缺陷） |
+| [11-live-settings.png](11-live-settings.png) | 真实主窗口 · 设置（独立实例的默认配置） |
 
 ## 面板与工具箱视图
 
 | 图 | 说明 |
 |---|---|
-| [12-panel-actions.png](12-panel-actions.png) | 38 键动作面板：4 行（12/10/9/7）、彩色图标、角标键帽、未绑定键显示「绑定」 |
+| [12-panel-actions.png](12-panel-actions.png) | 1160×620 宽幅动作面板：38 键、72×56 键帽、并排上下文栏，原生窗口无外围矩形底板 |
 | [13-panel-apps.png](13-panel-apps.png) | 应用面板：空格切换后的开始菜单应用网格 |
 | [14-panel-toolbox.png](14-panel-toolbox.png) | 工具箱：13 项，未实现工具标注「尚未实现」 |
-| [15-panel-ocr-result.png](15-panel-ocr-result.png) | 面板内 OCR 结果：可编辑文字 + 复制 / 合并换行 / 加入任务匣 |
+| [15-panel-ocr-result.png](15-panel-ocr-result.png) | 面板内 OCR 结果：可编辑文字 + 查看原图 / 合并换行 / 加入任务匣 / 复制文字 |
+| [21-panel-translate.png](21-panel-translate.png) | 面板内翻译结果：原文 / 译文对照 + 目标语言重翻 + 复制译文 |
+| [22-panel-actions-dark.png](22-panel-actions-dark.png) | 加宽面板深色主题：共享光影与组件令牌 |
 
 ## 浮引岛与回归截图
 
 | 图 | 说明 |
 |---|---|
 | [16-overlay-original.png](16-overlay-original.png) | 截图覆盖层「查看原图」回归截图（`npm run test:overlay` 自动更新） |
-| [17-island-collapsed.png](17-island-collapsed.png) | 浮引岛收起态 176×44：文件数 + 拖入策略 |
-| [18-island-expanded.png](18-island-expanded.png) | 浮引岛展开态 520×148：4 张文件卡片、图片缩略图、策略切换、清空 |
+| [17-island-collapsed.png](17-island-collapsed.png) | 历史兼容胶囊形态，当前默认隐藏且不响应普通悬停 |
+| [18-island-expanded.png](18-island-expanded.png) | 手动打开/拖入后展开：4 张文件卡片、图片缩略图、偏好、撤销与清空 |
 | [19-clipboardbar.png](19-clipboardbar.png) | 底部剪贴板历史条（1180×196）：图片缩略图、文字摘要、文件条目 |
 | [20-clipboardbar-selected.png](20-clipboardbar-selected.png) | 底部剪贴板条选中态：高亮卡片 + 底部选中项信息 |
 
@@ -57,18 +59,18 @@ node tools/shots.js        # 01–04
 node tools/shots2.js       # 05–06
 node tools/shots3.js       # 07
 
-# 真实运行视图（需先以调试端口启动应用）
-#   electron . --remote-debugging-port=9223
-node tools/cdp-shot.js     # 08–11
+# 真实运行视图（自动启动独立空数据实例）
+node tools/refresh-doc-screenshots.js # 08–11
 
 # 面板 / 工具箱视图
-node tools/panel-shot.js   # 12–15
+node tools/panel-shot.js   # 12–15、21–22；同时验证交互与布局
+npm run test:panel         # 同样的回归检查，不改截图
 
 # 浮引岛视图：落在临时目录 %TEMP%\suira-island-shots\，需要时手动复制进本目录
 node tools/island-check.js # 17–18（同时跑 93 项渲染断言）
 
 # 底部剪贴板条视图：落在临时目录 %TEMP%\suira-clipboardbar-shots\
-node tools/clipboardbar-check.js # 19–20（同时跑 78 项渲染断言）
+node tools/clipboardbar-check.js --preview # 19–20（93 项断言；预览使用示例缩略图，结果位于临时目录）
 ```
 
 出图脚本依赖本机 Chrome 或 Edge，找不到时会直接报错退出。

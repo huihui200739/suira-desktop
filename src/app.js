@@ -9,6 +9,7 @@ const ACTION_LABELS = {
   'output.copy': '复制',
   'text.merge-lines': '合并换行',
   'text.clean': '清理文字',
+  'text.translate': '翻译',
   'ocr.local': '提取文字',
   'image.pin': '钉在桌面',
   'files.reveal': '定位文件',
@@ -45,6 +46,10 @@ function relativeTime(timestamp) {
 
 function showGlobalToast(message, type = '') {
   const el = $('#global-toast');
+  if (window.SuiraUI) {
+    state.toastTimer = window.SuiraUI.notify(el,message,{error:type === 'error'});
+    return;
+  }
   el.textContent = message;
   el.className = `global-toast is-visible ${type}`.trim();
   clearTimeout(state.toastTimer);
@@ -100,7 +105,7 @@ function renderTaskList() {
   list.innerHTML = state.tasks.map((task) => `
     <button class="task-row ${task.id === state.selectedTaskId ? 'is-active' : ''}" type="button" data-id="${escapeHtml(task.id)}">
       <span class="task-row-mark"></span>
-      <span class="task-row-body"><b>${escapeHtml(task.title)}</b><small>${task.items.length} 项 · ${relativeTime(task.updatedAt)}</small></span>
+      <span class="task-row-body"><b>${escapeHtml(task.title)}</b><small>${task.items.length} 项，${relativeTime(task.updatedAt)}</small></span>
     </button>
   `).join('');
   $$('.task-row', list).forEach((row) => {
@@ -139,7 +144,7 @@ function renderTaskDetail() {
   empty.hidden = true;
   body.hidden = false;
   $('#task-title').textContent = task.title;
-  $('#task-subtitle').textContent = `${task.items.length} 项内容 · 创建于 ${relativeTime(task.createdAt)}`;
+  $('#task-subtitle').textContent = `${task.items.length} 项内容，创建于 ${relativeTime(task.createdAt)}`;
 
   const chips = taskStepChips(task);
   $('#task-timeline').innerHTML = chips.length ? chips.map((chip, index) => `
@@ -311,7 +316,7 @@ function renderLibrary() {
       ${item.kind === 'image' && item.thumbnail
         ? `<img class="shelf-thumb" src="${escapeHtml(item.thumbnail)}" alt="">`
         : `<p class="shelf-text">${escapeHtml((item.text || item.filePath || '').slice(0, 220) || '（无文字内容）')}</p>`}
-      ${derived.length ? `<div class="derived-note">${derived.length} 个处理结果 · ${escapeHtml(derived[0].title || '')}</div>` : ''}
+      ${derived.length ? `<div class="derived-note">${derived.length} 个处理结果</div>` : ''}
       <footer class="shelf-card-actions">
         <button type="button" data-copy="${escapeHtml(item.id)}">复制</button>
         <button type="button" data-paste="${escapeHtml(item.id)}">粘贴</button>
@@ -369,7 +374,7 @@ function renderLibrary() {
   }));
   $$('[data-shelf]', grid).forEach((button) => button.addEventListener('click', async () => {
     const result = await window.suira.actions.run(button.dataset.shelf, 'output.shelf');
-    if (result?.ok) showGlobalToast('已加入任务匣 · 临时收集', 'success');
+    if (result?.ok) showGlobalToast('已加入任务匣', 'success');
     else showGlobalToast(result?.error || '加入失败', 'error');
   }));
   $$('[data-fix]', grid).forEach((button) => button.addEventListener('click', async () => {
@@ -392,9 +397,8 @@ function renderLibrary() {
 
 /** 图片预览优先用缩略图（已内联，必定可读），没有再回落到本地文件路径。 */
 function previewImageSource(item) {
-  if (item?.thumbnail) return item.thumbnail;
   const filePath = String(item?.filePath || '').trim();
-  if (!filePath) return '';
+  if (!filePath) return item?.thumbnail || '';
   // Windows 路径转 file:// URL：逐段转义（空格、#、? 等），保留盘符的冒号
   const encoded = filePath
     .replace(/\\/g, '/')
@@ -441,12 +445,21 @@ function openPreview(itemId) {
 
   const body = $('#preview-body');
   body.replaceChildren();
+  body.classList.remove('is-pixel-mode');
+  const pixels=$('#preview-pixels');
+  pixels.hidden=item.kind!=='image';pixels.disabled=!item.filePath;
+  pixels.textContent=item.filePath?'原始像素':'缩略图';pixels.setAttribute('aria-pressed','false');
   if (item.kind === 'image') {
     const source = previewImageSource(item);
     if (source) {
       const image = document.createElement('img');
       image.className = 'preview-image';
       image.alt = item.title || '图片预览';
+      image.onerror=()=>{
+        image.onerror=null;
+        if(item.thumbnail&&image.src!==item.thumbnail){image.src=item.thumbnail;pixels.disabled=true;pixels.textContent='原图不可用';showGlobalToast('原图无法读取，正在显示缩略图','error');}
+        else body.replaceChildren(previewPlaceholder('原图无法读取'));
+      };
       image.src = source;
       body.appendChild(image);
     } else {
@@ -480,6 +493,7 @@ function openPreview(itemId) {
   }
 
   preview.hidden = false;
+  if (window.SuiraUI) window.SuiraUI.openDialog(preview, { close: closePreview });
   const closeButton = $('#preview-close');
   if (closeButton) closeButton.focus({ preventScroll: true });
 }
@@ -489,10 +503,20 @@ function closePreview() {
   const preview = $('#preview');
   if (!preview || preview.hidden) return false;
   preview.hidden = true;
+  preview._dialogCleanup?.();
   state.previewId = '';
   const body = $('#preview-body');
   if (body) body.replaceChildren();
   return true;
+}
+
+function togglePreviewPixels() {
+  const image=$('#preview-body .preview-image'),button=$('#preview-pixels');
+  if(!image?.naturalWidth)return;
+  const enabled=button.getAttribute('aria-pressed')!=='true';
+  button.setAttribute('aria-pressed',String(enabled));button.textContent=enabled?'适应窗口':'原始像素';
+  $('#preview-body').classList.toggle('is-pixel-mode',enabled);
+  image.style.width=enabled?`${image.naturalWidth/(window.devicePixelRatio||1)}px`:'';
 }
 
 /** 复制内容并尝试直接粘回打开随序之前所在的应用。 */
@@ -539,7 +563,7 @@ function renderTrail() {
       <span class="trail-status ${execution.status}">${statusLabel}</span>
       <div class="trail-main">
         <b>${escapeHtml(ACTION_LABELS[execution.actionId] || execution.actionId)}</b>
-        <small>${escapeHtml(inputNames.join('、') || '本地内容')}${execution.error ? ` · ${escapeHtml(execution.error)}` : ''}</small>
+        <small>${escapeHtml(inputNames.join('、') || '本地内容')}${execution.error ? `，${escapeHtml(execution.error)}` : ''}</small>
       </div>
       ${execution.status === 'failed' ? `<button class="trail-retry" type="button" data-retry="${escapeHtml(execution.id)}">重试</button>` : ''}
       <time>${relativeTime(execution.startedAt)}</time>
@@ -572,7 +596,7 @@ function renderTrail() {
 
 async function refreshSettings() {
   const info = await window.suira.app.info();
-  $('#app-version').textContent = `版本 ${info?.version || '—'} · ${info?.runtime || ''}`;
+  $('#app-version').textContent = `版本 ${info?.version || '—'}，${info?.runtime || ''}`;
   $('#side-version').textContent = info?.version || '—';
   $('#user-data-path').textContent = info?.dataPath || info?.userData || '';
   const settings = await window.suira.settings.get();
@@ -584,6 +608,8 @@ async function refreshSettings() {
   $('#setting-days').value = settings.retentionDays;
   $('#setting-max').value = settings.maxItems;
   $('#setting-langs').value = settings.ocrLangs;
+  $('#setting-theme').value = settings.theme || 'light';
+  applyTranslateSettings(settings);
   await refreshShortcuts();
 }
 
@@ -595,7 +621,93 @@ function bindSettings() {
   $('#setting-days').addEventListener('change', (event) => window.suira.settings.update({ retentionDays: Number(event.target.value) }));
   $('#setting-max').addEventListener('change', (event) => window.suira.settings.update({ maxItems: Number(event.target.value) }));
   $('#setting-langs').addEventListener('change', (event) => window.suira.settings.update({ ocrLangs: event.target.value }));
+  // 换肤走 nativeTheme：主进程改一次，所有窗口的 prefers-color-scheme 同时生效
+  $('#setting-theme').addEventListener('change', (event) => window.suira.settings.update({ theme: event.target.value, themeChosen: true }));
+  bindTranslateSettings();
   bindShortcutEditors();
+}
+
+/* ---------- 翻译设置 ---------- */
+
+/** 只显示当前引擎需要的字段：OpenAI 兼容要 Base URL/模型，微软要区域。 */
+function syncTranslateRows(provider) {
+  $$('[data-translate-row]').forEach((row) => {
+    row.hidden = row.dataset.translateRow !== provider;
+  });
+  const keyRow = $('#setting-translate-key');
+  if (keyRow) keyRow.disabled = provider === 'none';
+}
+
+function applyTranslateSettings(settings) {
+  const provider = settings.translateProvider || 'none';
+  $('#setting-translate-provider').value = provider;
+  $('#setting-translate-base').value = settings.translateBaseUrl || '';
+  $('#setting-translate-model').value = settings.translateModel || '';
+  $('#setting-translate-region').value = settings.translateRegion || '';
+  $('#setting-translate-target').value = settings.translateTarget || 'zh';
+  $('#setting-translate-key').value = '';
+  syncTranslateRows(provider);
+  const hint = $('#setting-translate-keyhint');
+  const status = $('#setting-translate-status');
+  if (settings.translateApiKeySet) {
+    hint.textContent = '已保存（加密存储）；留空表示不修改';
+    status.textContent = provider === 'none' ? '未配置引擎' : '密钥已保存';
+    status.className = 'setting-hint is-ok';
+  } else {
+    hint.textContent = '尚未保存；粘贴后离开输入框即保存';
+    status.textContent = provider === 'none' ? '未配置引擎，翻译会提示去设置' : '还缺密钥';
+    status.className = 'setting-hint';
+  }
+}
+
+function bindTranslateSettings() {
+  $('#setting-translate-provider').addEventListener('change', async (event) => {
+    const provider = event.target.value;
+    syncTranslateRows(provider);
+    await window.suira.settings.update({ translateProvider: provider });
+    const settings = await window.suira.settings.get();
+    applyTranslateSettings(settings);
+  });
+  for (const [id, key] of [
+    ['#setting-translate-base', 'translateBaseUrl'],
+    ['#setting-translate-model', 'translateModel'],
+    ['#setting-translate-region', 'translateRegion']
+  ]) {
+    $(id).addEventListener('change', (event) => window.suira.settings.update({ [key]: event.target.value }));
+  }
+  $('#setting-translate-target').addEventListener('change', async (event) => {
+    await window.suira.settings.update({ translateTarget: event.target.value });
+    showGlobalToast('目标语言已更新');
+  });
+  // 密钥：失焦即保存，空值表示不修改；要清除用下面的按钮
+  $('#setting-translate-key').addEventListener('change', async (event) => {
+    const value = String(event.target.value || '').trim();
+    if (!value) return;
+    const result = await window.suira.settings.update({ translateApiKey: value });
+    if (!result?.ok) { showGlobalToast(result?.error || '保存失败', 'error'); return; }
+    event.target.value = '';
+    applyTranslateSettings(result.settings);
+    showGlobalToast('密钥已加密保存', 'success');
+  });
+  $('#setting-translate-clear').addEventListener('click', async () => {
+    const result = await window.suira.settings.update({ translateApiKey: null });
+    if (!result?.ok) { showGlobalToast(result?.error || '清除失败', 'error'); return; }
+    applyTranslateSettings(result.settings);
+    showGlobalToast('已清除密钥', 'success');
+  });
+  $('#setting-translate-test').addEventListener('click', async () => {
+    const status = $('#setting-translate-status');
+    status.textContent = '正在测试…';
+    status.className = 'setting-hint';
+    const result = await window.suira.translate.test();
+    if (!result?.ok) {
+      status.textContent = result?.error || '测试失败';
+      status.className = 'setting-hint is-error';
+      return;
+    }
+    status.textContent = `可用：${result.sample || result.text}`;
+    status.className = 'setting-hint is-ok';
+  });
 }
 
 /* ---------- 快捷键改键 ---------- */
@@ -840,14 +952,14 @@ function syncMaximizeIcon(maximized) {
     ? '<svg viewBox="0 0 16 16"><rect x="3.5" y="5.5" width="7" height="7" rx="1"/><path d="M5.5 5.5V3.5h7v7h-2"/></svg>'
     : '<svg viewBox="0 0 16 16"><rect x="3.5" y="3.5" width="9" height="9" rx="1"/></svg>';
 }
-function openModal(title, eyebrow, placeholder, onConfirm, options = {}) {
+function openModal(title, placeholder, onConfirm, options = {}) {
   $('#modal').hidden = false;
   $('#modal-title').textContent = title;
-  $('#modal-eyebrow').textContent = eyebrow;
   const input = $('#modal-input');
   input.value = '';
   input.placeholder = placeholder || '';
-  setTimeout(() => input.focus(), 30);
+  if (window.SuiraUI) window.SuiraUI.openDialog($('#modal'), { close: closeModal });
+  else input.focus();
 
   // expect：必须逐字输入确认词才允许提交。之前只判断「非空」，
   // 输入任意一个字符都能删任务或清空剪贴板。
@@ -874,15 +986,14 @@ function openModal(title, eyebrow, placeholder, onConfirm, options = {}) {
       input.focus();
       return;
     }
-    $('#modal').hidden = true;
-    input.oninput = null;
-    confirmBtn.disabled = false;
+    closeModal();
     await onConfirm(value);
   };
 }
 
 function closeModal() {
   $('#modal').hidden = true;
+  $('#modal')._dialogCleanup?.();
   const input = $('#modal-input');
   input.oninput = null;
   $('#modal-confirm').disabled = false;
@@ -905,7 +1016,7 @@ function installEvents() {
   });
   $('#close').addEventListener('click', () => window.suira.window.close());
 
-  $('#shelf-new').addEventListener('click', () => openModal('新建任务', 'NEW TASK', '例如：竞品研究', async (title) => {
+  $('#shelf-new').addEventListener('click', () => openModal('新建任务', '例如：竞品研究', async (title) => {
     const result = await window.suira.tasks.create(title);
     if (result?.ok) {
       state.selectedTaskId = result.task.id;
@@ -945,7 +1056,7 @@ function installEvents() {
   $('#task-delete').addEventListener('click', async () => {
     const task = selectedTask();
     if (!task) return;
-    openModal('删除任务', 'CONFIRM', `输入「${task.title}」确认删除`, async () => {
+    openModal('删除任务', `输入「${task.title}」确认删除`, async () => {
       await window.suira.tasks.remove(task.id);
       state.selectedTaskId = '';
       showGlobalToast('任务已删除');
@@ -959,7 +1070,7 @@ function installEvents() {
     if (!result?.ok) showGlobalToast(result?.error || '暂时无法开始截图', 'error');
   });
   $('#library-clear').addEventListener('click', () => {
-    openModal('清空剪贴板记录', 'CLEAR CLIPBOARD', '输入「清空」以确认', async (value) => {
+    openModal('清空剪贴板记录', '输入「清空」以确认', async (value) => {
       if (value !== '清空') { showGlobalToast('已取消', 'error'); return; }
       const result = await window.suira.content.clearClipboard();
       if (result?.ok) {
@@ -1011,6 +1122,7 @@ function installEvents() {
     else showGlobalToast(result?.error || '复制失败', 'error');
   });
   $('#preview-paste').addEventListener('click', () => pasteItemToTarget(state.previewId));
+  $('#preview-pixels').addEventListener('click',togglePreviewPixels);
 
   document.addEventListener('keydown', (event) => {
     // 预览层打开时，Esc 只关预览层，不再落到弹窗或输入框逻辑
@@ -1051,7 +1163,7 @@ async function init() {
   installEvents();
   const info = await window.suira.app.info();
   if (info?.version) {
-    $('#app-version').textContent = `版本 ${info.version} · ${info.runtime || ''}`;
+    $('#app-version').textContent = `版本 ${info.version}，${info.runtime || ''}`;
     $('#side-version').textContent = info.version;
   }
   state.executions = (await window.suira.executions.list(200)) || [];

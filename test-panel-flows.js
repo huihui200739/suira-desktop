@@ -26,10 +26,11 @@ const tmp = path.join(os.tmpdir(), 'suira-panel-' + Date.now());
 fs.mkdirSync(tmp, { recursive: true });
 const store = new SuiraStore(path.join(tmp, 'd.json'));
 
-const calls = { capture: [], pin: [], desktop: 0, lock: 0 };
+const calls = { capture: [], pin: [], desktop: 0, lock: 0, note: [] };
 const actions = createActionRegistry({
   store,
   ocr: { recognizeFile: async () => ({ text: '识别出的文字', confidence: 90, blocks: [], engine: 'test', cached: false }) },
+  translate: async (text) => ({ ok: true, text: '【译】' + text, provider: 'openai', from: 'en', to: 'zh' }),
   clipboard: { writeText: async () => {}, writeImage: async () => {} },
   shell: { showItemInFolder: () => {}, openExternal: async () => {} },
   nativeImage: { createFromBuffer: () => ({ getSize: () => ({ width: 100, height: 80 }) }) },
@@ -49,6 +50,8 @@ function makePanel(overrides = {}) {
     pin: (filePath, size) => calls.pin.push({ filePath, size }),
     switchToDesktop: () => { calls.desktop++; return { ok: true, message: '已显示桌面', closePanel: true }; },
     lockWorkstation: () => { calls.lock++; return { ok: true, message: '正在锁屏', closePanel: true }; },
+    // 速记：打开最近一条（没有才新建），窗口由主进程负责
+    openNote: async () => { calls.note.push('open'); return { ok: true, id: 'note-1' }; },
     ...overrides
   });
 }
@@ -78,6 +81,11 @@ function makePanel(overrides = {}) {
   console.log('\n== 截图链路：面板 → 覆盖层 → 收起面板 ==');
 
   const panel = makePanel();
+
+  await ta('S 录屏：进入区域选择，保留 record 意图并收起面板',async()=>{
+    const result=await panel.run('record');
+    assert.equal(result.ok,true);assert.equal(result.closePanel,true);assert.equal(calls.capture.at(-1),'record');
+  });
 
   await ta('Z 截图：进入覆盖层并收起面板', async () => {
     const r = await panel.run('capture');
@@ -170,10 +178,11 @@ function makePanel(overrides = {}) {
 
   console.log('\n== 剪贴板 / 文本转换链路 ==');
 
-  await ta('X 剪贴板：带用户去内容库，不停在面板', async () => {
+  await ta('X 剪贴板：打开底部历史横栏', async () => {
     const r = await panel.run('clipboard');
     assert.strictEqual(r.ok, true);
-    assert.strictEqual(r.openPage, 'library');
+    assert.strictEqual(r.openClipboardBar, true);
+    assert.strictEqual(r.openPage, undefined);
     assert.strictEqual(r.closePanel, true);
   });
 
@@ -203,6 +212,89 @@ function makePanel(overrides = {}) {
     assert.match(r.error, /还没有文字内容/);
   });
 
+  console.log('\n== 翻译链路（图片取词翻译）==');
+
+  await ta('T 翻译：有文字就翻文字，结果回填到面板', async () => {
+    const textItem = store.addItem({ kind: 'text', title: '英文句子', text: 'Hello world' });
+    const r = await panel.run('translate');
+    assert.strictEqual(r.ok, true);
+    assert.ok(r.translate, '没有返回翻译结果，面板拿不到回填数据');
+    assert.strictEqual(r.translate.text, '【译】Hello world');
+    assert.strictEqual(r.translate.source, 'Hello world');
+    assert.strictEqual(r.translate.itemId, textItem.id);
+    assert.strictEqual(r.translate.hasImage, false, '文字来源不该出现「查看原图」');
+    // 译文作为派生内容落盘，指回原文
+    const output = store.getItem(r.translate.outputId);
+    assert.ok(output, '译文没有落盘');
+    assert.strictEqual(output.meta.derivedBy, 'text.translate');
+    assert.strictEqual(output.meta.originItemId, textItem.id);
+  });
+
+  await ta('T 翻译：没有文字时翻最近一张图，先取词再翻译', async () => {
+    const bare = new SuiraStore(path.join(tmp, 'translate-img.json'));
+    const img = bare.addItem({ kind: 'image', title: '英文截图', filePath: path.join(tmp, 'shot.png'), text: '' });
+    const flows = createPanelActions({
+      store: bare,
+      actions: createActionRegistry({
+        store: bare,
+        ocr: { recognizeFile: async () => ({ text: 'Text in image', confidence: 88, blocks: [], engine: 'test', cached: false }) },
+        translate: async (text) => ({ ok: true, text: '【译】' + text, provider: 'openai', from: 'en', to: 'zh' }),
+        clipboard: { writeText: async () => {}, writeImage: async () => {} },
+        shell: { showItemInFolder: () => {}, openExternal: async () => {} },
+        nativeImage: { createFromBuffer: () => ({ getSize: () => ({ width: 1, height: 1 }) }) },
+        openPath: async () => '',
+        pinImage: async () => {},
+        broadcast: () => {},
+        assetPath: () => '',
+        capturesDir: () => tmp,
+        makeId: (p) => p + '-tr'
+      }),
+      capture: async () => ({ ok: true }),
+      pin: () => {},
+      switchToDesktop: () => ({ ok: true }),
+      lockWorkstation: () => ({ ok: true })
+    });
+    const r = await flows.run('translate');
+    assert.strictEqual(r.ok, true);
+    assert.strictEqual(r.translate.source, 'Text in image', '没有把 OCR 取到的词当原文');
+    assert.strictEqual(r.translate.hasImage, true, '图片来源应提供「查看原图」');
+    assert.strictEqual(r.translate.itemId, img.id, '原图入口应指向那张图片，而不是 OCR 派生条目');
+    // 取词结果单独留一条内容，处理轨迹里能看出"译文来自哪张图"
+    const ocrItem = bare.data.items.find((item) => item.meta?.derivedBy === 'ocr.local');
+    assert.ok(ocrItem, '图片取词没有留下识别结果');
+    assert.strictEqual(ocrItem.meta.originItemId, img.id);
+  });
+
+  await ta('T 翻译：引擎未配置时给出可读原因，不产出假译文', async () => {
+    const bare = new SuiraStore(path.join(tmp, 'translate-none.json'));
+    bare.addItem({ kind: 'text', title: '待翻译', text: 'Hello' });
+    const flows = createPanelActions({
+      store: bare,
+      actions: createActionRegistry({
+        store: bare,
+        ocr: { recognizeFile: async () => ({ text: '', confidence: 0, blocks: [], engine: 'test', cached: false }) },
+        translate: async () => ({ ok: false, error: '还没有配置翻译引擎：到设置 → 翻译里选择一个引擎并填入密钥' }),
+        clipboard: { writeText: async () => {}, writeImage: async () => {} },
+        shell: { showItemInFolder: () => {}, openExternal: async () => {} },
+        nativeImage: { createFromBuffer: () => ({ getSize: () => ({ width: 1, height: 1 }) }) },
+        openPath: async () => '',
+        pinImage: async () => {},
+        broadcast: () => {},
+        assetPath: () => '',
+        capturesDir: () => tmp,
+        makeId: (p) => p + '-none'
+      }),
+      capture: async () => ({ ok: true }),
+      pin: () => {},
+      switchToDesktop: () => ({ ok: true }),
+      lockWorkstation: () => ({ ok: true })
+    });
+    const r = await flows.run('translate');
+    assert.strictEqual(r.ok, false);
+    assert.match(r.error, /设置/);
+    assert.ok(!r.translate, '失败时不该返回翻译结果');
+  });
+
   console.log('\n== 系统动作链路 ==');
 
   await ta('D 显示桌面：调用系统能力并收起面板', async () => {
@@ -217,6 +309,20 @@ function makePanel(overrides = {}) {
     assert.strictEqual(r.ok, true);
     assert.strictEqual(r.closePanel, true);
     assert.ok(calls.lock >= 1);
+  });
+
+  await ta('N 速记：打开速记窗口并收起面板（不产出一个空壳提示）', async () => {
+    const r = await panel.run('note');
+    assert.strictEqual(r.ok, true);
+    assert.strictEqual(r.closePanel, true, '速记是接管输入的窗口，面板必须收起');
+    assert.strictEqual(calls.note.at(-1), 'open');
+  });
+
+  await ta('速记打不开时给出可读原因，不静默失败', async () => {
+    const broken = makePanel({ openNote: async () => ({ ok: false, error: '数据未就绪' }) });
+    const r = await broken.run('note');
+    assert.strictEqual(r.ok, false);
+    assert.match(r.error, /数据未就绪/);
   });
 
   console.log('\n== 未实现动作的边界 ==');

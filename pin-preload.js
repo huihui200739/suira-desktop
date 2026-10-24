@@ -10,6 +10,11 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('pinApi', {
+  getData: () => ipcRenderer.invoke('pin:data'),
+  copy: () => ipcRenderer.invoke('pin:copy'),
+  save: () => ipcRenderer.invoke('pin:save'),
+  toggleTop: () => ipcRenderer.invoke('pin:top'),
+  move: point => ipcRenderer.send('pin:move', point),
   resize: (width, height) => ipcRenderer.send('pin:resize', { width, height }),
   setOpacity: (value) => ipcRenderer.send('pin:opacity', value),
   collapse: (collapsed) => ipcRenderer.send('pin:collapse', Boolean(collapsed)),

@@ -37,11 +37,13 @@ const registry = createActionRegistry({
   console.log('\n== listForItem 类型匹配 ==');
   t('文字条目动作集', () => {
     const list = registry.listForItem({ kind: 'text' });
-    assert.deepStrictEqual(list, ['output.copy', 'text.merge-lines', 'text.clean', 'output.shelf']);
+    // 第三批：文字条目多了「翻译」，位置紧跟复制（最常用的排前面）
+    assert.deepStrictEqual(list, ['output.copy', 'text.translate', 'text.merge-lines', 'text.clean', 'output.shelf']);
   });
   t('图片条目动作集', () => {
     const list = registry.listForItem({ kind: 'image' });
-    assert.deepStrictEqual(list, ['ocr.local', 'image.pin', 'output.copy', 'output.shelf']);
+    // 图片条目：取词 → 翻译 → 钉图，都是对同一张图的操作
+    assert.deepStrictEqual(list, ['ocr.local', 'text.translate', 'image.pin', 'output.copy', 'output.shelf']);
   });
   t('文件条目动作集', () => {
     assert.deepStrictEqual(registry.listForItem({ kind: 'files' }), ['files.reveal', 'output.copy', 'output.shelf']);

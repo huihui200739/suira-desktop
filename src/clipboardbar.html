@@ -2,40 +2,52 @@
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8">
-  <meta name="color-scheme" content="dark">
-  <title>随序 · 剪贴板历史</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="color-scheme" content="light dark">
+  <title>随序 剪贴板历史</title>
+  <link rel="stylesheet" href="theme.css">
   <link rel="stylesheet" href="clipboardbar.css">
+  <link rel="stylesheet" href="ui-motion.css">
 </head>
 <body>
-  <!--
-    剪贴板历史条：主进程创建 1180×196 的置顶无边框透明窗口，贴着主显示器工作区底部。
-    渲染层只适配这个视口，不自己改窗口尺寸；根元素裁掉溢出，不出现页面级滚动条。
-    收起/隐藏与失焦由主进程负责，页面只在 onShown 时重新拉取列表并重置选中项。
-  -->
+  <!-- 跟随唤出所在显示器的底部内容架，尺寸由主进程适配工作区。 -->
   <main class="bar" id="bar" aria-label="剪贴板历史条">
     <header class="bar-head">
       <span class="bar-mark" aria-hidden="true">
         <svg viewBox="0 0 24 24"><rect x="6" y="4.5" width="12" height="16" rx="2"/><path d="M9.5 4.5V3h5v1.5"/><path d="M9.5 10h5M9.5 13.5h5M9.5 17h3"/></svg>
       </span>
       <h1 class="bar-title">剪贴板历史</h1>
+      <label class="bar-search"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m15.5 15.5 4 4"/></svg><input id="bar-search" type="search" placeholder="搜索内容" aria-label="搜索剪贴板历史" autocomplete="off" spellcheck="false"><kbd>Ctrl F</kbd></label>
+      <nav class="bar-filters" data-selection-group aria-label="内容类型">
+        <button type="button" data-filter="all" aria-pressed="true">全部</button>
+        <button type="button" data-filter="text" aria-pressed="false">文字</button>
+        <button type="button" data-filter="image" aria-pressed="false">图片</button>
+        <button type="button" data-filter="link" aria-pressed="false">链接</button>
+        <button type="button" data-filter="files" aria-pressed="false">文件</button>
+        <button type="button" data-filter="favorite" aria-pressed="false">收藏</button>
+      </nav>
       <span class="bar-count" id="bar-count">0 条</span>
-      <p class="bar-hints">← → 选择 · Enter 复制并返回 · Esc 关闭</p>
+      <div class="bar-tools"><button id="bar-library" type="button" title="打开完整内容库" aria-label="打开完整内容库">内容库 ↗</button><button id="bar-close" type="button" title="Esc 关闭" aria-label="关闭剪贴板">×</button></div>
     </header>
 
     <div class="bar-body">
       <div class="bar-track" id="bar-track" role="listbox" aria-label="剪贴板历史列表" aria-orientation="horizontal"></div>
       <div class="bar-empty" id="bar-empty" data-mode="loading">
         <b id="bar-empty-title">正在读取剪贴板历史…</b>
+      <p id="bar-empty-hint"></p>
         <p id="bar-empty-hint">马上就好</p>
         <button class="bar-retry" id="bar-retry" type="button" hidden>重试</button>
       </div>
     </div>
 
     <footer class="bar-foot">
-      <span class="bar-selection" id="bar-selection">用 ← → 选择一条记录</span>
+      <button class="bar-retry" id="bar-refresh-retry" type="button" hidden>刷新失败，重试</button>
+      <span class="bar-selection" id="bar-selection">← → 选择</span>
       <span class="bar-notice" id="bar-notice" role="status" aria-live="polite" hidden></span>
+      <div class="bar-actions"><button id="bar-pin" type="button" disabled>收藏</button><button id="bar-submit" type="button" disabled>粘贴到原窗口 <kbd>Enter</kbd></button></div>
     </footer>
   </main>
+  <script src="ui-motion.js"></script>
   <script src="clipboardbar.js"></script>
 </body>
 </html>

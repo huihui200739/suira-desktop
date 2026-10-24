@@ -21,7 +21,7 @@
 所以在本机验证时，用工作区外的 Electron 加载项目页面：
 
 ```powershell
-C:\temp\el45\electron.exe . --remote-debugging-port=9223
+npm start -- --remote-debugging-port=9223
 ```
 
 或用封装好的脚本：`node tools/electron-real-check.js`
@@ -149,7 +149,7 @@ node tools/electron-core-check.js      # 61 项：截图 / 剪贴板 / 主体 + 
 如果窗口起不来，把下面输出发我：
 
 ```powershell
-C:\temp\el45\electron.exe . --remote-debugging-port=9223
+npm start -- --remote-debugging-port=9223
 echo "退出码: $LASTEXITCODE"
 ```
 

@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="color-scheme" content="light dark">
+  <title>随序 速记</title>
+  <link rel="stylesheet" href="theme.css">
+  <link rel="stylesheet" href="notes.css">
+</head>
+<body>
+  <!--
+    速记：一条笔记一个窗口，纯文本。
+    只做纯文本 —— 富文本与 Markdown 属于另一个量级，不做半成品。
+  -->
+  <main class="note" id="note" data-state="loading">
+    <header class="note-head">
+      <span class="note-mark" aria-hidden="true">
+        <svg viewBox="0 0 24 24"><path d="M5 4.5h14v11l-4.5 4H5z"/><path d="M8.5 9h7M8.5 12.5h4.5"/></svg>
+      </span>
+      <h1 class="note-title" id="note-title">速记</h1>
+      <div class="note-tools">
+        <button id="note-index-btn" type="button" title="全部速记" aria-label="全部速记" aria-expanded="false">记</button>
+        <button id="note-new" type="button" title="新建一条速记" aria-label="新建一条速记">＋</button>
+        <button id="note-pin" type="button" title="钉在桌面上" aria-label="钉在桌面上" aria-pressed="false">钉</button>
+        <button id="note-min" type="button" title="最小化" aria-label="最小化">─</button>
+        <button id="note-close" type="button" title="关闭（Esc）" aria-label="关闭">×</button>
+      </div>
+    </header>
+
+    <!-- 全部速记：不另开管理窗口，就地切换到另一条 -->
+    <div class="note-index" id="note-index" hidden role="listbox" aria-label="全部速记"></div>
+
+    <textarea class="note-body" id="note-body" placeholder="想到什么就写下来…" aria-label="速记正文"
+      spellcheck="false" autocomplete="off"></textarea>
+
+    <footer class="note-foot">
+      <span class="note-count" id="note-count">0 字</span>
+      <span class="note-saved" id="note-saved" role="status" aria-live="polite">已保存</span>
+      <button id="note-delete" type="button" title="删除这条速记">删除</button>
+    </footer>
+
+    <p class="note-error" id="note-error" role="alert" hidden></p>
+  </main>
+  <script src="notes.js"></script>
+</body>
+</html>

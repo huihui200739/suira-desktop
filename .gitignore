@@ -14,6 +14,7 @@ release/
 suira-data.json
 suira-data.key
 captures/
+recordings/
 clipboard-images/
 tessdata-cache/
 
@@ -23,6 +24,7 @@ screen-test.png
 *.log
 *.tmp
 tools/.panel-shot/
+src/__fx_*
 
 # 历史备份（保留在本地，不入库）
 *.bak
@@ -31,6 +33,7 @@ tools/.panel-shot/
 # 本地调试用的独立数据目录（内含真实加密内容与密钥，等同运行时数据）
 .udata/
 .devdata/
+.workbuddy/
 
 # 编辑器 / 系统
 .vscode/

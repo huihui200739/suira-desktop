@@ -7,21 +7,25 @@
  * 空格在「动作面板 / 应用面板」之间切换；工具箱是独立入口。
  *
  * 键位与动作的对应关系由主进程 lib/keybindings.js 决定，渲染层只负责展示
- * 与把按键交回主进程（window.suira.panel.run）。未绑定的键显示「绑定」，
- * 未实现的键显示动作名与「未实现」，都不会假装可以执行。
+ * 与把按键交回主进程（window.suira.panel.run）。未绑定的键只画字母，
+ * 未实现的键使用淡轮廓，并通过悬浮提示说明状态。
  */
 
 const $ = (selector, root = document) => root.querySelector(selector);
 const $$ = (selector, root = document) => Array.from(root.querySelectorAll(selector));
 
 const GLYPHS = {
-  capture: '<svg viewBox="0 0 24 24"><path d="M7 3.5v13.5M7 20v.5M3.5 7h13.5M20 7h.5M17 20H3.5V6.5"/><path d="M3.5 3.5h4M20 3.5h.5v4M20 20.5h.5v-4"/></svg>',
-  ocr: '<span class="glyph-text">T</span>',
-  pin: '<svg viewBox="0 0 24 24"><path d="M9 3.5h6l-1 5 3.5 3.5H6.5L10 8.5z"/><path d="M12 12v8"/></svg>',
-  clipboard: '<svg viewBox="0 0 24 24"><rect x="5.5" y="4.5" width="13" height="16" rx="2.5"/><path d="M9 4.5V3.2h6v1.3M9 10h6M9 14h4"/></svg>',
+  record: '<svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="3"/><circle cx="12" cy="12" r="3"/></svg>',
+  capture: '<svg viewBox="0 0 24 24"><rect x="4" y="5.8" width="16" height="12.4" rx="2.6" stroke-dasharray="3.5 2.7"/><circle cx="12" cy="12" r="2.5"/></svg>',
+  annotate: '<svg viewBox="0 0 24 24"><path d="M4 20.5 5.2 16 16.4 4.8a2 2 0 0 1 2.8 2.8L8 18.8z"/><path d="m14 7.2 2.8 2.8"/></svg>',
+  ocr: '<svg viewBox="0 0 24 24"><path d="M4 8V6a2 2 0 0 1 2-2h2"/><path d="M16 4h2a2 2 0 0 1 2 2v2"/><path d="M20 16v2a2 2 0 0 1-2 2h-2"/><path d="M8 20H6a2 2 0 0 1-2-2v-2"/><path d="M8.2 9.2h7.6"/><path d="M8.2 12.5h5.6"/><path d="M8.2 15.8h3.6"/></svg>',
+  translate: '<svg viewBox="0 0 24 24"><path d="M3.5 5.5h8"/><path d="M7.5 3.5v2c0 3.6-1.8 6.3-4.5 7.9"/><path d="M5 11.3c1.3 1.9 3.1 3.3 5.4 4"/><path d="m12.5 20.5 4.4-11h.2l4.4 11"/><path d="M14.2 16.5h5.6"/></svg>',
+  pin: '<svg viewBox="0 0 24 24"><path d="M9.4 3.5h5.2l-.6 5 3 3c.4.4.1 1-.5 1H7.5c-.6 0-.9-.6-.5-1l3-3z"/><path d="M12 12.5v8"/></svg>',
+  clipboard: '<svg viewBox="0 0 24 24"><rect x="5" y="4.8" width="14" height="16.4" rx="2.6"/><path d="M9 4.8V4a1.6 1.6 0 0 1 1.6-1.6h2.8A1.6 1.6 0 0 1 15 4v.8"/><path d="M9 10.5h6"/><path d="M9 14h4.5"/></svg>',
   'text-clean': '<span class="glyph-text">Aa</span>',
-  desktop: '<svg viewBox="0 0 24 24"><path d="M6 20.5V6.5"/><path d="M6 4.5 18.5 9 6 13.5"/></svg>',
-  lock: '<svg viewBox="0 0 24 24"><rect x="5.5" y="10.5" width="13" height="9.5" rx="2.5"/><path d="M8.5 10.5V8a3.5 3.5 0 0 1 7 0v2.5"/></svg>'
+  desktop: '<svg viewBox="0 0 24 24"><rect x="3.5" y="4.5" width="17" height="12" rx="2.2"/><path d="M9.5 20.5h5"/><path d="M12 16.5v4"/></svg>',
+  lock: '<svg viewBox="0 0 24 24"><rect x="5" y="10.5" width="14" height="9.5" rx="2.8"/><path d="M8.5 10.5V7.8a3.5 3.5 0 0 1 7 0v2.7"/><path d="M12 14.2v2"/></svg>',
+  note: '<svg viewBox="0 0 24 24"><path d="M5 5.8A1.8 1.8 0 0 1 6.8 4h10.4A1.8 1.8 0 0 1 19 5.8v7.2L13.2 19H6.8A1.8 1.8 0 0 1 5 17.2z"/><path d="M18.8 13.4h-3.9a1.7 1.7 0 0 0-1.7 1.7v3.7"/><path d="M8.6 9h6.8"/></svg>'
 };
 
 const PLANNED_GLYPH = '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="7.5" stroke-dasharray="3 3"/><path d="M12 8.5v4M12 15.2v.6"/></svg>';
@@ -37,11 +41,13 @@ const state = {
   query: '',
   commandResults: [],
   commandIndex: 0,
+  commandLoading: false,
+  commandError: '',
   apps: [],
   appPage: 0,
   appsLoaded: false,
   appsLoading: false,
-  returnTarget: null,
+  appsError: '',
   recentItem: null,
   toastTimer: null,
   composing: false
@@ -53,31 +59,44 @@ function escapeHtml(value) {
 
 function toast(message, type = '') {
   const el = $('#toast');
+  if (window.SuiraUI) {
+    state.toastTimer = window.SuiraUI.notify(el,message,{error:type === 'error'});
+    return;
+  }
   el.textContent = message;
-  el.className = `toast is-visible ${type}`.trim();
+  el.className = `toast is-visible ${type === 'error' ? 'is-error' : type}`.trim();
   clearTimeout(state.toastTimer);
   state.toastTimer = setTimeout(() => { el.className = 'toast'; }, 2000);
 }
 
-function relativeTime(timestamp) {
-  const delta = Date.now() - Number(timestamp || 0);
-  if (delta < 60000) return '刚刚';
-  if (delta < 3600000) return `${Math.floor(delta / 60000)} 分钟前`;
-  if (delta < 86400000) return `${Math.floor(delta / 3600000)} 小时前`;
-  return new Date(timestamp).toLocaleDateString('zh-CN', { month: 'numeric', day: 'numeric' });
+// IPC 拒绝也要在当前面板给出反馈，不留未处理的 Promise。
+function listen(target, type, handler) {
+  target.addEventListener(type, (event) => {
+    try {
+      const result = handler(event);
+      if (result?.catch) result.catch((error) => toast(error?.message || '操作失败，请重试', 'error'));
+    } catch (error) {
+      toast(error?.message || '操作失败，请重试', 'error');
+    }
+  });
 }
 
 /* ---------- 模式 ---------- */
 
 function setMode(mode) {
+  $('#mode-actions')?.setAttribute('aria-pressed', String(mode === 'actions'));
+  $('#mode-apps')?.setAttribute('aria-pressed', String(mode === 'apps'));
   state.mode = mode;
   const panel = $('#panel');
   panel.dataset.mode = mode;
   $('#mode-chip').textContent = mode === 'apps' ? '应用' : mode === 'toolbox' ? '工具箱' : '动作';
+  $('#toolbox').setAttribute('aria-pressed', String(mode === 'toolbox'));
+  $('#toolbox').setAttribute('aria-label', mode === 'toolbox' ? '返回动作面板' : '打开工具箱');
 
   $('#key-grid').hidden = mode !== 'actions' || Boolean(state.query);
   $('#apps-panel').hidden = mode !== 'apps' || Boolean(state.query);
-  $('#toolbox-panel').hidden = mode !== 'toolbox';
+  $('#toolbox-panel').hidden = mode !== 'toolbox' || Boolean(state.query);
+  $('#empty-state').hidden = true;
   $('#command-section').hidden = !state.query;
 
   // 搜索条在应用面板里负责过滤，在动作面板里只在显式搜索时获得焦点
@@ -122,15 +141,17 @@ function keyMarkup(key) {
   const bound = key.state === 'bound';
   const classes = ['key', bound ? 'is-bound' : key.state === 'unimplemented' ? 'is-unimplemented' : 'is-unbound'];
   const glyph = bound ? (GLYPHS[key.actionId] || `<span class="glyph-text">${escapeHtml(key.label.slice(0, 1))}</span>`) : '';
+  // 绑定键：图标块 + 功能名 + 键位角标，功能不用靠悬停提示猜；
+  // 未实现键也标出名字（淡色），让整个面板可扫读。
   const inner = bound
-    ? `<span class="key-glyph">${glyph}</span><span class="key-badge">${escapeHtml(key.key)}</span>`
-    : `<span class="key-letter">${escapeHtml(key.key)}</span>`;
-  // 未绑定显示「绑定」；未实现显示动作名，让用户知道这个键规划给什么能力
-  const label = bound ? key.label : key.state === 'unimplemented' ? `${key.label}·未实现` : '绑定';
-  const title = bound ? key.hint : key.state === 'unimplemented' ? `${key.label}：尚未实现` : '这个键还没有绑定动作';
-  return `<button class="${classes.join(' ')}" type="button" data-key="${escapeHtml(key.key)}" data-action="${escapeHtml(key.actionId)}" title="${escapeHtml(title)}">
-    <span class="key-card">${inner}</span>
-    <span class="key-label">${escapeHtml(label)}</span>
+    ? `<span class="key-glyph">${glyph}<i class="key-badge">${escapeHtml(key.key)}</i></span><span class="key-name">${escapeHtml(key.label)}</span>`
+    : key.state === 'unimplemented'
+      ? `<span class="key-letter">${escapeHtml(key.key)}</span><span class="key-name">${escapeHtml(key.label)}</span>`
+      : `<span class="key-letter">${escapeHtml(key.key)}</span>`;
+  const title = bound ? `${key.label}${key.hint ? `：${key.hint}` : ''}` : key.state === 'unimplemented' ? `${key.label}：尚未实现` : '这个键还没有绑定动作';
+  const aria = bound ? `${key.key}：${key.label}` : key.state === 'unimplemented' ? `${key.key}：${key.label}（尚未实现）` : `${key.key}：未绑定`;
+  return `<button class="${classes.join(' ')}" type="button" data-key="${escapeHtml(key.key)}" data-action="${escapeHtml(key.actionId)}" data-state="${escapeHtml(key.state)}" aria-label="${escapeHtml(aria)}" data-hint="${escapeHtml(title)}">
+    <span class="key-card" data-glass>${inner}</span>
   </button>`;
 }
 
@@ -156,15 +177,18 @@ function pressKey(char) {
 /* ---------- 应用面板 ---------- */
 
 async function loadApps() {
+  if (state.appsLoading) return;
   state.appsLoading = true;
+  state.appsError = '';
   renderApps();
   try {
     const apps = await window.suira.apps.list();
     state.apps = Array.isArray(apps) ? apps : [];
     state.appsLoaded = true;
-  } catch {
+  } catch (error) {
     state.apps = [];
-    state.appsLoaded = true;
+    state.appsLoaded = false;
+    state.appsError = error?.message || '无法读取应用列表';
   } finally {
     state.appsLoading = false;
     renderApps();
@@ -173,22 +197,38 @@ async function loadApps() {
 }
 
 /** 当前页图标按需补齐：先出名称，再补图标，避免整页等待。 */
+const iconJobs=new Map();
+let iconWorkers=0, iconPumpTimer=0;
+function pumpIcons() {
+  while(iconWorkers<2&&iconJobs.size) {
+    const start=state.appPage*APP_PAGE_SIZE,apps=filteredApps();
+    const visible=new Set(apps.slice(start,start+APP_PAGE_SIZE).map(a=>a.filePath));
+    const queued=Array.from(iconJobs).filter(([,job])=>!job.running).sort((a,b)=>Number(visible.has(b[0]))-Number(visible.has(a[0]))).slice(0,6);
+    if(!queued.length)return;
+    queued.forEach(([,job])=>job.running=true);iconWorkers++;
+    window.suira.apps.icons(queued.map(([p])=>p)).then(icons=>{
+      for(const [p] of queued) {
+        if(!icons?.[p])continue;
+        const app=state.apps.find(a=>a.filePath===p);if(app)app.icon=icons[p];
+        // 原地补图标，不重建整页或抢走键盘焦点。
+        for(const button of $$('.app-item'))if(button.dataset.path===p){
+          const slot=button.querySelector('.app-icon');const image=new Image();image.src=icons[p];image.alt='';image.decoding='async';slot.replaceChildren(image);
+        }
+      }
+    }).catch(()=>{}).finally(()=>{
+      queued.forEach(([p])=>iconJobs.delete(p));iconWorkers--;pumpIcons();
+    });
+  }
+}
 async function loadAppIcons() {
-  const start = state.appPage * APP_PAGE_SIZE;
-  const pageApps = filteredApps().slice(start, start + APP_PAGE_SIZE);
-  const missing = pageApps.filter((app) => !app.icon).map((app) => app.filePath);
-  if (!missing.length) return;
-  let icons = {};
-  try {
-    icons = await window.suira.apps.icons(missing) || {};
-  } catch {
-    return;
-  }
-  let changed = false;
-  for (const app of state.apps) {
-    if (icons[app.filePath]) { app.icon = icons[app.filePath]; changed = true; }
-  }
-  if (changed && state.mode === 'apps') renderApps();
+  if(state.mode!=='apps')return;
+  const apps=filteredApps(),start=state.appPage*APP_PAGE_SIZE;
+  // 当前页优先；前后一页在后台预取，用户翻页时可直接使用。
+  const nearby=apps.slice(Math.max(0,start-APP_PAGE_SIZE),start+APP_PAGE_SIZE*2);
+  const wanted=new Set(nearby.map(a=>a.filePath));
+  for(const [p,job] of iconJobs)if(!job.running&&!wanted.has(p))iconJobs.delete(p);
+  for(const app of nearby)if(!app.icon&&!iconJobs.has(app.filePath))iconJobs.set(app.filePath,{running:false});
+  clearTimeout(iconPumpTimer);iconPumpTimer=setTimeout(pumpIcons,0);
 }
 
 function filteredApps() {
@@ -205,7 +245,11 @@ function renderApps() {
   const start = state.appPage * APP_PAGE_SIZE;
   const pageApps = apps.slice(start, start + APP_PAGE_SIZE);
 
-  $('#empty-state').hidden = !(state.appsLoaded && !state.appsLoading && !apps.length);
+  const visible = state.mode === 'apps' && !state.query;
+  $('#empty-state').hidden = !visible || Boolean(apps.length);
+  $('#empty-title').textContent = state.appsLoading ? '正在读取应用' : state.appsError ? '应用读取失败' : '没有找到应用';
+  $('#empty-description').textContent = state.appsLoading ? '首次启动会扫描开始菜单，请稍候。' : state.appsError || '开始菜单中暂时没有应用，可以重新扫描。';
+  $('#apps-retry').hidden = state.appsLoading;
 
   grid.innerHTML = pageApps.map((app) => {
     const icon = app.icon ? `<img src="${escapeHtml(app.icon)}" alt="">` : escapeHtml(String(app.name || '?').slice(0, 1));
@@ -225,9 +269,13 @@ function renderApps() {
 
 async function openApp(filePath) {
   if (!filePath) return;
-  const result = await window.suira.quick.openApp(filePath);
-  if (!result?.ok) { toast(result?.error || '无法启动该应用', 'error'); return; }
-  window.suira.quick.hide();
+  try {
+    const result = await window.suira.quick.openApp(filePath);
+    if (!result?.ok) { toast(result?.error || '无法启动该应用', 'error'); return; }
+    await window.suira.quick.hide();
+  } catch (error) {
+    toast(error?.message || '无法启动该应用', 'error');
+  }
 }
 
 /* ---------- 工具箱 ---------- */
@@ -240,7 +288,7 @@ function renderTools() {
     </button>
   `).join('');
   $$('.tool-item').forEach((button) => {
-    button.addEventListener('click', async () => {
+    listen(button, 'click', async () => {
       const tool = state.tools.find((entry) => entry.id === button.dataset.id);
       if (!tool) return;
       if (!tool.implemented) { toast(`「${tool.label}」尚未实现`); return; }
@@ -260,8 +308,17 @@ function renderTools() {
 /* ---------- 搜索 ---------- */
 
 let commandTimer = null;
+let commandRevision = 0;
+
+function cancelCommands() {
+  clearTimeout(commandTimer);
+  commandRevision += 1;
+  state.commandLoading = false;
+  state.commandError = '';
+}
 
 function clearSearch() {
+  cancelCommands();
   state.query = '';
   state.commandResults = [];
   $('#search').value = '';
@@ -269,31 +326,44 @@ function clearSearch() {
 }
 
 function updateSearch(value) {
+  cancelCommands();
   state.query = value.trim();
   state.commandIndex = 0;
+  state.commandResults = [];
   if (!state.query) {
     state.commandResults = [];
     $('#key-grid').hidden = state.mode !== 'actions';
     $('#apps-panel').hidden = state.mode !== 'apps';
     $('#command-section').hidden = true;
+    $('#toolbox-panel').hidden = state.mode !== 'toolbox';
     renderApps();
     return;
   }
   $('#key-grid').hidden = true;
   $('#apps-panel').hidden = true;
+  $('#empty-state').hidden = true;
+  $('#toolbox-panel').hidden = true;
   $('#command-section').hidden = false;
-  clearTimeout(commandTimer);
+  state.commandLoading = true;
+  renderCommands();
   commandTimer = setTimeout(refreshCommands, 90);
   if (state.mode === 'apps') renderApps();
 }
 
 async function refreshCommands() {
+  const revision = commandRevision;
+  const query = state.query;
+  if (!query) return;
   try {
-    const results = await window.suira.search.query(state.query);
-    state.commandResults = Array.isArray(results) ? results : [];
-  } catch {
+    const results = await window.suira.search.query(query);
+    if (revision !== commandRevision) return;
+    state.commandResults = Array.isArray(results) ? results.slice(0, 12) : [];
+  } catch (error) {
+    if (revision !== commandRevision) return;
     state.commandResults = [];
+    state.commandError = error?.message || '请稍后重试';
   }
+  state.commandLoading = false;
   renderCommands();
 }
 
@@ -301,7 +371,7 @@ function renderCommands() {
   const list = $('#command-list');
   const results = state.commandResults;
   if (!results.length) {
-    list.innerHTML = `<div class="command-empty">没有匹配的命令、应用或内容</div>`;
+    list.innerHTML = `<div class="command-empty" role="status">${state.commandLoading ? '正在搜索…' : state.commandError ? `搜索失败：${escapeHtml(state.commandError)}` : '没有匹配的命令、应用或内容'}</div>`;
     return;
   }
   list.innerHTML = results.slice(0, 12).map((entry, index) => {
@@ -312,7 +382,7 @@ function renderCommands() {
     </button>`;
   }).join('');
   $$('.command-item', list).forEach((button) => {
-    button.addEventListener('click', () => runCommand(Number(button.dataset.index)));
+    listen(button, 'click', () => runCommand(Number(button.dataset.index)));
   });
 }
 
@@ -331,7 +401,9 @@ async function runCommand(index) {
   if (kind === 'content') { window.suira.quick.showMain('library'); return; }
   const action = String(entry.action || '');
   if (action === 'capture') { runAction('capture'); return; }
+  if (action === 'record') { runAction('record'); return; }
   if (action === 'quick') { clearSearch(); return; }
+  if (action === 'note') { runAction('note'); return; }
   if (action.startsWith('navigate:')) { window.suira.quick.showMain(action.slice('navigate:'.length)); return; }
   if (action.startsWith('recipe:')) {
     // 配方需要一条具体内容作为输入：用最近内容，没有就直接说明白，
@@ -359,6 +431,8 @@ async function runAction(actionId) {
     const result = await window.suira.panel.run(actionId);
     if (!result) return;
     if (result.ocr) { showOcr(result.ocr.text || '', result.ocr.itemId || ''); return; }
+    if (result.translate) { await showTranslate(result.translate); return; }
+    if (result.openClipboardBar) { await openClipboardBar(); return; }
     if (result.message) toast(result.message, result.ok ? '' : 'error');
     else if (result.error) toast(result.error, 'error');
     // 动作结果在主窗口某页里（内容库 / 任务匣）：带用户过去看，
@@ -374,11 +448,13 @@ async function runAction(actionId) {
 }
 
 function showOcr(text, itemId) {
+  closeTranslate();
   const panel = $('#ocr-panel');
   panel.hidden = false;
   $('#ocr-text').value = text || '';
   $('#ocr-text').placeholder = text ? '' : '没有识别到文字，换一张更清晰的图片试试';
   panel.dataset.itemId = itemId;
+  $('#ocr-text').focus();
 }
 
 function closeOcr() {
@@ -386,7 +462,73 @@ function closeOcr() {
   delete $('#ocr-panel').dataset.itemId;
 }
 
-/* ---------- 最近内容与放回 ---------- */
+async function openClipboardBar() {
+  await window.suira.quick.hide();
+  try {
+    const result=await window.suira.clipboardBar.show();
+    if(result?.ok===false)throw new Error(result.error||'剪贴板横栏打开失败');
+  } catch(error) {
+    await window.suira.quick.show();
+    throw error;
+  }
+}
+
+/* ---------- 翻译结果 ---------- */
+
+let translateRevision = 0;
+
+/** 目标语言下拉只在第一次打开时填充，之后复用。 */
+async function fillTranslateTargets(selected) {
+  const select = $('#translate-target');
+  if (!select || select.dataset.filled === 'true') {
+    if (select && selected) select.value = selected;
+    return;
+  }
+  try {
+    const status = await window.suira.translate.status();
+    const targets = status?.targets || [];
+    if (!targets.length) return;
+    select.innerHTML = targets
+      .map((entry) => `<option value="${escapeHtml(entry.code)}">${escapeHtml(entry.label)}</option>`)
+      .join('');
+    select.dataset.filled = 'true';
+    if (selected) select.value = selected;
+    else if (status?.target) select.value = status.target;
+  } catch {
+    /* 状态读不到时保留下拉为空，用户仍能看到译文 */
+  }
+}
+
+async function showTranslate(payload) {
+  translateRevision += 1;
+  const panel = $('#translate-panel');
+  if (!panel) return;
+  panel.hidden = false;
+  closeOcr();
+  const source = String(payload?.source || '');
+  const text = String(payload?.text || '');
+  $('#translate-source').textContent = source || '（没有原文）';
+  $('#translate-text').value = text;
+  $('#translate-text').placeholder = text ? '' : '译文会显示在这里';
+  panel.dataset.sourceText = source;
+  panel.dataset.itemId = payload?.itemId || '';
+  // 原文就是图片时才有「查看原图」，纯文字内容没有可看的图
+  $('#translate-original').hidden = !payload?.hasImage;
+  $('#translate-text').focus();
+  await fillTranslateTargets(payload?.to || '');
+  if (!text) toast('没有拿到译文，换个引擎或稍后重试', 'error');
+}
+
+function closeTranslate() {
+  translateRevision += 1;
+  const panel = $('#translate-panel');
+  if (!panel) return;
+  panel.hidden = true;
+  delete panel.dataset.sourceText;
+  delete panel.dataset.itemId;
+}
+
+/* ---------- 命令配方使用的最近内容 ---------- */
 
 async function loadRecent() {
   try {
@@ -394,45 +536,6 @@ async function loadRecent() {
     state.recentItem = items?.[0] || null;
   } catch {
     state.recentItem = null;
-  }
-  renderRecent();
-}
-
-const KIND_LABELS = { text: '文字', link: '链接', image: '图片', files: '文件', collection: '集合' };
-
-function renderRecent() {
-  const card = $('#source-card');
-  const item = state.recentItem;
-  if (!item) { card.hidden = true; return; }
-  card.hidden = false;
-  $('#source-kind').textContent = `最近内容 · ${KIND_LABELS[item.kind] || '内容'}`;
-  $('#source-time').textContent = relativeTime(item.createdAt);
-}
-
-function renderReturnBar() {
-  const bar = $('#return-bar');
-  const target = state.returnTarget;
-  if (!target) { bar.hidden = true; return; }
-  bar.hidden = false;
-  const name = target.processName || '原窗口';
-  const title = target.title ? ` · ${target.title.slice(0, 26)}` : '';
-  $('#return-target-text').textContent = `回到 ${name}${title}`;
-}
-
-async function commitReturn() {
-  const item = state.recentItem;
-  if (!item) { toast('还没有可放回的内容', 'error'); return; }
-  const button = $('#return-commit');
-  button.disabled = true;
-  try {
-    const result = await window.suira.returnTo.commit({ itemId: item.id, intent: 'return-and-paste' });
-    if (!result?.ok) { toast(result?.error || '放回失败', 'error'); return; }
-    toast(result.message || '已复制');
-    if (result.copied) window.suira.quick.hide();
-  } catch (error) {
-    toast(error.message || '放回失败', 'error');
-  } finally {
-    button.disabled = false;
   }
 }
 
@@ -445,8 +548,9 @@ async function loadState() {
     state.keys = snapshot?.keys || [];
     state.count = snapshot?.count || state.keys.length;
     state.tools = snapshot?.tools || [];
-  } catch {
+  } catch (error) {
     state.keys = [];
+    toast(error?.message || '面板加载失败，请重新打开', 'error');
   }
   renderKeys();
 }
@@ -464,6 +568,7 @@ function installEvents() {
     if (event.isComposing || state.composing) return;
     if (event.key === 'Escape') {
       event.preventDefault();
+      event.stopPropagation();
       if (state.query) clearSearch();
       else if (state.mode !== 'actions') setMode('actions');
       else window.suira.quick.hide();
@@ -490,28 +595,35 @@ function installEvents() {
     if (event.key === 'Enter') {
       if (!state.commandResults.length) {
         // 结果是异步拉取的，按得太早时给一次明确反馈，而不是静默
-        if (state.query) toast('还在搜索，稍等一下');
+        if (state.commandLoading) toast('还在搜索，稍等一下');
         return;
       }
       event.preventDefault();
-      runCommand(state.commandIndex);
+      runCommand(state.commandIndex).catch((error) => toast(error?.message || '执行失败', 'error'));
     }
   });
 
   document.addEventListener('keydown', (event) => {
-    if (event.isComposing || state.composing) return;
+    if (event.defaultPrevented || event.isComposing || state.composing) return;
     if (!$('#ocr-panel').hidden) {
       if (event.key === 'Escape') { event.preventDefault(); closeOcr(); }
+      return;
+    }
+    if (!$('#translate-panel').hidden) {
+      if (event.key === 'Escape') { event.preventDefault(); closeTranslate(); }
       return;
     }
     const inInput = event.target === input;
     if (event.key === 'Escape') {
       event.preventDefault();
-      if (state.mode !== 'actions') { clearSearch(); setMode('actions'); }
+      if (state.query) clearSearch();
+      else if (state.mode !== 'actions') { clearSearch(); setMode('actions'); }
       else window.suira.quick.hide();
       return;
     }
     if (inInput) return; // 输入框自行处理，避免把字母解释成动作
+    // 聚焦控件时保留浏览器的原生激活行为，空格不再误切换面板。
+    if (event.target.closest?.('button') && (event.key === ' ' || event.key === 'Enter')) return;
     // 搜索进行中：键盘只服务结果列表，不能把字母再解释成 38 键动作
     if (state.query) {
       if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
@@ -525,7 +637,7 @@ function installEvents() {
       if (event.key === 'Enter') {
         if (!state.commandResults.length) return;
         event.preventDefault();
-        runCommand(state.commandIndex);
+        runCommand(state.commandIndex).catch((error) => toast(error?.message || '执行失败', 'error'));
         return;
       }
       if (event.key === 'Backspace' || event.key === 'Delete') {
@@ -569,17 +681,62 @@ function installEvents() {
     if (state.mode === 'toolbox') setMode('actions');
     else { clearSearch(); setMode('toolbox'); }
   });
+  $('#mode-actions').addEventListener('click', () => { clearSearch(); setMode('actions'); });
+  $('#mode-apps').addEventListener('click', () => { clearSearch(); setMode('apps'); });
   $('#capture').addEventListener('click', () => runAction('capture'));
-  $('#return-commit').addEventListener('click', commitReturn);
-  $('#source-open').addEventListener('click', () => window.suira.quick.showMain('library'));
+  listen($('#open-clipboard'), 'click', openClipboardBar);
   $('#apps-prev').addEventListener('click', () => { state.appPage -= 1; renderApps(); loadAppIcons(); });
   $('#apps-next').addEventListener('click', () => { state.appPage += 1; renderApps(); loadAppIcons(); });
+  listen($('#apps-retry'), 'click', loadApps);
   $('#panel-body').addEventListener('click', (event) => {
     if (event.target === $('#panel-body') && state.mode === 'actions' && !state.query) focusSearch();
   });
 
   $('#ocr-close').addEventListener('click', closeOcr);
-  $('#ocr-original').addEventListener('click', async () => {
+
+  $('#translate-close').addEventListener('click', closeTranslate);
+  // 换目标语言：拿同一段原文再翻一次，不重新取词
+  listen($('#translate-target'), 'change', async (event) => {
+    const source = $('#translate-panel').dataset.sourceText || '';
+    if (!source.trim()) return;
+    const target = event.target.value;
+    const revision = ++translateRevision;
+    toast('正在翻译…');
+    try {
+      const result = await window.suira.translate.run({ text: source, target });
+      if (revision !== translateRevision) return;
+      if (!result?.ok) { toast(result?.error || '翻译失败', 'error'); return; }
+      $('#translate-text').value = result.text;
+      toast('已重新翻译');
+    } catch (error) {
+      if (revision === translateRevision) toast(error?.message || '翻译失败', 'error');
+    }
+  });
+  listen($('#translate-copy'), 'click', async () => {
+    const text = $('#translate-text').value;
+    if (!text.trim()) { toast('没有可复制的译文', 'error'); return; }
+    const saved = await window.suira.content.addText({ text, title: '译文', source: 'translate' });
+    if (!saved?.ok) { toast(saved?.error || '保存失败', 'error'); return; }
+    const result = await window.suira.actions.run(saved.item.id, 'output.copy');
+    if (result?.ok) { toast('译文已复制'); closeTranslate(); }
+    else toast(result?.error || '复制失败', 'error');
+  });
+  listen($('#translate-shelf'), 'click', async () => {
+    const text = $('#translate-text').value;
+    if (!text.trim()) { toast('没有可加入任务匣的译文', 'error'); return; }
+    const saved = await window.suira.content.addText({ text, title: '译文', source: 'translate' });
+    if (!saved?.ok) { toast(saved?.error || '保存失败', 'error'); return; }
+    const result = await window.suira.actions.run(saved.item.id, 'output.shelf');
+    if (result?.ok) { toast('译文已加入任务匣'); closeTranslate(); }
+    else toast(result?.error || '加入失败', 'error');
+  });
+  listen($('#translate-original'), 'click', async () => {
+    const itemId = $('#translate-panel').dataset.itemId || '';
+    if (!itemId) { toast('找不到这张图的来源', 'error'); return; }
+    const result = await window.suira.content.openOriginal(itemId);
+    if (!result?.ok) toast(result?.error || '无法打开原图', 'error');
+  });
+  listen($('#ocr-original'), 'click', async () => {
     // 识别结果的来源图片：面板只持有 itemId，打开原图交给主进程，
     // 避免在渲染层拼 file:// 路径（之前这里没有任何 handler，点了必报错）
     const itemId = $('#ocr-panel').dataset.itemId || '';
@@ -587,7 +744,7 @@ function installEvents() {
     const result = await window.suira.content.openOriginal(itemId);
     if (!result?.ok) toast(result?.error || '无法打开原图', 'error');
   });
-  $('#ocr-copy').addEventListener('click', async () => {
+  listen($('#ocr-copy'), 'click', async () => {
     const text = $('#ocr-text').value;
     if (!text.trim()) { toast('没有可复制的文字', 'error'); return; }
     const saved = await window.suira.content.addText({ text, title: '识别文字', source: 'ocr' });
@@ -595,20 +752,20 @@ function installEvents() {
     const result = await window.suira.actions.run(saved.item.id, 'output.copy');
     if (result?.ok) { toast('识别文字已复制'); closeOcr(); } else toast(result?.error || '复制失败', 'error');
   });
-  $('#ocr-merge').addEventListener('click', async () => {
+  listen($('#ocr-merge'), 'click', async () => {
     const text = $('#ocr-text').value;
-    if (!text.trim()) return;
+    if (!text.trim()) { toast('没有可整理的文字', 'error'); return; }
     const saved = await window.suira.content.addText({ text, title: '识别文字', source: 'ocr' });
-    if (!saved?.ok) return;
+    if (!saved?.ok) { toast(saved?.error || '保存失败', 'error'); return; }
     const result = await window.suira.actions.run(saved.item.id, 'text.merge-lines');
     if (result?.ok && result.output) { $('#ocr-text').value = result.output.text; toast('已合并换行'); }
     else toast(result?.error || '处理失败', 'error');
   });
-  $('#ocr-shelf').addEventListener('click', async () => {
+  listen($('#ocr-shelf'), 'click', async () => {
     const text = $('#ocr-text').value;
-    if (!text.trim()) return;
+    if (!text.trim()) { toast('没有可加入任务匣的文字', 'error'); return; }
     const saved = await window.suira.content.addText({ text, title: '识别文字', source: 'ocr' });
-    if (!saved?.ok) return;
+    if (!saved?.ok) { toast(saved?.error || '保存失败', 'error'); return; }
     const result = await window.suira.actions.run(saved.item.id, 'output.shelf');
     if (result?.ok) { toast('已加入任务匣'); closeOcr(); } else toast(result?.error || '加入失败', 'error');
   });
@@ -621,16 +778,15 @@ function installEvents() {
     setMode(mode);
   });
   window.suira.quick.onShown(async () => {
+    clearTimeout(state.toastTimer);
+    $('#toast').className = 'toast';
     clearSearch();
     setMode('actions');
     closeOcr();
+    closeTranslate();
     state.appPage = 0;
     await loadState();
     loadRecent();
-    window.suira.returnTo.target().then((target) => {
-      state.returnTarget = target || null;
-      renderReturnBar();
-    }).catch(() => { state.returnTarget = null; renderReturnBar(); });
   });
 }
 

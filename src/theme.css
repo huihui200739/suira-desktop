@@ -1,0 +1,251 @@
+/*
+ * 随序 SUIRA · 共享视觉层（单一事实来源）
+ *
+ * 颜色体系统一使用 Radix UI Colors：
+ *   中性色 slate，强调 blue，动作/分类色 cyan、jade、violet、amber，危险 red。
+ *   用法遵循 Radix 规范：1-2 页面底色，3-5 组件底色，6-8 描边，
+ *   9-10 实色底，11 低反差文字/图标，12 高反差文字。
+ *
+ * 层级：
+ *   1. Radix 色阶（明 / 暗两套）
+ *   2. 语义令牌（面 / 字 / 线 / 强调 / 形状 / 动效）
+ *   3. 深色覆盖（同一套语义名，只换取值）
+ *
+ * 字号全站只用四档：12（辅助）/ 13（正文）/ 15（标题）/ 20（页面大标题），
+ * 最小可用字号 12px；层级关系优先用字重、颜色与间距表达。
+ * 动效基准：反馈 120ms、常规 180ms ease-out；装饰性动画一律省略。
+ *
+ * 主题开关：settings.theme = system | light | dark，主进程写 nativeTheme.themeSource，
+ * 渲染层只认 prefers-color-scheme，不需要任何 JS 参与换肤。
+ */
+
+:root {
+  color-scheme: light;
+
+  /* ---------- 1. Radix 色阶（浅色） ---------- */
+  --slate-1: #fcfcfd;  --slate-2: #f9f9fb;  --slate-3: #f0f0f3;  --slate-4: #e8e8ec;
+  --slate-5: #e0e1e6;  --slate-6: #d9d9e0;  --slate-7: #cdced6;  --slate-8: #b9bbc6;
+  --slate-9: #8b8d98;  --slate-10: #80838d; --slate-11: #60646c; --slate-12: #1c2024;
+  --blue-1: #fbfdff;   --blue-2: #f4faff;   --blue-3: #e6f4fe;   --blue-4: #d5efff;
+  --blue-5: #c2e5ff;   --blue-6: #acd8fc;   --blue-7: #8ec8f6;   --blue-8: #5eb1ef;
+  --blue-9: #0090ff;   --blue-10: #0588f0;  --blue-11: #0d74ce;  --blue-12: #113264;
+  --cyan-3: #def7f9;   --cyan-4: #caf1f6;   --cyan-9: #00a2c7;   --cyan-11: #107d98;
+  --jade-3: #e6f7ed;   --jade-4: #d6f1e3;   --jade-9: #29a383;   --jade-11: #208368;
+  --violet-3: #f4f0fe; --violet-4: #ebe4ff; --violet-9: #6e56cf; --violet-11: #6550b9;
+  --amber-3: #fff7c2;  --amber-4: #ffee9c;  --amber-9: #ffc53d;  --amber-11: #ab6400;
+  --red-3: #feebec;    --red-4: #ffdbdc;    --red-7: #f4a9aa;    --red-9: #e5484d;
+  --red-11: #ce2c31;
+
+  /* ---------- 2. 语义令牌（浅色） ---------- */
+  /* 面 */
+  --paper: var(--slate-2);
+  --paper-raised: #ffffff;
+  --paper-soft: var(--slate-3);
+  --paper-sink: var(--slate-4);
+  --surface: rgba(255, 255, 255, 0.972);
+  --surface-raised: var(--paper-raised);
+  --surface-soft: var(--slate-3);
+  --surface-inset: color-mix(in srgb, var(--slate-12) 4%, transparent);
+  --surface-hover: var(--slate-3);
+
+  /* 浮层的透光面：以 slate 中性色为基，白高光描边 */
+  --floating-surface: color-mix(in srgb, var(--slate-5) 55%, transparent);
+  --floating-light: color-mix(in srgb, #ffffff 40%, transparent);
+  --floating-key: color-mix(in srgb, #ffffff 34%, transparent);
+  --floating-edge: color-mix(in srgb, #ffffff 85%, transparent);
+  --floating-foot: color-mix(in srgb, #ffffff 20%, transparent);
+  --control-top: color-mix(in srgb, #ffffff 64%, transparent);
+  --control-bottom: color-mix(in srgb, #ffffff 18%, transparent);
+  --control-rim: color-mix(in srgb, #ffffff 95%, transparent);
+  --control-shade: color-mix(in srgb, var(--slate-12) 14%, transparent);
+  --control-shadow: 0 2px 6px color-mix(in srgb, var(--slate-12) 7%, transparent),
+    inset 0 1px 0 var(--floating-edge), inset 0 -1px 0 color-mix(in srgb, var(--slate-12) 7%, transparent);
+  --control-selected: color-mix(in srgb, var(--slate-12) 9%, transparent);
+  --control-field: color-mix(in srgb, #ffffff 60%, transparent);
+
+  /* 字：12 高反差 / 11 低反差 / 10 弱化 / 9 提示。层级优先用字重与间距表达 */
+  --ink: var(--slate-12);
+  --ink-soft: var(--slate-11);
+  --ink-muted: var(--slate-10);
+  --ink-faint: var(--slate-9);
+
+  /* 线：0.5px 发丝线用 6，输入描边用 8 */
+  --line: var(--slate-6);
+  --line-strong: var(--slate-8);
+  --line-glass: color-mix(in srgb, #ffffff 88%, transparent);
+
+  /* 历史别名：主按钮 / 提示底的深墨面 */
+  --graphite: var(--slate-12);
+
+  /* 强调与状态 */
+  --accent: var(--blue-9);
+  --accent-deep: var(--blue-11);
+  --accent-soft: var(--blue-3);
+  --accent-glow: color-mix(in srgb, var(--blue-9) 18%, transparent);
+  --danger: var(--red-11);
+  --danger-solid: var(--red-9);
+  --danger-soft: var(--red-3);
+  --success: var(--jade-11);
+  --success-soft: var(--jade-3);
+
+  /* 动作 / 分类色：文字与图标用 11，底色用 3-4，实色底用 9 */
+  --action-blue: var(--blue-11);
+  --action-teal: var(--cyan-11);
+  --action-green: var(--jade-11);
+  --action-violet: var(--violet-11);
+  --action-amber: var(--amber-11);
+  --kind-blue: var(--blue-11);
+  --kind-blue-bg: var(--blue-3);
+  --kind-jade: var(--jade-11);
+  --kind-jade-bg: var(--jade-3);
+  --kind-violet: var(--violet-11);
+  --kind-violet-bg: var(--violet-3);
+  --kind-amber: var(--amber-11);
+  --kind-amber-bg: var(--amber-3);
+
+  /* 所有浮层共用悬浮面板材质、字色与强调色，别名保持业务样式稳定。 */
+  --shelf-surface: var(--floating-surface);
+  --shelf-glow: var(--floating-light);
+  --shelf-card: var(--floating-key);
+  --shelf-card-hover: var(--control-top);
+  --shelf-selected: var(--control-selected);
+  --shelf-line: var(--line);
+  --shelf-highlight: var(--floating-edge);
+  --shelf-ink: var(--ink);
+  --shelf-muted: var(--ink-soft);
+  --shelf-faint: var(--ink-muted);
+  --shelf-accent: var(--accent-deep);
+  --shelf-field: var(--control-field);
+  --shelf-text: var(--kind-blue);
+  --shelf-image: var(--kind-violet);
+  --shelf-link: var(--kind-jade);
+  --shelf-files: var(--kind-amber);
+
+  /* 顶部暂存（浮引岛）烟灰材质：同为常暗 */
+  --edge-surface: var(--floating-surface);
+  --edge-item: var(--floating-key);
+  --edge-item-hover: var(--control-top);
+  --edge-ink: var(--ink);
+  --edge-muted: var(--ink-soft);
+  --edge-faint: var(--ink-muted);
+  --edge-line: var(--line);
+  --edge-accent: var(--accent-deep);
+  --edge-danger: var(--danger);
+
+  /* 形状：嵌套处用同心圆角（内层 = 外层 − 间距） */
+  --radius-panel: 24px;
+  --radius-card: 12px;
+  --radius-inner: 8px;
+  --radius-sm: 6px;
+  --radius-chip: 9px;
+  --radius-pill: 999px;
+  --gap: 8px;
+
+  /* 光影：只给真正悬浮的层（弹层 / 预览 / 通知），卡片一律描边不加影 */
+  --shadow-float:
+    0 0 0 1px color-mix(in srgb, var(--slate-12) 4%, transparent),
+    0 2px 6px color-mix(in srgb, var(--slate-12) 7%, transparent),
+    0 14px 30px color-mix(in srgb, var(--slate-12) 11%, transparent),
+    0 32px 70px color-mix(in srgb, var(--slate-12) 13%, transparent);
+  --shadow-lift: 0 2px 8px color-mix(in srgb, var(--slate-12) 9%, transparent),
+    0 8px 20px color-mix(in srgb, var(--slate-12) 8%, transparent);
+  --shadow-card: none;
+  --shadow-inset-top: inset 0 1px 0 var(--floating-edge);
+
+  /* 动效：ease-out 250ms，少即是多 */
+  --ease-out: cubic-bezier(0, 0, 0.2, 1);
+  --dur-fast: 120ms;
+  --dur-base: 180ms;
+
+  /* 字号：全站四档 */
+  --text-1: 12px;
+  --text-2: 13px;
+  --text-3: 15px;
+  --text-4: 20px;
+
+  --font-ui: "Segoe UI Variable Text", "Segoe UI", "Microsoft YaHei UI", "Microsoft YaHei", sans-serif;
+
+  font-family: var(--font-ui);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ---------- 3. 深色覆盖（语义名不变，只换取值） ---------- */
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+
+    --slate-1: #111113;  --slate-2: #18191b;  --slate-3: #212225;  --slate-4: #272a2d;
+    --slate-5: #2e3135;  --slate-6: #363a3f;  --slate-7: #43484e;  --slate-8: #5a6169;
+    --slate-9: #696e77;  --slate-10: #777b84; --slate-11: #b0b4ba; --slate-12: #edeef0;
+    --blue-1: #0d1520;   --blue-2: #111927;   --blue-3: #0d2847;   --blue-4: #003362;
+    --blue-5: #004074;   --blue-6: #104d87;   --blue-7: #205d9e;   --blue-8: #2870bd;
+    --blue-9: #0090ff;   --blue-10: #3b9eff;  --blue-11: #70b8ff;  --blue-12: #c2e6ff;
+    --cyan-3: #082c36;   --cyan-4: #003848;   --cyan-9: #00a2c7;   --cyan-11: #4ccce6;
+    --jade-3: #0f2e22;   --jade-4: #0b3b2c;   --jade-9: #29a383;   --jade-11: #1fd8a4;
+    --violet-3: #291f43; --violet-4: #33255b; --violet-9: #6e56cf; --violet-11: #baa7ff;
+    --amber-3: #302008;  --amber-4: #3f2700;  --amber-9: #ffc53d;  --amber-11: #ffca16;
+    --red-3: #3b1219;    --red-4: #500f1c;    --red-7: #8c333a;    --red-9: #e5484d;
+    --red-11: #ff9592;
+
+    --paper: var(--slate-2);
+    --paper-raised: var(--slate-3);
+    --paper-soft: var(--slate-4);
+    --paper-sink: var(--slate-5);
+    --surface: color-mix(in srgb, var(--slate-2) 97%, transparent);
+    --surface-raised: var(--slate-3);
+    --surface-soft: var(--slate-4);
+    --surface-inset: color-mix(in srgb, var(--slate-12) 45%, transparent);
+    --surface-hover: var(--slate-4);
+
+    --floating-surface: color-mix(in srgb, var(--slate-2) 62%, transparent);
+    --floating-light: color-mix(in srgb, var(--slate-11) 10%, transparent);
+    --floating-key: color-mix(in srgb, var(--slate-11) 10%, transparent);
+    --floating-edge: color-mix(in srgb, var(--blue-12) 24%, transparent);
+    --floating-foot: color-mix(in srgb, var(--slate-11) 5%, transparent);
+    --control-top: color-mix(in srgb, var(--slate-11) 16%, transparent);
+    --control-bottom: color-mix(in srgb, var(--slate-11) 5%, transparent);
+    --control-rim: color-mix(in srgb, var(--blue-12) 36%, transparent);
+    --control-shade: color-mix(in srgb, var(--slate-1) 36%, transparent);
+    --control-shadow: 0 2px 4px color-mix(in srgb, var(--slate-1) 40%, transparent),
+      0 7px 18px color-mix(in srgb, var(--slate-1) 28%, transparent),
+      inset 0 1px 0 color-mix(in srgb, var(--blue-12) 17%, transparent),
+      inset 0 -1px 0 color-mix(in srgb, var(--blue-12) 5%, transparent);
+    --control-selected: color-mix(in srgb, var(--slate-12) 16%, transparent);
+    --control-field: color-mix(in srgb, var(--slate-1) 28%, transparent);
+
+    --line: var(--slate-6);
+    --line-strong: var(--slate-8);
+    --line-glass: color-mix(in srgb, #ffffff 9%, transparent);
+
+    --accent-glow: color-mix(in srgb, var(--blue-9) 24%, transparent);
+    --danger-soft: var(--red-3);
+
+    --shadow-float:
+      0 0 0 1px color-mix(in srgb, var(--slate-1) 28%, transparent),
+      0 2px 6px color-mix(in srgb, var(--slate-1) 30%, transparent),
+      0 14px 30px color-mix(in srgb, var(--slate-1) 34%, transparent),
+      0 32px 70px color-mix(in srgb, var(--slate-1) 40%, transparent);
+    --shadow-lift: 0 2px 8px color-mix(in srgb, var(--slate-1) 30%, transparent),
+      0 8px 20px color-mix(in srgb, var(--slate-1) 28%, transparent);
+    --shadow-inset-top: inset 0 1px 0 color-mix(in srgb, #ffffff 6%, transparent);
+  }
+}
+
+/* ---------- 共用基元 ---------- */
+
+/* 选中文字统一成强调色 */
+::selection { background: var(--accent-glow); color: var(--ink); }
+
+/* 键盘焦点环：只在键盘操作时出现 */
+:where(button, input, textarea, [tabindex]):focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: inherit;
+}
+
+/* 极细滚动条（深色/浅色都适用），面板内滚动不再是突兀的白色长条 */
+* { scrollbar-width: thin; scrollbar-color: var(--line-strong) transparent; }
+*::-webkit-scrollbar { width: 8px; height: 8px; }
+*::-webkit-scrollbar-thumb { background: var(--line-strong); border-radius: var(--radius-pill); }
+*::-webkit-scrollbar-track { background: transparent; }

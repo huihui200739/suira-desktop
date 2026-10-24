@@ -29,53 +29,74 @@ if (!electron || typeof electron !== 'object' || !electron.app) {
 
 const {
   app, BrowserWindow, ipcMain, screen, desktopCapturer, clipboard,
-  nativeImage, ClipboardItem, globalShortcut, Tray, Menu, shell, dialog
+  nativeImage, ClipboardItem, globalShortcut, Tray, Menu, shell, dialog, nativeTheme, session
 } = electron;
 const path = require('node:path');
 const fs = require('node:fs');
 const fsp = require('node:fs/promises');
 const os = require('node:os');
 const crypto = require('node:crypto');
-const { pathToFileURL } = require('node:url');
+const { pathToFileURL, fileURLToPath } = require('node:url');
 const { SuiraStore, makeId } = require('./lib/store');
 const { OcrService } = require('./lib/ocr');
+const translateLib = require('./lib/translate');
 const { createActionRegistry, mergeLines, cleanText } = require('./lib/actions');
 const { RECIPES, getRecipe, listRecipes, runRecipe } = require('./lib/recipes');
 const { searchCandidates, COMMANDS } = require('./lib/search');
-const { readWithRetry, shouldExcludeCapture, summarizeLargeText } = require('./lib/clipboard-guard');
+const { readWithRetry, shouldExcludeCapture, summarizeLargeText, sameBytes } = require('./lib/clipboard-guard');
 const { captureTarget, validateTarget, decideCommit, normalizeHwnd, ClipboardWriteLedger } = require('./lib/return-target');
 const { AppIndex } = require('./lib/app-index');
+const { createAppIconLoader, extractResourceBatch } = require('./lib/app-icons');
+const { createIconDiskCache } = require('./lib/icon-disk-cache');
+const { captureNative, nativeDesktopTiles } = require('./lib/native-capture');
+const { recordingRegion, RecordingWriter } = require('./lib/recording');
 const { ForegroundProbe } = require('./lib/foreground-probe');
 const { DEFAULT_BINDINGS, DEFAULT_MOMENTARY_BINDINGS, ShortcutManager, normalizeAccelerator, validateMomentaryAccelerator, momentaryConflict } = require('./lib/shortcuts');
 const { KeyVault, encryptItem, decryptItem, encryptText, decryptText } = require('./lib/crypto-store');
-const { unionBounds, maxScaleFactor, tileLayout, sanitizeWindowBounds } = require('./lib/display-geometry');
+const { unionBounds, maxScaleFactor, tileLayout, sanitizeWindowBounds, QUICK_PANEL_SIZE, quickPanelBounds,
+  clipboardShelfBounds, roundedWindowShape } = require('./lib/display-geometry');
 const { InputInjector } = require('./lib/input-injector');
 const { keyLayout, TOOLBOX_TOOLS, PANEL_ACTIONS } = require('./lib/keybindings');
 const { createPanelActions } = require('./lib/panel-actions');
 // 第三批：按住型唤起用常驻 PowerShell 助手拿「松开」事件；浮引岛纯模型负责暂存语义
-const { KeyWatchProbe } = require('./lib/key-watch');
+const { KeyWatchProbe, ensureNativeHost } = require('./lib/key-watch');
 const islandModel = require('./lib/island-model');
+// 第三批第 4 项：速记的纯模型（标题推导 / 容量 / 位置校验）
+const notesLib = require('./lib/notes');
+const { contains, receiverBounds, receiverDisplay, edgeWindowShape, IslandPointerProbe } = require('./lib/island-wake');
 // 核心框架：剪贴板捕获（文件引用/去重比较）的纯模型，便于单元测试
 const clipboardCapture = require('./lib/clipboard-capture');
-const { execFileSync } = require('node:child_process');
+const { execFileSync, execFile } = require('node:child_process');
 
 const APP_NAME = '随序 SUIRA';
 const APP_ID = 'com.suira.desktop';
 const MAIN_WIDTH = 1180;
 const MAIN_HEIGHT = 820;
-// 38 键面板需要装下 12/10/9/7 四行键位 + 搜索条 + 底部提示
-const QUICK_WIDTH = 720;
-const QUICK_HEIGHT = 620;
-// 浮引岛：收起是一根细条，悬停展开成卡片。尺寸固定，动画交给渲染层。
-const ISLAND_COLLAPSED = { width: 176, height: 44 };
-const ISLAND_EXPANDED = { width: 520, height: 148 };
-const ISLAND_MARGIN_TOP = 12;
+// 38 键面板需要装下 12/10/9/7 四行键位 + 搜索条 + 底部提示。
+// 尺寸含 12px 阴影留白：卡片本体 720×620，窗口多留一圈，阴影才不会被裁掉变平。
+const QUICK_WIDTH = QUICK_PANEL_SIZE.width;
+const QUICK_HEIGHT = QUICK_PANEL_SIZE.height;
+// 仅隐藏/贴边托盘两态。空接收区紧凑显示，有文件才展开；窗口不留阴影底板。
+const ISLAND_SHEET = { width: 520, height: 148 };
+const ISLAND_DROP = { width: 440, height: 108 };
+const ISLAND_UI_REVISION = 'edge-shelf-20261023.2';
 const ISLAND_MAX_ITEMS = 24;
+// 岛在没有任何交互后回到休眠的等待时间（拖入后要让用户看清结果）
+const ISLAND_REST_MS = 2600;
 // 面板布局轮换的顺序（对应原产品 onPanelCycleLayout）
 const PANEL_MODES = ['actions', 'apps', 'toolbox'];
 const TEXT_HISTORY_LIMIT = 2000;
 // 应用图标缓存：开始菜单路径 → data URL。图标是静态资源，随进程生命周期复用。
-const appIconCache = new Map();
+let appIconLoader = null;
+let appIconHost = null;
+let captureHost = null;
+let recordingWindow = null;
+let recordingConfig = null;
+let recordingWriter = null;
+let recordingLastFile = '';
+let recordingAudio = false;
+let recordingQuitAfterSave = false;
+let recordingRestoreMain = false;
 
 let store = null;
 let ocr = null;
@@ -90,6 +111,9 @@ let clipboardWatcherError = '';
 let clipboardWatcherReady = Promise.resolve();
 let lastClipboardText = '';
 let lastClipboardImageHash = '';
+// 上一次轮询拿到的图片原始字节：用来做"真的变了吗"的字节比较，
+// 避免剪贴板里放着一张 4K 截图时每 550ms 解码一次 + PNG 编码一次
+let lastClipboardImageRaw = null;
 let lastClipboardFilesKey = '';
 let clipboardWriteGuard = '';
 let isQuitting = false;
@@ -100,9 +124,20 @@ let mainWasVisible = false;
 const pinWindows = new Set();
 // 浮引岛（文件中转）与按住型唤起的状态
 let islandWindow = null;
-let islandExpanded = false;
+// 岛的三态：'sleep' 隐形热区 / 'rail' 胶囊 / 'sheet' 暂存卡片
+let islandMode = 'sleep';
+let islandRestTimer = null;
+let islandDisplayId = null;
+let islandPointerProbe = null;
+let islandWakeError = '';
+let islandWakeReady = Promise.resolve();
+// 最近 10 次引用变更；只在本次运行中保留，不复制或移动原文件。
+const islandUndoStack = [];
 // 剪贴板历史条（屏幕底部浮层）
 let clipboardBarWindow = null;
+let quickShowRevision = 0;
+let clipboardShowRevision = 0;
+let clipboardShowPending = false;
 let momentaryProbe = null;
 let momentaryOpened = false;
 /** 最近一次按住型侦测启动失败的原因；成功时清空，设置页据此显示真实原因。 */
@@ -120,8 +155,104 @@ const inputInjector = new InputInjector();
 let shortcutManager = null;
 let keyVault = null;
 
+/** 前台助手闲置多久后释放（毫秒）。有人用时每次查询都会把它续期。 */
+const FOREGROUND_IDLE_STOP_MS = 5 * 60 * 1000;
+let foregroundIdleTimer = null;
+
+/** 每次查询后重置闲置计时：到点就把常驻助手还回去。 */
+function scheduleForegroundStop() {
+  if (foregroundIdleTimer) clearTimeout(foregroundIdleTimer);
+  // 原生助手只占少量内存，保持就绪，避免闲置后的首次唤起重新启动。
+  if (foregroundProbe.nativeHost) return;
+  foregroundIdleTimer = setTimeout(() => {
+    foregroundIdleTimer = null;
+    if (foregroundProbe.nativeHost) return;
+    try { foregroundProbe.stop(); } catch { /* 进程可能已退出 */ }
+    console.log('[助手] 前台窗口查询助手闲置 5 分钟，已释放');
+  }, FOREGROUND_IDLE_STOP_MS);
+  if (foregroundIdleTimer.unref) foregroundIdleTimer.unref();
+}
+
+/** 查询前台窗口（负责拉起助手 + 续期闲置计时）。 */
+async function queryForeground() {
+  try {
+    return await foregroundProbe.query();
+  } catch {
+    return null;
+  } finally {
+    scheduleForegroundStop();
+  }
+}
+
 /** 置前目标窗口后等待焦点稳定的时间（毫秒）。太短按键会落到随序自己身上。 */
 const RETURN_FOCUS_DELAY = 120;
+
+/**
+ * 换肤：settings.theme 是唯一开关。
+ * 主进程只写 nativeTheme.themeSource，三个浮层靠 CSS 的 prefers-color-scheme 自动跟随，
+ * 渲染层不需要任何换肤 JS，也不会出现"某些窗口还停在旧主题"的中间态。
+ */
+/* ---------- 翻译引擎（图片取词翻译） ---------- */
+
+const TRANSLATE_KEY_AAD = 'settings:translateApiKey';
+
+/** 密钥明文只在主进程内存里存在，落盘一律走数据密钥加密。 */
+function encryptSecret(plaintext) {
+  if (!keyVault || !keyVault.isReady()) return null;
+  try { return encryptText(keyVault.key, String(plaintext), TRANSLATE_KEY_AAD); } catch { return null; }
+}
+
+function decryptSecret(envelope) {
+  if (!envelope || !keyVault || !keyVault.isReady()) return '';
+  try { return decryptText(keyVault.key, envelope, TRANSLATE_KEY_AAD); } catch { return ''; }
+}
+
+/** 渲染层能看到的设置：密钥换成布尔标记，密文不出主进程。 */
+function publicSettings() {
+  const settings = store ? store.getSettings() : {};
+  const { translateApiKeyEnc, ...rest } = settings;
+  return { ...rest, translateApiKeySet: Boolean(translateApiKeyEnc) };
+}
+
+/** 当前生效的翻译配置（含解密后的密钥）。 */
+function translateConfig(overrides = {}) {
+  const settings = store ? store.getSettings() : {};
+  const config = translateLib.readConfig(settings, decryptSecret(settings.translateApiKeyEnc));
+  return { ...config, ...overrides };
+}
+
+/** 翻译一次：给面板、动作层、设置页的「测试」共用同一条路径。 */
+async function runTranslation(text, overrides = {}) {
+  return translateLib.translateText({ config: translateConfig(overrides), text });
+}
+
+/** 当前翻译能力概述：设置页与面板据此显示「未配置」而不是假装可用。 */
+function translateStatus() {
+  const settings = store ? store.getSettings() : {};
+  const hasKey = Boolean(settings.translateApiKeyEnc);
+  const config = translateConfig();
+  return {
+    ok: true,
+    provider: config.provider,
+    providerLabel: translateLib.providerLabel(config.provider),
+    configured: translateLib.isConfigured(settings, hasKey),
+    hasKey,
+    source: config.source,
+    target: config.target,
+    sourceLabel: translateLib.langLabel(config.source),
+    targetLabel: translateLib.langLabel(config.target),
+    // 面板的目标语言下拉直接用这份目录，渲染层不重复维护语言表
+    targets: translateLib.TARGET_LANGS.map((code) => ({ code, label: translateLib.langLabel(code) }))
+  };
+}
+
+function applyTheme() {
+  if (!nativeTheme) return 'light';
+  const theme = store ? store.getSettings().theme : 'light';
+  const source = ['system', 'light', 'dark'].includes(theme) ? theme : 'light';
+  try { nativeTheme.themeSource = source; } catch { /* 旧版 Electron 无此能力时保持系统默认 */ }
+  return source;
+}
 
 /** 从设置读取当前键位，回落到出厂默认。清除绑定（空串）的项不注册。 */
 function shortcutBindings() {
@@ -158,7 +289,64 @@ function momentaryAccelerator() {
 app.setName(APP_NAME);
 if (process.platform === 'win32') app.setAppUserModelId(APP_ID);
 
-const userRoot = () => app.getPath('userData');
+/* ---------- 后台常驻内存：Chromium 启动参数 ----------
+ * 这些开关必须在 app ready 之前设置。它们不改变功能，只是不再为用不到的
+ * Chromium 子系统付出常驻进程/线程成本：
+ * - disable-breakpad：本机没有崩溃上报服务，Electron 仍会拉起
+ *   crashpad-handler 子进程（debug.log 里一串 registration_protocol_win
+ *   失败就是它），关掉省一个进程；应用级错误仍走 dialog/日志。
+ * - disable-background-networking / component-update / domain-reliability：
+ *   随序的所有网络请求都是用户显式触发的（翻译），不需要后台预取、组件热更
+ *   与域可靠性上报，关掉能少一批后台定时器。
+ * - no-pings：不做超链接 ping 上报。
+ */
+app.commandLine.appendSwitch('disable-breakpad');
+app.commandLine.appendSwitch('disable-background-networking');
+app.commandLine.appendSwitch('disable-component-update');
+app.commandLine.appendSwitch('disable-domain-reliability');
+app.commandLine.appendSwitch('no-pings');
+
+/*
+ * 数据目录的回落。
+ *
+ * 之前 `initialize()` 第一行就是 ensureDirs()，而它直接 mkdir 不接异常：
+ * 数据目录不可写时（受管控会话、AppData 被策略禁止写入等）整个应用起不来，
+ * 用户只看到「程序打不开」加一段 stack。现在按候选顺序挑一个可写的目录，
+ * 并把「落在非默认位置」这件事记录下来，界面与自检都能看到。
+ */
+let dataRoot = '';
+let dataRootNotice = '';
+
+function isWritableDir(dir) {
+  try {
+    fs.mkdirSync(dir, { recursive: true });
+    const probe = path.join(dir, '.write-probe');
+    fs.writeFileSync(probe, 'ok');
+    fs.unlinkSync(probe);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** 挑一个可写的数据目录；默认位置不可写时依次回落。全部不可写返回 null。 */
+function resolveDataRoot() {
+  const candidates = [
+    { dir: app.getPath('userData'), label: '' },
+    { dir: path.join(app.getPath('temp'), APP_NAME), label: '系统临时目录' },
+    { dir: path.join(path.dirname(app.getPath('exe')), 'data'), label: '程序同级 data 目录' }
+  ];
+  for (const candidate of candidates) {
+    if (!candidate.dir) continue;
+    if (isWritableDir(candidate.dir)) {
+      dataRootNotice = candidate.label;
+      return candidate.dir;
+    }
+  }
+  return null;
+}
+
+const userRoot = () => dataRoot || app.getPath('userData');
 const dataPath = () => path.join(userRoot(), 'suira-data.json');
 const keyPath = () => path.join(userRoot(), 'suira-data.key');
 const legacyHistoryPath = () => path.join(userRoot(), 'clipboard-history.json');
@@ -183,12 +371,21 @@ function broadcast(channel, payload) {
   }
 }
 
+/**
+ * 建数据子目录。失败不再让异常冒到顶层退出，而是返回原因，
+ * 由调用方决定「继续用降级目录」还是「给出一句人话后退出」。
+ */
 async function ensureDirs() {
-  await Promise.all([
-    fsp.mkdir(capturesDir(), { recursive: true }),
-    fsp.mkdir(clipboardImageDir(), { recursive: true }),
-    fsp.mkdir(tessdataCacheDir(), { recursive: true })
-  ]);
+  try {
+    await Promise.all([
+      fsp.mkdir(capturesDir(), { recursive: true }),
+      fsp.mkdir(clipboardImageDir(), { recursive: true }),
+      fsp.mkdir(tessdataCacheDir(), { recursive: true })
+    ]);
+    return { ok: true };
+  } catch (error) {
+    return { ok: false, error: error && error.message ? error.message : String(error) };
+  }
 }
 
 function isSafeHttpUrl(value) {
@@ -207,13 +404,26 @@ function classifyText(text) {
   return 'text';
 }
 
+/**
+ * 缩略图统一入口：列表/卡片只显示两三百像素宽，没必要把 720px 的图
+ * 以 data URL 形式常驻在 store 内存里。
+ *
+ * 按 320px 生成 PNG（不用 JPEG：截图里可能有透明背景，JPEG 会把透明区变黑）。
+ * 单条体积约降到原来的 1/4–1/5；2000 条上限时这是几十 MB 的差别。
+ */
+const THUMBNAIL_WIDTH = 320;
+function thumbnailDataUrl(image) {
+  const size = image.getSize();
+  const width = Math.min(THUMBNAIL_WIDTH, Math.max(64, size.width));
+  const resized = image.resize({ width, quality: 'good' });
+  return `data:image/png;base64,${resized.toPNG().toString('base64')}`;
+}
+
 function thumbnailFor(filePath) {
   try {
     const image = nativeImage.createFromPath(filePath);
     if (image.isEmpty()) return '';
-    const size = image.getSize();
-    const width = Math.min(720, Math.max(220, size.width));
-    return image.resize({ width, quality: 'good' }).toDataURL();
+    return thumbnailDataUrl(image);
   } catch {
     return '';
   }
@@ -238,7 +448,7 @@ async function addImageToStore(image, source = {}, title = '', existingFilePath 
   await ensureDirs();
   if (!existingFilePath) await fsp.writeFile(filePath, png);
   const size = image.getSize();
-  const thumbnail = image.resize({ width: Math.min(720, Math.max(220, size.width)), quality: 'good' }).toDataURL();
+  const thumbnail = thumbnailDataUrl(image);
   const item = store.addItem({
     id,
     kind: 'image',
@@ -350,11 +560,15 @@ async function rememberClipboardFiles(paths, source = {}) {
  * 记录这次剪贴板变化来自哪个应用。
  * 前台窗口在复制后短暂仍是被复制的应用，这里按 550ms 轮询的时机取一次，
  * 置信度如实标成 inferred（不能假装确定）。
+ *
+ * 只在助手「已经在跑」时才查询：为了一条来源标注把 80MB 级别的 PowerShell
+ * helper 拉起来并常驻，得不偿失（面板唤起时本来就会拉起它，那时才顺便记录来源）。
  */
 async function clipboardSourceSnapshot(method = 'clipboard-poll') {
   const base = { type: 'clipboard', acquisitionMethod: method, confidence: 'inferred' };
+  if (!foregroundProbe.isReady()) return base;
   try {
-    const snapshot = await foregroundProbe.query();
+    const snapshot = await queryForeground();
     if (!snapshot) return base;
     const own = Number(snapshot.pid) === process.pid;
     return {
@@ -402,11 +616,11 @@ async function readClipboardImage() {
  * 平台格式优先级：text/plain 可靠；复制文件时只有 text/uri-list（没有 text/plain）。
  */
 async function readClipboardSnapshot() {
-  const empty = { text: '', files: [], image: null };
+  const empty = { text: '', files: [], imageBuffer: null, imageType: '' };
   const result = await readWithRetry(async () => {
     const items = await clipboard.read();
     if (!Array.isArray(items) || !items.length) return empty;
-    const snapshot = { text: '', files: [], image: null };
+    const snapshot = { text: '', files: [], imageBuffer: null, imageType: '' };
 
     const textItem = items.find((item) => item.types?.includes('text/plain'));
     if (textItem) {
@@ -431,9 +645,27 @@ async function readClipboardSnapshot() {
         const type = imageItem.types.find((value) => value.startsWith('image/'));
         const blob = await imageItem.getType(type);
         const buffer = Buffer.from(await blob.arrayBuffer());
-        const image = nativeImage.createFromBuffer(buffer);
-        if (!image.isEmpty()) snapshot.image = image;
-      } catch { /* 图片解码失败时忽略这一项 */ }
+        // 这里只留原始字节，不在轮询里解码：解码 4K 截图要几十毫秒，
+        // 而绝大多数轮询的结果都是"没变"，白解码一次不如直接比字节
+        if (buffer.length) {
+          snapshot.imageBuffer = buffer;
+          snapshot.imageType = type;
+        }
+      } catch { /* 图片读取失败时忽略这一项 */ }
+    }
+    // 兜底：read() 没暴露出图片项、但系统明确说有图片格式时，退回 readImage()。
+    // 宁可多解一次图，也不能因为读法差异漏掉用户的截图。
+    if (!snapshot.imageBuffer) {
+      try {
+        const hasImageFormat = clipboard.availableFormats().some((format) => String(format).startsWith('image/'));
+        if (hasImageFormat) {
+          const fallback = clipboard.readImage();
+          if (fallback && !fallback.isEmpty()) {
+            snapshot.imageBuffer = fallback.toPNG();
+            snapshot.imageType = 'image/png';
+          }
+        }
+      } catch { /* 读不到就当作没有图片 */ }
     }
     return snapshot;
   }, (value) => value == null);
@@ -457,6 +689,8 @@ async function writeClipboardImage(image) {
   const png = image.toPNG();
   clipboardWriteGuard = await readClipboardText();
   lastClipboardImageHash = hashBuffer(png);
+  // 自己的写入也记进字节缓存，下一趟轮询就不会再解一次
+  lastClipboardImageRaw = png;
   await clipboard.write([new ClipboardItem({ 'image/png': png })]);
   lastClipboardText = await readClipboardText();
   lastClipboardFilesKey = '';
@@ -472,11 +706,23 @@ async function pollClipboard() {
 
     const text = snapshot.text || '';
     const filesKey = snapshot.files.length ? snapshot.files.join('\n').toLowerCase() : '';
-    const imageHash = snapshot.image ? hashBuffer(snapshot.image.toPNG()) : '';
+    const rawImage = snapshot.imageBuffer;
+    // 字节相同 = 图片没变：这一趟不解码、不编码、不算哈希
+    const imageBytesChanged = Boolean(rawImage) && !sameBytes(lastClipboardImageRaw, rawImage);
+
+    let image = null;
+    let imageHash = lastClipboardImageHash;
+    if (imageBytesChanged) {
+      const decoded = nativeImage.createFromBuffer(rawImage);
+      if (!decoded.isEmpty()) {
+        image = decoded;
+        imageHash = hashBuffer(decoded.toPNG());
+      }
+    }
 
     const textChanged = Boolean(text && text !== lastClipboardText);
     const filesChanged = Boolean(filesKey && filesKey !== lastClipboardFilesKey);
-    const imageChanged = Boolean(imageHash && imageHash !== lastClipboardImageHash);
+    const imageChanged = Boolean(image && imageHash !== lastClipboardImageHash);
     // 自写回环：本次变化若仍是我们刚写入的内容，不重复入库
     const ownWrite = clipboardLedger.shouldIgnore(text);
 
@@ -488,12 +734,14 @@ async function pollClipboard() {
       await rememberClipboardFiles(snapshot.files, source);
     } else if (imageChanged && !text && !filesKey) {
       const source = await clipboardSourceSnapshot('clipboard-image-poll');
-      await addImageToStore(snapshot.image, source);
+      await addImageToStore(image, source);
     }
 
     lastClipboardText = text;
     lastClipboardFilesKey = filesKey;
-    lastClipboardImageHash = imageHash;
+    // 图片被清空时同步清掉缓存，下次再遇到图片会重新解码
+    lastClipboardImageRaw = rawImage || null;
+    lastClipboardImageHash = rawImage ? imageHash : '';
     if (clipboardWriteGuard && text === clipboardWriteGuard) clipboardWriteGuard = '';
   } catch (error) {
     console.warn('剪贴板读取失败:', error.message);
@@ -505,10 +753,11 @@ async function startClipboardWatcher() {
   const initial = await readClipboardSnapshot();
   lastClipboardText = initial.text || '';
   lastClipboardFilesKey = initial.files.length ? initial.files.join('\n').toLowerCase() : '';
-  lastClipboardImageHash = initial.image ? hashBuffer(initial.image.toPNG()) : '';
+  lastClipboardImageRaw = initial.imageBuffer || null;
+  lastClipboardImageHash = initial.imageBuffer ? hashBuffer(nativeImage.createFromBuffer(initial.imageBuffer).toPNG()) : '';
   clipboardTimer = setInterval(pollClipboard, 550);
   clipboardWatcherError = '';
-  console.log('[clipboard] 监听已启动，间隔 550ms（文本 / 文件引用 / 图片）');
+  console.log('[clipboard] 监听已启动，间隔 550ms（文本 / 文件引用 / 图片；图片按字节比对，未变不解码）');
 }
 
 async function migrateLegacyHistory() {
@@ -534,17 +783,27 @@ async function migrateLegacyHistory() {
     }
     await store.save();
   } catch {}
-}function positionQuickPanel(win) {
+}
+
+function positionQuickPanel(win) {
   const display = screen.getDisplayNearestPoint(screen.getCursorScreenPoint());
-  const area = display.workArea;
-  const width = Math.min(QUICK_WIDTH, area.width - 24);
-  const height = Math.min(QUICK_HEIGHT, area.height - 24);
-  win.setBounds({
-    x: Math.round(area.x + (area.width - width) / 2),
-    y: Math.round(area.y + Math.min(110, Math.max(48, (area.height - height) * 0.24))),
-    width,
-    height
-  });
+  win.setBounds(quickPanelBounds(display.workArea));
+  clipFloatingSurface(win);
+}
+
+function clipFloatingSurface(win) {
+  if (process.platform !== 'win32' || !win || win.isDestroyed()) return;
+  const { width, height } = win.getBounds();
+  try { win.setShape(roundedWindowShape(width, height)); } catch {}
+}
+
+function prepareFloatingSurface(win) {
+  if (process.platform !== 'win32') return;
+  // DWM acrylic 在透明 HWND 的 HRGN 外仍会绘制灰色底板。
+  // 由页面保留透光材质，原生层不再画越过圆角的系统背景。
+  try { win.setBackgroundMaterial('none'); win.__surfaceMaterial = 'transparent'; }
+  catch { win.__surfaceMaterial = 'fallback'; }
+  clipFloatingSurface(win);
 }
 
 function createQuickWindow() {
@@ -570,13 +829,12 @@ function createQuickWindow() {
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: false,
-      backgroundThrottling: false
+      // 面板不需要拼写检查：关掉可以省下一个常驻的拼写服务进程
+      spellcheck: false
     }
   });
   quickWindow.setAlwaysOnTop(true, 'floating');
-  if (process.platform === 'win32') {
-    try { quickWindow.setBackgroundMaterial('none'); } catch {}
-  }
+  prepareFloatingSurface(quickWindow);
   quickWindow.loadFile(path.join(__dirname, 'src', 'quickpanel.html'));
   quickWindow.setMenuBarVisibility(false);
   quickWindow.webContents.once('did-finish-load', () => {
@@ -584,9 +842,13 @@ function createQuickWindow() {
     broadcast('content:changed');
   });
   quickWindow.on('blur', () => {
-    if (quickWindow && !quickWindow.isDestroyed() && !quickWindow.webContents.isDevToolsOpened()) quickWindow.hide();
+    if (!quickWindow || quickWindow.isDestroyed() || quickWindow.webContents.isDevToolsOpened()) return;
+    hideQuickPanel();
   });
-  quickWindow.on('show', () => quickWindow.webContents.send('quick:shown'));
+  quickWindow.on('show', () => {
+    cancelIdleTeardown(quickWindow);
+    quickWindow.webContents.send('quick:shown');
+  });
   quickWindow.on('closed', () => { quickWindow = null; quickReady = false; });
   quickWindow.webContents.setWindowOpenHandler(({ url }) => {
     if (isSafeHttpUrl(url)) shell.openExternal(url);
@@ -601,27 +863,67 @@ function createQuickWindow() {
  */
 async function rememberReturnTarget(selectionMethod = 'unknown') {
   try {
-    const snapshot = await foregroundProbe.query();
-    returnTarget = snapshot ? captureTarget(snapshot, { selectionMethod }) : null;
+    const snapshot = await queryForeground();
+    // 从动作面板进入剪贴板时，延续面板打开前的输入框。
+    if (snapshot && Number(snapshot.pid) !== process.pid) returnTarget = captureTarget(snapshot, { selectionMethod });
+    else if (!snapshot) returnTarget = null;
   } catch {
     returnTarget = null;
   }
   return returnTarget;
 }
 
-function showQuickPanel() {
+/* ---------- 浮层生命周期：用完一段时间就还内存 ---------- */
+
+/*
+ * 主窗口闲置后回收；截图、动作面板和剪贴板条是高频热键入口，保留页面。
+ * 截图隐藏时立即释放图像和画布，兼顾再次唤起速度与大图内存占用。
+ */
+const WINDOW_IDLE_TEARDOWN_MS = 60 * 1000;
+// 主窗口是"正门"，用户随时可能回来，回收前多留一段时间。
+// 90s 是折中：关到托盘后 1 分半还占着上百 MB 没有意义，而从托盘唤醒重建
+// 主窗口约 200–400ms，用户体感仍然接近即时。
+const MAIN_WINDOW_IDLE_MS = 90 * 1000;
+
+/** 窗口隐藏后开始计时；期间被再次唤起会取消。 */
+function scheduleIdleTeardown(win, label, delay = WINDOW_IDLE_TEARDOWN_MS) {
+  if (!win || win.isDestroyed()) return;
+  cancelIdleTeardown(win);
+  win.__teardownTimer = setTimeout(() => {
+    win.__teardownTimer = null;
+    if (win.isDestroyed() || win.isVisible()) return;
+    console.log(`[窗口] ${label} 闲置超时，释放渲染进程`);
+    win.destroy();
+  }, delay);
+  if (win.__teardownTimer.unref) win.__teardownTimer.unref();
+}
+
+function cancelIdleTeardown(win) {
+  if (!win || !win.__teardownTimer) return;
+  clearTimeout(win.__teardownTimer);
+  win.__teardownTimer = null;
+}
+
+async function showQuickPanel() {
   if (!quickWindow || quickWindow.isDestroyed()) createQuickWindow();
+  const win = quickWindow;
+  const revision = ++quickShowRevision;
+  cancelIdleTeardown(quickWindow);
   // 先记录目标，再显示窗口——顺序不能反
-  const pending = rememberReturnTarget('quick-panel');
+  await rememberReturnTarget('quick-panel');
+  if (revision !== quickShowRevision || win.isDestroyed()) return;
   positionQuickPanel(quickWindow);
   quickWindow.show();
   quickWindow.focus();
   if (quickReady) quickWindow.webContents.send('quick:shown');
-  return pending;
 }
 
 function hideQuickPanel() {
-  if (quickWindow && !quickWindow.isDestroyed()) quickWindow.hide();
+  quickShowRevision++;
+  if (quickWindow && !quickWindow.isDestroyed()) {
+    quickWindow.hide();
+    // 保留热键入口，降低再次唤起的延迟。
+  }
 }
 
 function toggleQuickPanel() {
@@ -633,7 +935,7 @@ function toggleQuickPanel() {
 
 /**
  * 浮引岛的完整状态。渲染层只拿引用与元数据，文件本体不进入渲染进程。
- * @returns {{ok:boolean, items:object[], policy:'copy'|'move', expanded:boolean, maxItems:number, visible:boolean}}
+ * @returns {{ok:boolean, items:object[], policy:'copy'|'move', expanded:boolean, mode:string, maxItems:number, visible:boolean}}
  */
 function islandState() {
   const snapshot = store ? store.getIsland() : { items: [], policy: 'copy' };
@@ -641,32 +943,58 @@ function islandState() {
     ok: true,
     items: snapshot.items,
     policy: snapshot.policy,
-    expanded: islandExpanded,
+    expanded: islandMode === 'sheet',
+    mode: islandMode,
+    uiRevision: ISLAND_UI_REVISION,
+    windowVisible: Boolean(islandWindow && !islandWindow.isDestroyed() && islandWindow.isVisible()),
     maxItems: ISLAND_MAX_ITEMS,
-    visible: Boolean(islandWindow && !islandWindow.isDestroyed() && islandWindow.isVisible())
+    wake: { ready:islandPointerProbe?.status === 'watching', error:islandWakeError },
+    canUndo: islandUndoStack.length > 0,
+    // 「可见」的语义变了：休眠态窗口虽然存在，但用户看不到，所以按形态判断
+    visible: islandMode !== 'sleep' && Boolean(islandWindow && !islandWindow.isDestroyed() && islandWindow.isVisible())
   };
 }
 
 function broadcastIsland() {
+  syncIslandFrame();
   broadcast('island:state', islandState());
 }
 
-/** 岛窗口边界：主屏顶部居中；展开时向两侧变宽。 */
-function islandBounds(expanded) {
-  const area = screen.getPrimaryDisplay().workArea;
-  const size = expanded ? ISLAND_EXPANDED : ISLAND_COLLAPSED;
+/**
+ * 岛窗口边界：当前显示器工作区顶边，顶部平齐，底部原生裁圆角。
+ */
+function islandBounds(mode = islandMode) {
+  const display = screen.getAllDisplays().find(entry => entry.id === islandDisplayId) || screen.getPrimaryDisplay();
+  const area = display.workArea;
+  if (mode === 'sleep') return receiverBounds(area);
+  const size = store?.getIsland().items.length ? ISLAND_SHEET : ISLAND_DROP;
+  const width = Math.min(size.width, area.width);
   return {
-    x: Math.round(area.x + (area.width - size.width) / 2),
-    y: Math.round(area.y + ISLAND_MARGIN_TOP),
-    width: size.width,
-    height: size.height
+    x: Math.round(area.x + (area.width - width) / 2),
+    // 保留到屏幕顶边的拖放接收走廊，展开不能把指针甩到窗口外。
+    y: Math.round(area.y),
+    width,
+    height: Math.min(size.height, area.height)
   };
+}
+
+function syncIslandFrame() {
+  const win = islandWindow;
+  if (!win || win.isDestroyed()) return;
+  const bounds = islandBounds(islandMode);
+  win.setBounds(bounds);
+  if (process.platform === 'win32') {
+    try {
+      win.setBackgroundMaterial(islandMode === 'sleep' ? 'none' : 'acrylic');
+      win.setShape(islandMode === 'sleep' ? [] : edgeWindowShape(bounds.width, bounds.height));
+    } catch (error) { console.warn('[文件暂存] 使用半透明贴边外观:', error.message); }
+  }
 }
 
 function createIslandWindow() {
   if (islandWindow && !islandWindow.isDestroyed()) return islandWindow;
   islandWindow = new BrowserWindow({
-    ...islandBounds(false),
+    ...islandBounds(islandMode),
     show: false,
     frame: false,
     transparent: true,
@@ -679,7 +1007,7 @@ function createIslandWindow() {
     skipTaskbar: true,
     alwaysOnTop: true,
     fullscreenable: false,
-    // 岛要能被点击与拖放；但不能抢走用户正在打字的窗口焦点
+    // 自动出现不抢焦点；休眠时 hide + 鼠标穿透，拖动靠近后才启用接收。
     focusable: true,
     title: '随序 · 浮引岛',
     webPreferences: {
@@ -687,24 +1015,31 @@ function createIslandWindow() {
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: false,
-      backgroundThrottling: false
+      spellcheck: false,
+      // 岛平时只有一块空热区，没必要让渲染层满速跑
+      backgroundThrottling: true
     }
   });
   islandWindow.setAlwaysOnTop(true, 'floating');
+  islandWindow.setIgnoreMouseEvents(true);
   if (process.platform === 'win32') {
     try { islandWindow.setBackgroundMaterial('none'); } catch {}
   }
   islandWindow.loadFile(path.join(__dirname, 'src', 'island.html'));
   islandWindow.setMenuBarVisibility(false);
   islandWindow.webContents.once('did-finish-load', () => {
+    pushIslandMode();
     islandWindow.webContents.send('island:state', islandState());
-    islandWindow.webContents.send('island:expanded', islandExpanded);
   });
-  // 失焦即收起：点别处不该留一张展开的卡片挡在屏幕上
+  // 只处理实际操作后的失焦，忽略材质/形状初始化带来的系统激活变化。
+  let islandHadFocus = false;
+  islandWindow.on('focus', () => { islandHadFocus = true; });
   islandWindow.on('blur', () => {
-    if (islandExpanded) setIslandExpanded(false);
+    const wasFocused = islandHadFocus;
+    islandHadFocus = false;
+    if (wasFocused && islandWindow?.isVisible() && islandMode !== 'sleep') setIslandMode('sleep');
   });
-  islandWindow.on('closed', () => { islandWindow = null; });
+  islandWindow.on('closed', () => { islandWindow = null; islandMode = 'sleep'; });
   islandWindow.webContents.setWindowOpenHandler(({ url }) => {
     if (isSafeHttpUrl(url)) shell.openExternal(url);
     return { action: 'deny' };
@@ -712,60 +1047,156 @@ function createIslandWindow() {
   return islandWindow;
 }
 
+function pushIslandMode() {
+  const win = islandWindow;
+  if (!win || win.isDestroyed()) return;
+  win.webContents.send('island:mode', islandMode);
+  win.webContents.send('island:expanded', islandMode === 'sheet');
+}
+
+/** 唤醒岛：休眠 → 胶囊 → 卡片。任何一次交互都会把「回休眠」的计时清零。 */
+function setIslandMode(mode) {
+  // 彻底取消常驻胶囊。旧版 rail 请求也按隐藏处理。
+  const next = mode === 'sheet' ? 'sheet' : 'sleep';
+  clearIslandRest();
+  const win = islandWindow;
+  islandMode = next;
+  if (win && !win.isDestroyed()) {
+    if (next === 'sleep') win.hide();
+    syncIslandFrame();
+    win.setIgnoreMouseEvents(next === 'sleep');
+    pushIslandMode();
+    if (next !== 'sleep' && !win.isVisible()) win.showInactive();
+  }
+  if (next !== 'sleep') scheduleIslandRest();
+  return { ok: true, mode: next, expanded: next === 'sheet' };
+}
+
+/** 安排一次「没有交互就回休眠」：拖入文件后要让用户看清结果，不能立刻消失。 */
+function scheduleIslandRest(delay = ISLAND_REST_MS) {
+  clearIslandRest();
+  islandRestTimer = setTimeout(() => {
+    islandRestTimer = null;
+    if (islandMode === 'sleep') return;
+    // showInactive 不产生 blur；是否仍在使用应按实际指针位置判断。
+    if (islandWindow && !islandWindow.isDestroyed() && contains(islandWindow.getBounds(), screen.getCursorScreenPoint())) {
+      scheduleIslandRest(delay);
+      return;
+    }
+    setIslandMode('sleep');
+  }, Math.max(600, delay));
+  if (islandRestTimer.unref) islandRestTimer.unref();
+}
+
+function clearIslandRest() {
+  if (!islandRestTimer) return;
+  clearTimeout(islandRestTimer);
+  islandRestTimer = null;
+}
+
+/** 托盘 / 工具箱入口：醒着就睡下，睡着就展开成卡片。 */
+function toggleIsland() {
+  if (islandMode === 'sleep') return showIsland();
+  return hideIsland();
+}
+
 function showIsland() {
   const win = createIslandWindow();
   if (!win || win.isDestroyed()) return { ok: false, error: '浮引岛窗口创建失败' };
-  win.setBounds(islandBounds(islandExpanded));
-  // 用 showInactive：岛是常驻入口，出现时不能打断用户当前输入
-  win.showInactive();
+  islandDisplayId = screen.getDisplayNearestPoint(screen.getCursorScreenPoint()).id;
+  setIslandMode('sheet');
   win.webContents.send('island:state', islandState());
-  return { ok: true, visible: true };
+  return { ok: true, visible: true, mode: 'sheet' };
 }
 
 function hideIsland() {
-  setIslandExpanded(false);
-  if (islandWindow && !islandWindow.isDestroyed()) islandWindow.hide();
-  return { ok: true, visible: false };
+  setIslandMode('sleep');
+  return { ok: true, visible: false, mode: 'sleep' };
 }
 
-function toggleIsland() {
-  if (islandWindow && !islandWindow.isDestroyed() && islandWindow.isVisible()) return hideIsland();
-  return showIsland();
-}
-
+/** 兼容旧通道：expanded 只有「展开成卡片 / 收成胶囊」两种含义。 */
 function setIslandExpanded(expanded) {
-  const target = Boolean(expanded);
-  const win = islandWindow;
-  if (islandExpanded === target) {
-    if (win && !win.isDestroyed()) win.webContents.send('island:expanded', target);
-    return { ok: true, expanded: target };
-  }
-  islandExpanded = target;
-  if (!win || win.isDestroyed()) return { ok: true, expanded: target };
-  win.setBounds(islandBounds(target));
-  win.webContents.send('island:expanded', target);
-  return { ok: true, expanded: target };
+  return setIslandMode(expanded ? 'sheet' : 'sleep');
 }
+
+/** 启动时把岛放进休眠态：窗口在岗（接得住拖放），屏幕上什么都没有。 */
+function armIsland() {
+  const win = createIslandWindow();
+  if (!win || win.isDestroyed()) return { ok: false, error: '浮引岛窗口创建失败' };
+  islandMode = 'sleep';
+  win.setBounds(islandBounds('sleep'));
+  win.setIgnoreMouseEvents(true);
+  win.hide();
+  pushIslandMode();
+  return { ok: true, mode: 'sleep' };
+}
+
+function handleIslandPointer(point) {
+  const win = islandWindow;
+  if (!win || win.isDestroyed()) return;
+  if (islandMode !== 'sleep') {
+    if (point.down && !contains(win.getBounds(), point)) setIslandMode('sleep');
+    return;
+  }
+  const display = receiverDisplay(screen.getAllDisplays(), point);
+  if (!display) {
+    win.setIgnoreMouseEvents(true);
+    if (win.isVisible()) win.hide();
+    return;
+  }
+  islandDisplayId = display.id;
+  win.setBounds(islandBounds('sleep'));
+  win.setIgnoreMouseEvents(false);
+  if (!win.isVisible()) win.showInactive();
+}
+
+async function setupIslandPointer() {
+  if (process.platform !== 'win32' || isQuitting) return;
+  const executable = await ensureNativeHost({ sourcePath:assetPath('island-pointer-host.cs'), targetPath:path.join(userRoot(), 'island-pointer-host-v1.exe') });
+  if (isQuitting) return;
+  if (!executable) { islandWakeError = '拖动侦测未能启动，可从工具箱或托盘打开文件中转'; return; }
+  islandPointerProbe = new IslandPointerProbe({ executable, onPointer:handleIslandPointer, onError:(message) => {
+    islandWakeError = message;
+    if (islandMode === 'sleep') hideIsland();
+    console.warn('[文件中转] 拖动侦测不可用:', message);
+  } });
+  await islandPointerProbe.start();
+}
+
 
 /** 把路径加入暂存。去重、容量上限由 lib/island-model.js 决定。 */
 async function addIslandPaths(paths) {
   if (!store) return { ...islandState(), ok: false, error: '数据层尚未就绪' };
   const incoming = (Array.isArray(paths) ? paths : [paths])
     .filter((value) => typeof value === 'string')
-    .filter((value) => islandModel.isShelfablePath(value));
+    .filter((value) => islandModel.isShelfablePath(value)).slice(0, 96);
   if (!incoming.length) return { ...islandState(), ok: false, error: '没有可暂存的文件路径' };
+  const checked = await Promise.all(incoming.map(async (filePath) => {
+    try {
+      const stat = await fsp.stat(filePath);
+      if (!stat.isFile() && !stat.isDirectory()) return null;
+      return { path:filePath, kind:stat.isDirectory() ? 'folder' : islandModel.classifyPath(filePath) };
+    } catch { return null; }
+  }));
+  const readable = checked.filter(Boolean);
+  const skipped = incoming.length - readable.length;
+  if (!readable.length) return { ...islandState(), ok:false, error:'拖入的文件已不存在或无法读取', skipped };
   const current = store.getIsland();
   // island-model 的入参是条目对象：这里把路径包装成只带 path 的条目，
   // 名称、类型、时间戳都由模型补齐（保持纯函数、便于测试）
-  const result = islandModel.addShelfItems(current.items, incoming.map((filePath) => ({ path: filePath })), {
+  const result = islandModel.addShelfItems(current.items, readable, {
     cap: ISLAND_MAX_ITEMS
   });
   if (!result.added) return { ...islandState(), ok: true, added: 0, dropped: result.dropped };
   await store.updateIsland({ items: result.items });
   broadcastIsland();
   const win = islandWindow;
-  if (win && !win.isDestroyed()) setIslandExpanded(true);
-  return { ...islandState(), ok: true, added: result.added, dropped: result.dropped };
+  if (win && !win.isDestroyed()) {
+    setIslandMode('sheet');
+    // 让用户看清"接住了什么"，几秒没动作再回休眠，不在屏幕上赖着
+    scheduleIslandRest();
+  }
+  return { ...islandState(), ok: true, added: result.added, dropped: result.dropped, skipped };
 }
 
 /** 找到暂存条目并确认文件还在。 */
@@ -817,25 +1248,16 @@ async function openIslandItem(id) {
 function revealIslandItem(id) {
   const found = findIslandItem(id);
   if (!found) return { ok: false, error: '暂存条目不存在' };
+  if (!found.exists) return { ok:false, error:'文件已被移动或删除' };
   shell.showItemInFolder(found.item.path);
   return { ok: true };
 }
 
 /* ---------- 剪贴板历史条（屏幕底部浮层） ---------- */
 
-const CLIPBOARD_BAR_HEIGHT = 196;
-const CLIPBOARD_BAR_MARGIN = 20;
-const CLIPBOARD_BAR_MAX_WIDTH = 1180;
-
 function clipboardBarBounds() {
-  const area = screen.getPrimaryDisplay().workArea;
-  const width = Math.min(CLIPBOARD_BAR_MAX_WIDTH, Math.max(720, area.width - 160));
-  return {
-    x: Math.round(area.x + (area.width - width) / 2),
-    y: Math.round(area.y + area.height - CLIPBOARD_BAR_HEIGHT - CLIPBOARD_BAR_MARGIN),
-    width,
-    height: CLIPBOARD_BAR_HEIGHT
-  };
+  const display = screen.getDisplayNearestPoint(screen.getCursorScreenPoint());
+  return clipboardShelfBounds(display.workArea);
 }
 
 function createClipboardBarWindow() {
@@ -860,19 +1282,17 @@ function createClipboardBarWindow() {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
       nodeIntegration: false,
-      sandbox: false
+      sandbox: false,
+      spellcheck: false
     }
   });
   clipboardBarWindow.setAlwaysOnTop(true, 'floating');
-  if (process.platform === 'win32') {
-    try { clipboardBarWindow.setBackgroundMaterial('none'); } catch {}
-  }
-  clipboardBarWindow.loadFile(path.join(__dirname, 'src', 'clipboardbar.html'));
+  prepareFloatingSurface(clipboardBarWindow);
+  clipboardBarWindow.__loaded = clipboardBarWindow.loadFile(path.join(__dirname, 'src', 'clipboardbar.html'));
+  clipboardBarWindow.__loaded.catch(error => console.warn('剪贴板条加载失败:', error.message));
   clipboardBarWindow.setMenuBarVisibility(false);
   // 失焦即收起：底部条不该长期挡在屏幕上
-  clipboardBarWindow.on('blur', () => {
-    if (clipboardBarWindow && !clipboardBarWindow.isDestroyed() && clipboardBarWindow.isVisible()) clipboardBarWindow.hide();
-  });
+  clipboardBarWindow.on('blur', () => hideClipboardBar());
   clipboardBarWindow.on('closed', () => { clipboardBarWindow = null; });
   clipboardBarWindow.webContents.setWindowOpenHandler(({ url }) => {
     if (isSafeHttpUrl(url)) shell.openExternal(url);
@@ -883,10 +1303,17 @@ function createClipboardBarWindow() {
 
 /** 唤出底部剪贴板历史条；先记录当前前台窗口，Enter 才能粘回原处。 */
 async function showClipboardBar() {
+  const revision = ++clipboardShowRevision;
+  clipboardShowPending = true;
   const win = createClipboardBarWindow();
   if (!win || win.isDestroyed()) return { ok: false, error: '剪贴板历史条创建失败' };
-  await rememberReturnTarget('clipboard-bar');
+  cancelIdleTeardown(win);
+  await Promise.all([rememberReturnTarget('clipboard-bar'), win.__loaded]);
+  if (revision !== clipboardShowRevision || win.isDestroyed()) return { ok: true, visible: false };
+  clipboardShowPending = false;
+  hideQuickPanel();
   win.setBounds(clipboardBarBounds());
+  clipFloatingSurface(win);
   win.show();
   win.focus();
   win.webContents.send('clipboard-bar:shown');
@@ -894,12 +1321,17 @@ async function showClipboardBar() {
 }
 
 function hideClipboardBar() {
-  if (clipboardBarWindow && !clipboardBarWindow.isDestroyed()) clipboardBarWindow.hide();
+  clipboardShowRevision++;
+  clipboardShowPending = false;
+  if (clipboardBarWindow && !clipboardBarWindow.isDestroyed()) {
+    clipboardBarWindow.hide();
+    // 高频浮层保留页面和历史缓存，避免下一次快捷键重新启动渲染进程。
+  }
   return { ok: true, visible: false };
 }
 
 function toggleClipboardBar() {
-  if (clipboardBarWindow && !clipboardBarWindow.isDestroyed() && clipboardBarWindow.isVisible()) {
+  if (clipboardShowPending || (clipboardBarWindow && !clipboardBarWindow.isDestroyed() && clipboardBarWindow.isVisible())) {
     return hideClipboardBar();
   }
   return showClipboardBar();
@@ -978,9 +1410,18 @@ async function setupMomentaryProbe() {
     momentaryError = '';
     return { ok: true, watching: false };
   }
+  // 宿主选择：优先用系统自带 csc.exe 编译一次的 5KB 原生小程序
+  // （常驻约 9MB、无 conhost、READY 19ms），编译不可用才回退 PowerShell
+  // （约 73MB 私有 + 7.7MB conhost、READY 2.5s）。功能与协议完全一致。
+  // 编译产物缓存在 userData 下，只在首次需要时编译一次。
+  const nativeHost = await ensureNativeHost({
+    sourcePath: assetPath('key-watch-host.cs'),
+    targetPath: path.join(userRoot(), 'key-watch-host.exe')
+  }).catch(() => null);
   momentaryProbe = new KeyWatchProbe({
     accelerator,
     scriptPath: assetPath('key-watch.ps1'),
+    nativeHost: nativeHost || '',
     onDown: () => {
       if (quickWindow && !quickWindow.isDestroyed() && quickWindow.isVisible()) return;
       momentaryOpened = true;
@@ -1012,18 +1453,11 @@ async function setupMomentaryProbe() {
  * 尝试把内容放回原处。
  *
  * 严格遵循第 7 节：提交前重新校验目标；校验不通过就只复制并提示用户。
- * 本环境无法安全注入输入，因此默认走「仅复制」路径，但仍完整执行校验，
- * 让用户得到准确的原因提示。
+ * 原生助手完成目标实例校验、焦点检查与粘贴；失败时保留已复制内容。
  */
-async function tryReturnToTarget(item, intent = 'return-and-paste') {
+async function tryReturnToTarget(item, intent = 'return-and-paste', options = {}) {
   const settings = store.getSettings();
-  const current = await foregroundProbe.query().catch(() => null);
-  const decision = decideCommit({
-    target: returnTarget,
-    current,
-    intent,
-    pasteAfterCopy: Boolean(settings.pasteAfterCopy)
-  });
+  const target = returnTarget;
 
   // 无论是否能粘贴，都先完成复制——这是「已复制，切回目标后粘贴」的前提
   try {
@@ -1039,15 +1473,27 @@ async function tryReturnToTarget(item, intent = 'return-and-paste') {
   } catch (error) {
     // 复制本身失败时必须是失败结果：渲染层据此显示红色错误，
     // 不能返回 ok:true 把「复制失败」当成功提示出去。
-    return { ...decision, copied: false, copyFailed: true, canPaste: false, message: `复制失败：${error.message}` };
+    return { copied: false, copyFailed: true, canPaste: false, message: `复制失败：${error.message}` };
   }
+
+  // 写入成功立即收起；保留系统剪贴板，后续 Ctrl+V 仍是所选历史内容。
+  if (options.clipboardBar) hideClipboardBar();
+  let current = await queryForeground();
+  // 提交时前台通常是自己的浮层，校验原目标实例，而不是拿浮层与目标比较。
+  if (current && Number(current.pid) === process.pid && target) current = await foregroundProbe.query(target.hwnd);
+  const decision = decideCommit({ target, current, intent,
+    pasteAfterCopy: options.clipboardBar || Boolean(settings.pasteAfterCopy) });
 
   if (!decision.canPaste) {
     // 校验未通过（目标已关闭 / 用户切换了窗口 / 权限不匹配），或用户只要复制
     return { ...decision, canPaste: false, copied: true, message: decision.message };
   }
 
-  const focused = focusWindowForReturn(returnTarget);
+  const nativePaste = await foregroundProbe.pasteTo(target);
+  if (!nativePaste.unsupported) return { ...decision, canPaste: nativePaste.ok, pasted: nativePaste.ok,
+    message: nativePaste.ok ? '已粘贴到原窗口' : '已复制，请按 Ctrl+V 粘贴' };
+
+  const focused = await focusWindowForReturn(target);
   if (!focused) {
     return { ...decision, canPaste: false, pasteUnsupported: true, message: '已复制，切回目标后粘贴' };
   }
@@ -1072,7 +1518,7 @@ async function tryReturnToTarget(item, intent = 'return-and-paste') {
  * 调用前已由 validateTarget 确认 HWND 仍属于同一进程实例，
  * 这里只负责置前。失败返回 false，由调用方降级为「仅复制」。
  */
-function focusWindowForReturn(target) {
+async function focusWindowForReturn(target) {
   const hwnd = normalizeHwnd(target?.hwnd);
   if (!hwnd) return false;
   const script = `
@@ -1096,9 +1542,9 @@ $ok = [SuiraFocus]::Focus([long]${hwnd})
 [Console]::Out.Write((ConvertTo-Json @{ ok = $ok } -Compress))
 `;
   try {
-    const output = execFileSync('powershell.exe', [
+    const output = await new Promise((resolve, reject) => execFile('powershell.exe', [
       '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', script
-    ], { encoding: 'utf8', windowsHide: true, timeout: 4000 });
+    ], { encoding: 'utf8', windowsHide: true, timeout: 4000 }, (error, stdout) => error ? reject(error) : resolve(stdout)));
     return JSON.parse(String(output).trim()).ok === true;
   } catch {
     return false;
@@ -1132,21 +1578,41 @@ function createMainWindow() {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
       nodeIntegration: false,
-      sandbox: false
+      sandbox: false,
+      // 主窗口不需要拼写检查：关掉省一个常驻的拼写服务进程
+      spellcheck: false
     }
   });
   mainWindow.loadFile(path.join(__dirname, 'src', 'index.html'));
-  mainWindow.once('ready-to-show', () => {
+  // ready-to-show 是首选：等首帧画完再显示，避免白屏闪一下。
+  // 但它在「桌面已锁定 / 合成器异常 / GPU 未就绪」时可能永远不触发，
+  // 那种情况下进程在跑、托盘在，却一个窗口都没有——所以加一个兜底显示。
+  let revealed = false;
+  const revealMainWindow = () => {
+    if (revealed || !mainWindow || mainWindow.isDestroyed()) return;
+    revealed = true;
     // 上次退出时是最大化状态：先恢复最大化再显示，避免先闪一下小窗口
     if (saved?.maximized) {
       try { mainWindow.maximize(); } catch {}
     }
     mainWindow.show();
     mainWindow.focus();
-  });
+  };
+  mainWindow.once('ready-to-show', revealMainWindow);
+  const revealTimer = setTimeout(() => {
+    if (!revealed) console.warn('[窗口] ready-to-show 未在 2.5s 内触发，兜底显示主窗口');
+    revealMainWindow();
+  }, 2500);
+  if (revealTimer.unref) revealTimer.unref();
   mainWindow.on('close', (event) => {
     rememberMainWindowState();
-    if (!isQuitting) { event.preventDefault(); mainWindow.hide(); }
+    if (!isQuitting) {
+      event.preventDefault();
+      mainWindow.hide();
+      // 关到托盘后不要一直攥着一个渲染进程：闲置几分钟就销毁，
+      // 下次从托盘/面板进来再重建（窗口位置与最大化状态已经记在 store 里）
+      scheduleIdleTeardown(mainWindow, '主窗口', MAIN_WINDOW_IDLE_MS);
+    }
   });
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
     if (isSafeHttpUrl(url)) shell.openExternal(url);
@@ -1181,6 +1647,7 @@ function rememberMainWindowState() {
 function showMain(page = 'shelf') {
   const alreadyFocused = Boolean(mainWindow && !mainWindow.isDestroyed() && mainWindow.isVisible() && mainWindow.isFocused());
   if (!mainWindow || mainWindow.isDestroyed()) createMainWindow();
+  cancelIdleTeardown(mainWindow);
   if (!alreadyFocused) {
     // 「粘贴回原窗口」需要目标：先记住用户打开随序之前所在的应用。
     // 若读到的目标就是随序自己（例如从面板跳过来），保留面板已经记录的目标。
@@ -1236,7 +1703,10 @@ function createOverlayWindow() {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
       nodeIntegration: false,
-      sandbox: false
+      sandbox: false,
+      // 覆盖层只画一张截图，不需要拼写服务；BACKGROUND 阶段也不要满速跑
+      spellcheck: false,
+      backgroundThrottling: true
     }
   });
   overlayWindow.setAlwaysOnTop(true, 'screen-saver');
@@ -1268,6 +1738,7 @@ function createOverlayWindow() {
 async function showOverlayWindow(payload) {
   capturePayload = payload;
   const win = createOverlayWindow();
+  cancelIdleTeardown(win);
   const bounds = currentVirtualBounds();
   if (!sameBounds(win.getBounds(), bounds)) win.setBounds(bounds);
   if (!overlayReady) {
@@ -1288,11 +1759,22 @@ async function showOverlayWindow(payload) {
   return overlayWindow;
 }
 
-/** 收起覆盖层：隐藏而不是销毁，下次唤起才能秒开。 */
+/**
+ * 收起覆盖层：隐藏而不是立刻销毁，下次唤起才能秒开。
+ *
+ * 但隐藏不等于不占内存：一张 4K 屏幕画面（RGBA 约 33MB）+ 两层同尺寸 canvas
+ * 会一直挂在渲染进程里。所以这里做两级回收：
+ *   1. 立刻通知渲染层丢掉画面/画布后备缓冲（毫秒级，保留窗口热启动）；
+ *   2. 保留空页面，不再在闲置后销毁，避免下一次截图重新加载页面。
+ */
 function hideOverlayWindow() {
   capturePayload = null;
   captureBusy = false;
-  if (overlayWindow && !overlayWindow.isDestroyed()) overlayWindow.hide();
+  if (overlayWindow && !overlayWindow.isDestroyed()) {
+    try { overlayWindow.webContents.send('capture:release'); } catch {}
+    overlayWindow.hide();
+    // 画布像素已 release，保留空页面供下次截图立即复用。
+  }
   restoreMainAfterCapture();
 }
 
@@ -1300,13 +1782,18 @@ async function beginScreenCapture(source = 'panel', options = {}) {
   if (captureBusy) return { ok: true };
   // 入口意图：从 38 键面板按 O 进来，框完直接进识别；按 P 进来直接钉图。
   // 意图随 payload 交给覆盖层，覆盖层据此预选工具或自动完成。
-  const intent = ['ocr', 'pin', 'copy', 'save', 'shelf'].includes(options?.intent) ? options.intent : 'copy';
+  const intent = ['ocr', 'pin', 'copy', 'save', 'shelf', 'record'].includes(options?.intent) ? options.intent : 'copy';
   captureBusy = true;
   try {
+    // 页面加载与屏幕采集并行；启动预热尚未完成时也不串行冷建。
+    createOverlayWindow();
+    const hidingSurface = [quickWindow, clipboardBarWindow, mainWindow].some(win => win && !win.isDestroyed() && win.isVisible());
     hideQuickPanel();
+    hideClipboardBar();
     mainWasVisible = Boolean(mainWindow && !mainWindow.isDestroyed() && mainWindow.isVisible());
     if (mainWasVisible) mainWindow.hide();
-    await new Promise((resolve) => setTimeout(resolve, 40));
+    // 仅在需要等待自己的窗口从桌面消失时让出合成帧。
+    if (hidingSurface) await new Promise((resolve) => setTimeout(resolve, 40));
 
     // 跨屏支持：覆盖所有显示器组成的虚拟桌面。
     // 各显示器 DPI 可能不同，因此按「物理像素」合成，再用统一的虚拟桌面逻辑尺寸映射回选区。
@@ -1315,6 +1802,16 @@ async function beginScreenCapture(source = 'panel', options = {}) {
 
     // 合成用缩放：以最大 scaleFactor 为准，保证最清晰屏幕不被降采样
     const maxScale = maxScaleFactor(displays);
+    let tiles=null, captureBackend='native';
+    if(process.platform==='win32') {
+      try {
+        if(!captureHost)captureHost=ensureNativeHost({sourcePath:assetPath('capture-host.cs'),targetPath:path.join(userRoot(),'capture-host-v2.exe'),references:['System.Drawing.dll']});
+        const executable=await captureHost;
+        if(executable)tiles=nativeDesktopTiles(displays,await captureNative(executable),virtualBounds,maxScale);
+      }catch(error){console.warn('原始像素采集回退:',error.message);}
+    }
+    if(!tiles) {
+    captureBackend='electron';
     const sources = await desktopCapturer.getSources({
       types: ['screen'],
       thumbnailSize: {
@@ -1324,7 +1821,8 @@ async function beginScreenCapture(source = 'panel', options = {}) {
       fetchWindowIcons: false
     });
 
-    const tiles = collectDesktopTiles(displays, sources, virtualBounds, maxScale);
+    tiles = collectDesktopTiles(displays, sources, virtualBounds, maxScale);
+    }
     if (!tiles) throw new Error('无法读取屏幕画面');
 
     const primaryDisplay = screen.getDisplayNearestPoint(screen.getCursorScreenPoint());
@@ -1333,6 +1831,9 @@ async function beginScreenCapture(source = 'panel', options = {}) {
       dataUrl: tiles.tiles.length === 1 ? tiles.tiles[0].dataUrl : '',
       tiles: tiles.tiles.length > 1 ? tiles.tiles : null,
       tileSize: { width: tiles.width, height: tiles.height },
+      // 原始像素元数据通过索引引用已有 PNG，不在 IPC 中重复传输整张图片。
+      rawTiles: tiles.rawTiles?.map((tile,tileIndex)=>({...tile,dataUrl:undefined,tileIndex})) || null,
+      captureBackend,
       displayId: primaryDisplay.id,
       bounds: virtualBounds,
       size: virtualBounds,
@@ -1502,13 +2003,76 @@ function getPanelActions() {
     panelActions = createPanelActions({
       store,
       actions,
-      capture: (intent) => beginScreenCapture('panel', { intent }),
+      capture: (intent) => intent === 'record' ? openRecordingSelection() : beginScreenCapture('panel', { intent }),
       pin: (filePath, size) => createPinWindow(pathToFileURL(filePath).href, size),
       switchToDesktop,
-      lockWorkstation
+      lockWorkstation,
+      // 速记：接着最近一条写，没有才新建
+      openNote: () => openLatestNote()
     });
   }
   return panelActions;
+}
+
+/* ---------- 区域录屏：专用浮层负责编码，主进程按块顺序落盘 ---------- */
+async function openRecordingSelection() {
+  if (recordingWindow && !recordingWindow.isDestroyed()) {
+    recordingWindow.show(); recordingWindow.focus();
+    return { ok: true, closePanel: true };
+  }
+  return beginScreenCapture('panel', { intent: 'record' });
+}
+
+function createRecordingWindow(config) {
+  if (recordingWindow && !recordingWindow.isDestroyed()) throw Error('已有录屏窗口，请先完成当前录制');
+  recordingConfig = config; recordingLastFile = ''; recordingAudio = false;
+  recordingWriter = new RecordingWriter(path.join(userRoot(), 'recordings'));
+  const display = screen.getAllDisplays().find(d => String(d.id) === config.displayId) || screen.getPrimaryDisplay();
+  const area = display.workArea, width = Math.min(520, area.width), height = 166;
+  const region = { x:config.displayBounds.x + config.area.x, y:config.displayBounds.y + config.area.y, width:config.area.width, height:config.area.height };
+  const desiredY = region.y + region.height + 14 + height <= area.y + area.height ? region.y + region.height + 14 : region.y - height - 14;
+  const win = new BrowserWindow({ width, height,
+    x: Math.max(area.x, Math.min(area.x + area.width - width, Math.round(region.x + (region.width - width) / 2))),
+    y: Math.max(area.y, Math.min(area.y + area.height - height, Math.round(desiredY))),
+    show:false, frame:false, transparent:true, backgroundColor:'#00000000', resizable:false,
+    alwaysOnTop:true, skipTaskbar:false, title:'随序 · 录屏',
+    webPreferences:{preload:path.join(__dirname,'preload.js'),contextIsolation:true,nodeIntegration:false,sandbox:false,spellcheck:false,backgroundThrottling:false}
+  });
+  recordingWindow = win;
+  prepareFloatingSurface(win);
+  // 支持的 Windows 版本从采集画面中排除控制条，避免把按钮录进视频。
+  win.setContentProtection(true);
+  win.setAlwaysOnTop(true,'floating');
+  win.loadFile(path.join(__dirname,'src','recorder.html'));
+  win.once('ready-to-show',()=>{ if(!win.isDestroyed()) {win.show();win.focus();} });
+  win.on('close', event => {
+    if (recordingWriter?.current) { event.preventDefault(); win.__closeAfterRecording=true; win.webContents.send('recording:stop-requested'); }
+  });
+  win.on('closed',()=>{
+    recordingWriter?.abandon().catch(error=>console.warn('录屏中断:',error.message));
+    if(recordingWindow===win){recordingWindow=null;recordingConfig=null;}
+    if(recordingRestoreMain){recordingRestoreMain=false;if(mainWindow&&!mainWindow.isDestroyed()){mainWindow.show();mainWindow.focus();}}
+  });
+  win.webContents.on('render-process-gone',()=>{
+    recordingWriter?.abandon().finally(()=>{if(!win.isDestroyed())win.destroy();});
+  });
+  win.webContents.setWindowOpenHandler(()=>({action:'deny'}));
+  return win;
+}
+
+function setupRecordingMedia() {
+  session.defaultSession.setDisplayMediaRequestHandler(async (request, callback) => {
+    // 只有当前录屏页面可取得之前明确选择的屏幕源。
+    if (!recordingWindow || recordingWindow.isDestroyed() || request.frame !== recordingWindow.webContents.mainFrame || !recordingConfig) { callback({}); return; }
+    const owner=recordingWindow,config=recordingConfig,audio=recordingAudio;
+    try {
+      const sources = await desktopCapturer.getSources({types:['screen'],thumbnailSize:{width:0,height:0},fetchWindowIcons:false});
+      if(owner!==recordingWindow||owner.isDestroyed()){callback({});return;}
+      const source = sources.find(item=>String(item.display_id)===config.displayId);
+      if (!source) { callback({}); return; }
+      callback(audio ? {video:source,audio:'loopback'} : {video:source});
+    } catch (error) { console.warn('屏幕录制源不可用:',error.message); callback({}); }
+  });
 }
 
 /**
@@ -1523,104 +2087,244 @@ async function runPanelAction(actionId) {
  * 取出开始菜单快捷方式的图标并转成 data URL。
  * 结果按路径缓存：图标是静态资源，不需要每次打开面板都重新提取。
  */
-async function appIconFor(filePath) {
-  if (appIconCache.has(filePath)) return appIconCache.get(filePath);
-  let dataUrl = '';
-  try {
-    const image = await app.getFileIcon(filePath, { size: 'normal' });
-    if (image && !image.isEmpty()) {
-      dataUrl = image.resize({ width: 64, height: 64, quality: 'best' }).toDataURL();
+function getAppIconLoader() {
+  const dataUrl=image=>image&&!image.isEmpty()?image.resize({width:64,height:64,quality:'best'}).toDataURL():'';
+  if(!appIconLoader)appIconLoader=createAppIconLoader({
+    diskCache:createIconDiskCache(path.join(userRoot(),'cache','app-icons-v2.json')),
+    readShortcutLink:filePath=>shell.readShortcutLink(filePath),
+    getFileIcon:async filePath=>dataUrl(await app.getFileIcon(filePath,{size:'large'})),
+    loadImage:filePath=>dataUrl(nativeImage.createFromPath(filePath)),
+    extractResources:async sources=>{
+      if(!sources.length)return [];
+      if(!appIconHost)appIconHost=ensureNativeHost({sourcePath:assetPath('app-icon-host.cs'),targetPath:path.join(userRoot(),'app-icon-host-v1.exe'),references:['System.Drawing.dll']});
+      return extractResourceBatch(await appIconHost,sources);
     }
-  } catch {
-    dataUrl = '';
-  }
-  appIconCache.set(filePath, dataUrl);
-  return dataUrl;
+  });
+  return appIconLoader;
 }
 
 function createPinWindow(dataUrl, size = {}) {
-  const maxWidth = 560;
-  const ratio = (size.height || 600) / Math.max(1, size.width || 800);
-  const width = Math.min(maxWidth, Math.max(260, size.width || 800));
-  const height = Math.max(180, Math.round(width * ratio));
-  const pin = new BrowserWindow({
-    width, height, frame: false, alwaysOnTop: true, resizable: true, skipTaskbar: false,
-    hasShadow: true, backgroundColor: '#252b35', title: '随序 · 钉图',
-    webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: false, preload: path.join(__dirname, 'pin-preload.js') }
+  const display=screen.getDisplayNearestPoint(screen.getCursorScreenPoint());
+  const ratio=(size.height||600)/Math.max(1,size.width||800);
+  const width=Math.max(100,Math.min(560,size.width||800,display.workArea.width-40,(display.workArea.height-60)/ratio));
+  const height=Math.max(60,Math.round(width*ratio));
+  const pin=new BrowserWindow({
+    width:Math.round(width),height,frame:false,alwaysOnTop:true,resizable:true,skipTaskbar:false,
+    transparent:true,hasShadow:false,backgroundColor:'#00000000',title:'随序 · 钉图',
+    webPreferences:{contextIsolation:true,nodeIntegration:false,sandbox:false,spellcheck:false,preload: path.join(__dirname, 'pin-preload.js')}
   });
-  const escaped = String(dataUrl).replace(/"/g, '&quot;');
-  const html = `<!doctype html><html><head><meta charset="utf-8"><style>
-    html,body{margin:0;height:100%;overflow:hidden;background:#252b35;user-select:none}
-    .wrap{position:relative;width:100%;height:100%;-webkit-app-region:drag}
-    img{display:block;width:100%;height:100%;object-fit:contain;background:#252b35;pointer-events:none}
-    .bar{position:absolute;left:50%;bottom:10px;transform:translateX(-50%);display:flex;align-items:center;gap:2px;
-      padding:5px 7px;border-radius:10px;background:rgba(37,43,53,.92);box-shadow:0 6px 20px rgba(0,0,0,.34);
-      opacity:0;transition:opacity .16s;-webkit-app-region:no-drag}
-    .wrap:hover .bar{opacity:1}
-    button{width:26px;height:26px;border:0;border-radius:7px;background:transparent;color:#dfe5ef;
-      font:15px/1 system-ui;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0}
-    button:hover{background:rgba(183,203,234,.2)}
-    .sep{width:1px;height:16px;background:rgba(223,229,239,.22);margin:0 3px}
-    .val{min-width:38px;text-align:center;color:#b7cbea;font:11px/1 system-ui;letter-spacing:.02em}
-  </style></head><body><div class="wrap"><img src="${escaped}">
-    <div class="bar">
-      <button id="zoom-out" title="缩小">−</button>
-      <span class="val" id="zoom-val">100%</span>
-      <button id="zoom-in" title="放大">+</button>
-      <span class="sep"></span>
-      <button id="opacity-down" title="更透明">◐</button>
-      <span class="val" id="opacity-val">100%</span>
-      <button id="opacity-up" title="更不透明">◑</button>
-      <span class="sep"></span>
-      <button id="collapse" title="临时收起">—</button>
-      <button id="close" title="关闭">×</button>
-    </div></div>
-  <script>
-    // 缩放、透明度、临时收起均在渲染进程内完成，不需要主进程 IPC。
-    var baseW = ${width}, baseH = ${height};
-    var scale = 1, opacity = 1, collapsed = false, savedBounds = null;
-    var zoomVal = document.getElementById('zoom-val');
-    var opacityVal = document.getElementById('opacity-val');
-
-    function applyZoom(next) {
-      scale = Math.min(3, Math.max(0.25, next));
-      zoomVal.textContent = Math.round(scale * 100) + '%';
-      window.pinApi.resize(Math.round(baseW * scale), Math.round(baseH * scale));
-    }
-    function applyOpacity(next) {
-      opacity = Math.min(1, Math.max(0.25, next));
-      opacityVal.textContent = Math.round(opacity * 100) + '%';
-      window.pinApi.setOpacity(opacity);
-    }
-    document.getElementById('zoom-in').onclick = function () { applyZoom(scale + 0.1); };
-    document.getElementById('zoom-out').onclick = function () { applyZoom(scale - 0.1); };
-    document.getElementById('opacity-up').onclick = function () { applyOpacity(opacity + 0.1); };
-    document.getElementById('opacity-down').onclick = function () { applyOpacity(opacity - 0.1); };
-    document.getElementById('close').onclick = function () { window.pinApi.close(); };
-
-    // 临时收起：缩到极窄条，再次点击恢复，避免遮挡又不用重新找图
-    document.getElementById('collapse').onclick = function () {
-      collapsed = !collapsed;
-      if (collapsed) {
-        savedBounds = window.pinApi.bounds();
-        window.pinApi.collapse(true);
-      } else {
-        window.pinApi.collapse(false);
-      }
-    };
-    // 滚轮缩放
-    window.addEventListener('wheel', function (e) {
-      if (e.ctrlKey || e.metaKey) { e.preventDefault(); applyZoom(scale + (e.deltaY < 0 ? 0.1 : -0.1)); }
-    }, { passive: false });
-    // 双击恢复 100%
-    window.addEventListener('dblclick', function () { applyZoom(1); applyOpacity(1); });
-  </script></body></html>`;
-  pin.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
+  pin.__pinData={url:String(dataUrl),width:Math.round(width),height};
+  prepareFloatingSurface(pin);
+  pin.on('resize',()=>clipFloatingSurface(pin));
+  pin.loadFile(path.join(__dirname,'src','pin.html'));
   pinWindows.add(pin);
-  pin.on('closed', () => pinWindows.delete(pin));
+  pin.on('closed',()=>pinWindows.delete(pin));
+  return pin;
+}
+
+/* ---------- 速记（Quick Note） ---------- */
+
+const NOTE_SIZE = { width: 380, height: 460 };
+/** 速记写盘防抖：逐字落盘会让每次敲键都重写整个数据文件。 */
+const NOTE_SAVE_DEBOUNCE_MS = 700;
+/** noteId → BrowserWindow。多页 = 多窗口，与「每个窗口一条笔记」一一对应。 */
+const noteWindows = new Map();
+let noteSaveTimer = null;
+
+/** 防抖落盘 + 广播变更（列表页与已开窗口都要看到最新正文）。 */
+function scheduleNoteSave() {
+  if (noteSaveTimer) clearTimeout(noteSaveTimer);
+  noteSaveTimer = setTimeout(() => {
+    noteSaveTimer = null;
+    if (!store) return;
+    store.save().catch(() => {});
+  }, NOTE_SAVE_DEBOUNCE_MS);
+  if (noteSaveTimer.unref) noteSaveTimer.unref();
+}
+
+/** 立刻把速记落盘（关窗、退出、切笔记时调用，避免丢最后一次输入）。 */
+async function flushNotes() {
+  if (noteSaveTimer) { clearTimeout(noteSaveTimer); noteSaveTimer = null; }
+  if (store) await store.save();
+}
+
+function broadcastNotes() {
+  broadcast('notes:changed', store ? store.listNotes() : []);
+}
+
+/** 速记窗口的位置：先取笔记自己记住的位置，再校验它是否还在某个显示器上。 */
+function noteWindowBounds(note) {
+  const displays = screen.getAllDisplays();
+  const fallback = {
+    width: NOTE_SIZE.width,
+    height: NOTE_SIZE.height,
+    minVisibleWidth: 160,
+    minVisibleHeight: 120
+  };
+  return sanitizeWindowBounds(note?.bounds || null, displays, fallback);
+}
+
+function createNoteWindow(noteId) {
+  const note = store ? store.getNote(noteId) : null;
+  if (!note) return null;
+  const bounds = noteWindowBounds(note);
+  const win = new BrowserWindow({
+    x: bounds.x,
+    y: bounds.y,
+    width: bounds.width,
+    height: bounds.height,
+    minWidth: 240,
+    minHeight: 200,
+    show: false,
+    frame: false,
+    // 钉住的速记浮在其它窗口之上；未钉住就是普通窗口，不抢屏幕
+    alwaysOnTop: Boolean(note.pinned),
+    transparent: true,
+    backgroundColor: '#00000000',
+    title: '随序 · 速记',
+    icon: assetPath('suira-icon.png'),
+    roundedCorners: true,
+    skipTaskbar: false,
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.js'),
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: false,
+      spellcheck: false
+    }
+  });
+  noteWindows.set(noteId, win);
+  prepareFloatingSurface(win);
+  win.on('resize',()=>clipFloatingSurface(win));
+  win.loadFile(path.join(__dirname, 'src', 'notes.html'));
+  win.setMenuBarVisibility(false);
+  win.webContents.once('did-finish-load', () => {
+    win.webContents.send('notes:opened', { id: noteId });
+  });
+  // 位置记忆：拖动/缩放结束后写回 store（500ms 防抖）
+  let boundsTimer = null;
+  const rememberBounds = () => {
+    clearTimeout(boundsTimer);
+    boundsTimer = setTimeout(() => {
+      if (win.isDestroyed() || !store) return;
+      store.setNoteBounds(noteId, win.getBounds());
+      scheduleNoteSave();
+    }, 500);
+    if (boundsTimer.unref) boundsTimer.unref();
+  };
+  win.on('resize', rememberBounds);
+  win.on('move', rememberBounds);
+  win.on('close', () => {
+    if (!store || win.isDestroyed()) return;
+    store.setNoteBounds(noteId, win.getBounds());
+    // 关窗是低频动作：立刻落盘，不等防抖（否则退出时最后的位置会丢）
+    store.save().catch(() => {});
+  });
+  win.on('closed', () => {
+    noteWindows.delete(noteId);
+    scheduleNoteSave();
+    broadcastNotes();
+  });
+  let revealed = false;
+  const reveal = () => {
+    if (revealed || win.isDestroyed()) return;
+    revealed = true;
+    win.show();
+    win.focus();
+  };
+  win.once('ready-to-show', reveal);
+  const revealTimer = setTimeout(reveal, 2500);
+  if (revealTimer.unref) revealTimer.unref();
+  win.webContents.setWindowOpenHandler(({ url }) => {
+    if (isSafeHttpUrl(url)) shell.openExternal(url);
+    return { action: 'deny' };
+  });
+  return win;
+}
+
+/** 打开一条速记（已开就置前）。 */
+async function openNoteWindow(noteId) {
+  if (!store) return { ok: false, error: '数据未就绪' };
+  const note = store.getNote(noteId);
+  if (!note) return { ok: false, error: '这条速记已不存在' };
+  const existing = noteWindows.get(noteId);
+  if (existing && !existing.isDestroyed()) {
+    if (existing.isMinimized()) existing.restore();
+    existing.show();
+    existing.focus();
+    return { ok: true, id: noteId };
+  }
+  return createNoteWindow(noteId) ? { ok: true, id: noteId } : { ok: false, error: '速记窗口创建失败' };
+}
+
+/**
+ * 面板 N 键 / 工具箱入口：接着最近一条写，没有才新建。
+ * 每次都新建会留下一堆空笔记 —— 那不是顺手，是制造垃圾。
+ */
+async function openLatestNote() {
+  if (!store) return { ok: false, error: '数据未就绪' };
+  const latest = store.latestNote();
+  if (latest) return openNoteWindow(latest.id);
+  const note = store.createNote({ text: '' });
+  if (!note) return { ok: false, error: '速记创建失败' };
+  await store.save();
+  broadcastNotes();
+  return openNoteWindow(note.id);
+}
+
+function closeNoteWindow(noteId) {
+  const win = noteWindows.get(noteId);
+  if (win && !win.isDestroyed()) win.close();
+  else noteWindows.delete(noteId);
 }
 
 function registerIpc() {
+  /* ---- 录屏：写盘和屏幕源仅供专用录屏窗口 ---- */
+  const recordingOnly = handler => async (event, payload) => {
+    if (!recordingWindow || recordingWindow.isDestroyed() || event.sender !== recordingWindow.webContents) return {ok:false,error:'录屏窗口已关闭'};
+    try { return await handler(payload); } catch(error) { return {ok:false,error:error.message || '录制操作失败'}; }
+  };
+  ipcMain.handle('recording:region',async(event,payload)=>{
+    if(!overlayWindow||overlayWindow.isDestroyed()||event.sender!==overlayWindow.webContents||!captureBusy||!capturePayload) return {ok:false,error:'请先框选录屏区域'};
+    try {
+      const config=recordingRegion(payload?.selection,capturePayload.bounds,screen.getAllDisplays());
+      createRecordingWindow(config);
+      recordingRestoreMain=mainWasVisible;mainWasVisible=false;
+      hideOverlayWindow();
+      return {ok:true};
+    } catch(error) {return {ok:false,error:error.message};}
+  });
+  ipcMain.handle('recording:config',recordingOnly(()=>({ok:true,config:recordingConfig})));
+  ipcMain.handle('recording:prepare',recordingOnly(payload=>{
+    if(recordingWriter.current)throw Error('录制已在进行中');
+    recordingAudio=Boolean(payload?.systemAudio);return {ok:true};
+  }));
+  ipcMain.handle('recording:begin',recordingOnly(async()=>({ok:true,...await recordingWriter.begin()})));
+  ipcMain.handle('recording:append',recordingOnly(async payload=>({ok:true,...await recordingWriter.append(payload?.id,payload?.data)})));
+  ipcMain.handle('recording:finish',recordingOnly(async id=>{
+    const result=await recordingWriter.finish(id);recordingLastFile=result.filePath;
+    if(recordingWindow?.__closeAfterRecording)setImmediate(()=>recordingWindow?.close());
+    if(recordingQuitAfterSave){recordingQuitAfterSave=false;setImmediate(()=>app.quit());}
+    return {ok:true,...result};
+  }));
+  ipcMain.handle('recording:abandon',recordingOnly(async()=>{
+    const partial=recordingWriter.current?.partial;
+    await recordingWriter.abandon();if(partial&&fs.existsSync(partial))recordingLastFile=partial;
+    if(recordingWindow?.__closeAfterRecording)setImmediate(()=>recordingWindow?.close());
+    if(recordingQuitAfterSave){recordingQuitAfterSave=false;setImmediate(()=>app.quit());}
+    return {ok:true};
+  }));
+  ipcMain.handle('recording:close',recordingOnly(()=>{recordingWindow.close();return {ok:true};}));
+  const recordedFile = () => { if(!recordingLastFile||!fs.existsSync(recordingLastFile))throw Error('录屏文件不存在');return recordingLastFile; };
+  ipcMain.handle('recording:open',recordingOnly(async()=>{const error=await shell.openPath(recordedFile());return error?{ok:false,error}:{ok:true};}));
+  ipcMain.handle('recording:reveal',recordingOnly(()=>{shell.showItemInFolder(recordedFile());return {ok:true};}));
+  ipcMain.handle('recording:export',recordingOnly(async()=>{
+    const source=recordedFile();
+    const result=await dialog.showSaveDialog(recordingWindow,{title:'保存录屏',defaultPath:path.join(app.getPath('videos'),path.basename(source)),filters:[{name:'WebM 视频',extensions:['webm']}]});
+    if(result.canceled||!result.filePath)return {ok:false,canceled:true};
+    if(path.resolve(source)!==path.resolve(result.filePath))await fsp.copyFile(source,result.filePath);
+    return {ok:true,filePath:result.filePath};
+  }));
   /* ---- 钉图窗口控制 ---- */
   // 每个钉图窗口独立保存收起前的边界，便于恢复
   const pinState = new WeakMap();
@@ -1629,6 +2333,31 @@ function registerIpc() {
     const win = BrowserWindow.fromWebContents(event.sender);
     return win && pinWindows.has(win) ? win : null;
   };
+
+  const pinOnly = handler => async(event,payload)=>{
+    const win=pinFromEvent(event);if(!win||win.isDestroyed())return {ok:false,error:'钉图已关闭'};
+    try{return await handler(win,payload);}catch(error){return {ok:false,error:error.message};}
+  };
+  const pinImage = win => {
+    const url=win.__pinData?.url||'';
+    const image=url.startsWith('file:')?nativeImage.createFromPath(fileURLToPath(url)):nativeImage.createFromDataURL(url);
+    if(image.isEmpty())throw Error('图片无法读取');return image;
+  };
+  ipcMain.handle('pin:data',pinOnly(win=>({ok:true,data:win.__pinData})));
+  ipcMain.handle('pin:copy',pinOnly(async win=>{await writeClipboardImage(pinImage(win));return {ok:true};}));
+  ipcMain.handle('pin:save',pinOnly(async win=>{
+    const image=pinImage(win);
+    const result=await dialog.showSaveDialog(win,{title:'保存钉图',defaultPath:path.join(app.getPath('pictures'),'随序钉图.png'),filters:[{name:'PNG 图片',extensions:['png']}]});
+    if(result.canceled||!result.filePath)return {ok:false,canceled:true};
+    await fsp.writeFile(result.filePath,image.toPNG());return {ok:true,filePath:result.filePath};
+  }));
+  ipcMain.handle('pin:top',pinOnly(win=>{const value=!win.isAlwaysOnTop();win.setAlwaysOnTop(value);return {ok:true,alwaysOnTop:value};}));
+  ipcMain.on('pin:move',(event,point)=>{
+    const win=pinFromEvent(event);if(!win||win.isDestroyed()||![point?.x,point?.y].every(Number.isFinite))return;
+    const x=Math.round(point.x),y=Math.round(point.y),area=screen.getDisplayNearestPoint({x,y}).workArea;
+    const bounds=win.getBounds();
+    win.setPosition(Math.max(area.x-bounds.width+40,Math.min(area.x+area.width-40,x)),Math.max(area.y,Math.min(area.y+area.height-40,y)));
+  });
 
   ipcMain.on('pin:resize', (event, payload) => {
     const win = pinFromEvent(event);
@@ -1655,18 +2384,19 @@ function registerIpc() {
     if (collapsed) {
       if (state.collapsed) return;
       state.savedBounds = win.getBounds();
+      state.savedOpacity = win.getOpacity();
       state.collapsed = true;
       pinState.set(win, state);
       const b = state.savedBounds;
       // 收成一条细窄条，仍可见可点回
-      win.setBounds({ x: b.x, y: b.y, width: Math.max(72, Math.min(b.width, 120)), height: 26 });
+      win.setBounds({ x: b.x, y: b.y, width: Math.max(72, Math.min(b.width, 120)), height: 40 });
       win.setOpacity(0.85);
     } else {
       if (!state.collapsed) return;
       state.collapsed = false;
       pinState.set(win, state);
       if (state.savedBounds) win.setBounds(state.savedBounds);
-      win.setOpacity(1);
+      win.setOpacity(state.savedOpacity || 1);
     }
   });
 
@@ -1706,16 +2436,32 @@ function registerIpc() {
     const next = islandModel.removeShelfItem(current.items, String(id || ''));
     if (next.length === current.items.length) return { ...islandState(), ok: false, error: '暂存条目不存在' };
     await store.updateIsland({ items: next });
-    // 空岛只留细条：没有内容时展开成一张空卡片没有意义
-    if (!next.length) setIslandExpanded(false);
+    islandUndoStack.push(current.items);
+    if (islandUndoStack.length > 10) islandUndoStack.shift();
+    scheduleIslandRest();
     broadcastIsland();
     return islandState();
   });
   ipcMain.handle('island:clear', async () => {
+    const previous = store.getIsland().items;
     await store.updateIsland({ items: [] });
-    setIslandExpanded(false);
+    if (previous.length) {
+      islandUndoStack.push(previous);
+      if (islandUndoStack.length > 10) islandUndoStack.shift();
+    }
+    scheduleIslandRest();
     broadcastIsland();
     return islandState();
+  });
+  ipcMain.handle('island:undo', async () => {
+    const previous = islandUndoStack.pop();
+    if (!previous) return { ...islandState(), ok:false, error:'没有可找回的暂存记录' };
+    const restored = islandModel.addShelfItems(store.getIsland().items, previous, { cap:ISLAND_MAX_ITEMS });
+    try { await store.updateIsland({items:restored.items}); }
+    catch (error) { islandUndoStack.push(previous); throw error; }
+    broadcastIsland();
+    scheduleIslandRest();
+    return { ...islandState(), restored:restored.added, dropped:restored.dropped };
   });
   ipcMain.handle('island:set-policy', async (_event, policy) => {
     await store.updateIsland({ policy: policy === 'move' ? 'move' : 'copy' });
@@ -1723,6 +2469,10 @@ function registerIpc() {
     return islandState();
   });
   ipcMain.handle('island:set-expanded', (_event, expanded) => setIslandExpanded(Boolean(expanded)));
+  // 三态由渲染层按交互请求：悬停要胶囊、点击/拖入要卡片、离开要休眠
+  ipcMain.handle('island:set-mode', (_event, mode) => setIslandMode(String(mode || 'sleep')));
+  // 渲染层心跳：只要还有交互，就把"回休眠"的计时往后推
+  ipcMain.on('island:ping', () => { if (islandMode !== 'sleep') scheduleIslandRest(); });
   ipcMain.handle('island:open-item', async (_event, id) => openIslandItem(id));
   ipcMain.handle('island:reveal-item', (_event, id) => revealIslandItem(id));
   ipcMain.handle('island:start-drag', (_event, id) => startIslandDrag(id));
@@ -1741,6 +2491,7 @@ function registerIpc() {
     runtime: 'Electron prototype'
   }));
   ipcMain.handle('app:open-data-dir', () => shell.openPath(userRoot()));
+  ipcMain.handle('app:restart', () => { restartApplication(); return {ok:true}; });
 
   ipcMain.handle('capture:start', (_event, options) => beginScreenCapture('main', options || {}));
   ipcMain.handle('capture:get-data', () => capturePayload);
@@ -1891,6 +2642,63 @@ function registerIpc() {
     }
   });
 
+  /* ---- 速记（Quick Note） ---- */
+  ipcMain.handle('notes:list', () => (store ? store.listNotes() : []));
+  ipcMain.handle('notes:get', (_event, id) => (store ? store.getNote(String(id || '')) : null));
+  ipcMain.handle('notes:open', async (_event, id) => openNoteWindow(String(id || '')));
+  ipcMain.handle('notes:open-latest', () => openLatestNote());
+  ipcMain.handle('notes:create', async () => {
+    if (!store) return { ok: false, error: '数据未就绪' };
+    const note = store.createNote({ text: '' });
+    if (!note) return { ok: false, error: '速记创建失败' };
+    await store.save();
+    broadcastNotes();
+    return openNoteWindow(note.id);
+  });
+  ipcMain.handle('notes:update', async (_event, payload) => {
+    const id = String(payload?.id || '');
+    if (!store || !id) return { ok: false, error: '参数不完整' };
+    const note = store.updateNoteText(id, payload?.text ?? '');
+    if (!note) return { ok: false, error: '这条速记已不存在' };
+    scheduleNoteSave();
+    // 同屏开着多个速记窗口时，列表与其它窗口也要看到最新正文
+    broadcastNotes();
+    return { ok: true, note };
+  });
+  ipcMain.handle('notes:toggle-pin', async (_event, id) => {
+    const noteId = String(id || '');
+    if (!store) return { ok: false, error: '数据未就绪' };
+    const note = store.toggleNotePin(noteId);
+    if (!note) return { ok: false, error: '这条速记已不存在' };
+    const win = noteWindows.get(noteId);
+    if (win && !win.isDestroyed()) {
+      win.setAlwaysOnTop(Boolean(note.pinned), 'floating');
+      if (note.pinned) { win.show(); win.focus(); }
+    }
+    await store.save();
+    broadcastNotes();
+    return { ok: true, note };
+  });
+  ipcMain.handle('notes:delete', async (_event, id) => {
+    const noteId = String(id || '');
+    if (!store) return { ok: false, error: '数据未就绪' };
+    closeNoteWindow(noteId);
+    const removed = store.deleteNote(noteId);
+    await store.save();
+    broadcastNotes();
+    return { ok: Boolean(removed) };
+  });
+  ipcMain.handle('notes:hide-window', (event) => {
+    const win = BrowserWindow.fromWebContents(event.sender);
+    if (win && !win.isDestroyed()) win.close();
+    return { ok: true };
+  });
+  ipcMain.handle('notes:minimize-window', (event) => {
+    const win = BrowserWindow.fromWebContents(event.sender);
+    if (win && !win.isDestroyed()) win.minimize();
+    return { ok: true };
+  });
+
   /* ---- 38 键动作面板 ---- */
   ipcMain.handle('panel:state', () => ({
     ...keyLayout(appIndexReady),
@@ -1923,13 +2731,7 @@ function registerIpc() {
   });
   ipcMain.handle('apps:icons', async (_event, filePaths) => {
     const list = Array.isArray(filePaths) ? filePaths.slice(0, 64) : [];
-    const icons = {};
-    await Promise.all(list.map(async (filePath) => {
-      const target = String(filePath || '');
-      if (!target) return;
-      icons[target] = await appIconFor(target);
-    }));
-    return icons;
+    return getAppIconLoader().getMany(list);
   });
 
   /* ---- 快捷键：全局键位 + 按住型侦测 ---- */
@@ -2028,13 +2830,14 @@ function registerIpc() {
 
   ipcMain.handle('return:target', () => returnTarget);
 
-  ipcMain.handle('return:commit', async (_event, payload) => {
+  ipcMain.handle('return:commit', async (event, payload) => {
     const item = store.getItem(String(payload?.itemId || ''));
     if (!item) return { ok: false, error: '内容不存在或已被清理' };
     const intent = payload?.intent === 'copy-only' ? 'copy-only' : 'return-and-paste';
     // tryReturnToTarget 内部已负责复制；这里不再重复调用 output.copy，
     // 否则会写两次剪贴板并污染回环账本。
-    const decision = await tryReturnToTarget(item, intent);
+    const fromClipboardBar = clipboardBarWindow && !clipboardBarWindow.isDestroyed() && event.sender === clipboardBarWindow.webContents;
+    const decision = await tryReturnToTarget(item, intent, { clipboardBar: fromClipboardBar });
     if (decision.copyFailed) {
       // 复制失败是真正的失败：给渲染层 ok:false，才能显示错误而不是成功提示
       return { ok: false, error: decision.message || '复制失败', ...decision };
@@ -2128,17 +2931,58 @@ function registerIpc() {
     return result;
   });
 
-  ipcMain.handle('settings:get', () => store.getSettings());
+  ipcMain.handle('settings:get', () => publicSettings());
   ipcMain.handle('settings:update', async (_event, patch) => {
-    const settings = await store.updateSettings(patch || {});
+    const incoming = patch && typeof patch === 'object' ? { ...patch } : {};
+    // 翻译密钥：界面传明文，主进程加密后落盘；空串表示"不改动"，null 才是清除
+    let keyTouched = false;
+    if (Object.prototype.hasOwnProperty.call(incoming, 'translateApiKey')) {
+      const raw = incoming.translateApiKey;
+      delete incoming.translateApiKey;
+      if (raw === null) {
+        incoming.translateApiKeyEnc = null;
+        keyTouched = true;
+      } else if (typeof raw === 'string' && raw.trim()) {
+        const envelope = encryptSecret(raw.trim());
+        if (!envelope) {
+          return { ok: false, error: '内容加密不可用，无法安全保存密钥（可在设置里关闭加密后重试）' };
+        }
+        incoming.translateApiKeyEnc = envelope;
+        keyTouched = true;
+      }
+    }
+    const settings = await store.updateSettings(incoming);
     // 保留期/上限变小后要立刻生效，不能等下一次复制才清理
-    if (patch && (patch.retentionDays !== undefined || patch.maxItems !== undefined)) {
+    if (incoming.retentionDays !== undefined || incoming.maxItems !== undefined) {
       store.prune();
       await store.save();
       broadcast('content:changed');
     }
-    broadcast('settings:changed', settings);
-    return { ok: true, settings };
+    // 换肤只改一处：nativeTheme 一变，所有窗口的 prefers-color-scheme 同时跟着变
+    if (incoming.theme !== undefined) applyTheme();
+    const safe = publicSettings();
+    broadcast('settings:changed', safe);
+    if (keyTouched) broadcast('translate:status', translateStatus());
+    return { ok: true, settings: safe };
+  });
+
+  /* ---------- 翻译（图片取词翻译 = 翻译 B 支） ---------- */
+
+  ipcMain.handle('translate:status', () => translateStatus());
+  ipcMain.handle('translate:run', async (_event, payload) => {
+    const text = String(payload?.text || '');
+    if (!text.trim()) return { ok: false, error: '没有需要翻译的文字' };
+    const overrides = {};
+    if (payload?.target) overrides.target = translateLib.normalizeLang(payload.target, { allowAuto: false });
+    if (payload?.source) overrides.source = translateLib.normalizeLang(payload.source);
+    const result = await runTranslation(text, overrides);
+    return result;
+  });
+  // 设置页的「测试」：拿一句固定短句走一遍真实链路，不写任何内容
+  ipcMain.handle('translate:test', async () => {
+    const result = await runTranslation('Hello, this is a translation test.', { source: 'en' });
+    if (!result.ok) return result;
+    return { ...result, sample: result.text };
   });
 
   // 清空剪贴板来源的内容（保留固定项与任务内引用）
@@ -2161,7 +3005,9 @@ function createTray() {
   tray.setToolTip(`${APP_NAME} · 顺手接住，让工作继续。`);
   const menu = Menu.buildFromTemplate([
     { label: '随手面板  Ctrl+Alt+Space', click: showQuickPanel },
-    { label: '浮引岛（显示/隐藏）', click: () => toggleIsland() },
+    { label: '浮引岛 · 文件暂存（临时打开）', click: () => toggleIsland() },
+    { label: '速记（接着上一条写）', click: () => openLatestNote() },
+    { label: '重启并应用更新', click: () => restartApplication() },
     { type: 'separator' },
     { label: '任务匣', click: () => showMain('shelf') },
     { label: '内容库', click: () => showMain('library') },
@@ -2211,7 +3057,24 @@ function registerShortcuts() {
 }
 
 async function initialize() {
-  await ensureDirs();
+  const root = resolveDataRoot();
+  if (!root) {
+    // 一个可写目录都找不到：给出可操作的说明，而不是抛一段 stack
+    throw new Error([
+      '找不到可写的数据目录。',
+      `已尝试：%APPDATA%\\${APP_NAME}、系统临时目录、程序同级 data 目录。`,
+      '常见原因是安全策略禁止当前会话写入这些位置——请在有写权限的桌面会话里启动，',
+      '或以管理员身份放开该目录的写入权限后重试。'
+    ].join('\n'));
+  }
+  dataRoot = root;
+  if (dataRootNotice) {
+    console.warn(`[数据目录] 默认位置不可写，已回落到${dataRootNotice}：${dataRoot}`);
+  }
+  const dirs = await ensureDirs();
+  if (!dirs.ok) {
+    throw new Error(`数据目录无法写入：${dirs.error}\n目录：${dataRoot}`);
+  }
 
   // 数据密钥：首次启动生成并用 DPAPI 保护后落盘（第 8 节）
   keyVault = new KeyVault();
@@ -2236,8 +3099,18 @@ async function initialize() {
       }
     } : null
   });
-  await migrateLegacyHistory();
-  // 按保留策略启动清理一次：过期内容不该等到下一次复制才消失
+  // 旧版本的 theme 只存了个 'system'，界面上又没有开关：等于把配色交给系统。
+  // 结果就是"浅色主窗口 + 深色浮层"的割裂，升级后一次性钉成浅色，
+  // 之后以用户在设置里的选择为准（themeChosen 一旦为 true 就不再迁移）。
+  if (!store.getSettings().themeChosen) {
+    await store.updateSettings({ theme: 'light', themeChosen: true });
+  }
+  // 主题要在建任何窗口之前定下来，否则首帧会闪一下系统默认色
+  applyTheme();
+  // 全局关掉拼写检查：各窗口已经传了 spellcheck:false，这里再兜一层底，
+  // 避免任何渲染进程加载/初始化系统拼写词典（一个常驻的词库 + 后台线程）。
+  try { session.defaultSession.setSpellCheckerEnabled(false); } catch { /* 会话未就绪时忽略 */ }
+  await migrateLegacyHistory();  // 按保留策略启动清理一次：过期内容不该等到下一次复制才消失
   store.prune();
   await store.save();
   ocr = new OcrService({
@@ -2250,6 +3123,8 @@ async function initialize() {
   actions = createActionRegistry({
     store,
     ocr,
+    // 翻译用当前设置里的引擎；未配置时返回可读原因，不产出假译文
+    translate: (text) => runTranslation(text),
     clipboard: {
       writeText: writeClipboardText,
       writeImage: writeClipboardImage
@@ -2264,17 +3139,31 @@ async function initialize() {
     makeId
   });
   registerIpc();
-  createMainWindow();
-  createQuickWindow();
+  setupRecordingMedia();
+  if (!process.argv.includes('--background')) createMainWindow();
   createTray();
   registerShortcuts();
-  // 浮引岛是常驻入口：启动即显示收起态，用 showInactive 不抢焦点。
-  // 用户可在工具箱里点「浮引岛」显示/收起。
-  showIsland();
-  // 剪贴板历史条预先创建但不显示：组合键唤出时才没有冷启动等待
+  // 浮引岛启动即"上岗"，但处在休眠态：屏幕上看不见，只等文件拖到顶部中央。
+  // 热键入口预建并保留空页面；截图结束仍立即释放大图与画布。
+  createQuickWindow();
   createClipboardBarWindow();
-  // 预热前台窗口探测助手：面板/剪贴板条唤出时要立刻能记录返回目标
-  foregroundProbe.start().catch(() => {});
+  createOverlayWindow();
+  captureHost = ensureNativeHost({ sourcePath: assetPath('capture-host.cs'), targetPath: path.join(userRoot(), 'capture-host-v2.exe'), references: ['System.Drawing.dll'] });
+  foregroundProbe.nativeHostReady = ensureNativeHost({ sourcePath: assetPath('foreground-host.cs'), targetPath: path.join(userRoot(), 'foreground-host-v1.exe'), references: ['System.Web.Extensions.dll'] });
+  foregroundProbe.start().catch(error => console.warn('前台助手预热失败:', error.message));
+  armIsland();
+  islandWakeReady = setupIslandPointer().catch(error => { islandWakeError = error.message; });
+  const repositionIsland = () => {
+    if (islandWindow && !islandWindow.isDestroyed()) {
+      setIslandMode('sleep');
+      islandWindow.setBounds(islandBounds('sleep'));
+    }
+  };
+  screen.on('display-added', repositionIsland);
+  screen.on('display-removed', repositionIsland);
+  screen.on('display-metrics-changed', repositionIsland);
+  // 原生助手保持热启动；系统缺少编译器时使用 PowerShell 兼容路径。
+  scheduleForegroundStop();
   // 按住型侦测失败不阻塞启动：设置页会显示原因，普通快捷键照常可用
   momentaryReady = setupMomentaryProbe().catch((error) => {
     momentaryError = error && error.message ? error.message : String(error);
@@ -2293,14 +3182,29 @@ async function initialize() {
   });
 }
 
+/**
+ * 等一个 Promise，但最多等 timeout 毫秒。
+ * 自检要等三个异步子系统（剪贴板监听 / 按住型侦测 / 拖入唤醒）就绪，
+ * 任何一个卡住都会让 `npm run diag` 永远不返回 —— 报告里如实写「等待超时」，
+ * 比把命令挂死有用得多。
+ */
+function waitWithTimeout(promise, timeout = 8000) {
+  return Promise.race([
+    Promise.resolve(promise).catch(() => null),
+    new Promise((resolve) => setTimeout(() => resolve(null), timeout))
+  ]);
+}
+
 app.whenReady().then(initialize).then(async () => {
   // --diag：启动自检。把环境、窗口、快捷键、能力可用性写成一份报告，
   // 便于在没有开发者工具的情况下定位真机问题。见 docs/REAL-MACHINE-CHECKLIST.md
   if (process.argv.includes('--diag')) {
     // 剪贴板监听是异步启动的：不等它完成，报告会把「正在启动」误报成「未运行」。
-    // 这类误报会直接误导排查，必须等。
-    try { await clipboardWatcherReady; } catch { /* 错误已记录在 clipboardWatcherError */ }
-    try { await momentaryReady; } catch { /* 错误已记录在 momentaryError */ }
+    // 这类误报会直接误导排查，必须等；但每个最多等 8 秒，卡住也要出报告。
+    try { await waitWithTimeout(clipboardWatcherReady); } catch { /* 错误已记录在 clipboardWatcherError */ }
+    try { await waitWithTimeout(momentaryReady); } catch { /* 错误已记录在 momentaryError */ }
+    try { await waitWithTimeout(islandWakeReady); } catch { /* 错误已记录在 islandWakeError */ }
+    let exitCode = 0;
     try {
       const report = await collectDiagnostics();
       const target = path.join(app.getPath('userData'), 'diag-report.txt');
@@ -2309,10 +3213,27 @@ app.whenReady().then(initialize).then(async () => {
       console.log('\n报告已写入: ' + target);
     } catch (error) {
       console.error('自检失败:', error && error.stack ? error.stack : error);
+      exitCode = 1;
     }
+    // 自检是一次性命令：报告写完就该退出。否则 `npm run diag` 会一直挂着，
+    // 用户只能靠 Ctrl+C 结束，还以为应用卡死了。
+    // 先走 app.quit() 让 will-quit 正常释放子进程；再留一个兜底定时器，
+    // 万一有窗口拦着不退出，也不会把命令挂死。
+    process.exitCode = exitCode;
+    isQuitting = true;
+    app.quit();
+    const bail = setTimeout(() => app.exit(exitCode), 1500);
+    if (bail.unref) bail.unref();
   }
 }).catch((error) => {
   console.error('随序启动失败:', error);
+  // 启动失败的原因要给人看：自检是命令行用法，弹一个模态错误框会把它挂死
+  // （没人能点确定），所以这种情况只打印并带非零退出码返回。
+  if (process.argv.includes('--diag')) {
+    process.exitCode = 1;
+    app.exit(1);
+    return;
+  }
   dialog.showErrorBox('随序启动失败', error.stack || error.message || String(error));
   app.quit();
 });
@@ -2333,7 +3254,8 @@ async function collectDiagnostics() {
   add('Node', process.versions.node || '-');
   add('平台', `${process.platform} ${process.arch}`);
   add('系统版本', `${os.release()}`);
-  add('数据目录', app.getPath('userData'));
+  add('数据目录', userRoot());
+  add('数据目录回落', dataRootNotice ? `是 — ${dataRootNotice}` : '否（默认位置）');
   add('数据目录可写', (() => {
     try {
       const probe = path.join(app.getPath('userData'), '.write-probe');
@@ -2369,9 +3291,17 @@ async function collectDiagnostics() {
 
   section('浮引岛');
   const islandInfo = islandState();
+  add('形态', { sleep: '休眠（透明热区）', rail: '胶囊', sheet: '暂存卡片' }[islandMode] || islandMode);
   add('可见', islandInfo.visible ? '是' : '否');
   add('暂存条目', `${islandInfo.items.length} / ${islandInfo.maxItems}`);
+  add('拖动唤醒', islandInfo.wake.ready ? '已就绪（仅按住拖动到顶部时启用接收）' : islandWakeError || '正在启动');
   add('拖入策略', islandInfo.policy === 'move' ? '移动' : '复制');
+
+  section('速记');
+  const noteSummary = notesLib.summarizeNotes(store ? store.listNotes() : []);
+  add('速记条数', `${noteSummary.count} / ${noteSummary.limit}`);
+  add('钉在桌面', String(noteSummary.pinned));
+  add('已开窗口', String([...noteWindows.values()].filter((win) => win && !win.isDestroyed()).length));
 
   section('能力');
   add('屏幕数量', String(screen.getAllDisplays().length));
@@ -2379,6 +3309,14 @@ async function collectDiagnostics() {
     add(`  显示器 ${i + 1}`, `${d.size.width}×${d.size.height} @${d.scaleFactor}x`);
   });
   add('OCR 引擎', ocr ? '已创建' : '未创建');
+  const translateInfo = translateStatus();
+  // 翻译走主进程的 fetch：这条能区分「没配密钥」和「运行时不支持网络请求」
+  add('网络请求能力', typeof fetch === 'function' ? '可用' : '不可用');
+  add('翻译引擎', translateInfo.configured
+    ? `${translateInfo.providerLabel}（${translateInfo.sourceLabel} → ${translateInfo.targetLabel}）`
+    : translateInfo.provider === 'none'
+      ? '未配置（设置 → 翻译里选择引擎）'
+      : `${translateInfo.providerLabel} 缺少密钥（设置 → 翻译）`);
   add('剪贴板监听', clipboardTimer ? '运行中' : ('未运行' + (clipboardWatcherError ? '：' + clipboardWatcherError : '')));
   add('剪贴板采集范围', '文本 / 文件引用 / 图片');
   add('托盘', tray ? '已创建' : '未创建');
@@ -2420,9 +3358,25 @@ async function collectDiagnostics() {
   return lines.join('\n');
 }
 
-app.on('before-quit', () => { isQuitting = true; });
+function restartApplication() {
+  const args = process.argv.slice(1).filter(arg => !/^--(?:remote-debugging-|inspect)/.test(arg));
+  hideIsland();
+  app.relaunch({args});
+  setTimeout(() => app.quit(), 150);
+}
+
+app.on('before-quit', event => {
+  if(recordingWriter?.current&&recordingWindow&&!recordingWindow.isDestroyed()){
+    event.preventDefault();recordingQuitAfterSave=true;
+    recordingWindow.webContents.send('recording:stop-requested');return;
+  }
+  isQuitting = true;
+});
 app.on('will-quit', () => {
+  clearIslandRest();
+  islandPointerProbe?.stop();
   clearInterval(clipboardTimer);
+  if (foregroundIdleTimer) { clearTimeout(foregroundIdleTimer); foregroundIdleTimer = null; }
   shortcutManager?.dispose();
   globalShortcut.unregisterAll();
   ocr?.terminate().catch(() => {});
@@ -2435,6 +3389,7 @@ const gotLock = app.requestSingleInstanceLock();
 if (!gotLock) app.quit();
 else {
   app.on('second-instance', () => {
+    cancelIdleTeardown(mainWindow);
     if (mainWindow) {
       if (mainWindow.isMinimized()) mainWindow.restore();
       mainWindow.show();

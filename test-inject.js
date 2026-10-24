@@ -162,8 +162,8 @@ const mkSpawn = (behavior) => {
     assert.ok(INJECT_TIMEOUT > 0 && INJECT_TIMEOUT <= 10000, 'INJECT_TIMEOUT=' + INJECT_TIMEOUT);
   });
 
-  /* ---------- 真实注入（仅 Windows） ---------- */
-  if (process.platform === 'win32') {
+  /* 真实粘贴由 verify:latency 在独立输入框中验证；默认回归不能向当前应用注入。 */
+  if (process.platform === 'win32' && process.env.SUIRA_TEST_INPUT_INJECTION === '1') {
     console.log('\n== 真实 SendInput（Windows） ==');
     await ta('真实调用能完成且返回布尔结果', async () => {
       const inj = new InputInjector();

@@ -36,6 +36,7 @@ fs.mkdirSync(TMP, { recursive: true });
 const MOCK = `
 (function(){
   var shownCallbacks = [];
+  var releaseCallbacks = [];
   function makeScreen(w, h, color) {
     var c = document.createElement('canvas');
     c.width = w; c.height = h;
@@ -69,6 +70,14 @@ const MOCK = `
           var i = shownCallbacks.indexOf(cb);
           if (i >= 0) shownCallbacks.splice(i, 1);
         };
+      },
+      // 隐藏即释放契约：主进程 hide 时发 capture:release，渲染层要还掉画面/画布
+      onRelease: function(cb){
+        releaseCallbacks.push(cb);
+        return function(){
+          var i = releaseCallbacks.indexOf(cb);
+          if (i >= 0) releaseCallbacks.splice(i, 1);
+        };
       }
     },
     content: {
@@ -82,6 +91,12 @@ const MOCK = `
   window.__fireShown = function(){
     window.__shownCount += 1;
     var list = shownCallbacks.slice();
+    for (var i = 0; i < list.length; i += 1) list[i]();
+  };
+  window.__releaseCount = 0;
+  window.__fireRelease = function(){
+    window.__releaseCount += 1;
+    var list = releaseCallbacks.slice();
     for (var i = 0; i < list.length; i += 1) list[i]();
   };
 })();
@@ -147,7 +162,7 @@ const check = (name, cond, detail) => {
     .replace('<script src="overlay.js"></script>', '<script src="__mock.js"></script><script src="overlay.js"></script>');
   fs.writeFileSync(path.join(TMP, '__mock.js'), MOCK, 'utf8');
   fs.writeFileSync(path.join(TMP, 'overlay.html'), html, 'utf8');
-  for (const asset of ['overlay.css', 'overlay.js']) {
+  for (const asset of ['theme.css', 'ui-motion.css', 'ui-motion.js', 'overlay.css', 'overlay.js']) {
     fs.copyFileSync(path.join(ROOT, 'src', asset), path.join(TMP, asset));
   }
 
@@ -314,6 +329,40 @@ const check = (name, cond, detail) => {
     await sleep(120);
     const movedEnd = await evaluate(send, `JSON.stringify({ dockHidden: document.getElementById('tool-dock').hidden })`);
     check('移动结束后工具栏仍在', JSON.parse(movedEnd).dockHidden === false, movedEnd);
+
+    // 幽灵箭头回归：松手时提交重绘若读到残缺的进行中形状会抛错，
+    // state.drawing 残留后鼠标一动就拖出一条从旧起点跟随光标的箭头，
+    // 下一次选区外松手还会被误提交进截图。这里锁定「一次拖拽只出一条箭头」。
+    await evaluate(send, `(function(){
+      document.querySelector('[data-tool="arrow"]').click();
+      var root = document.getElementById('capture-root');
+      root.dispatchEvent(new PointerEvent('pointerdown', {button:0, clientX:280, clientY:450, bubbles:true, pointerId:21}));
+      for (var i = 1; i <= 3; i += 1) root.dispatchEvent(new PointerEvent('pointermove', {clientX:280 + i * 20, clientY:450 - i * 10, bubbles:true, pointerId:21}));
+      root.dispatchEvent(new PointerEvent('pointerup', {clientX:340, clientY:420, bubbles:true, pointerId:21}));
+      return 'ok';
+    })()`);
+    await sleep(120);
+    const arrow1 = await evaluate(send, `JSON.stringify({
+      arrows: state.annotations.filter(function(a){ return a.type === 'arrow'; }).length,
+      drawing: state.drawing ? state.drawing.type : null
+    })`);
+    const a1 = JSON.parse(arrow1);
+    check('箭头松手后恰好提交 1 条且无残留绘制', a1.arrows === 1 && a1.drawing === null, arrow1);
+
+    await evaluate(send, `(function(){
+      var root = document.getElementById('capture-root');
+      for (var i = 1; i <= 3; i += 1) root.dispatchEvent(new PointerEvent('pointermove', {clientX:500 + i * 15, clientY:300 + i * 10, bubbles:true, pointerId:22}));
+      root.dispatchEvent(new PointerEvent('pointerdown', {button:0, clientX:560, clientY:340, bubbles:true, pointerId:22}));
+      root.dispatchEvent(new PointerEvent('pointerup', {clientX:570, clientY:350, bubbles:true, pointerId:22}));
+      return 'ok';
+    })()`);
+    await sleep(120);
+    const ghost = await evaluate(send, `JSON.stringify({
+      arrows: state.annotations.filter(function(a){ return a.type === 'arrow'; }).length,
+      drawing: state.drawing ? state.drawing.type : null
+    })`);
+    const gh = JSON.parse(ghost);
+    check('松手后移动鼠标 + 选区外点击不会多出箭头', gh.arrows === 1 && gh.drawing === null, ghost);
 
     console.log('\n== 运行期证明：拖动时不做布局读取 ==');
 
@@ -634,6 +683,71 @@ const check = (name, cond, detail) => {
     check('第二次 shown 后仍是空白状态（无选区 / 无工具栏）',
       asl.selectionHidden === true && asl.dockHidden === true, afterSecondLoad);
     check('第二次 shown 的埋点已刷新', asl.shownAt > 0 && asl.imageReadyAt > 0, afterSecondLoad);
+
+    console.log('\n== 原始像素与分数 DPI 裁剪 ==');
+    const fidelity=await evaluate(send, `(async()=>{
+      const saved={image:state.image,raw:state.rawTiles,selection:state.selection,annotations:state.annotations};
+      try {
+        const source=document.createElement('canvas');source.width=1200;source.height=900;
+        const c=source.getContext('2d');for(let x=0;x<1200;x++){c.fillStyle=x%2?'#fff':'#000';c.fillRect(x,0,1,900);}
+        const image=await new Promise(r=>{const i=new Image();i.onload=()=>r(i);i.src=source.toDataURL('image/png');});
+        state.image=image;state.rawTiles=[{x:0,y:0,width:800,height:600,image}];state.selection={x:10.25,y:7.5,w:83.5,h:52.25};state.annotations=[];
+        const out=compositeSelection(),sx=Math.round(10.25*1.5),sy=Math.round(7.5*1.5);
+        const actual=out.getContext('2d').getImageData(0,0,out.width,out.height).data,expected=c.getImageData(sx,sy,out.width,out.height).data;
+        let differences=0;for(let i=0;i<actual.length;i++)if(actual[i]!==expected[i])differences++;
+        state.annotations=[{type:'rect',x:15.25,y:12.5,w:20,h:20,color:'#ff0000',width:2}];
+        const annotated=compositeSelection(),pixels=annotated.getContext('2d').getImageData(0,0,annotated.width,annotated.height).data;
+        let red=0;for(let i=0;i<pixels.length;i+=4)if(pixels[i]>200&&pixels[i+1]<60&&pixels[i+2]<60)red++;
+        return {width:out.width,height:out.height,differences,red};
+      }finally{state.image=saved.image;state.rawTiles=saved.raw;state.selection=saved.selection;state.annotations=saved.annotations;}
+    })()`);
+    const fq=typeof fidelity==='string'?JSON.parse(fidelity):fidelity;
+    check('150% DPI 分数选区逐像素保留源图',fq.differences===0,JSON.stringify(fq));
+    check('像素坐标裁剪尺寸正确',fq.width===126&&fq.height===79,JSON.stringify(fq));
+    check('高 DPI 标注仍正确绘制',fq.red>0,JSON.stringify(fq));
+
+    console.log('\n== 截图加载避免重复解码与多屏重新编码 ==');
+    const decoding = await evaluate(send, `(async()=>{
+      const NativeImage=window.Image, originalGetData=window.suira.capture.getData;
+      let decoded=0;
+      window.Image=function(){decoded++;return new NativeImage();};
+      const color=value=>{const c=document.createElement('canvas');c.width=100;c.height=80;const ctx=c.getContext('2d');ctx.fillStyle=value;ctx.fillRect(0,0,100,80);return c.toDataURL();};
+      const red=color('#ff0000'),blue=color('#0000ff');
+      try {
+        const single={dataUrl:red,size:{width:100,height:80},scaleFactor:1,rawTiles:[{x:0,y:0,width:100,height:80,tileIndex:0}]};
+        window.suira.capture.getData=async()=>single;resetOverlay();await loadCapture(showSeq);
+        const singleDecoded=decoded;decoded=0;
+        const tiles=[{x:0,y:0,width:100,height:80,dataUrl:red},{x:100,y:0,width:100,height:80,dataUrl:blue}];
+        window.suira.capture.getData=async()=>({tiles,tileSize:{width:200,height:80},size:{width:200,height:80},scaleFactor:1,rawTiles:tiles.map((t,i)=>({...t,dataUrl:undefined,tileIndex:i}))});
+        resetOverlay();await loadCapture(showSeq);
+        const composed=state.image instanceof HTMLCanvasElement;
+        const pixels=state.image.getContext('2d');
+        return {singleDecoded,multiDecoded:decoded,composed,left:[...pixels.getImageData(10,10,1,1).data],right:[...pixels.getImageData(110,10,1,1).data]};
+      }finally{window.Image=NativeImage;window.suira.capture.getData=originalGetData;}
+    })()`);
+    check('单屏原图与裁剪共用一次解码',decoding.singleDecoded===1,JSON.stringify(decoding));
+    check('双屏各解码一次，并直接使用合成画布',decoding.multiDecoded===2&&decoding.composed,JSON.stringify(decoding));
+    check('多屏拼接保持左右屏原始颜色',decoding.left.join(',')==='255,0,0,255'&&decoding.right.join(',')==='0,0,255,255',JSON.stringify(decoding));
+
+    console.log('\n== 隐藏即释放：capture:release 归还画面与画布后备缓冲 ==');
+    const releaseResult = await evaluate(send, `(function(){
+      window.__fireRelease();
+      var sc = document.getElementById('screen-canvas');
+      var ac = document.getElementById('annotation-canvas');
+      var oi = document.getElementById('original-image');
+      return JSON.stringify({
+        released: window.__overlayReleased === true,
+        releaseCount: window.__releaseCount,
+        screen: [sc.width, sc.height],
+        annotation: [ac.width, ac.height],
+        originalSrc: oi ? (oi.getAttribute('src') || '') : ''
+      });
+    })()`);
+    const rel = JSON.parse(releaseResult);
+    check('收到 release 后释放标记置位且只触发一次', rel.released === true && rel.releaseCount === 1, releaseResult);
+    check('screen canvas 后备缓冲真正释放（width/height = 0）', rel.screen[0] === 0 && rel.screen[1] === 0, releaseResult);
+    check('annotation canvas 后备缓冲真正释放', rel.annotation[0] === 0 && rel.annotation[1] === 0, releaseResult);
+    check('OCR「查看原图」的 data URL 已清空', rel.originalSrc === '', releaseResult);
 
     console.log('\n== 源码层性能约束（静态）==');
     check('主画布 getContext 不再传 willReadFrequently',

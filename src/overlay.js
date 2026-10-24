@@ -45,7 +45,7 @@ const state = {
   selection: null,
   mode: 'select',
   tool: 'pen',
-  color: '#ff646f',
+  color: '#e5484d',
   lineWidth: 4,
   drawing: null,
   annotations: [],
@@ -281,6 +281,7 @@ function showAction(message, type = '') {
 }
 
 function setTool(tool) {
+  if (state.intent === 'record' && tool !== 'select') return;
   if (tool === 'select') {
     state.mode = 'select';
     state.tool = 'pen';
@@ -362,7 +363,7 @@ function drawMagnifier(p) {
     const half = sampleSize / 2;
     magnifierCtx.imageSmoothingEnabled = false;
     magnifierCtx.clearRect(0, 0, magnifierCanvas.width, magnifierCanvas.height);
-    magnifierCtx.fillStyle = '#080b13';
+    magnifierCtx.fillStyle = '#111113';
     magnifierCtx.fillRect(0, 0, magnifierCanvas.width, magnifierCanvas.height);
     magnifierCtx.drawImage(
       state.image,
@@ -420,7 +421,7 @@ function drawAnnotation(item) {
   } else if (item.type === 'rect') {
     ctx.strokeRect(item.x, item.y, item.w, item.h);
   } else if (item.type === 'arrow') {
-    drawArrow(ctx, item.from, item.to, item.width);
+    if (item.from && item.to) drawArrow(ctx, item.from, item.to, item.width);
   } else if (item.type === 'mosaic') {
     drawMosaic(item);
   } else if (item.type === 'steps') {
@@ -546,22 +547,26 @@ function redo() {
 function compositeSelection(options = {}) {
   if (!hasSelection() || !state.image) return null;
   const s = state.selection;
-  const sx = s.x / metrics.width * state.image.width;
-  const sy = s.y / metrics.height * state.image.height;
-  const sw = s.w / metrics.width * state.image.width;
-  const sh = s.h / metrics.height * state.image.height;
+  const tile=state.rawTiles?.find(t=>s.x>=t.x&&s.y>=t.y&&s.x+s.w<=t.x+t.width+.01&&s.y+s.h<=t.y+t.height+.01);
+  const image=tile?.image||state.image, x=tile?s.x-tile.x:s.x,y=tile?s.y-tile.y:s.y;
+  const width=tile?.width||metrics.width,height=tile?.height||metrics.height;
+  // 对齐源图像素边界；drawImage 的源、目标尺寸相同，避免分数坐标插值模糊文字。
+  const sx=Math.max(0,Math.round(x/width*image.width)),sy=Math.max(0,Math.round(y/height*image.height));
+  const right=Math.min(image.width,Math.round((x+s.w)/width*image.width)),bottom=Math.min(image.height,Math.round((y+s.h)/height*image.height));
+  const sw=Math.max(1,right-sx),sh=Math.max(1,bottom-sy);
   const output = document.createElement('canvas');
   output.width = Math.max(1, Math.round(sw));
   output.height = Math.max(1, Math.round(sh));
   const ctx = output.getContext('2d');
-  ctx.drawImage(state.image, sx, sy, sw, sh, 0, 0, output.width, output.height);
+  ctx.imageSmoothingEnabled=false;
+  ctx.drawImage(image, sx, sy, sw, sh, 0, 0, output.width, output.height);
   if (options.withoutAnnotations) return output;
 
   for (const item of state.annotations) {
     if (!annotationIntersectsSelection(item)) continue;
     ctx.save();
-    ctx.translate(-s.x, -s.y);
     ctx.scale(output.width / s.w, output.height / s.h);
+    ctx.translate(-s.x, -s.y);
     drawAnnotationToContext(ctx, item);
     ctx.restore();
   }
@@ -627,6 +632,15 @@ function drawMosaicToContext(ctx, item) {
 }
 
 async function finish(action = 'copy') {
+  if (state.intent === 'record') {
+    if (!hasSelection()) { showAction('请先选择录屏区域', 'error'); return; }
+    try {
+      const s = state.selection;
+      const result = await window.suira.recording.region({ x:s.x, y:s.y, width:s.w, height:s.h });
+      if (!result.ok) showAction(result.error || '无法开始录屏', 'error');
+    } catch(error) { showAction(error.message, 'error'); }
+    return;
+  }
   const output = compositeSelection();
   if (!output) {
     showAction('请先拖拽选择一个区域', 'error');
@@ -749,13 +763,15 @@ function startAnnotation(event, p) {
     return;
   }
   if (state.tool === 'mosaic') {
-    state.drawing = { type: 'mosaic', start: p, current: p, color: state.color, width: state.lineWidth };
+    state.drawing = { type: 'mosaic', start: p, current: p, x: p.x, y: p.y, w: 0, h: 0, color: state.color, width: state.lineWidth };
   } else if (state.tool === 'pen') {
     state.drawing = { type: 'pen', points: [p], color: state.color, width: state.lineWidth };
   } else if (state.tool === 'rect') {
-    state.drawing = { type: 'rect', start: p, current: p, color: state.color, width: state.lineWidth };
+    state.drawing = { type: 'rect', start: p, current: p, x: p.x, y: p.y, w: 0, h: 0, color: state.color, width: state.lineWidth };
   } else if (state.tool === 'arrow') {
-    state.drawing = { type: 'arrow', start: p, current: p, color: state.color, width: state.lineWidth };
+    // from/to 与 start/current 并行维护：进行中的绘制随时可能被整屏重绘
+    //（提交、撤销、改色都会触发），缺字段会在 drawArrow 里抛错并留下幽灵绘制
+    state.drawing = { type: 'arrow', start: p, current: p, from: p, to: p, color: state.color, width: state.lineWidth };
   }
 }
 
@@ -789,10 +805,19 @@ function updateAnnotation(p) {
     state.drawing.points.push(p);
     renderAnnotations();
   } else if (['rect', 'arrow', 'mosaic'].includes(state.drawing.type)) {
-    state.drawing.current = p;
-    const preview = { ...state.drawing, x: state.drawing.start.x, y: state.drawing.start.y, w: p.x - state.drawing.start.x, h: p.y - state.drawing.start.y };
-    if (state.drawing.type === 'arrow') preview.from = state.drawing.start, preview.to = p;
-    renderAnnotationsWithPreview(preview);
+    const d = state.drawing;
+    d.current = p;
+    // 绘制对象自身保持可绘制：整屏重绘画的是它，不是这里的临时预览
+    if (d.type === 'arrow') {
+      d.from = d.start;
+      d.to = p;
+    } else {
+      d.x = d.start.x;
+      d.y = d.start.y;
+      d.w = p.x - d.start.x;
+      d.h = p.y - d.start.y;
+    }
+    renderAnnotationsWithPreview({ ...d });
   }
 }
 
@@ -862,6 +887,10 @@ function dropPendingPointer() {
 function endAnnotation() {
   if (!state.drawing) return;
   const d = state.drawing;
+  // 先收起再入列：addAnnotation 内部的整屏重绘绝不能再画进行中的形状，
+  // 否则这里中途抛错会让 state.drawing 残留，之后移动鼠标就会拖出
+  // 一条从旧起点跟随光标的幽灵箭头（松手后被误提交进截图）。
+  state.drawing = null;
   if (d.type === 'pen') {
     if (d.points.length > 1) addAnnotation(d);
   } else if (d.type === 'rect') {
@@ -875,7 +904,6 @@ function endAnnotation() {
     const rect = { type: 'mosaic', x: d.start.x, y: d.start.y, w: d.current.x - d.start.x, h: d.current.y - d.start.y, color: d.color, width: d.width };
     if (Math.abs(rect.w) > 4 && Math.abs(rect.h) > 4) addAnnotation(rect);
   }
-  state.drawing = null;
   renderAnnotations();
 }
 
@@ -901,7 +929,8 @@ function setupEvents() {
     }
     beginDrag(event);
     if (state.drawing && ANNOTATION_TYPES.includes(state.drawing.type)) {
-      annotationCanvas.setPointerCapture?.(event.pointerId);
+      // 捕获失败（指针已失效等）只影响窗口外收点，不能让按下流程中断
+      try { annotationCanvas.setPointerCapture?.(event.pointerId); } catch { }
     }
   });
 
@@ -1131,22 +1160,18 @@ function setupEvents() {
  * 把多屏分块合成为一整幅画面。
  * 各屏 DPI 不同，主进程已按统一缩放比缩放到目标像素，这里只负责按偏移绘制。
  */
-function composeTiles(tiles, width, height) {
+async function composeTiles(tiles, width, height, loadImage) {
   const canvas = document.createElement('canvas');
   canvas.width = width;
   canvas.height = height;
   const ctx = canvas.getContext('2d');
-  return Promise.all(tiles.map((tile) => new Promise((resolve, reject) => {
-    const img = new Image();
-    img.onload = () => { ctx.drawImage(img, tile.x, tile.y, tile.width, tile.height); resolve(); };
-    img.onerror = reject;
-    img.src = tile.dataUrl;
-  }))).then(() => canvas.toDataURL('image/png'));
+  const images = await Promise.all(tiles.map(tile => loadImage(tile.dataUrl)));
+  tiles.forEach((tile, index) => ctx.drawImage(images[index], tile.x, tile.y, tile.width, tile.height));
+  // 直接绘制合成画布，避免整张多屏桌面再 PNG 编码、传输、解码一次。
+  return canvas;
 }
 
-/* ---------- 预热覆盖层：每次 capture:shown 都要先重置再加载 ---------- */
-
-const DEFAULT_HINT_BRAND = '区域截图';
+/* ---------- 预热覆盖层：每次 capture:shown 都要先重置再加载 ---------- */const DEFAULT_HINT_BRAND = '区域截图';
 
 function clearCanvas(canvas) {
   // 直接清空后备缓冲，不改尺寸（避免重新分配）
@@ -1163,8 +1188,14 @@ function clearCanvas(canvas) {
  * 清掉上一轮的选区、标注、面板与画面，否则会带着旧内容出现。
  */
 function resetOverlay() {
+  delete root.dataset.intent;
+  dockMetrics.width = dockMetrics.height = 0;
+  const completeLabel = document.querySelector('.complete-button span');
+  if (completeLabel) completeLabel.textContent = '完成';
   showSeq += 1;
+  if (state.image instanceof HTMLCanvasElement) state.image.width = state.image.height = 0;
   state.payload = null;
+  state.rawTiles = null;
   state.image = null;
   state.selection = null;
   state.annotations = [];
@@ -1233,6 +1264,45 @@ function resetOverlay() {
   window.__lastCapturePerf = perf;
 }
 
+/**
+ * 覆盖层隐藏后的「真释放」。
+ *
+ * resetOverlay 只是允许下一次覆盖；隐藏状态下这两块全屏 canvas 的后备存储
+ * （4K 屏约 33MB × 2）和截图 Image 仍然挂在渲染进程里。这里把引用与后备缓冲
+ * 真正丢掉，窗口本身保留，下一次 capture:shown 会重新分配。
+ * 放大镜画布很小，保持不动，避免下次显示时没有恢复尺寸的路径。
+ */
+function releaseOverlay() {
+  if (state.image instanceof HTMLCanvasElement) state.image.width = state.image.height = 0;
+  showSeq += 1; // 作废还在进行中的 loadCapture
+  state.payload = null;
+  state.rawTiles = null;
+  state.image = null;
+  state.selection = null;
+  state.annotations = [];
+  state.redoStack = [];
+  state.drawing = null;
+  state.selectionReady = false;
+  state.textAnchor = null;
+  mosaicPaletteKey = '';
+  mosaicPaletteData = null;
+  imageSerial += 1;
+  // OCR「查看原图」里挂的是整张选区 PNG 的 data URL，隐藏时也要还回去
+  const originalImage = $('#original-image');
+  if (originalImage) originalImage.src = '';
+  if (originalViewer) originalViewer.hidden = true;
+  for (const canvas of [screenCanvas, annotationCanvas]) {
+    try {
+      canvas.getContext('2d').clearRect(0, 0, canvas.width, canvas.height);
+      canvas.width = 0;
+      canvas.height = 0;
+    } catch {
+      // 上下文丢失时忽略：窗口可能正在销毁
+    }
+  }
+  window.__overlayReleased = true;
+}
+
 async function loadCapture(seq) {
   const payload = await window.suira.capture.getData();
   // 加载过程中又被唤起一次：这一轮的旧数据直接作废
@@ -1241,33 +1311,39 @@ async function loadCapture(seq) {
   state.payload = payload;
   state.scaleX = payload.scaleFactor || 1;
   state.scaleY = payload.scaleFactor || 1;
+  const images = new Map();
+  const loadImage = url => {
+    if (!images.has(url)) images.set(url, new Promise((resolve, reject) => {
+      const image = new Image();
+      image.onload = () => resolve(image);
+      image.onerror = () => reject(new Error('屏幕画面载入失败'));
+      image.src = url;
+    }));
+    return images.get(url);
+  };
+  const rawTiles=await Promise.all((payload.rawTiles||[]).map(async tile=>{
+    const image=await loadImage(tile.dataUrl||payload.tiles?.[tile.tileIndex]?.dataUrl||payload.dataUrl);
+    return {...tile,image};
+  }));
+  if(seq!==showSeq)return;
+  state.rawTiles=rawTiles;
 
   // 多屏时需要先把分块拼成一整幅，再交给后续的选区与标注逻辑
-  let sourceUrl = payload.dataUrl;
+  let image;
   if (Array.isArray(payload.tiles) && payload.tiles.length > 0) {
-    sourceUrl = await composeTiles(payload.tiles, payload.tileSize.width, payload.tileSize.height);
-  }
+    image = await composeTiles(payload.tiles, payload.tileSize.width, payload.tileSize.height, loadImage);
+  } else image = await loadImage(payload.dataUrl);
   if (seq !== showSeq) return;
-
-  await new Promise((resolve, reject) => {
-    const image = new Image();
-    image.onload = () => {
-      if (seq !== showSeq) { resolve(); return; }
-      state.image = image;
-      imageSerial += 1;
-      mosaicPaletteKey = '';
-      mosaicPaletteData = null;
-      state.scaleX = image.width / Math.max(1, payload.size?.width || metrics.width);
-      state.scaleY = image.height / Math.max(1, payload.size?.height || metrics.height);
-      resizeCanvases();
-      setHidden(loadingState, true);
-      applyIntent(payload.intent);
-      if (perf) perf.imageReadyAt = performance.now();
-      resolve();
-    };
-    image.onerror = () => reject(new Error('屏幕画面载入失败'));
-    image.src = sourceUrl;
-  });
+  state.image = image;
+  imageSerial += 1;
+  mosaicPaletteKey = '';
+  mosaicPaletteData = null;
+  state.scaleX = image.width / Math.max(1, payload.size?.width || metrics.width);
+  state.scaleY = image.height / Math.max(1, payload.size?.height || metrics.height);
+  resizeCanvases();
+  setHidden(loadingState, true);
+  applyIntent(payload.intent);
+  if (perf) perf.imageReadyAt = performance.now();
 }
 
 /**
@@ -1296,7 +1372,14 @@ async function handleShown() {
 function applyIntent(intent) {
   if (!intent || intent === 'copy' || intent === 'save' || intent === 'shelf') return;
   state.intent = intent;
-  if (intent === 'ocr') {
+  if (intent === 'record') {
+    root.dataset.intent = 'record';
+    dockMetrics.width = dockMetrics.height = 0;
+    if (hintBrand) hintBrand.textContent = '区域录屏';
+    showAction('框选录屏区域，按 Enter 确认');
+    const label = document.querySelector('.complete-button span');
+    if (label) label.textContent = '录制此区域';
+  } else if (intent === 'ocr') {
     // 提示用户这一趟是要提字的，不必再找工具栏
     if (hintBrand) hintBrand.textContent = '截图提字';
     showAction('框选要识别的区域，完成后自动识别');
@@ -1328,5 +1411,9 @@ if (window.suira && window.suira.capture && typeof window.suira.capture.onShown 
 } else {
   // 兼容尚未接入 capture:shown 的旧主进程：页面就绪后直接加载
   handleShown();
+}
+// 隐藏即释放：主进程在 hide 时通知，窗口保留但画面/画布后备缓冲还回去
+if (window.suira && window.suira.capture && typeof window.suira.capture.onRelease === 'function') {
+  window.suira.capture.onRelease(() => { releaseOverlay(); });
 }
 

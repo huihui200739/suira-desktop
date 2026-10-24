@@ -23,8 +23,9 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 function findWorkingElectron() {
   const candidates = [
     process.env.SUIRA_ELECTRON,                    // 用户显式指定
-    'C:\\temp\\el45\\electron.exe',                // 本机已验证可用
-    'C:\\temp\\el45copy\\electron.exe'
+    'C:\\suira-electron\\electron.exe',
+    path.join(require('os').homedir(), 'suira-electron-dist', 'electron.exe'),
+    path.join(ROOT, 'node_modules', 'electron', 'dist', 'electron.exe')
   ].filter(Boolean);
   for (const candidate of candidates) {
     if (fs.existsSync(candidate)) return candidate;

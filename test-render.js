@@ -128,7 +128,7 @@ window.addEventListener('load', function () {
       panelCycleClear: !!document.querySelector('[data-shortcut-clear="panelCycle"]'),
       pinnedToggleClear: !!document.querySelector('[data-shortcut-clear="pinnedToggle"]'),
       clipboardBarClear: !!document.querySelector('[data-shortcut-clear="clipboardBar"]'),
-      restoreTitle: (document.getElementById('shortcut-restore') || {}).title || '',
+      restoreTitle: document.getElementById('shortcut-restore')?.dataset.hint || document.getElementById('shortcut-restore')?.title || '',
       hasEncryptToggle: !!document.getElementById('setting-encrypt'),
       encryptChecked: (document.getElementById('setting-encrypt') || {}).checked
     };
@@ -398,10 +398,8 @@ window.addEventListener('load', function () {
       tools: window.__tools || {},
       commandSectionHidden: document.getElementById('command-section').hidden,
       commandItems: document.querySelectorAll('.command-item').length,
-      hasSourceCard: !!document.getElementById('source-card'),
-      returnBarHidden: document.getElementById('return-bar').hidden,
-      returnTargetText: document.getElementById('return-target-text').textContent,
-      hasReturnCommit: !!document.getElementById('return-commit')
+      hasContextStrip: !!document.querySelector('.context-strip'),
+      hasKeyLabels: !!document.querySelector('.key-label')
     };
     var pre = document.createElement('pre');
     pre.textContent = 'Q:' + JSON.stringify(out);
@@ -617,20 +615,37 @@ try {
   t('未实现的工具显示明确状态（不放假按钮）', () => assert.strictEqual(qp.tools.todoItems, 1));
   t('输入拼音首字母后显示命令区', () => assert.strictEqual(qp.commandSectionHidden, false));
   t('命令结果渲染出 3 条', () => assert.strictEqual(qp.commandItems, 3));
-  t('最近内容卡存在', () => assert.strictEqual(qp.hasSourceCard, true));
-  t('放回条已显示（记录到目标窗口）', () => assert.strictEqual(qp.returnBarHidden, false));
-  t('放回条显示目标进程与标题', () => {
-    assert.ok(qp.returnTargetText.includes('WINWORD'), '实际: ' + qp.returnTargetText);
-    assert.ok(qp.returnTargetText.includes('季度报告'), '实际: ' + qp.returnTargetText);
-  });
-  t('放回按钮存在', () => assert.strictEqual(qp.hasReturnCommit, true));
+  t('面板已移除底部内容条', () => assert.strictEqual(qp.hasContextStrip, false));
+  t('按键说明已收进悬浮提示', () => assert.strictEqual(qp.hasKeyLabels, false));
 
   console.log('\n== 配色与开关实现断言 ==');
+  // 配色统一走 Radix：theme.css 定义色阶，styles.css 只引用语义令牌
   const css = fs.readFileSync(path.join(__dirname, 'src', 'styles.css'), 'utf8');
-  t('浅色底：银白 #F4F6FA', () => assert.ok(/#f4f6fa/i.test(css)));
-  t('深色底：冷石墨 #1E242D', () => assert.ok(/#1e242d/i.test(css)));
-  t('强调色：雾蓝 #506F9E', () => assert.ok(/#506f9e/i.test(css)));
-  t('强调色：冰蓝 #B7CBEA', () => assert.ok(/#b7cbea/i.test(css)));
+  const theme = fs.readFileSync(path.join(__dirname, 'src', 'theme.css'), 'utf8');
+  t('主窗口接入共享主题（theme.css 先于 styles.css）', () => {
+    const html = fs.readFileSync(path.join(__dirname, 'src', 'index.html'), 'utf8');
+    assert.ok(html.indexOf('theme.css') < html.indexOf('styles.css'));
+  });
+  t('中性色：Radix slate 阶', () => assert.ok(/--slate-12: #1c2024/i.test(theme)));
+  t('强调色：Radix blue 阶', () => assert.ok(/--blue-9: #0090ff/i.test(theme)));
+  t('styles.css 不再自带色板（引用语义令牌）', () => {
+    assert.ok(!/--mist:/.test(css));
+    assert.ok(/var\(--ink\)/.test(css));
+  });
+  t('界面文案不使用中点分隔符', () => {
+    for (const file of ['index.html', 'clipboardbar.html', 'quickpanel.html', 'overlay.html']) {
+      const text = fs.readFileSync(path.join(__dirname, 'src', file), 'utf8');
+      assert.ok(!text.includes('·'), file + ' 仍含中点');
+    }
+  });
+  t('字号收敛到四档（12/13/15/20）', () => {
+    const sizes = new Set();
+    for (const file of ['styles.css', 'quickpanel.css', 'clipboardbar.css']) {
+      const text = fs.readFileSync(path.join(__dirname, 'src', file), 'utf8');
+      for (const m of text.matchAll(/font-size:\s*([\d.]+)px/g)) sizes.add(m[1]);
+    }
+    for (const size of sizes) assert.ok(['12', '13', '15', '20'].includes(size), '出现未收敛字号 ' + size + 'px');
+  });
   t('开关用 background-image 实现，不依赖伪元素', () => {
     assert.ok(/input\[type="checkbox"\]\s*\{[\s\S]*?background-image/.test(css));
     assert.ok(!/input\[type="checkbox"\]::after/.test(css), '不应依赖 ::after');

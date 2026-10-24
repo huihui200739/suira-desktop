@@ -87,6 +87,59 @@ t('ENGINE_VERSION 标明引擎与语言包版本', () => {
   assert.match(ENGINE_VERSION, /tessdata/);
 });
 
-fs.rmSync(tmp, { recursive: true, force: true });
-console.log('\n========== ' + pass + ' 通过 / ' + fail + ' 失败 ==========');
-process.exit(fail ? 1 : 0);
+/* ---------- 识别引擎闲置回收（后台内存：worker 不能永久占住几百 MB） ---------- */
+async function idleTests() {
+  console.log('\n== 识别引擎闲置回收 ==');
+
+  const fakeWorker = { terminated: false, async terminate() { this.terminated = true; } };
+  const idle = new OcrService({ langPath: langDir, cachePath: cacheDir, idleMs: 60 });
+  idle.worker = fakeWorker;
+  idle.workerLangs = 'eng';
+  idle.scheduleIdle();
+  await new Promise((resolve) => setTimeout(resolve, 150));
+  t('闲置到点后 worker 被 terminate（把 ~230MB 还回去）', () => {
+    assert.strictEqual(fakeWorker.terminated, true);
+  });
+  t('terminate 后 worker 引用清空，下次识别会重建', () => {
+    assert.strictEqual(idle.worker, null);
+    assert.strictEqual(idle.workerLangs, '');
+  });
+
+  const busyWorker = { terminated: false, async terminate() { this.terminated = true; } };
+  const busy = new OcrService({ langPath: langDir, cachePath: cacheDir, idleMs: 60 });
+  busy.worker = busyWorker;
+  busy.workerLangs = 'eng';
+  busy.pending = 1; // 队列里还有识别任务
+  busy.scheduleIdle();
+  await new Promise((resolve) => setTimeout(resolve, 150));
+  t('仍有识别在排队（pending>0）时不回收', () => {
+    assert.strictEqual(busyWorker.terminated, false);
+  });
+
+  t('cancelIdle 能取消尚未触发的计时', () => {
+    const service2 = new OcrService({ langPath: langDir, cachePath: cacheDir, idleMs: 60 });
+    service2.worker = { terminate: async () => {} };
+    service2.workerLangs = 'eng';
+    service2.scheduleIdle();
+    assert.ok(service2.idleTimer, '应当已有计时器');
+    service2.cancelIdle();
+    assert.strictEqual(service2.idleTimer, null);
+  });
+
+  t('idleMs=0 表示不自动回收（显式关闭）', () => {
+    const service3 = new OcrService({ langPath: langDir, cachePath: cacheDir, idleMs: 0 });
+    service3.worker = { terminate: async () => {} };
+    service3.workerLangs = 'eng';
+    service3.scheduleIdle();
+    assert.strictEqual(service3.idleTimer, null);
+  });
+}
+
+idleTests().then(() => {
+  fs.rmSync(tmp, { recursive: true, force: true });
+  console.log('\n========== ' + pass + ' 通过 / ' + fail + ' 失败 ==========');
+  process.exit(fail ? 1 : 0);
+}).catch((error) => {
+  console.error('FAIL ' + (error && error.stack ? error.stack : error));
+  process.exit(1);
+});
