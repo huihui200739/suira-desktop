@@ -141,7 +141,12 @@ function renderKeys() {
     </div>
   `).join('');
   $$('.key', grid).forEach((button) => {
-    button.addEventListener('click', () => pressKey(button.dataset.key));
+    button.addEventListener('click', () => {
+      if (performance.now() < dragState.suppressClickUntil || bindingState.busy) return;
+      pressKey(button.dataset.key);
+    });
+    button.addEventListener('pointerdown', (event) => beginKeyDrag(event, button));
+    button.addEventListener('dragstart', (event) => event.preventDefault());
     // 右键任意键位：打开绑定编辑器（换功能、绑应用/文件夹/网页/清除）
     button.addEventListener('contextmenu', (event) => {
       event.preventDefault();
@@ -181,6 +186,7 @@ function keyByChar(char) {
 }
 
 function pressKey(char) {
+  if (bindingState.busy || dragState.active) return;
   const key = keyByChar(char);
   if (!key) return;
   if (key.state === 'bound') {
@@ -201,7 +207,7 @@ function pressKey(char) {
 
 /* ---------- 键位绑定编辑器 ---------- */
 
-const bindingState = { key: '' };
+const bindingState = { key: '', view: 'categories', busy: false };
 
 function bindingEditorOpen() {
   return !$('#binding-editor').hidden;
@@ -209,30 +215,84 @@ function bindingEditorOpen() {
 
 function openBindingEditor(keyChar) {
   const key = keyByChar(keyChar);
-  if (!key) return;
+  if (!key || bindingState.busy || dragState.active) return;
+  closeBindingEditor(false);
   bindingState.key = key.key;
   $('#binding-key').textContent = key.key;
   $('#binding-hint').textContent = key.state === 'custom'
     ? `当前：${key.label}（${key.hint}）`
     : key.state === 'bound' ? `当前：${key.label}` : '这个键还没有绑定内容';
-  $('#binding-url-row').hidden = true;
+  $('#binding-clear').hidden = !['custom', 'bound'].includes(key.state);
+  $('#binding-url-input').value = '';
   $('#binding-editor').hidden = false;
   renderBindingActions();
-  $('#binding-app').focus({ preventScroll: true });
+  showBindingView('categories');
+  window.SuiraUI?.openDialog($('#binding-editor'), {
+    surface: $('.binding-card'), trigger: $$('.key').find(button => button.dataset.key === key.key), close: closeBindingEditor
+  });
 }
 
-function closeBindingEditor() {
+function closeBindingEditor(restore = true) {
+  const key = bindingState.key;
+  $('#binding-editor')._dialogCleanup?.(false);
   $('#binding-editor').hidden = true;
   bindingState.key = '';
+  if (restore) $$('.key').find(button => button.dataset.key === key)?.focus({ preventScroll: true });
+}
+
+function positionBindingEditor() {
+  if (!bindingEditorOpen()) return;
+  const trigger = $$('.key').find(button => button.dataset.key === bindingState.key);
+  if (!trigger) { closeBindingEditor(false); return; }
+  const bounds = trigger.getBoundingClientRect();
+  const card = $('.binding-card'), margin = 12, gap = 10;
+  const { width, height } = card.getBoundingClientRect();
+  // 优先贴在键位右侧；靠近窗口边缘时向左或向上收进可见区域。
+  let left = bounds.right + gap;
+  if (left + width > innerWidth - margin) left = bounds.left - width - gap;
+  const top = Math.max(margin, Math.min(innerHeight - height - margin, bounds.top - 12));
+  left = Math.max(margin, Math.min(innerWidth - width - margin, left));
+  card.style.left = `${left}px`;
+  card.style.top = `${top}px`;
+}
+
+function showBindingView(view) {
+  bindingState.view = view;
+  $('#binding-categories').hidden = view !== 'categories';
+  $('#binding-tools-view').hidden = view !== 'tools';
+  $('#binding-url-row').hidden = view !== 'url';
+  $('#binding-back').hidden = view === 'categories';
+  $('#binding-title').textContent = { categories: '绑定内容', tools: '内置工具', url: '绑定网页' }[view];
+  positionBindingEditor();
+  const focus = view === 'url' ? $('#binding-url-input') : view === 'tools'
+    ? $('#binding-action-list button:not(:disabled)') : $('#binding-app');
+  focus?.focus({ preventScroll: true });
+}
+
+function setBindingBusy(busy) {
+  bindingState.busy = busy;
+  $('#binding-editor').setAttribute('aria-busy', String(busy));
+  $$('.binding-card button, .binding-card input').forEach(button => {
+    button.disabled = busy || button.dataset.current === 'true';
+  });
 }
 
 /** 可指派的内置动作按钮（由主进程 panel:state 提供）。 */
 function renderBindingActions() {
   const list = $('#binding-action-list');
   const actions = state.actions || [];
-  list.innerHTML = actions.map((action) => `
-    <button type="button" data-binding-action="${escapeHtml(action.id)}" title="${escapeHtml(action.hint || action.label)}">${escapeHtml(action.label)}</button>
-  `).join('');
+  list.innerHTML = actions.map((action) => {
+    const home = state.keys.find(key => key.actionId === action.id && key.state === 'bound');
+    const current = home?.key === bindingState.key;
+    return `<button type="button" data-binding-action="${escapeHtml(action.id)}" data-current="${current}" aria-pressed="${current}" ${current ? 'disabled' : ''} data-hint="${escapeHtml(action.hint || action.label)}">
+      <span class="binding-tool-icon" data-action="${escapeHtml(action.id)}">${GLYPHS[action.id] || BINDING_GLYPHS.app}</span>
+      <span>${escapeHtml(action.label)}</span><kbd>${escapeHtml(home?.key || '+')}</kbd>
+    </button>`;
+  }).join('');
+  const target = keyByChar(bindingState.key);
+  $('#binding-action-help').textContent = ['bound', 'custom'].includes(target?.state)
+    ? '已有键位的工具会互换位置，原有绑定会保留'
+    : '选中后移到此键，原键位会空出';
   $$('#binding-action-list [data-binding-action]').forEach((button) => {
     listen(button, 'click', async () => {
       await setKeyBinding({ type: 'action', id: button.dataset.bindingAction });
@@ -240,33 +300,132 @@ function renderBindingActions() {
   });
 }
 
-async function setKeyBinding(binding) {
-  const key = bindingState.key;
-  if (!key) return;
+async function setKeyBinding(binding, key = bindingState.key) {
+  if (!key || bindingState.busy) return;
+  setBindingBusy(true);
   try {
     const result = await window.suira.panel.setBinding({ key, binding });
     if (!result?.ok) { toast(result?.error || '绑定失败', 'error'); return; }
     toast(result.message || '已绑定');
-    closeBindingEditor();
+    closeBindingEditor(false);
     await loadState();
+    $$('.key').find(button => button.dataset.key === key)?.focus({ preventScroll: true });
   } catch (error) {
     toast(error?.message || '绑定失败', 'error');
+  } finally {
+    setBindingBusy(false);
   }
 }
 
 /** 应用/文件夹/文件：弹系统选择窗口后绑定所选路径。 */
 async function pickAndBind(type) {
   const key = bindingState.key;
-  if (!key) return;
+  if (!key || bindingState.busy) return;
+  setBindingBusy(true);
   try {
     const picked = await window.suira.panel.pickPath({ type });
     if (!picked?.ok) {
       if (picked && picked.error) toast(picked.error, 'error');
       return;
     }
-    await setKeyBinding({ type, target: picked.path });
+    setBindingBusy(false);
+    await setKeyBinding({ type, target: picked.path }, key);
   } catch (error) {
     toast(error?.message || '选择失败', 'error');
+  } finally {
+    setBindingBusy(false);
+  }
+}
+
+/* ---------- 左键拖动换位 ---------- */
+
+const dragState = { source: null, active: false, ghost: null, target: '', suppressClickUntil: 0 };
+
+function canDropOn(key) {
+  return key && (key.state === 'unbound' && !key.actionId || key.state === 'unimplemented');
+}
+
+function beginKeyDrag(event, button) {
+  if (event.button !== 0) return;
+  // 新的一次按下立即可用；只拦截上一次拖动松手附带的 click。
+  dragState.suppressClickUntil = 0;
+  if (bindingEditorOpen() || bindingState.busy || dragState.source) return;
+  const key = keyByChar(button.dataset.key);
+  if (!key || !['bound', 'custom'].includes(key.state)) return;
+  Object.assign(dragState, { source: button, pointerId: event.pointerId, x: event.clientX, y: event.clientY, active: false, target: '' });
+}
+
+function updateKeyDrag(event) {
+  const drag = dragState;
+  if (!drag.source || event.pointerId !== drag.pointerId) return;
+  if (!drag.active && Math.hypot(event.clientX - drag.x, event.clientY - drag.y) < 7) return;
+  if (!drag.active) {
+    drag.active = true;
+    drag.source.setPointerCapture(event.pointerId);
+    drag.source.classList.add('is-drag-source');
+    $('#panel').classList.add('is-key-dragging');
+    drag.ghost = drag.source.cloneNode(true);
+    drag.ghost.classList.remove('is-drag-source');
+    drag.ghost.classList.add('key-drag-preview');
+    drag.ghost.removeAttribute('data-key');
+    drag.ghost.removeAttribute('data-hint');
+    drag.ghost.removeAttribute('aria-describedby');
+    drag.ghost.setAttribute('aria-hidden', 'true');
+    drag.ghost.tabIndex = -1;
+    document.body.append(drag.ghost);
+    $$('.key', $('#key-grid')).forEach(button => button.classList.toggle('is-drop-target', Boolean(canDropOn(keyByChar(button.dataset.key)))));
+    $('#key-drag-status').hidden = false;
+  }
+  event.preventDefault();
+  drag.ghost.style.left = `${Math.max(0, Math.min(innerWidth - drag.ghost.offsetWidth, event.clientX + 14))}px`;
+  drag.ghost.style.top = `${Math.max(0, Math.min(innerHeight - drag.ghost.offsetHeight, event.clientY + 14))}px`;
+  const hovered = document.elementFromPoint(event.clientX, event.clientY)?.closest('#key-grid .key');
+  const key = keyByChar(hovered?.dataset.key);
+  drag.target = canDropOn(key) ? key.key : '';
+  $$('.is-drop-over').forEach(button => button.classList.remove('is-drop-over'));
+  if (drag.target) hovered.classList.add('is-drop-over');
+  drag.ghost.classList.toggle('is-drop-blocked', Boolean(key && !drag.target));
+  $('#key-drag-status').textContent = drag.target
+    ? `松开移到 ${drag.target} 键，按 ${drag.target} 即可调用`
+    : key && key.key !== drag.source.dataset.key ? '这个键已有绑定，请移到空键位' : '拖到空键位，Esc 取消';
+}
+
+function cancelKeyDrag() {
+  const drag = dragState;
+  if (drag.active) drag.suppressClickUntil = performance.now() + 250;
+  const source = drag.source, pointerId = drag.pointerId;
+  drag.source = null;
+  drag.active = false;
+  drag.ghost?.remove();
+  drag.ghost = null;
+  drag.target = '';
+  $('#panel').classList.remove('is-key-dragging');
+  $('#key-drag-status').hidden = true;
+  $$('.is-drag-source, .is-drop-target, .is-drop-over').forEach(button => button.classList.remove('is-drag-source', 'is-drop-target', 'is-drop-over'));
+  if (source?.hasPointerCapture(pointerId)) source.releasePointerCapture(pointerId);
+}
+
+async function finishKeyDrag(event) {
+  const drag = dragState;
+  if (!drag.source || event.pointerId !== drag.pointerId) return;
+  const fromKey = drag.source.dataset.key, active = drag.active;
+  if (active) updateKeyDrag(event);
+  const toKey = drag.target;
+  cancelKeyDrag();
+  if (!active || !toKey) return;
+  setBindingBusy(true);
+  $('#key-grid').setAttribute('aria-busy', 'true');
+  try {
+    const result = await window.suira.panel.moveBinding({ fromKey, toKey });
+    if (!result?.ok) { toast(result?.error || '键位移动失败', 'error'); return; }
+    await loadState();
+    $$('.key').find(button => button.dataset.key === toKey)?.focus({ preventScroll: true });
+    toast(result.message || `已移到 ${toKey} 键`);
+  } catch (error) {
+    toast(error?.message || '键位移动失败', 'error');
+  } finally {
+    setBindingBusy(false);
+    $('#key-grid').setAttribute('aria-busy', 'false');
   }
 }
 
@@ -672,6 +831,14 @@ function focusSearch() {
 }
 
 function installEvents() {
+  document.addEventListener('pointermove', updateKeyDrag, { passive: false });
+  listen(document, 'pointerup', finishKeyDrag);
+  document.addEventListener('pointercancel', cancelKeyDrag);
+  document.addEventListener('lostpointercapture', () => { if (dragState.source) cancelKeyDrag(); });
+  window.addEventListener('blur', () => { cancelKeyDrag(); if (!bindingState.busy) closeBindingEditor(false); });
+  document.addEventListener('visibilitychange', () => { if (document.hidden) { cancelKeyDrag(); closeBindingEditor(false); } });
+  window.addEventListener('resize', () => { cancelKeyDrag(); positionBindingEditor(); });
+  $('#panel-body').addEventListener('scroll', positionBindingEditor, true);
   const input = $('#search');
   input.addEventListener('input', (event) => updateSearch(event.target.value));
   input.addEventListener('compositionstart', () => { state.composing = true; });
@@ -717,6 +884,11 @@ function installEvents() {
 
   document.addEventListener('keydown', (event) => {
     if (event.defaultPrevented || event.isComposing || state.composing) return;
+    if (dragState.source) {
+      if (event.key === 'Escape') { event.preventDefault(); cancelKeyDrag(); }
+      return;
+    }
+    if (bindingState.busy) { event.preventDefault(); return; }
     if (!$('#ocr-panel').hidden) {
       if (event.key === 'Escape') { event.preventDefault(); closeOcr(); }
       return;
@@ -813,22 +985,31 @@ function installEvents() {
 
   /* ---- 键位绑定编辑器 ---- */
   $('#binding-close').addEventListener('click', closeBindingEditor);
+  $('#binding-back').addEventListener('click', () => showBindingView('categories'));
   $('#binding-editor').addEventListener('click', (event) => {
     if (event.target === $('#binding-editor')) closeBindingEditor();
   });
   $('#binding-app').addEventListener('click', () => pickAndBind('app'));
   $('#binding-folder').addEventListener('click', () => pickAndBind('folder'));
   $('#binding-file').addEventListener('click', () => pickAndBind('file'));
+  $$('#binding-categories [data-binding-kind]').forEach(button => {
+    $('.binding-kind-icon', button).innerHTML = BINDING_GLYPHS[button.dataset.bindingKind] || GLYPHS.capture;
+  });
+  $('#binding-tools').addEventListener('click', () => showBindingView('tools'));
   $('#binding-url').addEventListener('click', () => {
-    const row = $('#binding-url-row');
-    row.hidden = !row.hidden;
-    if (!row.hidden) $('#binding-url-input').focus();
+    showBindingView('url');
   });
   listen($('#binding-url-save'), 'click', async () => {
     const value = $('#binding-url-input').value.trim();
     if (!value) { toast('先粘贴要绑定的网址', 'error'); return; }
     // 不带协议的网址按 https 处理；主进程会再校验协议白名单
-    await setKeyBinding({ type: 'url', target: /^https?:\/\//i.test(value) ? value : `https://${value}` });
+    let target;
+    try {
+      const parsed = new URL(/^[a-z][a-z\d+.-]*:\/\//i.test(value) || /^(?:javascript|data|file):/i.test(value) ? value : `https://${value}`);
+      if (!['http:', 'https:'].includes(parsed.protocol)) throw new Error();
+      target = parsed.href;
+    } catch { toast('请输入有效的 http 或 https 网页地址', 'error'); return; }
+    await setKeyBinding({ type: 'url', target });
   });
   $('#binding-url-input').addEventListener('keydown', (event) => {
     if (event.key === 'Enter') { event.preventDefault(); $('#binding-url-save').click(); }
@@ -916,10 +1097,14 @@ function installEvents() {
   // 主进程的「面板布局轮换」快捷键：动作 / 应用 / 工具箱 之间切换
   window.suira.quick.onMode((mode) => {
     if (typeof mode !== 'string' || !mode) return;
+    cancelKeyDrag();
+    closeBindingEditor(false);
     clearSearch();
     setMode(mode);
   });
   window.suira.quick.onShown(async () => {
+    cancelKeyDrag();
+    closeBindingEditor(false);
     clearTimeout(state.toastTimer);
     $('#toast').className = 'toast';
     clearSearch();

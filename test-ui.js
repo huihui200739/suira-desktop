@@ -196,7 +196,7 @@ t('未绑定与未实现键都有明确状态，不冒充可用', () => {
 t('按键与鼠标点击走同一执行通道', () => {
   // pressKey 是唯一入口：键盘直达和 click 都必须经过它
   if (!/function pressKey/.test(qpJs)) throw new Error('缺少 pressKey');
-  const clickBinding = qpJs.match(/\.key', grid\)\.forEach\(\(button\) => \{\s*button\.addEventListener\('click', \(\) => pressKey\(button\.dataset\.key\)\)/);
+  const clickBinding = qpJs.match(/button\.addEventListener\('click', \(\) => \{[\s\S]*?pressKey\(button\.dataset\.key\)/);
   if (!clickBinding) throw new Error('键位点击未走 pressKey');
   if (!/keyByChar\(event\.key\)/.test(qpJs)) throw new Error('键盘直达未走 keyByChar');
 });

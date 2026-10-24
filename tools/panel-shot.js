@@ -13,6 +13,7 @@ const { spawn } = require('child_process');
 const assert = require('node:assert/strict');
 const { QUICK_PANEL_SIZE } = require('../lib/display-geometry');
 const { keyLayout, TOOLBOX_TOOLS } = require('../lib/keybindings');
+const { bindingFixture, checkBindings } = require('./panel-bindings-check');
 const CHECK_ONLY = process.argv.includes('--check');
 
 const ROOT = path.join(__dirname, '..');
@@ -108,7 +109,7 @@ function buildPage() {
     .replace('<script src="quickpanel.js"></script>',
       '<script>window.__errs=[];window.addEventListener("error",function(e){window.__errs.push(String(e.message||e.error));});window.addEventListener("unhandledrejection",function(e){window.__errs.push("rejection: "+String((e.reason&&e.reason.message)||e.reason));});</script>'
       + '<script src="__mock.js"></script><script src="quickpanel.js"></script>');
-  fs.writeFileSync(path.join(TMP, '__mock.js'), MOCK, 'utf8');
+  fs.writeFileSync(path.join(TMP, '__mock.js'), MOCK + bindingFixture, 'utf8');
   fs.writeFileSync(path.join(TMP, 'panel.html'), html, 'utf8');
   fs.copyFileSync(path.join(ROOT, 'assets', 'suira-icon.png'), path.join(TMP, 'suira-icon.png'));
   for (const asset of ['theme.css', 'quickpanel.css', 'quickpanel.js', 'ui-motion.css', 'ui-motion.js']) {
@@ -489,7 +490,8 @@ async function capture(send, name) {
       console.log('  PASS  ' + width + '×' + height + ' ' + scheme + ' ' + JSON.stringify(layout));
       if (width === QUICK_PANEL_SIZE.width && scheme === 'dark') await capture(send, '22-panel-actions-dark.png');
     }
-    console.log('\n面板交互、错误路径与四组显示条件全部通过。');
+    await checkBindings({ send, evaluate, capture });
+    console.log('\n面板交互、键位绑定、拖动、错误路径与四组显示条件全部通过。');
 
     ws.close();
   } finally {

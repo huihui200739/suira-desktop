@@ -58,7 +58,7 @@ const { InputInjector } = require('./lib/input-injector');
 const { keyLayout, TOOLBOX_TOOLS, PANEL_ACTIONS, DEFAULT_KEY_BINDINGS, KEY_ROWS, normalizeKey, implementedPanelActions } = require('./lib/keybindings');
 const { createPanelActions } = require('./lib/panel-actions');
 // 38 键面板的自定义键位绑定：清洗与换位是纯模型，主进程只负责落盘与执行
-const { assignPanelBinding, effectiveBinding } = require('./lib/panel-bindings');
+const { assignPanelBinding, movePanelBinding, effectiveBinding } = require('./lib/panel-bindings');
 // 第三批：按住型唤起用常驻 PowerShell 助手拿「松开」事件；浮引岛纯模型负责暂存语义
 const { KeyWatchProbe, ensureNativeHost } = require('./lib/key-watch');
 const islandModel = require('./lib/island-model');
@@ -97,6 +97,7 @@ let ocr = null;
 let actions = null;
 let mainWindow = null;
 let quickWindow = null;
+let panelBindingPickerOpen = false;
 let overlayWindow = null;
 let tray = null;
 let capturePayload = null;
@@ -863,7 +864,7 @@ function createQuickWindow() {
     broadcast('content:changed');
   });
   quickWindow.on('blur', () => {
-    if (!quickWindow || quickWindow.isDestroyed() || quickWindow.webContents.isDevToolsOpened()) return;
+    if (!quickWindow || quickWindow.isDestroyed() || panelBindingPickerOpen || quickWindow.webContents.isDevToolsOpened()) return;
     hideQuickPanel();
   });
   quickWindow.on('show', () => {
@@ -2703,14 +2704,23 @@ function registerIpc() {
     if (outcome.changed) await store.setPanelBindings(outcome.bindings);
     return { ok: true, message: outcome.message };
   });
+  ipcMain.handle('panel:binding:move', async (_event, payload) => {
+    const outcome = movePanelBinding(store.getPanelBindings(), payload?.fromKey, payload?.toKey);
+    if (!outcome.ok) return { ok: false, error: outcome.error };
+    if (outcome.changed) await store.setPanelBindings(outcome.bindings);
+    return { ok: true, message: outcome.message };
+  });
   ipcMain.handle('panel:binding:pick', async (_event, options) => {
+    if (panelBindingPickerOpen) return { ok: false, error: '请先完成当前的文件选择' };
+    const owner = BrowserWindow.fromWebContents(_event.sender);
     const type = String(options?.type || 'file');
     const properties = type === 'folder' ? ['openDirectory', 'promptToCreate'] : ['openFile'];
     const filters = type === 'app'
       ? [{ name: '应用与快捷方式', extensions: ['exe', 'lnk', 'url'] }, { name: '所有文件', extensions: ['*'] }]
       : undefined;
     try {
-      const result = await dialog.showOpenDialog({
+      panelBindingPickerOpen = true;
+      const result = await dialog.showOpenDialog(owner, {
         title: type === 'folder' ? '选择要绑定的文件夹' : type === 'app' ? '选择要绑定的应用' : '选择要绑定的文件',
         properties,
         filters
@@ -2719,6 +2729,9 @@ function registerIpc() {
       return { ok: true, path: result.filePaths[0] };
     } catch (error) {
       return { ok: false, error: error.message || '无法打开选择窗口' };
+    } finally {
+      panelBindingPickerOpen = false;
+      if (owner && !owner.isDestroyed() && owner.isVisible()) owner.focus();
     }
   });
 
@@ -3386,7 +3399,8 @@ app.on('will-quit', () => {
   clearInterval(clipboardTimer);
   if (foregroundIdleTimer) { clearTimeout(foregroundIdleTimer); foregroundIdleTimer = null; }
   shortcutManager?.dispose();
-  globalShortcut.unregisterAll();
+  // 第二个实例会在 ready 前退出，此时 Electron 不允许访问全局快捷键。
+  if (app.isReady()) globalShortcut.unregisterAll();
   ocr?.terminate().catch(() => {});
   foregroundProbe.dispose();
   try { momentaryProbe?.stop().catch(() => {}); } catch {}

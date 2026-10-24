@@ -51,7 +51,18 @@
 | [19-clipboardbar.png](19-clipboardbar.png) | 底部剪贴板历史条（1180×196）：图片缩略图、文字摘要、文件条目 |
 | [20-clipboardbar-selected.png](20-clipboardbar-selected.png) | 底部剪贴板条选中态：高亮卡片 + 底部选中项信息 |
 
-## 复现
+## 键位绑定与拖动
+
+| 图 | 说明 |
+|---|---|
+| [23-panel-binding-menu.png](23-panel-binding-menu.png) | 贴合键位的分类绑定菜单 |
+| [24-panel-binding-tools.png](24-panel-binding-tools.png) | 内置工具子页，显示工具当前绑定键 |
+| [25-panel-key-drag.png](25-panel-key-drag.png) | 左键拖动时的空位提示与目标高亮 |
+| [26-panel-binding-menu-dark.png](26-panel-binding-menu-dark.png) | 绑定菜单深色主题 |
+
+上述截图由 `node tools/panel-shot.js` 使用独立示例数据生成。`npm run test:bindings` 验证模型与真实鼠标 / 键盘交互；`npm run verify:bindings` 使用独立 Electron 数据目录验证 preload、IPC、目标执行和进程重启后的落盘恢复。
+
+## 生成截图
 
 ```powershell
 # 设计稿视图

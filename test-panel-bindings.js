@@ -13,7 +13,8 @@ const {
   cleanBindingMap,
   effectiveBinding,
   bindingLabel,
-  assignPanelBinding
+  assignPanelBinding,
+  movePanelBinding
 } = require('./lib/panel-bindings');
 const { DEFAULT_KEY_BINDINGS, PANEL_ACTIONS } = require('./lib/keybindings');
 
@@ -148,5 +149,81 @@ t('换位后每个动作仍只占用一个键位', () => {
   assert.deepStrictEqual(effectiveBinding(bindings, 'E'), { type: 'action', id: 'ocr' });
 });
 
-console.log(`\n${pass} passed, ${fail} failed`);
-process.exit(fail ? 1 : 0);
+console.log('\n== 拖动换位 ==');
+t('拖到空字母、数字、符号键时清空原位并保持动作唯一', () => {
+  for (const target of ['S', '1', '0', '-', '=']) {
+    const start = {};
+    const result = movePanelBinding(start, 'z', target);
+    assert.strictEqual(result.ok, true);
+    assert.deepStrictEqual(start, {}, '不修改调用方的覆盖表');
+    assert.deepStrictEqual(effectiveBinding(result.bindings, 'Z'), { type: 'none' });
+    assert.deepStrictEqual(effectiveBinding(result.bindings, target), { type: 'action', id: 'capture' });
+    assert.strictEqual([...VALID_KEYS].filter(key => effectiveBinding(result.bindings, key).id === 'capture').length, 1);
+  }
+});
+t('应用、文件、文件夹和网页绑定都能移动，名字和目标保持完整', () => {
+  for (const type of ['app', 'file', 'folder', 'url']) {
+    const binding = cleanBinding({ type, target: type === 'url' ? 'https://example.com/' : 'C:\\Demo\\example', name: '示例' });
+    const result = movePanelBinding({ Q: binding }, 'Q', 'E');
+    assert.strictEqual(result.ok, true);
+    assert.deepStrictEqual(effectiveBinding(result.bindings, 'Q'), { type: 'none' });
+    assert.deepStrictEqual(effectiveBinding(result.bindings, 'E'), binding);
+  }
+});
+t('拖到已有功能或自定义绑定上会拒绝，双方内容都不改变', () => {
+  for (const start of [{}, { X: { type: 'url', target: 'https://example.com/', name: '示例' } }]) {
+    const before = JSON.stringify(start);
+    const result = movePanelBinding(start, 'Z', 'X');
+    assert.strictEqual(result.ok, false);
+    assert.match(result.error, /已经绑定/);
+    assert.strictEqual(JSON.stringify(start), before);
+    assert.strictEqual(result.bindings, start);
+  }
+});
+t('占位的未实现工具可作为空位，原本已清空的默认键也能放入', () => {
+  assert.strictEqual(movePanelBinding({}, 'Z', 'W').ok, true);
+  assert.strictEqual(movePanelBinding({ X: { type: 'none' } }, 'Z', 'X').ok, true);
+});
+t('松回原键不改数据，空键和未知键不能作为移动来源', () => {
+  assert.strictEqual(movePanelBinding({}, 'Z', 'Z').changed, false);
+  for (const [from, to] of [['Q', 'E'], ['W', 'E'], ['未知', 'Q'], ['Z', 'F13']]) {
+    assert.strictEqual(movePanelBinding({}, from, to).ok, false);
+  }
+});
+t('连续移动后新键触发同一动作，旧键不会回落到默认绑定', () => {
+  const first = movePanelBinding({}, 'Z', 'S');
+  const second = movePanelBinding(first.bindings, 'S', '2');
+  assert.strictEqual(effectiveBinding(second.bindings, '2').id, 'capture');
+  assert.strictEqual(effectiveBinding(second.bindings, 'S').type, 'none');
+  assert.strictEqual(effectiveBinding(second.bindings, 'Z').type, 'none');
+});
+
+(async () => {
+  const fs = require('node:fs'), os = require('node:os'), path = require('node:path');
+  const { SuiraStore } = require('./lib/store');
+  const temporary = fs.mkdtempSync(path.join(os.tmpdir(), 'suira-bindings-'));
+  try {
+    const file = path.join(temporary, 'data.json');
+    const store = new SuiraStore(file);
+    await store.setPanelBindings(movePanelBinding(store.getPanelBindings(), 'Z', 'S').bindings);
+    const reopened = new SuiraStore(file);
+    const restored = reopened.getPanelBindings();
+    assert.strictEqual(effectiveBinding(restored, 'Z').type, 'none');
+    assert.strictEqual(effectiveBinding(restored, 'S').id, 'capture');
+    console.log('  PASS  保存后重建 store，移动后的键位和原键空位都保留');
+    pass++;
+    const previous = reopened.getPanelBindings();
+    const save = reopened.save;
+    reopened.save = async () => { throw new Error('磁盘写入失败'); };
+    await assert.rejects(reopened.setPanelBindings(movePanelBinding(previous, 'S', '2').bindings), /磁盘写入失败/);
+    assert.deepStrictEqual(reopened.getPanelBindings(), previous);
+    assert.deepStrictEqual(new SuiraStore(file).getPanelBindings(), previous);
+    reopened.save = save;
+    await reopened.setPanelBindings(movePanelBinding(previous, 'S', '2').bindings);
+    assert.strictEqual(effectiveBinding(new SuiraStore(file).getPanelBindings(), '2').id, 'capture');
+    console.log('  PASS  写入失败时内存与磁盘保留原绑定，恢复后仍可继续移动');
+    pass++;
+  } finally { fs.rmSync(temporary, { recursive: true, force: true }); }
+  console.log(`\n${pass} passed, ${fail} failed`);
+  process.exitCode = fail ? 1 : 0;
+})().catch(error => { console.error(error); process.exitCode = 1; });

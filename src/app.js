@@ -1058,6 +1058,10 @@ function installEvents() {
   $('#trail-refresh').addEventListener('click', refreshTrail);
 
   $('#open-data').addEventListener('click', () => window.suira.app.openDataDir());
+  $('#restart-app').addEventListener('click', async () => {
+    try { await window.suira.app.restart(); }
+    catch (error) { toast(error?.message || '重启失败，请从托盘退出后重新打开'); }
+  });
   bindSettings();
 
   $('#modal-close').addEventListener('click', closeModal);
