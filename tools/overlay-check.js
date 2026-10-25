@@ -271,6 +271,26 @@ const check = (name, cond, detail) => {
       released);
     check('松开后顶部提示条收起', rl.hintHidden === true, released);
 
+    // 留存纯测试画面的单排工具栏，检查浅色与深色下的紧凑布局。
+    for (const scheme of ['light', 'dark']) {
+      await send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: scheme }] });
+      await sleep(80);
+      const layout = await evaluate(send, `(() => {
+        const dock=document.getElementById('tool-dock'), r=dock.getBoundingClientRect();
+        const buttons=[...dock.querySelectorAll('[data-shortcut]')];
+        const centers=buttons.map(button=>{const b=button.getBoundingClientRect();return b.y+b.height/2;});
+        return {x:r.x,y:r.y,width:r.width,height:r.height,
+          singleRow:Math.max(...centers)-Math.min(...centers)<1,
+          hasKeyLabels:!!dock.querySelector('kbd,small'),
+          inViewport:r.left>=0&&r.right<=innerWidth&&r.top>=0&&r.bottom<=innerHeight};
+      })()`);
+      check(scheme+' 工具栏单排、无字母行且在视口内',layout.singleRow&&!layout.hasKeyLabels&&layout.inViewport&&layout.height<=48,JSON.stringify(layout));
+      const shot = await send('Page.captureScreenshot', {format:'png',fromSurface:true,
+        clip:{x:Math.max(0,layout.x-8),y:Math.max(0,layout.y-8),width:layout.width+16,height:layout.height+16,scale:2}});
+      fs.writeFileSync(path.join(ROOT,'docs','screenshots','27-overlay-toolbar-'+scheme+'.png'),Buffer.from(shot.data,'base64'));
+    }
+    await send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: 'light' }] });
+
     // 重新开始新框选：按下瞬间旧选区与工具栏都要消失
     await evaluate(send, `(function(){
       document.querySelector('[data-tool="select"]').click();
@@ -632,7 +652,7 @@ const check = (name, cond, detail) => {
       press('r');press('p',{isComposing:true});const imeSafe=document.getElementById('capture-root').dataset.tool==='rect';
       const ta=document.getElementById('ocr-result-text');ta.focus();ta.dispatchEvent(new KeyboardEvent('keydown',{key:'p',bubbles:true,cancelable:true}));const typingSafe=document.getElementById('capture-root').dataset.tool==='rect';ta.blur();
       window.__canceled=false;press('Escape');const canceled=window.__canceled===true;
-      const labels=[...document.querySelectorAll('#tool-dock [data-shortcut]')].every(button=>button.hasAttribute('aria-keyshortcuts')&&(button.querySelector('kbd,small')?.getBoundingClientRect().height||0)>0);
+      const labels=[...document.querySelectorAll('#tool-dock [data-shortcut]')].every(button=>button.hasAttribute('aria-keyshortcuts')&&button.dataset.hint.includes('(')&&!button.querySelector('kbd,small'));
       return {tools,colorsOpened,colorPicked,actions,ctrlSave,ctrlCopy,repeatSafe,imeSafe,typingSafe,canceled,labels};
     })()`);
     for(const [key,passed] of Object.entries(keyboardTools.tools))check('按 '+key.toUpperCase()+' 切换对应工具',passed);

@@ -1206,8 +1206,6 @@ function clearCanvas(canvas) {
 function resetOverlay() {
   delete root.dataset.intent;
   dockMetrics.width = dockMetrics.height = 0;
-  const completeLabel = document.querySelector('.complete-button span');
-  if (completeLabel) completeLabel.textContent = '完成';
   showSeq += 1;
   if (state.image instanceof HTMLCanvasElement) state.image.width = state.image.height = 0;
   state.payload = null;

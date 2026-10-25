@@ -179,7 +179,7 @@ button { color: inherit; }
 }
 .capture-hint p { margin: 0; }
 .capture-hint b { color: var(--ink); font-weight: 600; }
-.capture-hint kbd, .complete-button kbd {
+.capture-hint kbd {
   display: inline-grid;
   place-items: center;
   min-width: 20px;
@@ -207,14 +207,15 @@ button { color: inherit; }
   z-index: 40;
   display: flex;
   align-items: center;
-  gap: 3px;
-  min-height: 50px;
-  padding: 6px;
-  border: 0.5px solid var(--line);
-  border-radius: 14px;
-  background: radial-gradient(ellipse at 0 0, var(--floating-light), transparent 60%), var(--floating-surface);
-  box-shadow: var(--control-shadow), var(--shadow-lift);
-  backdrop-filter: blur(22px);
+  gap: 4px;
+  min-height: 46px;
+  padding: 4px 8px;
+  border: 1px solid var(--floating-edge);
+  border-radius: 16px;
+  background: linear-gradient(160deg, var(--floating-light), transparent 70%),
+    color-mix(in srgb, var(--paper-raised) 76%, transparent);
+  box-shadow: inset 0 1px 0 var(--floating-edge), 0 8px 28px rgba(0, 0, 0, 0.16);
+  backdrop-filter: blur(28px) saturate(1.25);
 }
 .tool-dock[hidden] { display: none; }
 #capture-root[data-intent="record"] .tool-dock > :not(.tool-tooltip):not([data-tool="select"]):not([data-action="cancel"]):not(.complete-button) { display: none; }
@@ -226,43 +227,42 @@ button { color: inherit; }
   align-items: center;
   justify-content: center;
   width: 36px;
-  height: 44px;
+  height: 36px;
   flex: 0 0 36px;
   border: 0;
   border-radius: var(--radius-inner);
   background: transparent;
-  color: var(--ink-soft);
+  color: var(--ink);
   cursor: pointer;
   transition: background var(--dur-base) var(--ease-out), color var(--dur-base) var(--ease-out);
 }
 .tool-button:hover { background: var(--control-selected); color: var(--ink); }
 .tool-button:active { transform: scale(0.94); }
-.tool-button.is-active { background: var(--accent-soft); color: var(--accent-text); }
+.tool-button.is-active { background: var(--control-selected); color: var(--accent-text); }
+.tool-button:focus-visible { outline: 2px solid var(--accent-text); outline-offset: -2px; }
+.capture-mode { width: 76px; flex-basis: 76px; gap: 8px; font-size: var(--text-2); font-weight: 550; }
+.capture-mode i { width: 6px; height: 6px; border-radius: 50%; background: var(--blue-9); }
 .tool-button svg {
-  width: 19px;
-  height: 19px;
+  width: 21px;
+  height: 21px;
   fill: none;
   stroke: currentColor;
   stroke-width: 1.7;
   stroke-linecap: round;
   stroke-linejoin: round;
 }
-.tool-button { flex-direction:column;gap:2px; }
-.tool-button kbd { display:block;order:2;font:500 var(--text-1)/12px var(--font-ui);color:var(--ink-muted); }
-.tool-button.is-active kbd { color:var(--accent-deep); }
 .tool-separator {
   width: 1px;
-  height: 24px;
+  height: 20px;
   margin: 0 4px;
   flex: 0 0 1px;
   background: var(--line);
 }
 
 .color-control { position: relative; }
-.color-trigger { width: 34px; flex-basis: 34px; }
 .color-dot {
-  width: 17px;
-  height: 17px;
+  width: 16px;
+  height: 16px;
   border: 2px solid rgba(255, 255, 255, 0.86);
   border-radius: 50%;
   background: var(--red-9);
@@ -295,48 +295,10 @@ button { color: inherit; }
 .color-popover button { font:600 var(--text-1)/1 var(--font-ui);color:#171923; }
 .color-popover button[data-color="#171923"] { color:#fff; }
 
-.token-button {
-  display: inline-flex;
-  align-items: center;
-  gap: 3px;
-  height: 44px;
-  flex-direction: column;
-  padding: 0 9px;
-  border: 0;
-  border-radius: var(--radius-inner);
-  background: transparent;
-  color: var(--ink-soft);
-  cursor: pointer;
-}
-.token-button:hover { background: var(--control-selected); color: var(--ink); }
-.token-button span { font-size: var(--text-2); font-weight: 600; }
-.token-button small { color: var(--muted); font-size: var(--text-1); }
-
-.complete-button {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  height: 44px;
-  margin-left: 2px;
-  padding: 0 11px;
-  border: 0.5px solid rgba(0, 144, 255, 0.4);
-  border-radius: var(--radius-inner);
-  background: var(--blue-9);
-  color: #fff;
-  font-size: var(--text-2);
-  font-weight: 600;
-  cursor: pointer;
-  transition: background var(--dur-base) var(--ease-out);
-}
-.complete-button:hover { background: var(--blue-10); }
-.complete-button svg {
-  width: 16px;
-  height: 16px;
-  fill: none;
-  stroke: currentColor;
-  stroke-width: 1.7;
-}
-.complete-button kbd { border-color: rgba(255, 255, 255, 0.22); background: var(--control-selected); }
+.tool-button[data-action="cancel"] { color: var(--red-11); }
+.tool-button[data-action="save"] { color: var(--blue-11); }
+.tool-button[data-action="pin"], .complete-button { color: var(--jade-11); }
+.complete-button:hover { background: var(--jade-3); color: var(--jade-11); }
 
 .tool-tooltip {
   position: absolute;

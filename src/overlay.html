@@ -37,17 +37,17 @@
 
     <div class="tool-dock" id="tool-dock" hidden>
       <div class="tool-tooltip" id="tool-tooltip"></div>
-      <button class="tool-button" type="button" data-tool="select" data-shortcut="a" title="选择区域"><kbd>A</kbd><svg viewBox="0 0 24 24"><path d="M4 8V5a1 1 0 0 1 1-1h3M16 4h3a1 1 0 0 1 1 1v3M20 16v3a1 1 0 0 1-1 1h-3M8 20H5a1 1 0 0 1-1-1v-3"/></svg></button>
+      <button class="tool-button capture-mode" type="button" data-tool="select" data-shortcut="a" title="选择区域"><i aria-hidden="true"></i><span>截图</span></button>
       <span class="tool-separator"></span>
-      <button class="tool-button" type="button" data-tool="pen" data-shortcut="p" title="画笔"><kbd>P</kbd><svg viewBox="0 0 24 24"><path d="m4 20 3.5-1 10-10a2.1 2.1 0 0 0-3-3l-10 10L4 20Z"/><path d="m12.8 7.2 3 3"/></svg></button>
-      <button class="tool-button" type="button" data-tool="rect" data-shortcut="r" title="矩形"><kbd>R</kbd><svg viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="14" rx="1.5"/></svg></button>
-      <button class="tool-button" type="button" data-tool="arrow" data-shortcut="l" title="箭头"><kbd>L</kbd><svg viewBox="0 0 24 24"><path d="M5 18 19 5M11 5h8v8"/></svg></button>
-      <button class="tool-button" type="button" data-tool="text" data-shortcut="t" title="文字"><kbd>T</kbd><svg viewBox="0 0 24 24"><path d="M5 6h14M12 6v13M8 19h8"/></svg></button>
-      <button class="tool-button" type="button" data-tool="mosaic" data-shortcut="m" title="马赛克"><kbd>M</kbd><svg viewBox="0 0 24 24"><rect x="4" y="4" width="4" height="4"/><rect x="12" y="4" width="4" height="4"/><rect x="8" y="8" width="4" height="4"/><rect x="16" y="8" width="4" height="4"/><rect x="4" y="12" width="4" height="4"/><rect x="12" y="12" width="4" height="4"/><rect x="8" y="16" width="4" height="4"/><rect x="16" y="16" width="4" height="4"/></svg></button>
-      <button class="tool-button" type="button" data-tool="steps" data-shortcut="n" title="序号"><kbd>N</kbd><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M12 8v8M9 11h6"/></svg></button>
+      <button class="tool-button" type="button" data-tool="pen" data-shortcut="p" title="画笔"><svg viewBox="0 0 24 24"><path d="m4 20 3.5-1 10-10a2.1 2.1 0 0 0-3-3l-10 10L4 20Z"/><path d="m12.8 7.2 3 3"/></svg></button>
+      <button class="tool-button" type="button" data-tool="rect" data-shortcut="r" title="矩形"><svg viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="14" rx="2"/></svg></button>
+      <button class="tool-button" type="button" data-tool="arrow" data-shortcut="l" title="箭头"><svg viewBox="0 0 24 24"><path d="M5 18 19 5M11 5h8v8"/></svg></button>
+      <button class="tool-button" type="button" data-tool="text" data-shortcut="t" title="文字"><svg viewBox="0 0 24 24"><path d="M5 6h14M12 6v13M8 19h8"/></svg></button>
+      <button class="tool-button" type="button" data-tool="mosaic" data-shortcut="m" title="马赛克"><svg viewBox="0 0 24 24"><rect x="4" y="4" width="4" height="4"/><rect x="12" y="4" width="4" height="4"/><rect x="8" y="8" width="4" height="4"/><rect x="16" y="8" width="4" height="4"/><rect x="4" y="12" width="4" height="4"/><rect x="12" y="12" width="4" height="4"/><rect x="8" y="16" width="4" height="4"/><rect x="16" y="16" width="4" height="4"/></svg></button>
+      <button class="tool-button" type="button" data-tool="steps" data-shortcut="n" title="序号"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="m10 10 2-2v8M10 16h4"/></svg></button>
       <span class="tool-separator"></span>
       <div class="color-control">
-        <button class="tool-button color-trigger" data-shortcut="c" type="button" title="颜色"><kbd>C</kbd><span class="color-dot" id="color-dot"></span></button>
+        <button class="tool-button color-trigger" data-shortcut="c" type="button" title="颜色"><span class="color-dot" id="color-dot"></span></button>
         <div class="color-popover" id="color-popover" hidden>
           <button type="button" data-color="#ff646f" style="--c:#e5484d" aria-label="红色"></button>
           <button type="button" data-color="#ffb457" style="--c:#ffc53d" aria-label="橙色"></button>
@@ -57,13 +57,13 @@
           <button type="button" data-color="#171923" style="--c:#1c2024" aria-label="黑色"></button>
         </div>
       </div>
-      <button class="tool-button" type="button" data-shortcut="z" data-action="undo" title="撤销"><kbd>Z</kbd><svg viewBox="0 0 24 24"><path d="M9 7H5v4M5.7 10.2A7 7 0 1 1 7 18"/></svg></button>
+      <button class="tool-button" type="button" data-shortcut="z" data-action="undo" title="撤销"><svg viewBox="0 0 24 24"><path d="M9 7H5v4M5.7 10.2A7 7 0 1 1 7 18"/></svg></button>
       <span class="tool-separator"></span>
-      <button class="tool-button" type="button" data-shortcut="escape" data-action="cancel" title="取消"><kbd>Esc</kbd><svg viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></svg></button>
-      <button class="tool-button" type="button" data-shortcut="q" data-action="pin" title="贴图"><kbd>Q</kbd><svg viewBox="0 0 24 24"><path d="m9 3 6 6-2 2 3 5-2 1-3-4-3 2 3-5-3-3 1-1Z"/><path d="m8 18-3 3"/></svg></button>
-      <button class="tool-button" type="button" data-shortcut="s" data-action="save" title="保存"><kbd>S</kbd><svg viewBox="0 0 24 24"><path d="M5 4h11l3 3v13H5V4Z"/><path d="M8 4v6h8V4M8 20v-6h8v6"/></svg></button>
-      <button class="token-button" type="button" data-action="ocr" data-shortcut="o" title="识别文字"><span>识</span><small>O</small></button>
-      <button class="complete-button" type="button" data-action="copy" data-shortcut="enter"><svg viewBox="0 0 24 24"><path d="M8 8h11v11H8z"/><path d="M16 8V5H5v11h3"/></svg><span>完成</span><kbd>⏎</kbd></button>
+      <button class="tool-button" type="button" data-shortcut="escape" data-action="cancel" title="取消"><svg viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></svg></button>
+      <button class="tool-button" type="button" data-shortcut="q" data-action="pin" title="贴图"><svg viewBox="0 0 24 24"><path d="m14 3 7 7-4 1-4 5-5-5 5-4 1-4Z"/><path d="m8 16-5 5"/></svg></button>
+      <button class="tool-button" type="button" data-shortcut="s" data-action="save" title="保存"><svg viewBox="0 0 24 24"><path d="M12 3v12m-5-5 5 5 5-5M5 17v3h14v-3"/></svg></button>
+      <button class="tool-button token-button" type="button" data-action="ocr" data-shortcut="o" title="识别文字"><svg viewBox="0 0 24 24"><path d="M4 8V4h4m8 0h4v4m0 8v4h-4M8 20H4v-4M8 8h8m-4 0v8m-2 0h4"/></svg></button>
+      <button class="tool-button complete-button" type="button" data-action="copy" data-shortcut="enter" title="完成并复制"><svg viewBox="0 0 24 24"><path d="m5 12 4.5 4.5L19 7"/></svg></button>
     </div>
 
     <div class="action-toast" id="action-toast"></div>
