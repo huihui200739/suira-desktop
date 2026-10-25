@@ -148,6 +148,7 @@ const MOCK = `
   function clone(value){ return JSON.parse(JSON.stringify(value)); }
 
   window.suira = window.suira || {};
+  window.suira.imageEditor = { open: function(options){ calls.edit=options;return Promise.resolve(window.__editFail?{ok:false,error:'原图已被移动'}:{ok:true}); } };
   window.suira.content = {
     togglePin: function(id){
       if(window.__pinThrow) return Promise.reject(new Error('写入失败'));
@@ -639,6 +640,18 @@ async function runChecks(send) {
   check('窄屏底部信息不溢出', narrowView.selectionText.length > 0 && narrowView.cardOverflow.every((value) => value === 0));
 
   console.log('\n== 搜索、分类、收藏与输入焦点 ==');
+  const editHistory=await evaluate(send, `(async()=>{
+    window.__fireShown();await new Promise(r=>setTimeout(r,150));
+    const button=document.getElementById('bar-edit');const shown=!button.hidden;button.click();await new Promise(r=>setTimeout(r,60));
+    const opened=window.__calls.edit?.itemId==='img-1';window.__editFail=true;button.click();await new Promise(r=>setTimeout(r,60));
+    const error=document.getElementById('bar-notice').textContent.includes('原图已被移动');window.__editFail=false;
+    const commits=window.__calls.commit.length;document.querySelector('.bar-card[data-id="img-2"] [data-edit-image]').click();await new Promise(r=>setTimeout(r,60));
+    const direct=window.__calls.edit.itemId==='img-2'&&window.__calls.commit.length===commits;
+    document.querySelector('[data-filter="text"]').click();await new Promise(r=>setTimeout(r,60));const textHidden=button.hidden;
+    document.querySelector('[data-filter="all"]').click();await new Promise(r=>setTimeout(r,60));
+    return {shown,opened,error,textHidden,direct};
+  })()`);
+  check('历史图片编辑入口传递选中图片，文字隐藏入口，原图失败显示原因',Object.values(editHistory).every(Boolean),JSON.stringify(editHistory));
   const wheelSpeed = await evaluate(send, `(()=>{
     const track=document.getElementById('bar-track');
     track.scrollTo({left:0,behavior:'instant'});

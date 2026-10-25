@@ -64,6 +64,8 @@
 
 ## 生成截图
 
+改图工作台见 [浅色预览](28-image-editor-light.png) 和 [深色预览](28-image-editor-dark.png)，由 `npm run verify:image-editor` 使用独立示例图片生成。
+
 截图工具栏的单排图标样式见 [浅色预览](27-overlay-toolbar-light.png) 和 [深色预览](27-overlay-toolbar-dark.png)。由 `npm run test:overlay` 从纯测试画面生成，快捷键只在悬停或聚焦时提示。
 
 ```powershell

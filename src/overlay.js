@@ -4,6 +4,8 @@ const { $, $$ } = (() => ({
 }))();
 
 const root = $('#capture-root');
+const editorMode = new URLSearchParams(location.search).get('mode') === 'image-editor';
+const captureApi = editorMode ? window.suira.imageEditor : window.suira.capture;
 const screenCanvas = $('#screen-canvas');
 // 主画布只做 drawImage（放大镜、马赛克取样都走独立的小 canvas），
 // 不要开「读写频繁」模式：那会把 canvas 钉死在软件渲染上，
@@ -130,7 +132,8 @@ function setHintHidden(hidden) {
 }
 
 function hasSelection() {
-  return Boolean(state.selection && state.selection.w >= 2 && state.selection.h >= 2);
+  const minimum = editorMode ? 1 : 2;
+  return Boolean(state.selection && state.selection.w >= minimum && state.selection.h >= minimum);
 }
 
 /* 上一次真正写进 DOM 的值：值没变就不碰 DOM */
@@ -220,6 +223,13 @@ function measureDock() {
 
 function positionDock() {
   if (!hasSelection() || toolDock.hidden) return;
+  if (editorMode) {
+    measureDock();
+    const left = clamp((metrics.width-dockMetrics.width)/2, 12-metrics.left, innerWidth-metrics.left-dockMetrics.width-12);
+    toolDock.style.left = `${left}px`;
+    toolDock.style.top = `${metrics.height+24}px`;
+    return;
+  }
   const s = state.selection;
   const measured = measureDock();
   const dockWidth = Math.min(measured.width || 720, metrics.width - 24);
@@ -265,8 +275,7 @@ function selectWholeScreen() {
   state.selecting = false;
   state.selectionReady = true;
   state.selection = { x: 0, y: 0, w: metrics.width, h: metrics.height };
-  state.annotations = [];
-  state.redoStack = [];
+  if (!editorMode) { state.annotations = [];state.redoStack = []; }
   renderSelection();
   renderAnnotations();
 }
@@ -420,21 +429,21 @@ function drawAnnotation(item) {
   } else if (item.type === 'rect') {
     ctx.strokeRect(item.x, item.y, item.w, item.h);
   } else if (item.type === 'arrow') {
-    if (item.from && item.to) drawArrow(ctx, item.from, item.to, item.width);
+    if (item.from && item.to) drawArrow(ctx, item.from, item.to, item.width, item.unit || 1);
   } else if (item.type === 'mosaic') {
     drawMosaic(item);
   } else if (item.type === 'steps') {
-    const radius = 14;
+    const radius = 14 * (item.unit || 1);
     ctx.beginPath();
     ctx.arc(item.x, item.y, radius, 0, Math.PI * 2);
     ctx.fill();
     ctx.fillStyle = '#fff';
-    ctx.font = '600 14px "Segoe UI", sans-serif';
+    ctx.font = `600 ${14 * (item.unit || 1)}px "Segoe UI", sans-serif`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillText(String(item.number), item.x, item.y + 0.5);
   } else if (item.type === 'text') {
-    ctx.font = `600 ${Math.max(14, item.width * 4)}px "Microsoft YaHei UI", sans-serif`;
+    ctx.font = `600 ${Math.max(14 * (item.unit || 1), item.width * 4)}px "Microsoft YaHei UI", sans-serif`;
     ctx.textAlign = 'left';
     ctx.textBaseline = 'top';
     ctx.fillText(item.text, item.x, item.y);
@@ -442,9 +451,9 @@ function drawAnnotation(item) {
   ctx.restore();
 }
 
-function drawArrow(ctx, from, to, width) {
+function drawArrow(ctx, from, to, width, unit = 1) {
   const angle = Math.atan2(to.y - from.y, to.x - from.x);
-  const head = Math.max(12, width * 4);
+  const head = Math.max(12 * unit, width * 4);
   ctx.beginPath();
   ctx.moveTo(from.x, from.y);
   ctx.lineTo(to.x, to.y);
@@ -582,9 +591,10 @@ function annotationIntersectsSelection(item) {
   } else if (item.type === 'arrow') {
     box = { x: Math.min(item.from.x, item.to.x), y: Math.min(item.from.y, item.to.y), w: Math.abs(item.to.x - item.from.x), h: Math.abs(item.to.y - item.from.y) };
   } else if (item.type === 'steps') {
-    box = { x: item.x - 16, y: item.y - 16, w: 32, h: 32 };
+    const r = 16 * (item.unit || 1);
+    box = { x: item.x - r, y: item.y - r, w: r * 2, h: r * 2 };
   } else if (item.type === 'text') {
-    box = { x: item.x, y: item.y, w: item.text.length * 16, h: 28 };
+    box = { x: item.x, y: item.y, w: item.text.length * 16 * (item.unit || 1), h: 28 * (item.unit || 1) };
   } else {
     box = { x: Math.min(item.x, item.x + item.w), y: Math.min(item.y, item.y + item.h), w: Math.abs(item.w), h: Math.abs(item.h) };
   }
@@ -605,20 +615,20 @@ function drawAnnotationToContext(ctx, item) {
   } else if (item.type === 'rect') {
     ctx.strokeRect(item.x, item.y, item.w, item.h);
   } else if (item.type === 'arrow') {
-    drawArrow(ctx, item.from, item.to, item.width);
+    drawArrow(ctx, item.from, item.to, item.width, item.unit || 1);
   } else if (item.type === 'mosaic') {
     drawMosaicToContext(ctx, item);
   } else if (item.type === 'steps') {
     ctx.beginPath();
-    ctx.arc(item.x, item.y, 14, 0, Math.PI * 2);
+    ctx.arc(item.x, item.y, 14 * (item.unit || 1), 0, Math.PI * 2);
     ctx.fill();
     ctx.fillStyle = '#fff';
-    ctx.font = '600 14px "Segoe UI", sans-serif';
+    ctx.font = `600 ${14 * (item.unit || 1)}px "Segoe UI", sans-serif`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillText(String(item.number), item.x, item.y + 0.5);
   } else if (item.type === 'text') {
-    ctx.font = `600 ${Math.max(14, item.width * 4)}px "Microsoft YaHei UI", sans-serif`;
+    ctx.font = `600 ${Math.max(14 * (item.unit || 1), item.width * 4)}px "Microsoft YaHei UI", sans-serif`;
     ctx.textAlign = 'left';
     ctx.textBaseline = 'top';
     ctx.fillText(item.text, item.x, item.y);
@@ -638,15 +648,16 @@ async function finish(action = 'copy') {
   }
   const dataUrl = output.toDataURL('image/png');
   try {
-    const result = await window.suira.capture.finish({ dataUrl, action });
+    const result = await captureApi.finish({ dataUrl, action });
     if (result && !result.ok && !result.canceled) showAction(result.error || '截图处理失败', 'error');
+    if (editorMode && result?.ok) window.SuiraEditorUI.report(result.message || '图片已处理');
   } catch (error) {
     showAction(error.message || '截图处理失败', 'error');
   }
 }
 
 function cancel() {
-  window.suira.capture.cancel();
+  captureApi.cancel();
 }
 
 /* ---------- OCR ---------- */
@@ -670,7 +681,7 @@ async function startOcr() {
   ocrText.placeholder = '正在准备本地识别…';
   try {
     const dataUrl = output.toDataURL('image/png');
-    const result = await window.suira.capture.finish({ dataUrl, action: 'ocr' });
+    const result = await captureApi.finish({ dataUrl, action: 'ocr' });
     if (!result?.ok) throw new Error(result?.error || '识别失败');
     state.ocrItemId = result.item?.id || result.output?.id || '';
     const text = result.output?.text || '';
@@ -694,7 +705,7 @@ function beginDrag(event) {
     startAnnotation(event, p);
     return;
   }
-  if (hasSelection() && event.target.closest('.selection')) {
+  if (!editorMode && hasSelection() && event.target.closest('.selection')) {
     startMove(event);
     return;
   }
@@ -703,8 +714,7 @@ function beginDrag(event) {
   state.selecting = true;
   state.selectionReady = false;
   state.selection = null;
-  state.annotations = [];
-  state.redoStack = [];
+  if (!editorMode) { state.annotations = [];state.redoStack = []; }
   renderSelection();
   renderAnnotations();
   state.drawing = { type: 'select', start: p, current: p };
@@ -1153,7 +1163,23 @@ function setupEvents() {
   });
 
   window.addEventListener('resize', () => {
+    const previous = { width:metrics.width, height:metrics.height };
+    if (editorMode && state.image) window.SuiraEditorUI.layout(state.image);
     refreshMetrics();
+    if (editorMode && state.image && previous.width && previous.height) {
+      const sx=metrics.width/previous.width,sy=metrics.height/previous.height;
+      const scalePoint=p=>{if(p){p.x*=sx;p.y*=sy;}};
+      for(const item of [...state.annotations,...state.redoStack]) {
+        if(item.points)item.points.forEach(scalePoint);
+        scalePoint(item.from);scalePoint(item.to);
+        if(Number.isFinite(item.x))item.x*=sx;if(Number.isFinite(item.y))item.y*=sy;
+        if(Number.isFinite(item.w))item.w*=sx;if(Number.isFinite(item.h))item.h*=sy;
+        item.width*=sx;item.unit=(item.unit||1)*sx;
+      }
+      if(state.selection){state.selection.x*=sx;state.selection.y*=sy;state.selection.w*=sx;state.selection.h*=sy;}
+      state.scaleX=state.image.width/metrics.width;state.scaleY=state.image.height/metrics.height;
+      state.drawing=null;state.selecting=false;
+    }
     // 尺寸可能变了：下次定位时重新量一次工具栏
     dockMetrics.width = 0;
     dockMetrics.height = 0;
@@ -1161,11 +1187,12 @@ function setupEvents() {
     mosaicPaletteData = null;
     resizeCanvases();
     if (state.selection) {
+      const minimum=editorMode?1:2;
       state.selection = {
-        x: clamp(state.selection.x, 0, metrics.width - 2),
-        y: clamp(state.selection.y, 0, metrics.height - 2),
-        w: clamp(state.selection.w, 2, metrics.width),
-        h: clamp(state.selection.h, 2, metrics.height)
+        x: clamp(state.selection.x, 0, metrics.width - minimum),
+        y: clamp(state.selection.y, 0, metrics.height - minimum),
+        w: clamp(state.selection.w, minimum, metrics.width),
+        h: clamp(state.selection.h, minimum, metrics.height)
       };
       renderSelection();
     }
@@ -1318,9 +1345,10 @@ function releaseOverlay() {
 }
 
 async function loadCapture(seq) {
-  const payload = await window.suira.capture.getData();
+  const payload = await captureApi.getData();
   // 加载过程中又被唤起一次：这一轮的旧数据直接作废
   if (seq !== showSeq) return;
+  if (!payload && editorMode) { window.SuiraEditorUI.loaded(null,null);setHidden(loadingState,true);return; }
   if (!payload) throw new Error('未获取到截图数据');
   state.payload = payload;
   state.scaleX = payload.scaleFactor || 1;
@@ -1348,13 +1376,25 @@ async function loadCapture(seq) {
     image = await composeTiles(payload.tiles, payload.tileSize.width, payload.tileSize.height, loadImage);
   } else image = await loadImage(payload.dataUrl);
   if (seq !== showSeq) return;
+  if(editorMode) {
+    if(!image.width||!image.height||image.width>16384||image.height>16384||image.width*image.height>40_000_000)throw new Error('图片尺寸过大，请先缩小图片');
+    // 固定载入时的位图，避免动画图片在预览和导出时变成不同帧。
+    image = await createImageBitmap(image);
+    if(seq!==showSeq){image.close();return;}
+  }
   state.image = image;
   imageSerial += 1;
   mosaicPaletteKey = '';
   mosaicPaletteData = null;
   state.scaleX = image.width / Math.max(1, payload.size?.width || metrics.width);
   state.scaleY = image.height / Math.max(1, payload.size?.height || metrics.height);
+  if(editorMode) {
+    window.SuiraEditorUI.loaded(image,payload);refreshMetrics();
+    state.scaleX=image.width/metrics.width;state.scaleY=image.height/metrics.height;
+    state.selection={x:0,y:0,w:metrics.width,h:metrics.height};state.selectionReady=true;
+  }
   resizeCanvases();
+  if(editorMode){setTool('pen');renderSelection();}
   setHidden(loadingState, true);
   applyIntent(payload.intent);
   if (perf) perf.imageReadyAt = performance.now();
@@ -1373,6 +1413,7 @@ async function handleShown() {
     if (seq !== showSeq) return;
     setHidden(loadingState, true);
     showAction(error.message || '截图初始化失败', 'error');
+    if(editorMode)window.SuiraEditorUI.report(error.message||'图片载入失败',true);
   }
 }
 
@@ -1412,15 +1453,16 @@ function autoAdvanceForIntent() {
 setupEvents();
 refreshMetrics();
 resizeCanvases();
-if (window.suira && window.suira.capture && typeof window.suira.capture.onShown === 'function') {
+if (captureApi && typeof captureApi.onShown === 'function') {
   // 预热模式：页面加载完成后不主动取画面，等主进程每次唤起时通知
-  window.suira.capture.onShown(() => { handleShown(); });
+  captureApi.onShown(() => { handleShown(); });
+  if(editorMode)handleShown();
 } else {
   // 兼容尚未接入 capture:shown 的旧主进程：页面就绪后直接加载
   handleShown();
 }
 // 隐藏即释放：主进程在 hide 时通知，窗口保留但画面/画布后备缓冲还回去
-if (window.suira && window.suira.capture && typeof window.suira.capture.onRelease === 'function') {
-  window.suira.capture.onRelease(() => { releaseOverlay(); });
+if (captureApi && typeof captureApi.onRelease === 'function') {
+  captureApi.onRelease(() => { releaseOverlay(); });
 }
 

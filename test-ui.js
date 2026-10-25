@@ -917,7 +917,7 @@ t('截图覆盖层是预热常驻窗口（不再每次新建/销毁）', () => {
   const preload = read('preload.js');
   if (!preload.includes("'capture:shown'")) throw new Error('preload 未暴露 capture.onShown');
   const overlay = read('src/overlay.js');
-  if (!overlay.includes('capture.onShown')) throw new Error('覆盖层未订阅 capture.onShown');
+  if (!overlay.includes('captureApi.onShown') || !overlay.includes('window.suira.capture')) throw new Error('覆盖层未通过共享 API 订阅 capture.onShown');
 });
 
 t('截图工具栏在框选完成前不出现', () => {

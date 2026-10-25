@@ -114,6 +114,15 @@ contextBridge.exposeInMainWorld('suira', {
     // 别让一张 4K 截图在后台白占几十 MB
     onRelease: (callback) => subscribe('capture:release', callback)
   },
+  imageEditor: {
+    open: options => ipcRenderer.invoke('image-editor:open', options),
+    pathForFile,
+    getData: () => ipcRenderer.invoke('image-editor:data'),
+    finish: payload => ipcRenderer.invoke('image-editor:finish', payload),
+    cancel: () => ipcRenderer.invoke('image-editor:window', 'close'),
+    window: command => ipcRenderer.invoke('image-editor:window', command),
+    onShown: callback => subscribe('image-editor:changed', callback)
+  },
   // 剪贴板历史条（屏幕底部浮层）
   clipboardBar: {
     show: () => ipcRenderer.invoke('clipboard-bar:show'),

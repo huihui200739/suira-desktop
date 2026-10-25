@@ -208,7 +208,7 @@
 
     const tooltip = [label, selectionTitle(item), time].filter(Boolean).join('，');
     return `<article class="bar-card" id="bar-card-${index}" role="option" aria-selected="false" tabindex="-1" data-index="${index}" data-id="${escapeHtml(item.id)}" data-kind="${escapeHtml(item.kind)}" title="${escapeHtml(tooltip)}">
-      <div class="card-head"><span class="card-type">${label}${item.pinned ? ' ★' : ''}</span><span class="card-index">${index + 1}</span></div>
+      <div class="card-head"><span class="card-type">${label}${item.pinned ? ' ★' : ''}</span>${item.kind==='image'&&window.suira?.imageEditor?'<button class="card-edit" type="button" data-edit-image aria-label="编辑这张图片">编辑</button>':''}<span class="card-index">${index + 1}</span></div>
       <div class="${visualClass}">${visual}</div>
       <div class="card-caption">${escapeHtml(selectionTitle(item))}</div>
       <div class="card-foot">
@@ -310,6 +310,8 @@
       pin.setAttribute('aria-pressed', String(Boolean(item?.pinned)));
     }
     if (submit) submit.disabled = !item || state.loading || state.committing || !state.returnApi;
+    const edit = $('#bar-edit');
+    if(edit) {edit.hidden=item?.kind!=='image'||!window.suira?.imageEditor;edit.disabled=state.loading||state.committing||state.editing;}
   }
 
   function render() {
@@ -654,13 +656,25 @@
   }
 
   function onTrackClick(event) {
-    if (state.committing || event.detail > 1) return;
+    if (state.committing || state.editing || event.detail > 1) return;
     const card = closestFrom(event.target, '.bar-card');
     if (!card) return;
     const index = Number(card.dataset.index);
     if (!Number.isFinite(index)) return;
     selectIndex(index);
+    if(closestFrom(event.target,'[data-edit-image]')) {editSelectedImage();return;}
     submitSelected();
+  }
+
+  async function editSelectedImage() {
+    const item=state.items[state.selected];
+    if(!item||item.kind!=='image'||state.editing)return;
+    state.editing=true;syncSelection();
+    try {
+      const result=await window.suira.imageEditor.open({itemId:item.id});
+      if(!result?.ok)showNotice(result?.error||'打开图片失败',true);
+    } catch(error){showNotice(error.message||'打开图片失败',true);}
+    finally{state.editing=false;syncSelection();}
   }
 
   /* ---------- 订阅 ---------- */
@@ -714,6 +728,7 @@
     $('#bar-close')?.addEventListener('click', hideBar);
     $('#bar-submit')?.addEventListener('click', submitSelected);
     $('#bar-pin')?.addEventListener('click', toggleSelectedPin);
+    $('#bar-edit')?.addEventListener('click', editSelectedImage);
     $('#bar-refresh-retry')?.addEventListener('click', () => load({ keepItemId: currentSelectedId() }));
     $('#bar-library')?.addEventListener('click', async () => {
       try {

@@ -15,6 +15,7 @@ const $ = (selector, root = document) => root.querySelector(selector);
 const $$ = (selector, root = document) => Array.from(root.querySelectorAll(selector));
 
 const GLYPHS = {
+  'edit-image': '<svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="3"/><circle cx="8" cy="9" r="1.5"/><path d="m4 17 5-5 4 4 4-7 4 8"/></svg>',
   capture: '<svg viewBox="0 0 24 24"><rect x="4" y="5.8" width="16" height="12.4" rx="2.6" stroke-dasharray="3.5 2.7"/><circle cx="12" cy="12" r="2.5"/></svg>',
   annotate: '<svg viewBox="0 0 24 24"><path d="M4 20.5 5.2 16 16.4 4.8a2 2 0 0 1 2.8 2.8L8 18.8z"/><path d="m14 7.2 2.8 2.8"/></svg>',
   ocr: '<svg viewBox="0 0 24 24"><path d="M4 8V6a2 2 0 0 1 2-2h2"/><path d="M16 4h2a2 2 0 0 1 2 2v2"/><path d="M20 16v2a2 2 0 0 1-2 2h-2"/><path d="M8 20H6a2 2 0 0 1-2-2v-2"/><path d="M8.2 9.2h7.6"/><path d="M8.2 12.5h5.6"/><path d="M8.2 15.8h3.6"/></svg>',
@@ -664,6 +665,7 @@ async function runCommand(index) {
   if (action === 'capture') { runAction('capture'); return; }
   if (action === 'quick') { clearSearch(); return; }
   if (action === 'note') { runAction('note'); return; }
+  if (action === 'edit-image') { runAction('edit-image'); return; }
   if (action.startsWith('navigate:')) { window.suira.quick.showMain(action.slice('navigate:'.length)); return; }
   if (action.startsWith('recipe:')) {
     // 配方需要一条具体内容作为输入：用最近内容，没有就直接说明白，

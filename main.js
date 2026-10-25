@@ -65,6 +65,7 @@ const { KeyWatchProbe, ensureNativeHost } = require('./lib/key-watch');
 const islandModel = require('./lib/island-model');
 // 第三批第 4 项：速记的纯模型（标题推导 / 容量 / 位置校验）
 const notesLib = require('./lib/notes');
+const imageEditor = require('./lib/image-editor');
 const { contains, receiverBounds, receiverDisplay, edgeWindowShape, IslandPointerProbe } = require('./lib/island-wake');
 // 核心框架：剪贴板捕获（文件引用/去重比较）的纯模型，便于单元测试
 const clipboardCapture = require('./lib/clipboard-capture');
@@ -118,6 +119,7 @@ let captureBusy = false;
 let captureGeneration = 0;
 let mainWasVisible = false;
 const pinWindows = new Set();
+const editorWindows = new Map();
 // 浮引岛（文件中转）与按住型唤起的状态
 let islandWindow = null;
 // 岛的三态：'sleep' 隐形热区 / 'rail' 胶囊 / 'sheet' 暂存卡片
@@ -2031,6 +2033,77 @@ async function completeCapture(dataUrl, action) {
   return { ok: true, filePath, item };
 }
 
+/* 图片编辑复用截图标注画布，但拥有独立窗口、输入与输出，不读取桌面。 */
+async function openImageEditor(options = {}) {
+  try {
+    let filePath = options.filePath || '', sourceItem = null;
+    if (options.itemId) {
+      sourceItem = store.getItem(String(options.itemId));
+      if (!sourceItem || sourceItem.kind !== 'image' || !sourceItem.filePath) return { ok:false, error:'原图片不存在或已被清理' };
+      filePath = sourceItem.filePath;
+    }
+    // 打开入口先呈现工作台，用户可以点打开、拖入或粘贴图片。
+    const payload = filePath ? await imageEditor.loadImage(filePath, nativeImage) : options.dataUrl
+      ? {dataUrl:options.dataUrl,size:imageEditor.validateImage(imageEditor.decodeOutput(options.dataUrl,nativeImage)),name:'粘贴图片.png'} : null;
+    const area = screen.getDisplayNearestPoint(screen.getCursorScreenPoint()).workArea;
+    const win = new BrowserWindow({
+      width:Math.min(1120,area.width),height:Math.min(800,area.height),minWidth:640,minHeight:480,
+      show:false,frame:false,backgroundColor:nativeTheme.shouldUseDarkColors?'#18191b':'#f0f0f3',
+      title:'随序 · 改图',icon:assetPath('icon.ico'),
+      webPreferences:{preload:path.join(__dirname,'preload.js'),contextIsolation:true,nodeIntegration:false,sandbox:false,spellcheck:false}
+    });
+    const session = {win,payload,filePath,sourceId:sourceItem?.id||'',busy:false};
+    const editorId=win.webContents.id;
+    editorWindows.set(editorId,session);
+    win.webContents.setWindowOpenHandler(()=>({action:'deny'}));
+    win.webContents.on('will-navigate',event=>event.preventDefault());
+    win.once('closed',()=>editorWindows.delete(editorId));
+    await win.loadFile(path.join(__dirname,'src','overlay.html'),{query:{mode:'image-editor'}}).catch(error=>{win.destroy();throw error;});
+    win.show();win.focus();
+    if(quickWindow&&!quickWindow.isDestroyed())hideQuickPanel();
+    if(clipboardBarWindow&&!clipboardBarWindow.isDestroyed())hideClipboardBar();
+    return {ok:true};
+  } catch(error) { return {ok:false,error:error.message||'无法打开图片编辑器'}; }
+}
+
+async function finishImageEdit(session, payload) {
+  if(session.busy)return {ok:false,error:'正在处理图片，请稍候'};
+  session.busy=true;
+  try {
+    if(!session.payload)return {ok:false,error:'请先打开图片'};
+    const action=String(payload?.action||'copy');
+    if(!['copy','save','pin','ocr'].includes(action))return {ok:false,error:'不支持的图片操作'};
+    const image=imageEditor.decodeOutput(payload?.dataUrl,nativeImage);
+    let destination='';
+    if(action==='save') {
+      const name=path.parse(session.payload.name).name;
+      const selected=await dialog.showSaveDialog(session.win,{title:'另存编辑后的图片',defaultPath:path.join(app.getPath('pictures'),name+'-已编辑.png'),filters:[{name:'PNG 图片',extensions:['png']}]});
+      if(selected.canceled||!selected.filePath)return {ok:false,canceled:true};
+      destination=selected.filePath;
+      if(path.extname(destination).toLowerCase()!=='.png')destination+='.png';
+      if(await imageEditor.isOriginalDestination(session.filePath,destination))return {ok:false,error:'请使用新的文件名，原图片会保留'};
+    }
+    const png=image.toPNG(),size=image.getSize();
+    await ensureDirs();
+    const filePath=path.join(capturesDir(),makeId('edited')+'.png');
+    await fsp.writeFile(filePath,png);
+    try { if(destination)await fsp.writeFile(destination,png); }
+    catch(error){await fsp.rm(filePath,{force:true}).catch(()=>{});throw error;}
+    const item=store.addItem({kind:'image',title:path.parse(session.payload.name).name+' · 已编辑',filePath,thumbnail:thumbnailDataUrl(image),
+      source:{type:'derived',acquisitionMethod:'image-edit'},parentIds:session.sourceId?[session.sourceId]:[],
+      meta:{hash:hashBuffer(png),width:size.width,height:size.height,derivedBy:'image.edit',originItemId:session.sourceId}});
+    await store.save();broadcast('content:changed',{itemId:item.id});
+    if(action==='copy')await writeClipboardImage(image);
+    if(action==='pin')createPinWindow(pathToFileURL(filePath).href,size);
+    if(action==='ocr') {
+      const result=await actions.execute(item.id,'ocr.local');
+      return {...result,item};
+    }
+    return {ok:true,item,message:action==='save'?'已另存为，并保存到内容库':action==='pin'?'已钉在桌面':'已复制，并保存到内容库'};
+  } catch(error) {return {ok:false,error:error.message||'图片处理失败'};}
+  finally{session.busy=false;}
+}
+
 function switchToDesktop() {
   if (mainWindow && !mainWindow.isDestroyed()) mainWindow.hide();
   if (quickWindow && !quickWindow.isDestroyed()) quickWindow.hide();
@@ -2081,7 +2154,8 @@ function getPanelActions() {
       switchToDesktop,
       lockWorkstation,
       // 速记：接着最近一条写，没有才新建
-      openNote: () => openLatestNote()
+      openNote: () => openLatestNote(),
+      openImageEditor: () => openImageEditor()
     });
   }
   return panelActions;
@@ -2517,6 +2591,41 @@ function registerIpc() {
   ipcMain.handle('app:restart', () => { restartApplication(); return {ok:true}; });
 
   ipcMain.handle('capture:start', (_event, options) => beginScreenCapture('main', options || {}));
+  ipcMain.handle('image-editor:open', async (event, options={}) => {
+    try {
+      const current=editorWindows.get(event.sender.id);
+      let filePath=typeof options.filePath==='string'?options.filePath:'';
+      if(options.pick) {
+        const owner=current?.win||BrowserWindow.fromWebContents(event.sender);
+        const selected=await dialog.showOpenDialog(owner,{title:'打开图片',properties:['openFile'],filters:[{name:'图片',extensions:imageEditor.EXTENSIONS}]});
+        if(selected.canceled||!selected.filePaths.length)return {ok:false,canceled:true};
+        filePath=selected.filePaths[0];
+      }
+      // 空工作台原位载入；已有图时另开窗口，保留尚未导出的标注。
+      if(current&&!current.payload&&(filePath||options.dataUrl)) {
+        const next=filePath?await imageEditor.loadImage(filePath,nativeImage)
+          : {dataUrl:options.dataUrl,size:imageEditor.validateImage(imageEditor.decodeOutput(options.dataUrl,nativeImage)),name:'粘贴图片.png'};
+        if(!current.win.isDestroyed()&&!current.payload) {
+          current.payload=next;current.filePath=filePath;
+          current.win.webContents.send('image-editor:changed');return {ok:true};
+        }
+      }
+      return openImageEditor({filePath,itemId:options.itemId,dataUrl:options.dataUrl});
+    } catch(error){return {ok:false,error:error.message||'打开图片失败'};}
+  });
+  ipcMain.handle('image-editor:data',event=>editorWindows.get(event.sender.id)?.payload||null);
+  ipcMain.handle('image-editor:finish',(event,payload)=>{
+    const editor=editorWindows.get(event.sender.id);
+    return editor?finishImageEdit(editor,payload):{ok:false,error:'图片编辑窗口不可用'};
+  });
+  ipcMain.handle('image-editor:window',(event,command)=>{
+    const win=editorWindows.get(event.sender.id)?.win;
+    if(!win||win.isDestroyed())return {ok:false};
+    if(command==='close')win.close();
+    else if(command==='minimize')win.minimize();
+    else if(command==='maximize')win.isMaximized()?win.unmaximize():win.maximize();
+    return {ok:true};
+  });
   ipcMain.handle('capture:get-data', () => capturePayload);
   ipcMain.handle('capture:cancel', () => {
     hideOverlayWindow();
@@ -3472,8 +3581,11 @@ const gotLock = app.requestSingleInstanceLock();
 if (!gotLock) app.quit();
 else {
   app.on('second-instance', () => {
+    if (!app.isReady()) return;
     cancelIdleTeardown(mainWindow);
-    if (mainWindow) {
+    if (!mainWindow || mainWindow.isDestroyed()) {
+      createMainWindow();
+    } else {
       if (mainWindow.isMinimized()) mainWindow.restore();
       mainWindow.show();
       mainWindow.focus();

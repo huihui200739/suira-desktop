@@ -184,6 +184,7 @@ function taskItemCard(item) {
       ${childHtml ? `<div class="derived-wrap">${childHtml}</div>` : ''}
       <footer class="shelf-card-actions">
         <button type="button" data-copy="${escapeHtml(item.id)}">复制</button>
+        ${item.kind === 'image' ? `<button type="button" data-edit-image="${escapeHtml(item.id)}">编辑图片</button>` : ''}
         ${item.kind === 'image' && !children.length ? `<button type="button" data-ocr="${escapeHtml(item.id)}">${state.ocrBusy.has(item.id) ? '识别中…' : '提取文字'}</button>` : ''}
         ${item.kind === 'image' && children.length ? `<button type="button" data-recipe="clean-text" data-recipe-item="${escapeHtml(children[children.length - 1].id)}">整理文字</button>` : ''}
         ${(item.kind === 'text' || item.kind === 'link') ? `<button type="button" data-recipe="clean-text" data-recipe-item="${escapeHtml(item.id)}">整理文字</button>` : ''}
@@ -194,7 +195,17 @@ function taskItemCard(item) {
   `;
 }
 
+function bindImageEditorButtons(root) {
+  $$('[data-edit-image]', root).forEach(button=>button.addEventListener('click',async()=>{
+    try {
+      const result=await window.suira.imageEditor.open({itemId:button.dataset.editImage});
+      if(!result?.ok)showGlobalToast(result?.error||'打开图片失败','error');
+    } catch(error){showGlobalToast(error.message||'打开图片失败','error');}
+  }));
+}
+
 function bindItemCardActions(root, task) {
+  bindImageEditorButtons(root);
   $$('[data-copy]', root).forEach((button) => {
     button.addEventListener('click', async () => {
       const result = await window.suira.actions.run(button.dataset.copy, 'output.copy');
@@ -320,6 +331,7 @@ function renderLibrary() {
       <footer class="shelf-card-actions">
         <button type="button" data-copy="${escapeHtml(item.id)}">复制</button>
         <button type="button" data-paste="${escapeHtml(item.id)}">粘贴</button>
+        ${item.kind === 'image' ? `<button type="button" data-edit-image="${escapeHtml(item.id)}">编辑图片</button>` : ''}
         ${item.kind === 'image' ? `<button type="button" data-ocr="${escapeHtml(item.id)}">${state.ocrBusy.has(item.id) ? '识别中…' : '提取文字'}</button>` : ''}
         ${item.kind === 'image' ? `<button type="button" data-pin="${escapeHtml(item.id)}">钉住</button>` : ''}
         ${item.kind === 'files' || item.kind === 'link' ? `<button type="button" data-open="${escapeHtml(item.id)}">打开</button>` : ''}
@@ -336,6 +348,7 @@ function renderLibrary() {
     if (event.target.closest('button')) return;
     openPreview(card.dataset.preview);
   }));
+  bindImageEditorButtons(grid);
   $$('[data-paste]', grid).forEach((button) => button.addEventListener('click', () => pasteItemToTarget(button.dataset.paste)));
   $$('[data-reveal]', grid).forEach((button) => button.addEventListener('click', async () => {
     const result = await window.suira.actions.run(button.dataset.reveal, 'files.reveal');

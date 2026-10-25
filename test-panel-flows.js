@@ -52,6 +52,7 @@ function makePanel(overrides = {}) {
     lockWorkstation: () => { calls.lock++; return { ok: true, message: '正在锁屏', closePanel: true }; },
     // 速记：打开最近一条（没有才新建），窗口由主进程负责
     openNote: async () => { calls.note.push('open'); return { ok: true, id: 'note-1' }; },
+    openImageEditor: async () => ({ok:true}),
     ...overrides
   });
 }

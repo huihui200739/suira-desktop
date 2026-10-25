@@ -60,6 +60,8 @@ kbd { font: inherit; font-size: var(--text-1); color: var(--shelf-muted); }
 .card-index { font-variant-numeric: tabular-nums; opacity: .8; }
 .card-visual { min-height: 0; flex: 1; overflow: hidden; border-radius: var(--radius-inner); display: flex; align-items: center; justify-content: center; background: var(--shelf-field); }
 .card-thumb { max-width: 100%; width: 100%; height: 100%; object-fit: contain; display: block; }
+.card-edit { margin-left:auto;padding:0 5px;border:0;border-radius:5px;background:transparent;color:var(--shelf-accent);font:inherit;cursor:pointer; }
+.card-edit:hover { background:var(--control-selected); }
 .card-snippet { align-self: flex-start; margin: 0; padding: 10px 11px; width: 100%; font-size: var(--text-1); line-height: 1.7; overflow: hidden; overflow-wrap: anywhere; white-space: pre-wrap; color: var(--shelf-ink); }
 .is-stack, .is-placeholder { flex-direction: column; gap: 5px; padding: 8px; }
 .card-glyph { display: grid; place-items: center; color: var(--kind-color); }

@@ -162,7 +162,7 @@ const check = (name, cond, detail) => {
     .replace('<script src="overlay.js"></script>', '<script src="__mock.js"></script><script src="overlay.js"></script>');
   fs.writeFileSync(path.join(TMP, '__mock.js'), MOCK, 'utf8');
   fs.writeFileSync(path.join(TMP, 'overlay.html'), html, 'utf8');
-  for (const asset of ['theme.css', 'ui-motion.css', 'ui-motion.js', 'overlay.css', 'overlay.js']) {
+  for (const asset of ['theme.css', 'ui-motion.css', 'ui-motion.js', 'overlay.css', 'overlay.js', 'image-editor.css', 'image-editor.js']) {
     fs.copyFileSync(path.join(ROOT, 'src', asset), path.join(TMP, asset));
   }
 
