@@ -1,0 +1,18 @@
+'use strict';
+const assert=require('node:assert/strict');const {LongCaptureSession,sameSource}=require('./lib/long-capture-session');
+const target={hwnd:'1',pid:2,processStartedAt:3,title:'滚动页面',bounds:{x:10,y:10,width:300,height:400}};
+const make=offset=>{const w=120,h=240,data=Buffer.alloc(w*h*4);for(let y=0;y<h;y++)for(let x=0;x<w;x++){const i=(y*w+x)*4,n=((y+offset)*7919)^(x*104729)^((y+offset)*x*23);data[i]=n%251;data[i+1]=(n>>>5)%241;data[i+2]=(n>>>11)%239;data[i+3]=255;}return{width:w,height:h,data};};
+(async()=>{
+  let offset=0,current=target,captures=0;
+  const session=new LongCaptureSession({first:make(0),target,current:async()=>current,capture:async()=>{captures++;return make(offset);},auto:false});
+  offset=70;await session.poll();assert.equal(session.model.frames,1,'滚动中的首帧不立即拼接');await session.poll();assert.equal(session.model.frames,2);assert.equal(session.model.height,310);
+  await session.poll();assert.equal(session.model.frames,2,'重复帧不增加长度');
+  session.pause();const previous=captures;await session.poll();assert.equal(captures,previous);
+  session.resume();current={...target,hwnd:'another'};await session.poll();assert.equal(session.paused,true);assert.equal(captures,previous,'切换窗口不得继续采集');
+  current=target;session.resume();offset=110;await session.poll();await session.poll();assert.equal(session.model.frames,3);
+  current={...target,bounds:{...target.bounds,x:11}};await session.poll();assert.equal(session.paused,true);
+  assert.equal(sameSource(target,{...target,title:'另一标签页'}),false);assert.equal(sameSource(target,{...target,processStartedAt:44}),false);
+  await session.stop();session.resume();await session.poll();assert.equal(session.stopped,true);assert.equal(session.candidate,null);
+  const failure=new LongCaptureSession({first:make(0),target,current:async()=>target,capture:async()=>{throw Error('采集失败');},auto:false});await failure.poll();assert.equal(failure.paused,true);assert.equal(failure.model.height,240);await failure.stop();
+  console.log('PASS 停稳后拼接、重复去重、暂停继续、切窗/移窗/换页停止采集、取消及采集失败保留有效结果');
+})().catch(error=>{console.error(error);process.exitCode=1;});

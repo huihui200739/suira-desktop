@@ -387,8 +387,9 @@ t('右键范围已在差距表中纠正（原件指键帽/钉图，非 Explorer�
 t('差距表如实标注第三批实现进度（不把未完成写成已完成）', () => {
   const doc = read('docs/BATCH3-GAP-ANALYSIS.md');
   const zeroRows = doc.split('\n').filter((line) => line.includes('| **0**'));
-  // 录屏和钉图右键已有真实实现；独立边缘入口与长截图仍为 0。
-  if (zeroRows.length !== 2 || !zeroRows.some(row=>row.includes('长截图')) || !zeroRows.some(row=>row.includes('边缘入口'))) throw new Error('独立边缘入口与长截图应仍标记为 0');
+  // 长截图已接通手动滚动拼接；独立边缘入口仍未实现。
+  if (zeroRows.length !== 1 || !zeroRows.some(row=>row.includes('边缘入口'))) throw new Error('独立边缘入口应仍标记为 0');
+  if(!doc.includes('手动滚动拼接已交付')||!doc.includes('验证边界'))throw Error('缺少长截图交付范围与验证边界');
   if(!doc.includes('钉图已交付，键帽右键未完成')||!doc.includes('摄像头、麦克风混音等未完成'))throw Error('缺少部分交付能力的具体边界');
   for (const mark of ['**增量已实现**', '**MVP**', '**B 支已交付**']) {
     if (!doc.includes(mark)) throw new Error('缺少已实现项的状态标注：' + mark);
@@ -484,9 +485,9 @@ t('main.js 引入放回/应用索引/前台探测模块', () => {
 t('显示面板前先记录目标窗口（顺序正确）', () => {
   const fn = mainJs.slice(mainJs.indexOf('function showQuickPanel'));
   const body = fn.slice(0, fn.indexOf('\n}'));
-  const recordAt = body.indexOf('rememberReturnTarget');
+  const recordAt = body.indexOf('clipboardTarget(await queryForeground()');
   const showAt = body.indexOf('quickWindow.show()');
-  if (recordAt < 0) throw new Error('未调用 rememberReturnTarget');
+  if (recordAt < 0) throw new Error('未重新记录本次前台窗口');
   if (showAt < 0) throw new Error('未调用 show()');
   if (recordAt > showAt) throw new Error('记录目标的时机晚于显示窗口，会读到自己');
 });
@@ -892,7 +893,7 @@ t('托盘提供浮引岛入口且函数不再粘连', () => {
 });
 
 t('放回原处：图片条目复制位图而不是路径文本', () => {
-  if (!mainJs.includes("item?.kind === 'image' && item.filePath && fs.existsSync(item.filePath)")) {
+  if (!mainJs.includes("item?.kind === 'image'") || !mainJs.includes("if(!item.filePath||!fs.existsSync(item.filePath))throw Error('原图片不存在或已被清理')")) {
     throw new Error('图片条目未走位图复制');
   }
   if (!mainJs.includes('await writeClipboardImage(image)')) throw new Error('未调用 writeClipboardImage');

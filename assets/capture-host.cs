@@ -13,9 +13,35 @@ public static class CaptureHost {
     [DllImport("user32.dll")] private static extern IntPtr GetDC(IntPtr window);
     [DllImport("user32.dll")] private static extern int ReleaseDC(IntPtr window,IntPtr dc);
     [DllImport("gdi32.dll")] private static extern bool BitBlt(IntPtr destination,int x,int y,int width,int height,IntPtr source,int sourceX,int sourceY,uint operation);
-    public static int Main() {
+    [DllImport("dwmapi.dll")] private static extern int DwmFlush();
+    static string Region(int x,int y,int width,int height) {
+        if(width<1||height<1||width>16384||height>16384||(long)width*height>40000000)throw new Exception("invalid-region");
+        try{DwmFlush();}catch{}
+        using(Bitmap bitmap=new Bitmap(width,height,PixelFormat.Format32bppRgb)) {
+            using(Graphics graphics=Graphics.FromImage(bitmap)) {
+                IntPtr source=GetDC(IntPtr.Zero),destination=graphics.GetHdc();
+                try{if(!BitBlt(destination,0,0,width,height,source,x,y,0x40CC0020))throw new Exception("capture-failed");}
+                finally{graphics.ReleaseHdc(destination);ReleaseDC(IntPtr.Zero,source);}
+            }
+            using(MemoryStream stream=new MemoryStream()) {
+                bitmap.Save(stream,ImageFormat.Png);
+                return "{\"width\":"+width+",\"height\":"+height+",\"dataUrl\":\"data:image/png;base64,"+Convert.ToBase64String(stream.ToArray())+"\"}";
+            }
+        }
+    }
+    public static int Main(string[] args) {
         try {
             try {SetProcessDpiAwarenessContext(new IntPtr(-4));}catch(EntryPointNotFoundException){}
+            if(args.Length>0&&args[0]=="--region-server") {
+                string line;
+                while((line=Console.ReadLine())!=null) {
+                    if(line=="quit")break;
+                    try{string[] p=line.Split(' ');if(p.Length!=4)throw new Exception();Console.WriteLine(Region(int.Parse(p[0]),int.Parse(p[1]),int.Parse(p[2]),int.Parse(p[3])));}
+                    catch{Console.WriteLine("{\"error\":\"capture-failed\"}");}
+                    Console.Out.Flush();
+                }
+                return 0;
+            }
             StringBuilder output=new StringBuilder("[");bool first=true;
             MonitorCallback callback=delegate(IntPtr monitor,IntPtr dc,ref Rect r,IntPtr data){
                 int w=r.Right-r.Left,h=r.Bottom-r.Top;

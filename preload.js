@@ -123,6 +123,12 @@ contextBridge.exposeInMainWorld('suira', {
     window: command => ipcRenderer.invoke('image-editor:window', command),
     onShown: callback => subscribe('image-editor:changed', callback)
   },
+  longCapture: {
+    start: selection => ipcRenderer.invoke('capture:start-long',selection),
+    state: () => ipcRenderer.invoke('long-capture:state'),
+    command: command => ipcRenderer.invoke('long-capture:command',command),
+    onState: callback => subscribe('long-capture:state',callback)
+  },
   // 剪贴板历史条（屏幕底部浮层）
   clipboardBar: {
     show: () => ipcRenderer.invoke('clipboard-bar:show'),

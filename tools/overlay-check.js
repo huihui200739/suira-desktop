@@ -627,8 +627,8 @@ const check = (name, cond, detail) => {
     })()`);
     const bd = JSON.parse(bindings);
     // undo / cancel / pin / save / ocr（.token-button）/ copy（.complete-button）
-    check('工具栏带 data-action 的按钮数量完整', bd.total === 6, bindings);
-    const buttonsWithAction = ['undo', 'cancel', 'pin', 'save', 'ocr', 'copy'];
+    check('工具栏带 data-action 的按钮数量完整', bd.total === 7, bindings);
+    const buttonsWithAction = ['undo', 'cancel', 'pin', 'save', 'ocr', 'copy','long'];
     const wired = bd.classes.map((c) => String(c).split('|')[1]);
     for (const action of buttonsWithAction) {
       check('按钮 ' + action + ' 已绑定', wired.includes(action), JSON.stringify(wired));

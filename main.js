@@ -55,6 +55,7 @@ const { KeyVault, encryptItem, decryptItem, encryptText, decryptText } = require
 const { unionBounds, maxScaleFactor, tileLayout, sanitizeWindowBounds, QUICK_PANEL_SIZE, quickPanelBounds,
   clipboardShelfBounds, roundedWindowShape } = require('./lib/display-geometry');
 const { InputInjector } = require('./lib/input-injector');
+const {clipboardTarget,currentPasteTarget}=require('./lib/clipboard-session');
 const { keyLayout, TOOLBOX_TOOLS, PANEL_ACTIONS, DEFAULT_KEY_BINDINGS, KEY_ROWS, normalizeKey, implementedPanelActions } = require('./lib/keybindings');
 const { createPanelActions } = require('./lib/panel-actions');
 // 38 键面板的自定义键位绑定：清洗与换位是纯模型，主进程只负责落盘与执行
@@ -66,6 +67,8 @@ const islandModel = require('./lib/island-model');
 // 第三批第 4 项：速记的纯模型（标题推导 / 容量 / 位置校验）
 const notesLib = require('./lib/notes');
 const imageEditor = require('./lib/image-editor');
+const {LongCaptureSession}=require('./lib/long-capture-session');
+const {RegionCapture}=require('./lib/region-capture');
 const { contains, receiverBounds, receiverDisplay, edgeWindowShape, IslandPointerProbe } = require('./lib/island-wake');
 // 核心框架：剪贴板捕获（文件引用/去重比较）的纯模型，便于单元测试
 const clipboardCapture = require('./lib/clipboard-capture');
@@ -93,6 +96,8 @@ const TEXT_HISTORY_LIMIT = 2000;
 let appIconLoader = null;
 let appIconHost = null;
 let captureHost = null;
+let longCapture = null;
+let longCaptureStarting = false;
 
 let store = null;
 let ocr = null;
@@ -146,6 +151,8 @@ let panelModeIndex = 0;
 
 // 放回子系统：唤起前的目标窗口，以及剪贴板自写回环账本
 let returnTarget = null;
+let quickInvocationTarget = null;
+let clipboardSessionTarget = null;
 const clipboardLedger = new ClipboardWriteLedger();
 const appIndex = new AppIndex();
 const foregroundProbe = new ForegroundProbe({ onWarn: (...args) => console.warn(...args) });
@@ -977,7 +984,8 @@ async function showQuickPanel() {
   const revision = ++quickShowRevision;
   cancelIdleTeardown(quickWindow);
   // 先记录目标，再显示窗口——顺序不能反
-  await rememberReturnTarget('quick-panel');
+  quickInvocationTarget=clipboardTarget(await queryForeground(),process.pid);
+  returnTarget=quickInvocationTarget;
   if (revision !== quickShowRevision || win.isDestroyed()) return;
   positionQuickPanel(quickWindow);
   quickWindow.show();
@@ -1368,15 +1376,16 @@ function createClipboardBarWindow() {
   return clipboardBarWindow;
 }
 
-/** 唤出底部剪贴板历史条；先记录当前前台窗口，Enter 才能粘回原处。 */
+/** 每次唤出历史条，都记录这一次正在使用的窗口。 */
 async function showClipboardBar() {
   const revision = ++clipboardShowRevision;
   clipboardShowPending = true;
   const win = createClipboardBarWindow();
   if (!win || win.isDestroyed()) return { ok: false, error: '剪贴板历史条创建失败' };
   cancelIdleTeardown(win);
-  await Promise.all([rememberReturnTarget('clipboard-bar'), win.__loaded]);
+  const [current] = await Promise.all([queryForeground(), win.__loaded]);
   if (revision !== clipboardShowRevision || win.isDestroyed()) return { ok: true, visible: false };
+  clipboardSessionTarget=clipboardTarget(current,process.pid,quickWindow&&!quickWindow.isDestroyed()&&quickWindow.isVisible()?quickInvocationTarget:null);
   clipboardShowPending = false;
   hideQuickPanel();
   win.setBounds(clipboardBarBounds());
@@ -1390,6 +1399,7 @@ async function showClipboardBar() {
 function hideClipboardBar() {
   clipboardShowRevision++;
   clipboardShowPending = false;
+  clipboardSessionTarget = null;
   if (clipboardBarWindow && !clipboardBarWindow.isDestroyed()) {
     clipboardBarWindow.hide();
     // 高频浮层保留页面和历史缓存，避免下一次快捷键重新启动渲染进程。
@@ -1524,13 +1534,14 @@ async function setupMomentaryProbe() {
  */
 async function tryReturnToTarget(item, intent = 'return-and-paste', options = {}) {
   const settings = store.getSettings();
-  const target = returnTarget;
+  const target = options.clipboardBar ? options.target : returnTarget;
 
   // 无论是否能粘贴，都先完成复制——这是「已复制，切回目标后粘贴」的前提
   try {
     // 图片条目要复制位图本身（底部剪贴板条选历史图片时就是这条路）；
     // 之前固定 writeClipboardText，会把图片粘成文件路径文本。
-    if (item?.kind === 'image' && item.filePath && fs.existsSync(item.filePath)) {
+    if (item?.kind === 'image') {
+      if(!item.filePath||!fs.existsSync(item.filePath))throw Error('原图片不存在或已被清理');
       const image = nativeImage.createFromPath(item.filePath);
       if (image.isEmpty()) throw new Error('图片读取失败');
       await writeClipboardImage(image);
@@ -1544,7 +1555,10 @@ async function tryReturnToTarget(item, intent = 'return-and-paste', options = {}
   }
 
   // 写入成功立即收起；保留系统剪贴板，后续 Ctrl+V 仍是所选历史内容。
-  if (options.clipboardBar) hideClipboardBar();
+  if (options.clipboardBar) {
+    if(options.revision!==clipboardShowRevision)return {copied:true,canPaste:false,message:'已复制，请按 Ctrl+V 粘贴'};
+    hideClipboardBar();
+  }
   let current = await queryForeground();
   // 提交时前台通常是自己的浮层，校验原目标实例，而不是拿浮层与目标比较。
   if (current && Number(current.pid) === process.pid && target) current = await foregroundProbe.query(target.hwnd);
@@ -1553,12 +1567,12 @@ async function tryReturnToTarget(item, intent = 'return-and-paste', options = {}
 
   if (!decision.canPaste) {
     // 校验未通过（目标已关闭 / 用户切换了窗口 / 权限不匹配），或用户只要复制
-    return { ...decision, canPaste: false, copied: true, message: decision.message };
+    return { ...decision, canPaste: false, copied: true, message: options.clipboardBar&&intent!=='copy-only'?'已复制，请在当前输入框按 Ctrl+V 粘贴':decision.message };
   }
 
   const nativePaste = await foregroundProbe.pasteTo(target);
   if (!nativePaste.unsupported) return { ...decision, canPaste: nativePaste.ok, pasted: nativePaste.ok,
-    message: nativePaste.ok ? '已粘贴到原窗口' : '已复制，请按 Ctrl+V 粘贴' };
+    message: nativePaste.ok ? (options.clipboardBar?'已粘贴到当前窗口':'已粘贴到原窗口') : '已复制，请按 Ctrl+V 粘贴' };
 
   const focused = await focusWindowForReturn(target);
   if (!focused) {
@@ -1576,7 +1590,7 @@ async function tryReturnToTarget(item, intent = 'return-and-paste', options = {}
       message: `已复制，请手动粘贴（${injected.error || '注入失败'}）`
     };
   }
-  return { ...decision, canPaste: true, pasted: true, message: '已粘贴到原窗口' };
+  return { ...decision, canPaste: true, pasted: true, message: options.clipboardBar?'已粘贴到当前窗口':'已粘贴到原窗口' };
 }
 
 /**
@@ -1658,6 +1672,8 @@ function createMainWindow() {
   const revealMainWindow = () => {
     if (revealed || !mainWindow || mainWindow.isDestroyed()) return;
     revealed = true;
+    // 用户已经进入高频工具时，迟到的主窗口首帧不能抢走聊天/历史条焦点。
+    if(longCapture||[quickWindow,clipboardBarWindow,overlayWindow].some(win=>win&&!win.isDestroyed()&&win.isVisible()))return;
     // 上次退出时是最大化状态：先恢复最大化再显示，避免先闪一下小窗口
     if (saved?.maximized) {
       try { mainWindow.maximize(); } catch {}
@@ -1842,7 +1858,7 @@ async function showOverlayWindow(payload) {
  *   1. 立刻通知渲染层丢掉画面/画布后备缓冲（毫秒级，保留窗口热启动）；
  *   2. 保留空页面，不再在闲置后销毁，避免下一次截图重新加载页面。
  */
-function hideOverlayWindow() {
+function hideOverlayWindow(options = {}) {
   capturePayload = null;
   captureBusy = false;
   if (overlayWindow && !overlayWindow.isDestroyed()) {
@@ -1850,14 +1866,15 @@ function hideOverlayWindow() {
     overlayWindow.hide();
     // 画布像素已 release，保留空页面供下次截图立即复用。
   }
-  restoreMainAfterCapture();
+  if(options.restoreMain!==false)restoreMainAfterCapture();
 }
 
 async function beginScreenCapture(source = 'panel', options = {}) {
+  if (longCapture||longCaptureStarting) return {ok:false,error:'请先完成或取消当前长截图'};
   if (captureBusy) return { ok: true };
   // 入口意图：从 38 键面板按 O 进来，框完直接进识别；按 P 进来直接钉图。
   // 意图随 payload 交给覆盖层，覆盖层据此预选工具或自动完成。
-  const intent = ['ocr', 'pin', 'copy', 'save', 'shelf'].includes(options?.intent) ? options.intent : 'copy';
+  const intent = ['ocr', 'pin', 'copy', 'save', 'shelf','long'].includes(options?.intent) ? options.intent : 'copy';
   captureBusy = true;
   try {
     // 页面加载与屏幕采集并行；启动预热尚未完成时也不串行冷建。
@@ -1880,7 +1897,7 @@ async function beginScreenCapture(source = 'panel', options = {}) {
     let tiles=null, captureBackend='native';
     if(process.platform==='win32') {
       try {
-        if(!captureHost)captureHost=ensureNativeHost({sourcePath:assetPath('capture-host.cs'),targetPath:path.join(userRoot(),'capture-host-v2.exe'),references:['System.Drawing.dll']});
+        if(!captureHost)captureHost=ensureNativeHost({sourcePath:assetPath('capture-host.cs'),targetPath:path.join(userRoot(),'capture-host-v3.exe'),references:['System.Drawing.dll']});
         const executable=await captureHost;
         if(executable)tiles=nativeDesktopTiles(displays,await captureNative(executable),virtualBounds,maxScale);
       }catch(error){console.warn('原始像素采集回退:',error.message);}
@@ -2031,6 +2048,89 @@ async function completeCapture(dataUrl, action) {
     mainWindow.webContents.send('app:toast', { message: messages[action] || '截图已处理', type: 'success' });
   }
   return { ok: true, filePath, item };
+}
+
+function longHudBounds(rect) {
+  const area=screen.getDisplayMatching(rect).workArea,width=Math.min(560,area.width),height=96;
+  const x=Math.max(area.x,Math.min(rect.x+(rect.width-width)/2,area.x+area.width-width));
+  const choices=[{x,y:rect.y+rect.height+12},{x,y:rect.y-height-12},
+    {x:rect.x+rect.width+12,y:rect.y},{x:rect.x-width-12,y:rect.y}];
+  const point=choices.find(p=>p.x>=area.x&&p.y>=area.y&&p.x+width<=area.x+area.width&&p.y+height<=area.y+area.height);
+  return {...(point||{x:area.x+area.width-width-12,y:area.y+area.height-height-12}),width,height,overlap:!point};
+}
+
+async function startLongCapture(selection) {
+  if(longCapture||longCaptureStarting)return {ok:false,error:'已有长截图正在进行'};
+  const source=capturePayload;
+  if(!source||!overlayWindow||overlayWindow.isDestroyed())return {ok:false,error:'请先框选长截图区域'};
+  const values=['x','y','width','height'];
+  if(!selection||!values.every(key=>Number.isFinite(selection[key])))return {ok:false,error:'长截图区域无效'};
+  const rect={x:Math.round(source.bounds.x+selection.x),y:Math.round(source.bounds.y+selection.y),width:Math.round(selection.width),height:Math.round(selection.height)};
+  if(rect.width<120||rect.height<160)return {ok:false,error:'选区太小，请至少框选 120 × 160 的滚动内容'};
+  const display=screen.getDisplayMatching(rect),d=display.bounds;
+  if(rect.x<d.x||rect.y<d.y||rect.x+rect.width>d.x+d.width||rect.y+rect.height>d.y+d.height)return {ok:false,error:'长截图请框选同一块屏幕内的内容'};
+  let worker=null,win=null,session=null;
+  longCaptureStarting=true;
+  try {
+    if(process.platform!=='win32')throw Error('长截图目前支持 Windows');
+    const executable=await captureHost;if(!executable)throw Error('原生采集组件未就绪，请重启后重试');
+    const physical=screen.dipToScreenRect(null,rect);
+    worker=new RegionCapture(executable);
+    hideOverlayWindow({restoreMain:false});
+    await new Promise(resolve=>setTimeout(resolve,70));
+    const target=await queryForeground();
+    if(!target||target.pid===process.pid)throw Error('请先回到要截取的页面，再开始长截图');
+    const captureFrame=async()=>{
+      if(worker.stopped){worker=new RegionCapture(executable);if(session)session.worker=worker;}
+      const raw=await worker.capture(physical),image=nativeImage.createFromDataURL(raw.dataUrl);
+      if(image.isEmpty())throw Error('区域画面无法读取');
+      const size=image.getSize();if(size.width!==physical.width||size.height!==physical.height)throw Error('采集区域尺寸发生变化');
+      return {width:size.width,height:size.height,data:image.toBitmap()};
+    };
+    const first=await captureFrame(),hud=longHudBounds(rect);
+    win=new BrowserWindow({x:hud.x,y:hud.y,width:hud.width,height:hud.height,frame:false,transparent:true,show:false,focusable:false,resizable:false,movable:false,skipTaskbar:true,alwaysOnTop:true,hasShadow:false,title:'随序 · 长截图',
+      webPreferences:{preload:path.join(__dirname,'preload.js'),contextIsolation:true,nodeIntegration:false,sandbox:false,spellcheck:false,backgroundThrottling:false}});
+    session={win,worker,rect,physical,target,model:null,finishing:false};
+    longCapture=session;
+    session.controller=new LongCaptureSession({first,target,current:()=>queryForeground(),capture:async()=>{
+      if(hud.overlap&&!win.isDestroyed())win.hide();
+      try{return await captureFrame();}finally{if(hud.overlap&&longCapture===session&&!session.controller.stopped&&!win.isDestroyed())win.showInactive();}
+    },onState:state=>{if(!win.isDestroyed())win.webContents.send('long-capture:state',state);}});
+    win.on('closed',()=>{if(longCapture===session)cancelLongCapture();});
+    await win.loadFile(path.join(__dirname,'src','long-capture.html'));
+    win.showInactive();session.controller.start();
+    return {ok:true};
+  }catch(error){
+    if(session?.controller)await session.controller.stop();worker?.stop();if(win&&!win.isDestroyed())win.destroy();if(longCapture===session)longCapture=null;
+    await showOverlayWindow(source).catch(()=>restoreMainAfterCapture());
+    return {ok:false,error:error.message||'无法开始长截图'};
+  }finally{longCaptureStarting=false;}
+}
+
+async function cancelLongCapture() {
+  const session=longCapture;if(!session)return {ok:true};longCapture=null;
+  session.worker.stop();await session.controller.stop();if(!session.win.isDestroyed())session.win.destroy();restoreMainAfterCapture();return {ok:true};
+}
+
+async function finishLongCapture() {
+  const session=longCapture;if(!session||session.finishing)return {ok:false,error:'正在准备长图'};session.finishing=true;
+  session.controller.pause('正在生成完整长图…');
+  try {
+    await session.controller.stop();session.worker.stop();
+    const model=session.controller.model,image=nativeImage.createFromBitmap(model.bitmap(),{width:model.width,height:model.height,scaleFactor:1});
+    const png=image.toPNG();if(png.length>imageEditor.MAX_BYTES)throw Error('长图超过 64 MB，请减小选区后重试');
+    await ensureDirs();const filePath=path.join(capturesDir(),makeId('long')+'.png');await fsp.writeFile(filePath,png);
+    const item=store.addItem({kind:'image',title:'滚动长截图',filePath,thumbnail:thumbnailDataUrl(image),source:{type:'screenshot',acquisitionMethod:'long-capture'},meta:{width:model.width,height:model.height,hash:hashBuffer(png),captureKind:'long',frames:model.frames}});
+    await store.save();broadcast('content:changed',{itemId:item.id});
+    longCapture=null;if(!session.win.isDestroyed())session.win.destroy();mainWasVisible=false;
+    const opened=await openImageEditor({itemId:item.id});
+    if(!opened.ok){showMain('library');toastToUser('长图已保存在内容库，编辑窗口打开失败','error');}
+    return {ok:true,item};
+  }catch(error){
+    session.finishing=false;session.controller.message=error.message||'长图生成失败';
+    if(!session.win.isDestroyed())session.win.webContents.send('long-capture:state',session.controller.state());
+    return {ok:false,error:error.message||'长图生成失败'};
+  }
 }
 
 /* 图片编辑复用截图标注画布，但拥有独立窗口、输入与输出，不读取桌面。 */
@@ -2591,6 +2691,16 @@ function registerIpc() {
   ipcMain.handle('app:restart', () => { restartApplication(); return {ok:true}; });
 
   ipcMain.handle('capture:start', (_event, options) => beginScreenCapture('main', options || {}));
+  ipcMain.handle('capture:start-long',(event,selection)=>event.sender===overlayWindow?.webContents?startLongCapture(selection):{ok:false,error:'请从截图选区开始长截图'});
+  ipcMain.handle('long-capture:state',event=>event.sender===longCapture?.win.webContents?longCapture.controller.state():null);
+  ipcMain.handle('long-capture:command',(event,command)=>{
+    if(event.sender!==longCapture?.win.webContents)return {ok:false,error:'长截图已结束'};
+    if(command==='finish')return finishLongCapture();
+    if(command==='cancel')return cancelLongCapture();
+    if(longCapture.finishing)return {ok:false,error:'正在生成长图'};
+    if(command==='pause')longCapture.controller.pause();else if(command==='resume')longCapture.controller.resume();else return {ok:false,error:'未知操作'};
+    return {ok:true};
+  });
   ipcMain.handle('image-editor:open', async (event, options={}) => {
     try {
       const current=editorWindows.get(event.sender.id);
@@ -3016,7 +3126,9 @@ function registerIpc() {
     // tryReturnToTarget 内部已负责复制；这里不再重复调用 output.copy，
     // 否则会写两次剪贴板并污染回环账本。
     const fromClipboardBar = clipboardBarWindow && !clipboardBarWindow.isDestroyed() && event.sender === clipboardBarWindow.webContents;
-    const decision = await tryReturnToTarget(item, intent, { clipboardBar: fromClipboardBar });
+    const revision=clipboardShowRevision;
+    const target=fromClipboardBar?currentPasteTarget(await queryForeground(),process.pid,clipboardSessionTarget,clipboardBarWindow.isVisible()):null;
+    const decision = await tryReturnToTarget(item, intent, { clipboardBar: fromClipboardBar,target,revision });
     if (decision.copyFailed) {
       // 复制失败是真正的失败：给渲染层 ok:false，才能显示错误而不是成功提示
       return { ok: false, error: decision.message || '复制失败', ...decision };
@@ -3343,8 +3455,8 @@ async function initialize() {
   createQuickWindow();
   createClipboardBarWindow();
   createOverlayWindow();
-  captureHost = ensureNativeHost({ sourcePath: assetPath('capture-host.cs'), targetPath: path.join(userRoot(), 'capture-host-v2.exe'), references: ['System.Drawing.dll'] });
-  foregroundProbe.nativeHostReady = ensureNativeHost({ sourcePath: assetPath('foreground-host.cs'), targetPath: path.join(userRoot(), 'foreground-host-v1.exe'), references: ['System.Web.Extensions.dll'] });
+  captureHost = ensureNativeHost({ sourcePath: assetPath('capture-host.cs'), targetPath: path.join(userRoot(), 'capture-host-v3.exe'), references: ['System.Drawing.dll'] });
+  foregroundProbe.nativeHostReady = ensureNativeHost({ sourcePath: assetPath('foreground-host.cs'), targetPath: path.join(userRoot(), 'foreground-host-v2.exe'), references: ['System.Web.Extensions.dll'] });
   foregroundProbe.start().catch(error => console.warn('前台助手预热失败:', error.message));
   armIsland();
   islandWakeReady = setupIslandPointer().catch(error => { islandWakeError = error.message; });
@@ -3561,6 +3673,7 @@ function restartApplication() {
 }
 
 app.on('before-quit', () => {
+  if(longCapture){longCapture.worker.stop();longCapture.controller.stop();}
   isQuitting = true;
 });
 app.on('will-quit', () => {

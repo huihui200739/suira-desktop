@@ -660,6 +660,19 @@ function cancel() {
   captureApi.cancel();
 }
 
+let longStarting=false;
+async function startLongSelection() {
+  if(editorMode||longStarting)return;
+  if(!hasSelection()){showAction('请先框选滚动区域','error');return;}
+  longStarting=true;
+  try {
+    const s=state.selection;
+    const result=await window.suira.longCapture.start({x:s.x,y:s.y,width:s.w,height:s.h});
+    if(!result?.ok)showAction(result?.error||'无法开始长截图','error');
+  }catch(error){showAction(error.message||'无法开始长截图','error');}
+  finally{longStarting=false;}
+}
+
 /* ---------- OCR ---------- */
 
 const ocrResult = $('#ocr-result');
@@ -1022,6 +1035,7 @@ function setupEvents() {
       else if (action === 'pin') finish('pin');
       else if (action === 'copy') finish('copy');
       else if (action === 'ocr') startOcr();
+      else if (action === 'long') startLongSelection();
     });
   });
 
@@ -1434,6 +1448,9 @@ function applyIntent(intent) {
   } else if (intent === 'pin') {
     if (hintBrand) hintBrand.textContent = '截图钉图';
     showAction('框选要钉住的区域，完成后直接钉在桌面');
+  } else if (intent === 'long') {
+    if(hintBrand)hintBrand.textContent='滚动长截图';
+    showAction('框选滚动内容，松开后向下滚动即可拼接');
   }
 }
 
@@ -1448,6 +1465,7 @@ function autoAdvanceForIntent() {
   const intent = state.intent;
   if (intent === 'ocr') startOcr();
   else if (intent === 'pin') finish('pin');
+  else if (intent === 'long') startLongSelection();
 }
 
 setupEvents();

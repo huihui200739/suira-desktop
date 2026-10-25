@@ -131,7 +131,7 @@ t('未实现动作的提示里写明「尚未实现」', () => {
 
 t('工具箱区分已实现与未完成', () => {
   assert.ok(TOOLBOX_TOOLS.some((t_) => t_.implemented));
-  assert.ok(TOOLBOX_TOOLS.some((t_) => !t_.implemented));
+  assert.ok(Object.values(PANEL_ACTIONS).some(action => !action.implemented), '动作目录仍如实保留未完成规划项');
   for (const tool of TOOLBOX_TOOLS) {
     if (!tool.implemented) assert.match(tool.hint, /尚未实现/, tool.id);
   }

@@ -10,6 +10,8 @@ using System.Web.Script.Serialization;
 public static class ForegroundHost {
     [DllImport("user32.dll")] static extern IntPtr GetForegroundWindow();
     [DllImport("user32.dll")] static extern bool IsWindow(IntPtr h);
+    [StructLayout(LayoutKind.Sequential)] struct Rect {public int Left,Top,Right,Bottom;}
+    [DllImport("user32.dll")] static extern bool GetWindowRect(IntPtr h,out Rect rect);
     [DllImport("user32.dll")] static extern bool IsIconic(IntPtr h);
     [DllImport("user32.dll")] static extern bool ShowWindow(IntPtr h, int mode);
     [DllImport("user32.dll")] static extern bool SetForegroundWindow(IntPtr h);
@@ -28,7 +30,8 @@ public static class ForegroundHost {
         uint pid; GetWindowThreadProcessId(h,out pid);
         using (Process p=Process.GetProcessById((int)pid)) {
             StringBuilder title=new StringBuilder(4096); GetWindowText(h,title,title.Capacity);
-            return new {ok=true,hwnd=h.ToInt64().ToString(),pid=pid,processName=p.ProcessName,processStartedAt=Started(p),title=title.ToString(),elevated=false};
+            Rect rect;GetWindowRect(h,out rect);
+            return new {ok=true,hwnd=h.ToInt64().ToString(),pid=pid,processName=p.ProcessName,processStartedAt=Started(p),title=title.ToString(),elevated=false,bounds=new{x=rect.Left,y=rect.Top,width=rect.Right-rect.Left,height=rect.Bottom-rect.Top}};
         }
     }
     static bool Matches(IntPtr h, int pid, long started) {

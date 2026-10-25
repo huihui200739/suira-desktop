@@ -48,7 +48,7 @@ if (Test-Path -LiteralPath (Join-Path $repoRoot '.workbuddy')) {
     Add-Target $_.FullName $repoRoot 'workspace-logs'
   }
 }
-foreach ($relative in @('tools\.panel-shot','.udata\panel-review','.udata\island-hidden-review','debug.log')) {
+foreach ($relative in @('tools\.panel-shot','.udata\panel-review','.udata\island-hidden-review','debug.log','.workbuddy\long-frame-0.png','.workbuddy\long-frame-70.png')) {
   Add-Target (Join-Path $repoRoot $relative) $repoRoot 'workspace-test-cache'
 }
 Get-ChildItem -LiteralPath (Join-Path $repoRoot 'src') -File -Filter '__fx_*' | ForEach-Object {
@@ -57,7 +57,7 @@ Get-ChildItem -LiteralPath (Join-Path $repoRoot 'src') -File -Filter '__fx_*' | 
 
 # These names are created only by this repository's regression and benchmark tools.
 # In particular, suira-input (the running input helper) is intentionally excluded.
-$testDirectoryPattern = '^suira-(?:(?:clipboardbar|island|notes|island-wake|latency|record-writer|recorder-live|capture-bench|doc-shots|bindings|ui-polish|image-editor)-[A-Za-z0-9]+|panel-\d+|core-e2e-\d+|ocr-probe-\d+|clipboardbar-shots|island-shots|probe)$'
+$testDirectoryPattern = '^suira-(?:(?:clipboardbar|island|notes|island-wake|latency|record-writer|recorder-live|capture-bench|doc-shots|bindings|ui-polish|image-editor|long-capture)-[A-Za-z0-9]+|panel-\d+|core-e2e-\d+|ocr-probe-\d+|clipboardbar-shots|island-shots|probe)$'
 Get-ChildItem -LiteralPath $tempRoot -Directory -Filter 'suira-*' | Where-Object { $_.Name -match $testDirectoryPattern } | ForEach-Object {
   Add-Target $_.FullName $tempRoot 'temporary-test-packages'
 }

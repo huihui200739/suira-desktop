@@ -234,6 +234,7 @@ kbd { font-family: var(--font-ui); font-size: var(--text-1); font-weight: 600; }
 /* 标注与截图是两步不同的动作，用青色区分，别让两个蓝块长得一样 */
 .key[data-action="annotate"] { --key-tint: var(--action-teal); }
 .key[data-action="edit-image"] { --key-tint: var(--action-violet); }
+.key[data-action="long-capture"] { --key-tint: var(--action-blue); }
 .key[data-action="translate"] { --key-tint: var(--action-green); }
 .key[data-action="ocr"], .key[data-action="clipboard"] { --key-tint: var(--action-blue); }
 .key[data-action="pin"], .key[data-action="desktop"], .key[data-action="lock"] { --key-tint: var(--action-violet); }

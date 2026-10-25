@@ -10,7 +10,7 @@
  * - 从 window.suira.content 拉取内容库列表，按类型渲染卡片：
  *   图片用 thumbnail 缩略图，文字用前 90 字摘要，files 用文件名 + 文件数，link 用域名；
  * - 键盘（← → Home End Enter Esc）与滚轮横向浏览，单击复制并粘贴；
- * - Enter 调 window.suira.returnTo.commit({ itemId, intent: 'return-and-paste' })：
+ * - Enter 调 window.suira.returnTo.commit({ itemId, intent: 'paste-current' })：
  *   直接粘回成功就关闭，只是复制兜底就在底部提示行显示原因并保留窗口；
  * - clipboardBar.onShown 时重新拉取并重置选中项，content.onChanged 仅在可见时刷新。
  *
@@ -550,11 +550,11 @@
     state.committing = true;
     syncSelection();
     try {
-      const result = await api.commit({ itemId: item.id, intent: 'return-and-paste' });
+      const result = await api.commit({ itemId: item.id, intent: 'paste-current' });
       if (result && result.ok) {
         if (result.copied) {
           if (result.pasted === true) {
-            // 已经粘回原窗口，直接收起，不再显示提示
+            // 已粘贴到当前窗口，直接收起，不再显示提示
             await hideBar();
             return;
           }

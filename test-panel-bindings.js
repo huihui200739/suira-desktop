@@ -31,7 +31,7 @@ t('38 个键位都可绑定，键位唯一', () => {
 t('内置动作绑定只接受已实现动作', () => {
   assert.deepStrictEqual(cleanBinding({ type: 'action', id: 'capture' }), { type: 'action', id: 'capture' });
   assert.strictEqual(cleanBinding({ type: 'action', id: 'record' }), null, '已删除的动作不能绑');
-  assert.strictEqual(cleanBinding({ type: 'action', id: 'long-capture' }), null, '未实现动作不能绑');
+  assert.strictEqual(cleanBinding({ type: 'action', id: 'calendar' }), null, '未实现动作不能绑');
 });
 
 t('路径/网页绑定带名字，非法协议拒绝', () => {

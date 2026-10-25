@@ -77,10 +77,10 @@ const missingIds = [...jsIds].filter((id) => !htmlIds.has(id));
 check('clipboardbar.js 引用的 ID 都存在于 HTML', missingIds.length === 0, '缺失: ' + missingIds.join(', '));
 
 check('界面文案为中文（标题 / 快捷键提示）',
-  ['剪贴板历史', '← → 选择', '粘贴到原窗口'].every((text) => (barHtml + barJs).includes(text)));
+  ['剪贴板历史', '← → 选择', '粘贴到当前窗口'].every((text) => (barHtml + barJs).includes(text)));
 check('空态文案符合规格', (barHtml + barJs).includes('还没有剪贴板记录，复制一段文字或一张图再试'));
 check('渲染层带 API 不可用提示', barJs.includes('剪贴板历史暂不可用'));
-check('渲染层按契约传 intent', barJs.includes("intent: 'return-and-paste'"));
+check('渲染层明确提交当前窗口粘贴意图', barJs.includes("intent: 'paste-current'"));
 check('渲染层订阅 onShown 与 content.onChanged', barJs.includes('onShown') && barJs.includes('onChanged'));
 check('渲染层过滤不可见时的内容刷新', barJs.includes('state.visible'));
 
@@ -591,7 +591,7 @@ async function runChecks(send) {
   const payload = afterEnter.calls.commit[0];
   check('Enter 调用 returnTo.commit 一次', afterEnter.calls.commit.length === 1, JSON.stringify(afterEnter.calls.commit));
   check('提交 payload 完全符合契约',
-    payload && payload.itemId === afterShown.selectedId && payload.intent === 'return-and-paste'
+    payload && payload.itemId === afterShown.selectedId && payload.intent === 'paste-current'
     && JSON.stringify(Object.keys(payload).sort()) === JSON.stringify(['intent', 'itemId']),
     JSON.stringify(payload));
   check('直接粘回成功后调用 hide', afterEnter.calls.hide === 1, 'hide=' + afterEnter.calls.hide);

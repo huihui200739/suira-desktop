@@ -26,6 +26,7 @@
 .is-image-editor .shade,.is-image-editor .dim,.is-image-editor .selection-grid,.is-image-editor .capture-hint,.is-image-editor .magnifier,.is-image-editor .loading-state { display:none!important; }
 .is-image-editor .tool-dock { transform:none; }
 .is-image-editor .size-badge { display:none; }
+.is-image-editor [data-action="long"] { display:none; }
 .is-image-editor .ocr-result { position:fixed;right:24px;bottom:54px; }
 .is-image-editor .selection { box-shadow:none; }
 .editor-drag-over::after { content:'松开打开图片';position:fixed;inset:70px 16px 44px;display:grid;place-items:center;border:2px dashed var(--accent-deep);border-radius:20px;background:var(--surface);color:var(--accent-deep);font-size:var(--text-3);pointer-events:none;z-index:100; }

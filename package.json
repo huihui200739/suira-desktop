@@ -9,7 +9,7 @@
     "start": "node tools/dev-start.js",
     "dev": "node tools/dev-start.js --dev",
     "clean": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File tools/clean-dev-artifacts.ps1",
-    "test": "node test-core.js && node test-image-editor.js && node test-app-icons.js && node test-icon-disk-cache.js && node test-native-capture.js && node test-clipboard.js && node test-ocr.js && node test-translate.js && node test-notes.js && node test-island-store.js && node test-island.js && node test-island-wake.js && node test-actions.js && node test-capabilities.js && node test-keybindings.js && node test-panel-bindings.js && node test-panel-shortcuts.js && node test-panel-flows.js && node test-return.js && node test-foreground.js && node test-security.js && node test-key-watch.js && node test-display.js && node test-inject.js && node test-diagnostics.js && node test-ui.js && node test-render.js && node tools/panel-shot.js --check && node tools/island-check.js && node tools/notes-check.js && node tools/clipboardbar-check.js && node tools/confirm-check.js && node tools/overlay-check.js && node tools/shortcut-check.js",
+    "test": "node test-core.js && node test-clipboard-session.js && node test-long-capture.js && node test-long-session.js && node test-region-capture.js && node test-image-editor.js && node test-app-icons.js && node test-icon-disk-cache.js && node test-native-capture.js && node test-clipboard.js && node test-ocr.js && node test-translate.js && node test-notes.js && node test-island-store.js && node test-island.js && node test-island-wake.js && node test-actions.js && node test-capabilities.js && node test-keybindings.js && node test-panel-bindings.js && node test-panel-shortcuts.js && node test-panel-flows.js && node test-return.js && node test-foreground.js && node test-security.js && node test-key-watch.js && node test-display.js && node test-inject.js && node test-diagnostics.js && node test-ui.js && node test-render.js && node tools/panel-shot.js --check && node tools/island-check.js && node tools/notes-check.js && node tools/clipboardbar-check.js && node tools/confirm-check.js && node tools/overlay-check.js && node tools/shortcut-check.js",
     "test:core": "node test-core.js",
     "test:clipboard": "node test-clipboard.js",
     "test:ocr": "node test-ocr.js",
@@ -55,7 +55,9 @@
     "verify:bindings": "node tools/electron-bindings-check.js",
     "verify:polish": "node tools/electron-polish-check.js",
     "test:image-editor": "node test-image-editor.js",
-    "verify:image-editor": "node tools/electron-image-editor-check.js"
+    "verify:image-editor": "node tools/electron-image-editor-check.js",
+    "test:long-capture": "node test-long-capture.js && node test-long-session.js && node test-region-capture.js",
+    "verify:long-capture": "node tools/region-native-check.js && node tools/electron-long-clipboard-check.js"
   },
   "devDependencies": {
     "electron": "^45.0.0",
