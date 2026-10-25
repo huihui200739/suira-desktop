@@ -52,7 +52,8 @@
     "test:island-wake": "node test-island-wake.js",
     "test:app-icons": "node test-app-icons.js",
     "test:bindings": "node test-panel-bindings.js && node test-panel-shortcuts.js && node tools/panel-shot.js --check",
-    "verify:bindings": "node tools/electron-bindings-check.js"
+    "verify:bindings": "node tools/electron-bindings-check.js",
+    "verify:polish": "node tools/electron-polish-check.js"
   },
   "devDependencies": {
     "electron": "^45.0.0",

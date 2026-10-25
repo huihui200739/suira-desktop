@@ -982,6 +982,20 @@ function setupEvents() {
     }
   });
 
+  $$('[data-shortcut]', toolDock).forEach(button => {
+    const shortcut = { escape: 'Esc', enter: 'Enter' }[button.dataset.shortcut] || button.dataset.shortcut.toUpperCase();
+    const label = button.getAttribute('title') || (button.dataset.action === 'copy' ? '完成' : button.textContent.trim());
+    button.dataset.hint = `${label} (${shortcut})`;
+    button.setAttribute('aria-label', `${label} (${shortcut})`);
+    button.setAttribute('aria-keyshortcuts', shortcut === 'Esc' ? 'Escape' : shortcut);
+    button.removeAttribute('title');
+  });
+  $$('[data-color]', colorPopover).forEach((button, index) => {
+    button.dataset.colorKey = String(index + 1);
+    button.textContent = String(index + 1);
+    button.setAttribute('aria-label', `${button.getAttribute('aria-label')} (${index + 1})`);
+  });
+
   $$('.tool-button[data-tool]').forEach((button) => {
     button.addEventListener('click', () => setTool(button.dataset.tool));
   });
@@ -1076,8 +1090,13 @@ function setupEvents() {
   });
 
   document.addEventListener('keydown', (event) => {
+    if (event.isComposing || event.keyCode === 229) return;
     if (!textEditor.hidden) return;
-    if (!ocrResult.hidden && event.target === ocrText) {
+    if (!originalViewer.hidden) {
+      if (event.key === 'Escape') { event.preventDefault(); originalViewer.hidden = true; }
+      return;
+    }
+    if (!ocrResult.hidden) {
       if (event.key === 'Escape') { event.preventDefault(); closeOcrResult(); }
       return;
     }
@@ -1091,18 +1110,13 @@ function setupEvents() {
     const key = event.key.toLowerCase();
     if (event.key === 'Escape') {
       event.preventDefault();
-      if (!ocrResult.hidden) {
-        closeOcrResult();
-      } else if (hasSelection() && state.mode === 'annotate') {
-        setTool('select');
-      } else {
-        cancel();
-      }
+      if (!colorPopover.hidden) colorPopover.hidden = true;
+      else cancel();
       return;
     }
     if (event.key === 'Enter') {
       event.preventDefault();
-      finish('copy');
+      if (!event.repeat) toolDock.querySelector('[data-action="copy"]').click();
       return;
     }
     if (event.ctrlKey && key === 'z') {
@@ -1115,14 +1129,26 @@ function setupEvents() {
       selectWholeScreen();
       return;
     }
+    if ((event.ctrlKey || event.metaKey) && (key === 's' || key === 'c')) {
+      event.preventDefault();
+      if (!event.repeat) toolDock.querySelector(`[data-action="${key === 's' ? 'save' : 'copy'}"]`).click();
+      return;
+    }
+    if ((event.ctrlKey || event.metaKey) && key === 'y') { event.preventDefault(); redo(); return; }
     if (event.key === 'Delete' || event.key === 'Backspace') {
       undo();
       return;
     }
-    const shortcuts = { a: 'select', p: 'pen', r: 'rect', l: 'arrow', t: 'text', m: 'mosaic', n: 'steps' };
-    if (shortcuts[key] && !event.ctrlKey && !event.altKey) {
+    if (event.ctrlKey || event.altKey || event.metaKey) return;
+    if (!colorPopover.hidden) {
+      const color = $$('[data-color]', colorPopover).find(button => button.dataset.colorKey === key);
+      if (color) { event.preventDefault(); color.click(); return; }
+    }
+    const shortcutButton = $$('[data-shortcut]', toolDock).find(button => button.dataset.shortcut === key);
+    if (shortcutButton && (!toolDock.hidden || key === 'a')) {
       event.preventDefault();
-      setTool(shortcuts[key]);
+      if (event.repeat && shortcutButton.dataset.action) return;
+      shortcutButton.click();
     }
   });
 

@@ -226,7 +226,7 @@ button { color: inherit; }
   align-items: center;
   justify-content: center;
   width: 36px;
-  height: 36px;
+  height: 44px;
   flex: 0 0 36px;
   border: 0;
   border-radius: var(--radius-inner);
@@ -247,8 +247,9 @@ button { color: inherit; }
   stroke-linecap: round;
   stroke-linejoin: round;
 }
-/* 键位提示由工具条上方的 tooltip 呈现，按钮内不再重复 */
-.tool-button kbd { display: none; }
+.tool-button { flex-direction:column;gap:2px; }
+.tool-button kbd { display:block;order:2;font:500 var(--text-1)/12px var(--font-ui);color:var(--ink-muted); }
+.tool-button.is-active kbd { color:var(--accent-deep); }
 .tool-separator {
   width: 1px;
   height: 24px;
@@ -291,12 +292,15 @@ button { color: inherit; }
   cursor: pointer;
 }
 .color-popover button:hover { border-color: #fff; }
+.color-popover button { font:600 var(--text-1)/1 var(--font-ui);color:#171923; }
+.color-popover button[data-color="#171923"] { color:#fff; }
 
 .token-button {
   display: inline-flex;
   align-items: center;
   gap: 3px;
-  height: 34px;
+  height: 44px;
+  flex-direction: column;
   padding: 0 9px;
   border: 0;
   border-radius: var(--radius-inner);
@@ -312,7 +316,7 @@ button { color: inherit; }
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  height: 36px;
+  height: 44px;
   margin-left: 2px;
   padding: 0 11px;
   border: 0.5px solid rgba(0, 144, 255, 0.4);

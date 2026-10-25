@@ -223,6 +223,7 @@ function openBindingEditor(keyChar) {
     ? `当前：${key.label}（${key.hint}）`
     : key.state === 'bound' ? `当前：${key.label}` : '这个键还没有绑定内容';
   $('#binding-clear').hidden = !['custom', 'bound'].includes(key.state);
+  $('.binding-foot').hidden = $('#binding-clear').hidden;
   $('#binding-url-input').value = '';
   $('#binding-editor').hidden = false;
   renderBindingActions();
@@ -247,11 +248,11 @@ function positionBindingEditor() {
   const bounds = trigger.getBoundingClientRect();
   const card = $('.binding-card'), margin = 12, gap = 10;
   const { width, height } = card.getBoundingClientRect();
-  // 优先贴在键位右侧；靠近窗口边缘时向左或向上收进可见区域。
-  let left = bounds.right + gap;
-  if (left + width > innerWidth - margin) left = bounds.left - width - gap;
-  const top = Math.max(margin, Math.min(innerHeight - height - margin, bounds.top - 12));
-  left = Math.max(margin, Math.min(innerWidth - width - margin, left));
+  // 贴在键帽下方；下方空间不足时向上展开，始终留在窗口内部。
+  const below = innerHeight - bounds.bottom - gap;
+  const preferredTop = below >= height ? bounds.bottom + gap : bounds.top - height - gap;
+  const top = Math.max(margin, Math.min(innerHeight - height - margin, preferredTop));
+  const left = Math.max(margin, Math.min(innerWidth - width - margin, bounds.left + bounds.width / 2 - width / 2));
   card.style.left = `${left}px`;
   card.style.top = `${top}px`;
 }
@@ -262,7 +263,7 @@ function showBindingView(view) {
   $('#binding-tools-view').hidden = view !== 'tools';
   $('#binding-url-row').hidden = view !== 'url';
   $('#binding-back').hidden = view === 'categories';
-  $('#binding-title').textContent = { categories: '绑定内容', tools: '内置工具', url: '绑定网页' }[view];
+  $('#binding-title').textContent = { categories: '绑定', tools: '内置工具', url: '绑定网页' }[view];
   positionBindingEditor();
   const focus = view === 'url' ? $('#binding-url-input') : view === 'tools'
     ? $('#binding-action-list button:not(:disabled)') : $('#binding-app');

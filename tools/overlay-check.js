@@ -614,6 +614,35 @@ const check = (name, cond, detail) => {
       check('按钮 ' + action + ' 已绑定', wired.includes(action), JSON.stringify(wired));
     }
 
+    console.log('\n== 工具栏全部键位与输入保护 ==');
+    const keyboardTools=await evaluate(send, `(async()=>{
+      document.getElementById('ocr-result-close').click();document.getElementById('original-close').click();
+      const press=(key,extra={})=>document.dispatchEvent(new KeyboardEvent('keydown',{key,bubbles:true,cancelable:true,...extra}));
+      const expected={a:'select',p:'pen',r:'rect',l:'arrow',t:'text',m:'mosaic',n:'steps'};
+      const tools={};for(const [key,tool] of Object.entries(expected)){press(key);tools[key]=document.getElementById('capture-root').dataset.tool===tool;}
+      press('c');const colorsOpened=!document.getElementById('color-popover').hidden;press('3');
+      const colorPicked=document.getElementById('color-popover').hidden&&document.getElementById('color-dot').style.background.includes('106');
+      const actions={};for(const [key,action] of [['s','save'],['q','pin'],['Enter','copy'],['o','ocr']]){
+        window.__finish=null;press(key);await new Promise(r=>setTimeout(r,60));actions[key]=window.__finish?.action===action;
+        if(key==='o')document.getElementById('ocr-result-close').click();
+      }
+      window.__finish=null;press('s',{ctrlKey:true});await new Promise(r=>setTimeout(r,60));const ctrlSave=window.__finish?.action==='save';
+      window.__finish=null;press('c',{ctrlKey:true});await new Promise(r=>setTimeout(r,60));const ctrlCopy=window.__finish?.action==='copy';
+      window.__finish=null;press('s',{repeat:true});await new Promise(r=>setTimeout(r,30));const repeatSafe=window.__finish===null;
+      press('r');press('p',{isComposing:true});const imeSafe=document.getElementById('capture-root').dataset.tool==='rect';
+      const ta=document.getElementById('ocr-result-text');ta.focus();ta.dispatchEvent(new KeyboardEvent('keydown',{key:'p',bubbles:true,cancelable:true}));const typingSafe=document.getElementById('capture-root').dataset.tool==='rect';ta.blur();
+      window.__canceled=false;press('Escape');const canceled=window.__canceled===true;
+      const labels=[...document.querySelectorAll('#tool-dock [data-shortcut]')].every(button=>button.hasAttribute('aria-keyshortcuts')&&(button.querySelector('kbd,small')?.getBoundingClientRect().height||0)>0);
+      return {tools,colorsOpened,colorPicked,actions,ctrlSave,ctrlCopy,repeatSafe,imeSafe,typingSafe,canceled,labels};
+    })()`);
+    for(const [key,passed] of Object.entries(keyboardTools.tools))check('按 '+key.toUpperCase()+' 切换对应工具',passed);
+    for(const [key,passed] of Object.entries(keyboardTools.actions))check('按 '+key+' 执行对应工具栏动作',passed);
+    for(const key of ['colorsOpened','colorPicked','ctrlSave','ctrlCopy','repeatSafe','imeSafe','typingSafe','canceled','labels'])check('键盘 '+key,keyboardTools[key]);
+    await evaluate(send, `document.dispatchEvent(new KeyboardEvent('keydown',{key:'z',bubbles:true,cancelable:true})),true`);
+    check('Z 撤销标注',await annotationPixels()===0);
+    await evaluate(send, `document.dispatchEvent(new KeyboardEvent('keydown',{key:'y',ctrlKey:true,bubbles:true,cancelable:true})),true`);
+    check('Ctrl Y 恢复撤销的标注',await annotationPixels()>0);
+
     // 「完成」按钮（.complete-button）点击后应真的提交截图
     await evaluate(send, `(function(){
       document.getElementById('ocr-result-close').click();

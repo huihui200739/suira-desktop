@@ -2,6 +2,8 @@
 
 > 你的 Windows 随手工作台。**顺手接住，让工作继续。**
 
+2026-10-25：收起的钉图可按住拖动，展开保留新位置与原尺寸；剪贴板滚轮加速，绑定菜单改为窄版玻璃材质，应用图标保留高分辨率。截图工具栏所有按钮显示对应按键，详见[本次交互改进与按键表](docs/INTERACTION-POLISH-2026-10-25.md)。
+
 Electron 实现的 Windows 桌面端样机。产品方向、交互结构与验收标准来自 `Suira-Windows-Docs/`，
 本仓库是据此开发的**可运行实现**，不是概念稿。
 
@@ -23,6 +25,7 @@ npm install
 npm start          # 启动应用
 npm test           # 核心逻辑、渲染与交互回归
 npm run test:panel # 面板布局、异步竞态与错误反馈回归
+npm run verify:polish # 真实 Electron 钉图拖动与高分辨率图标检查
 npm run diag       # 启动自检，生成环境报告
 npm run clean      # 清理闲置测试缓存与临时测试包，保留正式数据
 ```

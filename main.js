@@ -2123,15 +2123,20 @@ async function runBindingKey(key) {
  * 结果按路径缓存：图标是静态资源，不需要每次打开面板都重新提取。
  */
 function getAppIconLoader() {
-  const dataUrl=image=>image&&!image.isEmpty()?image.resize({width:64,height:64,quality:'best'}).toDataURL():'';
+  const dataUrl=image=>{
+    if(!image||image.isEmpty())return '';
+    const size=image.getSize();
+    const ratio=Math.min(1,256/Math.max(size.width,size.height));
+    return ratio<1?image.resize({width:Math.max(1,Math.round(size.width*ratio)),height:Math.max(1,Math.round(size.height*ratio)),quality:'best'}).toDataURL():image.toDataURL();
+  };
   if(!appIconLoader)appIconLoader=createAppIconLoader({
-    diskCache:createIconDiskCache(path.join(userRoot(),'cache','app-icons-v2.json')),
+    diskCache:createIconDiskCache(path.join(userRoot(),'cache','app-icons-v3.json')),
     readShortcutLink:filePath=>shell.readShortcutLink(filePath),
     getFileIcon:async filePath=>dataUrl(await app.getFileIcon(filePath,{size:'large'})),
     loadImage:filePath=>dataUrl(nativeImage.createFromPath(filePath)),
     extractResources:async sources=>{
       if(!sources.length)return [];
-      if(!appIconHost)appIconHost=ensureNativeHost({sourcePath:assetPath('app-icon-host.cs'),targetPath:path.join(userRoot(),'app-icon-host-v1.exe'),references:['System.Drawing.dll']});
+      if(!appIconHost)appIconHost=ensureNativeHost({sourcePath:assetPath('app-icon-host.cs'),targetPath:path.join(userRoot(),'app-icon-host-v2.exe'),references:['System.Drawing.dll']});
       return extractResourceBatch(await appIconHost,sources);
     }
   });
@@ -2390,6 +2395,7 @@ function registerIpc() {
     if (collapsed) {
       if (state.collapsed) return;
       state.savedBounds = win.getBounds();
+      state.savedSize = pinExpectedSize.get(win) || { width: state.savedBounds.width, height: state.savedBounds.height };
       state.savedOpacity = win.getOpacity();
       state.collapsed = true;
       pinState.set(win, state);
@@ -2404,8 +2410,14 @@ function registerIpc() {
       state.collapsed = false;
       pinState.set(win, state);
       if (state.savedBounds) {
-        win.setBounds(state.savedBounds);
-        pinExpectedSize.set(win, { width: state.savedBounds.width, height: state.savedBounds.height });
+        // 收起后的位置可以改变：展开时保留当前位置，只恢复原来的尺寸。
+        const current = win.getBounds();
+        const area = screen.getDisplayNearestPoint({ x: current.x, y: current.y }).workArea;
+        const size = state.savedSize || state.savedBounds;
+        win.setBounds({ width: size.width, height: size.height,
+          x: Math.max(area.x, Math.min(current.x, area.x + area.width - size.width)),
+          y: Math.max(area.y, Math.min(current.y, area.y + area.height - size.height)) });
+        pinExpectedSize.set(win, { width: size.width, height: size.height });
       }
       win.setOpacity(state.savedOpacity || 1);
     }

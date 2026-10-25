@@ -639,6 +639,20 @@ async function runChecks(send) {
   check('窄屏底部信息不溢出', narrowView.selectionText.length > 0 && narrowView.cardOverflow.every((value) => value === 0));
 
   console.log('\n== 搜索、分类、收藏与输入焦点 ==');
+  const wheelSpeed = await evaluate(send, `(()=>{
+    const track=document.getElementById('bar-track');
+    track.scrollTo({left:0,behavior:'instant'});
+    const wheel=new WheelEvent('wheel',{deltaY:40,bubbles:true,cancelable:true});track.dispatchEvent(wheel);
+    const first=track.scrollLeft;track.dispatchEvent(new WheelEvent('wheel',{deltaY:40,bubbles:true,cancelable:true}));
+    const second=track.scrollLeft;
+    track.dispatchEvent(new WheelEvent('wheel',{deltaY:-40,bubbles:true,cancelable:true}));const reversed=track.scrollLeft;
+    track.scrollTo({left:0,behavior:'instant'});track.dispatchEvent(new WheelEvent('wheel',{deltaY:1,deltaMode:1,bubbles:true,cancelable:true}));
+    const lines=track.scrollLeft;
+    const horizontal=new WheelEvent('wheel',{deltaX:60,bubbles:true,cancelable:true});track.dispatchEvent(horizontal);
+    return {first,second,reversed,lines,verticalHandled:wheel.defaultPrevented,horizontalNative:!horizontal.defaultPrevented};
+  })()`);
+  check('滚轮单次立即加速、连续位移不被动画吞掉、反向滚动正确', wheelSpeed.first>=100 && wheelSpeed.second>wheelSpeed.first && wheelSpeed.reversed<wheelSpeed.second, JSON.stringify(wheelSpeed));
+  check('行滚轮归一化且水平触控板保留原生手感',wheelSpeed.lines>=90 && wheelSpeed.verticalHandled && wheelSpeed.horizontalNative,JSON.stringify(wheelSpeed));
   const toolbar = await evaluate(send, `(async function(){
     var wait = function(){return new Promise(r=>setTimeout(r,100));};
     var search = document.getElementById('bar-search');

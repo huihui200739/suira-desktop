@@ -57,13 +57,22 @@ Get-ChildItem -LiteralPath (Join-Path $repoRoot 'src') -File -Filter '__fx_*' | 
 
 # These names are created only by this repository's regression and benchmark tools.
 # In particular, suira-input (the running input helper) is intentionally excluded.
-$testDirectoryPattern = '^suira-(?:(?:clipboardbar|island|notes|island-wake|latency|record-writer|recorder-live|capture-bench|doc-shots)-[A-Za-z0-9]+|panel-\d+|core-e2e-\d+|ocr-probe-\d+|clipboardbar-shots|island-shots|probe)$'
+$testDirectoryPattern = '^suira-(?:(?:clipboardbar|island|notes|island-wake|latency|record-writer|recorder-live|capture-bench|doc-shots|bindings|ui-polish)-[A-Za-z0-9]+|panel-\d+|core-e2e-\d+|ocr-probe-\d+|clipboardbar-shots|island-shots|probe)$'
 Get-ChildItem -LiteralPath $tempRoot -Directory -Filter 'suira-*' | Where-Object { $_.Name -match $testDirectoryPattern } | ForEach-Object {
   Add-Target $_.FullName $tempRoot 'temporary-test-packages'
 }
 $testFilePattern = '^suira-(?:foreground-test-[a-f0-9]+\.exe|latency-foreground(?:-v\d+)?\.exe|diag\d*\.log|test\d*\.log|run\d*\.log|start-(?:err|out)\.log|(?:render|sec)-[a-z0-9-]+\.txt|(?:native|corner|real-app)-[a-z0-9-]+\.png|(?:orphan-(?:check|parent)|ps-(?:check|debug)|real-inject)\.js|(?:inject-test|key-inject)\.ps1)$'
 Get-ChildItem -LiteralPath $tempRoot -File -Filter 'suira-*' | Where-Object { $_.Name -match $testFilePattern } | ForEach-Object {
   Add-Target $_.FullName $tempRoot 'temporary-test-files'
+}
+
+# Superseded icon-only caches/helpers. Preserve all content, keys and current v3 cache.
+if ($env:APPDATA) {
+  $iconProfileName = ([string][char]0x968f) + ([string][char]0x5e8f) + ' SUIRA'
+  $iconProfile = Join-Path $env:APPDATA $iconProfileName
+  foreach ($relative in @('cache\app-icons-v1.json','cache\app-icons-v2.json','app-icon-host-v1.exe')) {
+    Add-Target (Join-Path $iconProfile $relative) $iconProfile 'obsolete-icon-cache'
+  }
 }
 
 if ($IncludeLegacyRuntimes) {

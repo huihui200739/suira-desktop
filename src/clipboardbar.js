@@ -643,9 +643,12 @@
     const deltaY = Number(event.deltaY) || 0;
     if (!deltaX && !deltaY) return;
     state.interactionRevision++;
-    // 竖直滚轮转换成横向浏览；水平触控板的 deltaX 交给浏览器原生滚动
+    // 鼠标滚轮按像素/行/页归一化后加速；水平触控板保留原生精细滚动。
     if (Math.abs(deltaY) >= Math.abs(deltaX)) {
-      track.scrollLeft += deltaY;
+      const unit = event.deltaMode === 1 ? 36 : event.deltaMode === 2 ? track.clientWidth : 1;
+      const distance = Math.sign(deltaY) * Math.min(Math.abs(deltaY) * unit * 2.8, track.clientWidth * .9);
+      // 不让 CSS smooth 动画吞掉连续滚轮的位移；键盘选中仍保留平滑滚动。
+      track.scrollTo({ left: track.scrollLeft + distance, behavior: 'instant' });
       event.preventDefault();
     }
   }
