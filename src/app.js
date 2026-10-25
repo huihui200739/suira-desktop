@@ -1116,7 +1116,7 @@ function installEvents() {
   window.suira.app.onToast((payload) => showGlobalToast(payload.message || '', payload.type || ''));
   window.suira.app.onNavigate((page) => navigate(page));
   // 改键后顶栏提示同步刷新
-  window.suira.shortcuts.onChanged(() => syncShortcutPills());
+  window.suira.shortcuts.onChanged(() => { syncShortcutPills(); refreshShortcuts(); });
   window.suira.ocr.onProgress((payload) => {
     if (payload?.status === 'recognizing text' && state.page !== 'trail') {
       showGlobalToast(`正在识别文字 ${Math.round((payload.progress || 0) * 100)}%`);

@@ -13,13 +13,22 @@ return module.exports;})();
 window.__bindingModel = (() => {const module={exports:{}};const require=()=>window.__keyModel;
 ${fs.readFileSync(path.join(root, 'lib/panel-bindings.js'), 'utf8')}
 return module.exports;})();
+window.__shortcutModel = (() => {const module={exports:{}};
+${fs.readFileSync(path.join(root, 'lib/shortcuts.js'), 'utf8')}
+return module.exports;})();
+window.__panelShortcuts = (() => {const module={exports:{}};const require=id=>id==='./keybindings'?window.__keyModel:id==='./panel-bindings'?window.__bindingModel:window.__shortcutModel;
+${fs.readFileSync(path.join(root, 'lib/panel-shortcuts.js'), 'utf8')}
+return module.exports;})();
 window.__bindings={};window.__moves=[];window.__sets=[];
-window.suira.panel.state=async()=>({...window.__keyModel.keyLayout(null,window.__bindings),tools:window.__keyModel.TOOLBOX_TOOLS,actions:window.__keyModel.implementedPanelActions()});
+window.__globals={...window.__shortcutModel.DEFAULT_BINDINGS};
+window.suira.shortcuts={get:async()=>({bindings:window.__globals}),onChanged:()=>()=>{}};
+window.__applyBinding=result=>{if(result.ok){window.__globals={...window.__globals,...window.__panelShortcuts.shortcutPatchForPanel(window.__bindings,result.bindings,window.__globals)};window.__bindings=result.bindings;}};
+window.suira.panel.state=async()=>{const layout=window.__keyModel.keyLayout(null,window.__bindings);for(const key of layout.keys){const name=Object.keys(window.__panelShortcuts.PANEL_SHORTCUT_ACTIONS).find(name=>window.__panelShortcuts.PANEL_SHORTCUT_ACTIONS[name]===key.actionId);if(name)key.accelerator=window.__globals[name]||'';}return {...layout,tools:window.__keyModel.TOOLBOX_TOOLS,actions:window.__keyModel.implementedPanelActions()};};
 window.suira.panel.setBinding=async p=>{
  window.__sets.push(p);
  if(window.__bindingError)return {ok:false,error:window.__bindingError};
  const result=window.__bindingModel.assignPanelBinding(window.__bindings,p.key,p.binding);
- if(result.ok)window.__bindings=result.bindings;
+ window.__applyBinding(result);
  return {ok:result.ok,error:result.error,message:result.message};
 };
 window.suira.panel.moveBinding=async p=>{
@@ -27,7 +36,7 @@ window.suira.panel.moveBinding=async p=>{
  if(window.__moveDelay)await new Promise(r=>setTimeout(r,window.__moveDelay));
  if(window.__bindingError)return {ok:false,error:window.__bindingError};
  const result=window.__bindingModel.movePanelBinding(window.__bindings,p.fromKey,p.toKey);
- if(result.ok)window.__bindings=result.bindings;
+ window.__applyBinding(result);
  return {ok:result.ok,error:result.error,message:result.message};
 };
 window.suira.panel.pickPath=async()=>window.__picked||{ok:false,canceled:true};
@@ -83,60 +92,69 @@ async function checkBindings({ send, evaluate, capture }) {
   await send('Emulation.setEmulatedMedia',{features:[{name:'prefers-color-scheme',value:'light'}]});
   await shown();
   await ev('window.__runs=[],true');
-  const held=await start('Z','S');
-  assert.equal(await ev(`document.querySelector('.is-drop-over')?.dataset.key`),'S');
+  assert.equal(await ev(`document.querySelector('[data-key="C"]').dataset.action`),'capture');
+  assert.equal(await ev(`document.querySelector('[data-key="V"]').dataset.action`),'clipboard');
+  assert.equal(await ev(`document.getElementById('capture-kbd').textContent`),'Alt C');
+  assert.equal(await ev(`document.getElementById('clipboard-kbd').textContent`),'Alt V');
+  const held=await start('C','R');
+  const anchor=await ev(`(()=>{const r=document.querySelector('.key-drag-preview').getBoundingClientRect();const original=document.querySelector('[data-key="C"]').getBoundingClientRect();return {x:r.x,y:r.y,w:r.width,h:r.height,sourceW:original.width,sourceH:original.height};})()`);
+  assert.ok(Math.abs(held.x-anchor.x-anchor.sourceW/2)<1,'拖动保留鼠标按下时的横向抓取点');
+  assert.ok(Math.abs(held.y-anchor.y-anchor.sourceH/2)<1,'拖动保留鼠标按下时的纵向抓取点');
+  assert.ok(Math.abs(anchor.w-anchor.sourceW)<.05);assert.ok(Math.abs(anchor.h-anchor.sourceH)<.05);
+  assert.equal(await ev(`document.querySelector('.is-drop-over')?.dataset.key`),'R');
   assert.equal(await ev(`document.querySelectorAll('.is-drop-target').length>10`),true);
   await capture(send,'25-panel-key-drag.png');
   await mouse('mouseReleased',held,{button:'left',buttons:0,clickCount:1});await wait(100);
-  assert.equal(await state('Z'),'unbound');
-  assert.equal(await ev(`document.querySelector('[data-key="S"]').dataset.action`),'capture');
-  assert.equal(await ev(`document.querySelector('[data-key="S"] .key-badge').textContent`),'S');
+  assert.equal(await state('C'),'unbound');
+  assert.equal(await ev(`document.querySelector('[data-key="R"]').dataset.action`),'capture');
+  assert.equal(await ev(`document.querySelector('[data-key="R"] .key-badge').textContent`),'R');
+  assert.equal(await ev(`document.getElementById('capture-kbd').textContent`),'Alt R');
   assert.deepEqual(await ev('window.__runs'),[],'拖动不能顺带执行源动作');
-  await key('s','KeyS');await wait(30);
+  await key('r','KeyR');await wait(30);
   assert.deepEqual(await ev('window.__runs'),['capture']);
   await ev('window.__runs=[],document.activeElement.blur(),true');
-  await key('z','KeyZ');await wait(180);
+  await key('c','KeyC');await wait(180);
   assert.deepEqual(await ev('window.__runs'),[],'原按键不再触发截图');
   await shown();
-  assert.equal(await state('S'),'bound','重新打开仍使用新键位');
-  console.log('  PASS  左键 Z → S、角标同步、新键执行、旧键失效、重新打开保持绑定');
+  assert.equal(await state('R'),'bound','重新打开仍使用新键位');
+  console.log('  PASS  左键 C → R、角标同步、新键执行、旧键失效、重新打开保持绑定');
 
-  await open('S');await within();
+  await open('R');await within();
   assert.equal(await ev(`document.getElementById('binding-clear').hidden`),false);
   await capture(send,'23-panel-binding-menu.png');
   await ev(`document.getElementById('binding-tools').click(),true`);await wait(140);await within();
-  assert.equal(await ev(`document.querySelector('[data-binding-action="capture"] kbd').textContent`),'S');
+  assert.equal(await ev(`document.querySelector('[data-binding-action="capture"] kbd').textContent`),'R');
   assert.equal(await ev(`document.querySelector('[data-binding-action="capture"]').disabled`),true);
   await capture(send,'24-panel-binding-tools.png');
   await ev(`document.getElementById('binding-back').click(),true`);
   await key('Escape','Escape');
   assert.equal(await ev(`document.getElementById('binding-editor').hidden`),true);
-  assert.equal(await ev(`document.activeElement.dataset.key`),'S');
+  assert.equal(await ev(`document.activeElement.dataset.key`),'R');
   console.log('  PASS  分类菜单、工具当前键位、返回、Esc 关闭并还原焦点');
 
   const moves=await ev('window.__moves.length');
-  await ev('window.__runs=[],true');await drop('S','X');
+  await ev('window.__runs=[],true');await drop('R','X');
   assert.equal(await ev('window.__moves.length'),moves);
   assert.deepEqual(await ev('window.__runs'),[]);
-  assert.equal(await state('S'),'bound');assert.equal(await state('X'),'bound');
-  const again = await point('S');
+  assert.equal(await state('R'),'bound');assert.equal(await state('X'),'bound');
+  const again = await point('R');
   await mouse('mousePressed', again, {button:'left',buttons:1,clickCount:1});
   await mouse('mouseReleased', again, {button:'left',buttons:0,clickCount:1});
   assert.deepEqual(await ev('window.__runs'),['capture'],'取消拖动后的下一次左键立即可用');
   await ev('window.__runs=[],true');
-  const cancel=await start('S','Q');
+  const cancel=await start('R','Q');
   await key('Escape','Escape');
   await mouse('mouseReleased',cancel,{button:'left',buttons:0,clickCount:1});await wait(50);
   assert.equal(await ev('window.__moves.length'),moves);
   assert.equal(await ev(`document.querySelector('.key-drag-preview')===null`),true);
-  await start('S','Q');
+  await start('R','Q');
   await mouse('mouseMoved',{x:5,y:115},{button:'left',buttons:1});
   await mouse('mouseReleased',{x:5,y:115},{button:'left',buttons:0,clickCount:1});
   assert.equal(await ev('window.__moves.length'),moves);
   console.log('  PASS  已占用键拒绝、Esc 取消、放到键盘外取消，都不执行功能');
 
-  await ev(`window.__bindingError='保存被拒绝',true`);await drop('S','Q');
-  assert.equal(await state('S'),'bound');assert.equal(await state('Q'),'unbound');
+  await ev(`window.__bindingError='保存被拒绝',true`);await drop('R','Q');
+  assert.equal(await state('R'),'bound');assert.equal(await state('Q'),'unbound');
   assert.equal(await ev(`document.getElementById('toast').textContent.includes('保存被拒绝')`),true);
   assert.equal(await ev(`document.getElementById('key-grid').getAttribute('aria-busy')`),'false');
   await ev(`window.__bindingError='',true`);await shown();
@@ -164,14 +182,14 @@ async function checkBindings({ send, evaluate, capture }) {
   await open('E');await ev(`document.getElementById('binding-clear').click(),true`);await wait(80);
   assert.equal(await state('E'),'unbound');
   await open('1');await ev(`document.getElementById('binding-tools').click(),document.querySelector('[data-binding-action="capture"]').click(),true`);await wait(80);
-  assert.equal(await state('S'),'unbound');assert.equal(await state('1'),'bound');
+  assert.equal(await state('R'),'unbound');assert.equal(await state('1'),'bound');
   console.log('  PASS  清除绑定和从工具菜单改绑，原位置均正确空出');
 
   for(const [width,height,scheme] of [[1160,620,'light'],[1160,620,'dark'],[640,480,'dark'],[800,560,'light']]){
     await send('Emulation.setDeviceMetricsOverride',{width,height,deviceScaleFactor:2,mobile:false});
     await send('Emulation.setEmulatedMedia',{features:[{name:'prefers-color-scheme',value:scheme}]});
     await shown();
-    for(const char of ['1','=','Z','M']){
+    for(const char of ['1','=','C','M']){
       await open(char);await within();
       await ev(`document.getElementById('binding-tools').click(),true`);await wait(140);await within();
       await close();

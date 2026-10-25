@@ -50,19 +50,19 @@ t('路径/网页绑定带名字，非法协议拒绝', () => {
 
 t('整表清洗丢弃非法键位与非法条目', () => {
   const map = cleanBindingMap({
-    Z: { type: 'action', id: 'capture' },
+    C: { type: 'action', id: 'capture' },
     q: { type: 'none' },
     '！': { type: 'app', target: 'C:\\x.exe' },
     W: { type: 'nope' }
   });
-  assert.deepStrictEqual(Object.keys(map).sort(), ['Q', 'Z']);
+  assert.deepStrictEqual(Object.keys(map).sort(), ['C', 'Q']);
 });
 
 console.log('\n== 有效绑定（覆盖表 + 出厂默认） ==');
 
 t('不在覆盖表里的键回落出厂默认', () => {
-  assert.deepStrictEqual(effectiveBinding({}, 'Z'), { type: 'action', id: 'capture' });
-  assert.deepStrictEqual(effectiveBinding({ Z: { type: 'none' } }, 'Z'), { type: 'none' }, '显式清空优先于默认');
+  assert.deepStrictEqual(effectiveBinding({}, 'C'), { type: 'action', id: 'capture' });
+  assert.deepStrictEqual(effectiveBinding({ C: { type: 'none' } }, 'C'), { type: 'none' }, '显式清空优先于默认');
   assert.deepStrictEqual(effectiveBinding({ W: { type: 'app', target: 'C:\\x.exe', name: 'x' } }, 'W').type, 'app');
   assert.deepStrictEqual(effectiveBinding({}, 'E'), { type: 'none' }, '默认无绑定的键返回 none');
 });
@@ -79,33 +79,33 @@ t('把动作换到空键：原默认键被显式清空', () => {
   const outcome = assignPanelBinding({}, 'W', { type: 'action', id: 'capture' });
   assert.strictEqual(outcome.ok, true);
   assert.deepStrictEqual(outcome.bindings.W, { type: 'action', id: 'capture' });
-  assert.deepStrictEqual(outcome.bindings.Z, { type: 'none' }, '截图原来的键 Z 应清空');
+  assert.deepStrictEqual(outcome.bindings.C, { type: 'none' }, '截图原来的键 C 应清空');
   assert.match(outcome.message, /W/);
 });
 
 t('把动作换到已占用键：与目标键内容互换', () => {
-  // W 上已有自定义绑定：换位后该绑定应挪到 Z
+  // W 上已有自定义绑定：换位后该绑定应挪到 C
   const start = { W: { type: 'folder', target: 'D:\\资料', name: '资料' } };
   const outcome = assignPanelBinding(start, 'W', { type: 'action', id: 'capture' });
   assert.strictEqual(outcome.ok, true);
   assert.deepStrictEqual(outcome.bindings.W, { type: 'action', id: 'capture' });
-  assert.deepStrictEqual(outcome.bindings.Z, { type: 'folder', target: 'D:\\资料', name: '资料' }, '原 W 的绑定换到 Z');
+  assert.deepStrictEqual(outcome.bindings.C, { type: 'folder', target: 'D:\\资料', name: '资料' }, '原 W 的绑定换到 C');
   assert.match(outcome.message, /资料/);
 });
 
 t('把动作绑回自己当前的键是无操作', () => {
-  const outcome = assignPanelBinding({}, 'Z', { type: 'action', id: 'capture' });
+  const outcome = assignPanelBinding({}, 'C', { type: 'action', id: 'capture' });
   assert.strictEqual(outcome.ok, true);
   assert.strictEqual(outcome.changed, false);
   assert.deepStrictEqual(outcome.bindings, {});
 });
 
 t('动作被清空后可重新指派到任意键（无家可归场景）', () => {
-  const start = { Z: { type: 'none' } };
+  const start = { C: { type: 'none' } };
   const outcome = assignPanelBinding(start, 'X', { type: 'action', id: 'capture' });
   assert.strictEqual(outcome.ok, true);
   assert.deepStrictEqual(outcome.bindings.X, { type: 'action', id: 'capture' });
-  assert.deepStrictEqual(outcome.bindings.Z, { type: 'none' }, 'Z 保持原来的显式清空');
+  assert.deepStrictEqual(outcome.bindings.C, { type: 'none' }, 'C 保持原来的显式清空');
 });
 
 t('自定义绑定直接落键，被替换的内置动作会提示移除', () => {
@@ -116,24 +116,24 @@ t('自定义绑定直接落键，被替换的内置动作会提示移除', () =>
 });
 
 t('清除绑定写入显式 none，出厂默认不再生效', () => {
-  const outcome = assignPanelBinding({}, 'Z', null);
+  const outcome = assignPanelBinding({}, 'C', null);
   assert.strictEqual(outcome.ok, true);
-  assert.deepStrictEqual(outcome.bindings.Z, { type: 'none' });
-  assert.deepStrictEqual(effectiveBinding(outcome.bindings, 'Z'), { type: 'none' });
+  assert.deepStrictEqual(outcome.bindings.C, { type: 'none' });
+  assert.deepStrictEqual(effectiveBinding(outcome.bindings, 'C'), { type: 'none' });
   assert.match(outcome.message, /截图/);
 });
 
 t('未知键位与非法绑定被拒绝', () => {
   assert.strictEqual(assignPanelBinding({}, '你好', { type: 'app', target: 'C:\\x.exe' }).ok, false);
-  assert.strictEqual(assignPanelBinding({}, 'Z', { type: 'nope' }).ok, false);
-  assert.strictEqual(assignPanelBinding({}, 'Z', { type: 'action', id: 'record' }).ok, false, '已删除动作不能绑');
+  assert.strictEqual(assignPanelBinding({}, 'C', { type: 'nope' }).ok, false);
+  assert.strictEqual(assignPanelBinding({}, 'C', { type: 'action', id: 'record' }).ok, false, '已删除动作不能绑');
 });
 
 console.log('\n== 换位后的完整键面 ==');
 
 t('换位后每个动作仍只占用一个键位', () => {
   let bindings = {};
-  // 截图 Z→W，提取文字 O→E：两次换位后 38 键里每个动作仍唯一
+  // 截图 C→W，提取文字 O→E：两次换位后 38 键里每个动作仍唯一
   bindings = assignPanelBinding(bindings, 'W', { type: 'action', id: 'capture' }).bindings;
   bindings = assignPanelBinding(bindings, 'E', { type: 'action', id: 'ocr' }).bindings;
   const seen = new Set();
@@ -153,10 +153,10 @@ console.log('\n== 拖动换位 ==');
 t('拖到空字母、数字、符号键时清空原位并保持动作唯一', () => {
   for (const target of ['S', '1', '0', '-', '=']) {
     const start = {};
-    const result = movePanelBinding(start, 'z', target);
+    const result = movePanelBinding(start, 'c', target);
     assert.strictEqual(result.ok, true);
     assert.deepStrictEqual(start, {}, '不修改调用方的覆盖表');
-    assert.deepStrictEqual(effectiveBinding(result.bindings, 'Z'), { type: 'none' });
+    assert.deepStrictEqual(effectiveBinding(result.bindings, 'C'), { type: 'none' });
     assert.deepStrictEqual(effectiveBinding(result.bindings, target), { type: 'action', id: 'capture' });
     assert.strictEqual([...VALID_KEYS].filter(key => effectiveBinding(result.bindings, key).id === 'capture').length, 1);
   }
@@ -173,7 +173,7 @@ t('应用、文件、文件夹和网页绑定都能移动，名字和目标保�
 t('拖到已有功能或自定义绑定上会拒绝，双方内容都不改变', () => {
   for (const start of [{}, { X: { type: 'url', target: 'https://example.com/', name: '示例' } }]) {
     const before = JSON.stringify(start);
-    const result = movePanelBinding(start, 'Z', 'X');
+    const result = movePanelBinding(start, 'C', 'X');
     assert.strictEqual(result.ok, false);
     assert.match(result.error, /已经绑定/);
     assert.strictEqual(JSON.stringify(start), before);
@@ -181,21 +181,21 @@ t('拖到已有功能或自定义绑定上会拒绝，双方内容都不改变',
   }
 });
 t('占位的未实现工具可作为空位，原本已清空的默认键也能放入', () => {
-  assert.strictEqual(movePanelBinding({}, 'Z', 'W').ok, true);
-  assert.strictEqual(movePanelBinding({ X: { type: 'none' } }, 'Z', 'X').ok, true);
+  assert.strictEqual(movePanelBinding({}, 'C', 'W').ok, true);
+  assert.strictEqual(movePanelBinding({ X: { type: 'none' } }, 'C', 'X').ok, true);
 });
 t('松回原键不改数据，空键和未知键不能作为移动来源', () => {
-  assert.strictEqual(movePanelBinding({}, 'Z', 'Z').changed, false);
-  for (const [from, to] of [['Q', 'E'], ['W', 'E'], ['未知', 'Q'], ['Z', 'F13']]) {
+  assert.strictEqual(movePanelBinding({}, 'C', 'C').changed, false);
+  for (const [from, to] of [['Q', 'E'], ['W', 'E'], ['未知', 'Q'], ['C', 'F13']]) {
     assert.strictEqual(movePanelBinding({}, from, to).ok, false);
   }
 });
 t('连续移动后新键触发同一动作，旧键不会回落到默认绑定', () => {
-  const first = movePanelBinding({}, 'Z', 'S');
+  const first = movePanelBinding({}, 'C', 'S');
   const second = movePanelBinding(first.bindings, 'S', '2');
   assert.strictEqual(effectiveBinding(second.bindings, '2').id, 'capture');
   assert.strictEqual(effectiveBinding(second.bindings, 'S').type, 'none');
-  assert.strictEqual(effectiveBinding(second.bindings, 'Z').type, 'none');
+  assert.strictEqual(effectiveBinding(second.bindings, 'C').type, 'none');
 });
 
 (async () => {
@@ -205,10 +205,10 @@ t('连续移动后新键触发同一动作，旧键不会回落到默认绑定',
   try {
     const file = path.join(temporary, 'data.json');
     const store = new SuiraStore(file);
-    await store.setPanelBindings(movePanelBinding(store.getPanelBindings(), 'Z', 'S').bindings);
+    await store.setPanelBindings(movePanelBinding(store.getPanelBindings(), 'C', 'S').bindings);
     const reopened = new SuiraStore(file);
     const restored = reopened.getPanelBindings();
-    assert.strictEqual(effectiveBinding(restored, 'Z').type, 'none');
+    assert.strictEqual(effectiveBinding(restored, 'C').type, 'none');
     assert.strictEqual(effectiveBinding(restored, 'S').id, 'capture');
     console.log('  PASS  保存后重建 store，移动后的键位和原键空位都保留');
     pass++;

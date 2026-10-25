@@ -9,7 +9,7 @@
     "start": "node tools/dev-start.js",
     "dev": "node tools/dev-start.js --dev",
     "clean": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File tools/clean-dev-artifacts.ps1",
-    "test": "node test-core.js && node test-app-icons.js && node test-icon-disk-cache.js && node test-native-capture.js && node test-clipboard.js && node test-ocr.js && node test-translate.js && node test-notes.js && node test-island-store.js && node test-island.js && node test-island-wake.js && node test-actions.js && node test-capabilities.js && node test-keybindings.js && node test-panel-bindings.js && node test-panel-flows.js && node test-return.js && node test-foreground.js && node test-security.js && node test-key-watch.js && node test-display.js && node test-inject.js && node test-diagnostics.js && node test-ui.js && node test-render.js && node tools/panel-shot.js --check && node tools/island-check.js && node tools/notes-check.js && node tools/clipboardbar-check.js && node tools/confirm-check.js && node tools/overlay-check.js && node tools/shortcut-check.js",
+    "test": "node test-core.js && node test-app-icons.js && node test-icon-disk-cache.js && node test-native-capture.js && node test-clipboard.js && node test-ocr.js && node test-translate.js && node test-notes.js && node test-island-store.js && node test-island.js && node test-island-wake.js && node test-actions.js && node test-capabilities.js && node test-keybindings.js && node test-panel-bindings.js && node test-panel-shortcuts.js && node test-panel-flows.js && node test-return.js && node test-foreground.js && node test-security.js && node test-key-watch.js && node test-display.js && node test-inject.js && node test-diagnostics.js && node test-ui.js && node test-render.js && node tools/panel-shot.js --check && node tools/island-check.js && node tools/notes-check.js && node tools/clipboardbar-check.js && node tools/confirm-check.js && node tools/overlay-check.js && node tools/shortcut-check.js",
     "test:core": "node test-core.js",
     "test:clipboard": "node test-clipboard.js",
     "test:ocr": "node test-ocr.js",
@@ -51,7 +51,7 @@
     "verify:panel": "node tools/electron-panel-check.js",
     "test:island-wake": "node test-island-wake.js",
     "test:app-icons": "node test-app-icons.js",
-    "test:bindings": "node test-panel-bindings.js && node tools/panel-shot.js --check",
+    "test:bindings": "node test-panel-bindings.js && node test-panel-shortcuts.js && node tools/panel-shot.js --check",
     "verify:bindings": "node tools/electron-bindings-check.js"
   },
   "devDependencies": {

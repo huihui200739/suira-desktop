@@ -55,15 +55,15 @@ t('一个动作只占用一个键位（无重复绑定同一动作）', () => {
   assert.strictEqual(new Set(actionIds).size, actionIds.length);
 });
 
-t('键位与物理位置固定：截图始终在 Z、提取文字始终在 O', () => {
-  assert.strictEqual(DEFAULT_KEY_BINDINGS.Z, 'capture');
+t('默认截图位于 C，与 Alt+C 的主键一致；提取文字在 O', () => {
+  assert.strictEqual(DEFAULT_KEY_BINDINGS.C, 'capture');
   assert.strictEqual(DEFAULT_KEY_BINDINGS.O, 'ocr');
   assert.strictEqual(DEFAULT_KEY_BINDINGS.P, 'pin');
 });
 
-t('对照参考图的键位映射：X=剪贴板、V=文本转换、B=标注、L=锁屏', () => {
-  assert.strictEqual(DEFAULT_KEY_BINDINGS.X, 'clipboard');
-  assert.strictEqual(DEFAULT_KEY_BINDINGS.V, 'text-clean');
+t('默认 V=剪贴板与 Alt+V 一致，X=文本转换、B=标注、L=锁屏', () => {
+  assert.strictEqual(DEFAULT_KEY_BINDINGS.V, 'clipboard');
+  assert.strictEqual(DEFAULT_KEY_BINDINGS.X, 'text-clean');
   assert.strictEqual(DEFAULT_KEY_BINDINGS.B, 'annotate');
   assert.strictEqual(DEFAULT_KEY_BINDINGS.L, 'lock');
 });
@@ -107,7 +107,7 @@ t('isReady 返回 false 时动作降级为不可用', () => {
 
 t('isReady 只影响指定动作', () => {
   const partial = keyLayout((id) => id !== 'capture');
-  const capture = partial.keys.find((k) => k.key === 'Z');
+  const capture = partial.keys.find((k) => k.key === 'C');
   const ocr = partial.keys.find((k) => k.key === 'O');
   assert.notStrictEqual(capture.state, 'bound');
   assert.strictEqual(ocr.state, 'bound');

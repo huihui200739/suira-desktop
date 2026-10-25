@@ -169,7 +169,7 @@ function keyMarkup(key) {
     : key.state === 'unimplemented'
       ? `<span class="key-letter">${escapeHtml(key.key)}</span><span class="key-name">${escapeHtml(key.label)}</span>`
       : `<span class="key-letter">${escapeHtml(key.key)}</span>`;
-  const title = bound ? `${key.label}${key.hint ? `：${key.hint}` : ''}`
+  const title = bound ? `${key.label}${key.hint ? `：${key.hint}` : ''}${key.accelerator ? `（${key.accelerator.replace(/\+/g, ' + ')}）` : ''}`
     : custom ? `${key.label}：${key.hint}（右键可改绑）`
     : key.state === 'unimplemented' ? `${key.label}：尚未实现` : '这个键还没有绑定动作，点击或右键可绑定';
   const aria = bound ? `${key.key}：${key.label}`
@@ -352,7 +352,10 @@ function beginKeyDrag(event, button) {
   if (bindingEditorOpen() || bindingState.busy || dragState.source) return;
   const key = keyByChar(button.dataset.key);
   if (!key || !['bound', 'custom'].includes(key.state)) return;
-  Object.assign(dragState, { source: button, pointerId: event.pointerId, x: event.clientX, y: event.clientY, active: false, target: '' });
+  const bounds = button.getBoundingClientRect();
+  Object.assign(dragState, { source: button, pointerId: event.pointerId, x: event.clientX, y: event.clientY,
+    offsetX: event.clientX - bounds.left, offsetY: event.clientY - bounds.top, width: bounds.width, height: bounds.height,
+    active: false, target: '' });
 }
 
 function updateKeyDrag(event) {
@@ -372,13 +375,15 @@ function updateKeyDrag(event) {
     drag.ghost.removeAttribute('aria-describedby');
     drag.ghost.setAttribute('aria-hidden', 'true');
     drag.ghost.tabIndex = -1;
+    drag.ghost.style.width = `${drag.width}px`;
+    drag.ghost.style.height = `${drag.height}px`;
     document.body.append(drag.ghost);
     $$('.key', $('#key-grid')).forEach(button => button.classList.toggle('is-drop-target', Boolean(canDropOn(keyByChar(button.dataset.key)))));
     $('#key-drag-status').hidden = false;
   }
   event.preventDefault();
-  drag.ghost.style.left = `${Math.max(0, Math.min(innerWidth - drag.ghost.offsetWidth, event.clientX + 14))}px`;
-  drag.ghost.style.top = `${Math.max(0, Math.min(innerHeight - drag.ghost.offsetHeight, event.clientY + 14))}px`;
+  drag.ghost.style.left = `${event.clientX - drag.offsetX}px`;
+  drag.ghost.style.top = `${event.clientY - drag.offsetY}px`;
   const hovered = document.elementFromPoint(event.clientX, event.clientY)?.closest('#key-grid .key');
   const key = keyByChar(hovered?.dataset.key);
   drag.target = canDropOn(key) ? key.key : '';
@@ -813,14 +818,14 @@ async function loadState() {
 
 /** 底部截图角标显示真实的全局键位（用户改过键时不再显示写死的 Ctrl Shift A）。 */
 async function syncShortcutChip() {
-  const el = $('#capture-kbd');
-  if (!el) return;
   try {
     const snapshot = await window.suira.shortcuts.get();
-    const accelerator = String(snapshot?.bindings?.capture || '');
-    el.textContent = accelerator
-      ? accelerator.replace(/CommandOrControl/gi, 'Ctrl').split('+').join(' ')
-      : '未绑定';
+    for (const [name, selector] of [['capture', '#capture-kbd'], ['clipboardBar', '#clipboard-kbd']]) {
+      const el = $(selector);
+      if (!el) continue;
+      const accelerator = String(snapshot?.bindings?.[name] || '');
+      el.textContent = accelerator ? accelerator.replace(/CommandOrControl/gi, 'Ctrl').split('+').join(' ') : '未绑定';
+    }
   } catch {
     /* 读不到键位时保留默认文案 */
   }
@@ -1094,6 +1099,10 @@ function installEvents() {
   });
 
   window.suira.content.onChanged(() => loadRecent());
+  window.suira.panel.onChanged?.(() => {
+    if (!bindingState.busy && !dragState.source && !bindingEditorOpen()) loadState();
+  });
+  window.suira.shortcuts?.onChanged?.(() => syncShortcutChip());
   // 主进程的「面板布局轮换」快捷键：动作 / 应用 / 工具箱 之间切换
   window.suira.quick.onMode((mode) => {
     if (typeof mode !== 'string' || !mode) return;

@@ -312,7 +312,7 @@ kbd { font-family: var(--font-ui); font-size: var(--text-1); font-weight: 600; }
 .capture-chip:hover { border-color: var(--accent); color: var(--accent-deep); }
 .capture-chip { background: linear-gradient(165deg,var(--control-top),var(--control-bottom)); border-color: var(--floating-edge); box-shadow: var(--control-shadow); }
 .capture-chip span { font-size: 15px; line-height: 1; }
-.capture-chip kbd { color: var(--ink-faint); font-weight: 400; }
+.capture-chip kbd, .clipboard-chip kbd { color: var(--ink-faint); font-weight: 400; }
 .clipboard-chip { display: flex; align-items: center; gap: 6px; margin-left: auto; padding: 7px 12px; border: 0.5px solid var(--floating-edge); border-radius: var(--radius-pill); background: linear-gradient(165deg,var(--control-top),var(--control-bottom)); box-shadow: var(--control-shadow); font-size: var(--text-1); font-weight: 600; }
 .clipboard-chip:hover { border-color: var(--accent); color: var(--accent-deep); }
 .clipboard-chip svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.7; }
@@ -405,7 +405,7 @@ kbd { font-family: var(--font-ui); font-size: var(--text-1); font-weight: 600; }
   .keyboard { gap: 12px; }
   .tool-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .foot-hints { gap: 8px; }
-  .capture-chip kbd { display: none; }
+  .capture-chip kbd, .clipboard-chip kbd { display: none; }
 }
 @media (max-height: 580px) {
   .panel-head { padding-top: 16px; }
@@ -519,6 +519,8 @@ kbd { font-family: var(--font-ui); font-size: var(--text-1); font-weight: 600; }
 
 /* 拖动达到阈值才提起卡片，普通左键单击仍然直接执行。 */
 .key { touch-action: none; user-select: none; }
+.key:active:not(:disabled) { scale: none; }
+.key.is-bound:active .key-card, .key.is-custom:active .key-card { transform: none; }
 .key.is-bound, .key.is-custom { cursor: grab; }
 .is-key-dragging, .is-key-dragging .key { cursor: grabbing; }
 .is-key-dragging .foot-hints { display: none; }

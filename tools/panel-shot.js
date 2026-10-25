@@ -249,10 +249,10 @@ async function capture(send, name) {
     await evaluate(send, `document.getElementById('open-clipboard').click(), true`);
     await sleep(30);
     assert.equal(await evaluate(send, `window.__barOpened`),1);
-    await evaluate(send, `document.dispatchEvent(new KeyboardEvent('keydown',{key:'x',bubbles:true})), true`);
+    await evaluate(send, `document.dispatchEvent(new KeyboardEvent('keydown',{key:'v',bubbles:true})), true`);
     await sleep(30);
     assert.equal(await evaluate(send, `window.__barOpened`),2);
-    console.log('  PASS  剪贴板按钮和 X 键均打开底部历史横栏');
+    console.log('  PASS  剪贴板按钮和 V 键均打开底部历史横栏');
 
     await evaluate(send, `document.dispatchEvent(new KeyboardEvent('keydown',{key:' ',bubbles:true})), 'ok'`);
     await sleep(900);

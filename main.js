@@ -59,6 +59,7 @@ const { keyLayout, TOOLBOX_TOOLS, PANEL_ACTIONS, DEFAULT_KEY_BINDINGS, KEY_ROWS,
 const { createPanelActions } = require('./lib/panel-actions');
 // 38 键面板的自定义键位绑定：清洗与换位是纯模型，主进程只负责落盘与执行
 const { assignPanelBinding, movePanelBinding, effectiveBinding } = require('./lib/panel-bindings');
+const { PANEL_SHORTCUT_ACTIONS, acceleratorKey, alignPanelShortcuts, shortcutPatchForPanel, migrateLegacyPanelBindings } = require('./lib/panel-shortcuts');
 // 第三批：按住型唤起用常驻 PowerShell 助手拿「松开」事件；浮引岛纯模型负责暂存语义
 const { KeyWatchProbe, ensureNativeHost } = require('./lib/key-watch');
 const islandModel = require('./lib/island-model');
@@ -256,11 +257,12 @@ function shortcutBindings() {
     quick: settings.shortcutQuick ?? DEFAULT_BINDINGS.quick,
     capture: settings.shortcutCapture ?? DEFAULT_BINDINGS.capture,
     panelCycle: settings.shortcutPanelCycle ?? DEFAULT_BINDINGS.panelCycle,
-    pinnedToggle: settings.shortcutPinnedToggle ?? DEFAULT_BINDINGS.pinnedToggle
+    pinnedToggle: settings.shortcutPinnedToggle ?? DEFAULT_BINDINGS.pinnedToggle,
+    clipboardBar: settings.shortcutClipboardBar ?? DEFAULT_BINDINGS.clipboardBar
   };
   const bindings = {};
   for (const [name, accelerator] of Object.entries(map)) {
-    if (accelerator) bindings[name] = accelerator;
+    bindings[name] = accelerator;
   }
   return bindings;
 }
@@ -273,6 +275,47 @@ const SHORTCUT_SETTING_KEYS = {
   pinnedToggle: 'shortcutPinnedToggle',
   clipboardBar: 'shortcutClipboardBar'
 };
+
+// 拖动、设置页改键和恢复默认都走同一条串行事务，避免两套映射再次分叉。
+let panelConfigurationQueue = Promise.resolve();
+function queuePanelConfiguration(task) {
+  const next = panelConfigurationQueue.catch(() => {}).then(task);
+  panelConfigurationQueue = next.catch(() => {});
+  return next;
+}
+
+async function commitPanelConfiguration(bindings, requested = {}, options = {}) {
+  const before = store.getPanelBindings();
+  const snapshot = shortcutManager.snapshot();
+  const patch = { ...requested, ...shortcutPatchForPanel(before, bindings, { ...snapshot.bindings, ...requested }) };
+  const momentary = options.momentary ?? momentaryAccelerator();
+  if (momentary && Object.values(patch).some(value => value && normalizeAccelerator(value) === normalizeAccelerator(momentary))) {
+    return { ok: false, error: '与「按住型唤起」的快捷键重复' };
+  }
+  const result = shortcutManager.rebindMany(patch, { notify: false });
+  if (!result.ok) return result;
+  const settingsPatch = Object.fromEntries(Object.entries(patch).map(([name, value]) => [SHORTCUT_SETTING_KEYS[name], value]));
+  if (options.momentary !== undefined) settingsPatch.shortcutMomentary = options.momentary;
+  try { await store.setPanelConfiguration(bindings, settingsPatch); }
+  catch (error) {
+    shortcutManager.restoreSnapshot(snapshot, { notify: false });
+    broadcast('shortcuts:changed', shortcutManager.snapshot().status);
+    return { ok: false, error: error.message || '键位保存失败，已保留原绑定' };
+  }
+  broadcast('panel:changed');
+  broadcast('shortcuts:changed', shortcutManager.snapshot().status);
+  return { ok: true, status: shortcutManager.snapshot().status };
+}
+
+function panelState() {
+  const layout = keyLayout(appIndexReady, store.getPanelBindings());
+  const shortcuts = shortcutManager?.snapshot().bindings || shortcutBindings();
+  for (const key of layout.keys) {
+    const name = Object.keys(PANEL_SHORTCUT_ACTIONS).find(name => PANEL_SHORTCUT_ACTIONS[name] === key.actionId);
+    if (name) key.accelerator = shortcuts[name] || '';
+  }
+  return { ...layout, actions: implementedPanelActions(), tools: TOOLBOX_TOOLS };
+}
 
 /** 按住型唤起当前键位（清除绑定后为空串）。 */
 function momentaryAccelerator() {
@@ -2668,12 +2711,7 @@ function registerIpc() {
   });
 
   /* ---- 38 键动作面板 ---- */
-  ipcMain.handle('panel:state', () => ({
-    ...keyLayout(appIndexReady, store.getPanelBindings()),
-    // 绑定编辑器可分配的内置动作目录
-    actions: implementedPanelActions(),
-    tools: TOOLBOX_TOOLS
-  }));
+  ipcMain.handle('panel:state', panelState);
   ipcMain.handle('panel:run', async (_event, actionId) => {
     const id = String(actionId || '');
     // 自定义绑定（应用/文件夹/网页/文件）走 binding:<键位> 通道
@@ -2697,19 +2735,25 @@ function registerIpc() {
   });
 
   /* ---- 键位自定义绑定：设置 / 清除 / 选择本机目标 ---- */
-  ipcMain.handle('panel:binding:set', async (_event, payload) => {
+  ipcMain.handle('panel:binding:set', (_event, payload) => queuePanelConfiguration(async () => {
     const key = normalizeKey(payload?.key);
     const outcome = assignPanelBinding(store.getPanelBindings(), key, payload?.binding || null);
     if (!outcome.ok) return { ok: false, error: outcome.error };
-    if (outcome.changed) await store.setPanelBindings(outcome.bindings);
+    if (outcome.changed) {
+      const saved = await commitPanelConfiguration(outcome.bindings);
+      if (!saved.ok) return saved;
+    }
     return { ok: true, message: outcome.message };
-  });
-  ipcMain.handle('panel:binding:move', async (_event, payload) => {
+  }));
+  ipcMain.handle('panel:binding:move', (_event, payload) => queuePanelConfiguration(async () => {
     const outcome = movePanelBinding(store.getPanelBindings(), payload?.fromKey, payload?.toKey);
     if (!outcome.ok) return { ok: false, error: outcome.error };
-    if (outcome.changed) await store.setPanelBindings(outcome.bindings);
+    if (outcome.changed) {
+      const saved = await commitPanelConfiguration(outcome.bindings);
+      if (!saved.ok) return saved;
+    }
     return { ok: true, message: outcome.message };
-  });
+  }));
   ipcMain.handle('panel:binding:pick', async (_event, options) => {
     if (panelBindingPickerOpen) return { ok: false, error: '请先完成当前的文件选择' };
     const owner = BrowserWindow.fromWebContents(_event.sender);
@@ -2792,10 +2836,16 @@ function registerIpc() {
     if (momentaryCurrent && normalizeAccelerator(momentaryCurrent) === normalizeAccelerator(accelerator)) {
       return { ok: false, error: '与「按住型唤起」的快捷键重复' };
     }
-    const result = shortcutManager.rebind(name, accelerator);
-    if (!result.ok) return { ok: false, error: result.error, status: result.status };
-    await store.updateSettings({ [SHORTCUT_SETTING_KEYS[name]]: accelerator });
-    return { ok: true, status: result.status };
+    return queuePanelConfiguration(async () => {
+      let bindings = store.getPanelBindings();
+      const key = acceleratorKey(accelerator);
+      if (PANEL_SHORTCUT_ACTIONS[name] && key) {
+        const moved = assignPanelBinding(bindings, key, { type: 'action', id: PANEL_SHORTCUT_ACTIONS[name] });
+        if (!moved.ok) return moved;
+        bindings = moved.bindings;
+      }
+      return commitPanelConfiguration(bindings, { [name]: accelerator });
+    });
   });
 
   // 恢复出厂默认（对应原产品 KeyboardShortcutRecorderController.restoreDefault）
@@ -2811,22 +2861,16 @@ function registerIpc() {
       if (!started.ok) return { ok: false, error: started.error || '按住型侦测启动失败' };
       return { ok: true, restored: ['momentary'], status: momentaryStatus() };
     }
-    const result = shortcutManager.restoreDefault(name || undefined);
-    if (!result.ok) return { ok: false, error: result.error, status: result.status };
-    const patch = {};
-    const bindings = shortcutManager.snapshot().bindings;
-    for (const restored of result.restored) {
-      const key = SHORTCUT_SETTING_KEYS[restored];
-      if (key) patch[key] = bindings[restored];
-    }
-    // 无参 = 恢复全部：按住型唤起也要回到出厂键
-    if (!name) patch.shortcutMomentary = DEFAULT_MOMENTARY_BINDINGS.momentary;
-    if (Object.keys(patch).length) await store.updateSettings(patch);
-    if (!name) {
-      await setupMomentaryProbe();
-      result.restored.push('momentary');
-    }
-    return { ok: true, status: { ...result.status, momentary: momentaryStatus() }, restored: result.restored };
+    return queuePanelConfiguration(async () => {
+      const patch = name ? { [name]: DEFAULT_BINDINGS[name] } : { ...DEFAULT_BINDINGS };
+      const desired = { ...shortcutManager.snapshot().bindings, ...patch };
+      const aligned = alignPanelShortcuts(store.getPanelBindings(), desired);
+      if (!aligned.ok) return aligned;
+      const result = await commitPanelConfiguration(aligned.bindings, patch, name ? {} : { momentary: DEFAULT_MOMENTARY_BINDINGS.momentary });
+      if (!result.ok) return result;
+      if (!name) await setupMomentaryProbe();
+      return { ...result, status: { ...result.status, momentary: momentaryStatus() }, restored: [...Object.keys(patch), ...(!name ? ['momentary'] : [])] };
+    });
   });
 
   // 清除绑定（对应原产品 clearShortcut）：解绑后不再响应，但保留条目
@@ -2839,10 +2883,7 @@ function registerIpc() {
       return { ok: true, status: momentaryStatus() };
     }
     if (!SHORTCUT_SETTING_KEYS[name]) return { ok: false, error: '未知的快捷键名称' };
-    const result = shortcutManager.clear(name);
-    if (!result.ok) return { ok: false, error: result.error, status: result.status };
-    await store.updateSettings({ [SHORTCUT_SETTING_KEYS[name]]: '' });
-    return { ok: true, status: result.status };
+    return queuePanelConfiguration(() => commitPanelConfiguration(store.getPanelBindings(), { [name]: '' }));
   });
 
   ipcMain.handle('return:target', () => returnTarget);
@@ -2951,6 +2992,9 @@ function registerIpc() {
   ipcMain.handle('settings:get', () => publicSettings());
   ipcMain.handle('settings:update', async (_event, patch) => {
     const incoming = patch && typeof patch === 'object' ? { ...patch } : {};
+    if ([...Object.values(SHORTCUT_SETTING_KEYS), 'shortcutMomentary'].some(key => Object.hasOwn(incoming, key))) {
+      return { ok: false, error: '请通过快捷键设置修改组合键，以便同步面板键位' };
+    }
     // 翻译密钥：界面传明文，主进程加密后落盘；空串表示"不改动"，null 才是清除
     let keyTouched = false;
     if (Object.prototype.hasOwnProperty.call(incoming, 'translateApiKey')) {
@@ -3133,6 +3177,11 @@ async function initialize() {
   applyTheme();
   // 旧版三键默认键位迁移到两键组合；改过键的用户不受影响
   await migrateShortcutDefaults();
+  // 老版本覆盖表基于 Z/X/V。先还原旧有效绑定，再按实际保存的组合键对齐。
+  const currentPanel = store.data.panelShortcutVersion >= 1 ? store.getPanelBindings() : migrateLegacyPanelBindings(store.getPanelBindings());
+  const alignedPanel = alignPanelShortcuts(currentPanel, shortcutBindings());
+  if (!alignedPanel.ok) console.warn(`面板键位无法自动对齐：${alignedPanel.error}`);
+  await store.setPanelConfiguration(alignedPanel.ok ? alignedPanel.bindings : currentPanel, {}, 1);
   // 全局关掉拼写检查：各窗口已经传了 spellcheck:false，这里再兜一层底，
   // 避免任何渲染进程加载/初始化系统拼写词典（一个常驻的词库 + 后台线程）。
   try { session.defaultSession.setSpellCheckerEnabled(false); } catch { /* 会话未就绪时忽略 */ }
