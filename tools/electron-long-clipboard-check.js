@@ -16,7 +16,7 @@ const config=()=>JSON.parse(fs.readFileSync(${JSON.stringify(control)},'utf8'));
 clipboard.read=async()=>[];clipboard.readText=async()=>'';clipboard.writeText=async text=>{if(config().failCopy)throw Error('模拟复制失败');log('clipboard',{kind:'text',text})};clipboard.write=async items=>log('clipboard',{kind:'image',types:items[0].types});
 const keys=new Set();globalShortcut.register=k=>{keys.add(k);return true};globalShortcut.unregister=k=>keys.delete(k);globalShortcut.unregisterAll=()=>keys.clear();
 const snapshot=name=>name==='self'?{hwnd:'300',pid:process.pid,processStartedAt:123,title:'随序'}:{hwnd:name==='A'?'100':'200',pid:name==='A'?777:888,processStartedAt:123,title:name==='A'?'ChatGPT 当前聊天':'另一个聊天',bounds:{x:0,y:0,width:900,height:700}};
-const f=require(${JSON.stringify(path.join(root,'lib/foreground-probe.js'))});f.ForegroundProbe=class {constructor(){this.ready=true;}isAvailable(){return true}isReady(){return true}async start(){return true}stop(){}dispose(){}async query(hwnd){return hwnd?snapshot(hwnd==='100'?'A':'B'):snapshot(config().current)}async pasteTo(target){log('paste',{target});return{ok:true}}};
+const f=require(${JSON.stringify(path.join(root,'lib/foreground-probe.js'))});f.ForegroundProbe=class {constructor(){this.ready=true;}isAvailable(){return true}isReady(){return true}async start(){return true}stop(){}dispose(){}async query(hwnd){return hwnd?snapshot(hwnd==='100'?'A':'B'):snapshot(config().current)}async queryAt(){return snapshot(config().current)}async focusTo(){return {ok:true}}async pasteTo(target){log('paste',{target});return{ok:true}}};
 const native=require(${JSON.stringify(path.join(root,'lib/native-capture.js'))});native.captureNative=async()=>screen.getAllDisplays().map(d=>{const size=screen.dipToScreenRect(null,d.bounds),data=Buffer.alloc(size.width*size.height*4,230);return {...size,dataUrl:nativeImage.createFromBitmap(data,{width:size.width,height:size.height}).toDataURL()}});
 let fixtureWindow,fixtureReady;const seen=new Set();
 async function browserCapture(rect){
@@ -30,7 +30,7 @@ async function browserCapture(rect){
   if(!seen.has(offset)){seen.add(offset);fs.writeFileSync(${JSON.stringify(tmp)}+'/frame-'+offset+'.png',png);}
   return {width:rect.width,height:rect.height,dataUrl:image.toDataURL()};
 }
-const worker=require(${JSON.stringify(path.join(root,'lib/region-capture.js'))});worker.RegionCapture=class {capture(rect){return browserCapture(rect)}stop(){log('stop',{})}};
+const worker=require(${JSON.stringify(path.join(root,'lib/region-capture.js'))});worker.RegionCapture=class {capture(rect){if(config().failRegion)throw Error('模拟原生采集失败');return browserCapture(rect)}stop(){log('stop',{})}};
 require(${JSON.stringify(path.join(root,'main.js'))});`);
   const env={...process.env};delete env.ELECTRON_RUN_AS_NODE;const log=fs.openSync(path.join(tmp,'app.log'),'w');child=spawn(exe,[entry,`--remote-debugging-port=${port}`],{env,windowsHide:true,stdio:['ignore',log,log]});fs.closeSync(log);
   const page=async select=>{const p=await until(()=>connect(port,select));sockets.push(p.ws);return p;};
@@ -82,6 +82,12 @@ require(${JSON.stringify(path.join(root,'main.js'))});`);
   const count=records().filter(x=>x.type==='capture').length;await wait(600);assert.equal(records().filter(x=>x.type==='capture').length,count);
   const afterCancel=await main.evaluate(`window.suira.content.list({kinds:['image']})`);assert.equal(afterCancel.filter(x=>x.meta?.captureKind==='long').length,1);
   console.log('PASS 真实浏览器文字页面逐行像素校验；取消关闭组件、停止采集且不生成额外图片');
+  update({current:'A',failRegion:true});await main.evaluate(`window.suira.panel.run('long-capture')`);await until(()=>overlay.evaluate(`state.intent==='long'&&Boolean(state.image)`));
+  await overlay.send('Input.dispatchMouseEvent',{type:'mousePressed',x:80,y:90,button:'left',buttons:1,clickCount:1});await overlay.send('Input.dispatchMouseEvent',{type:'mouseMoved',x:320,y:330,button:'left',buttons:1});await overlay.send('Input.dispatchMouseEvent',{type:'mouseReleased',x:320,y:330,button:'left',buttons:0,clickCount:1});
+  await until(()=>overlay.evaluate(`document.querySelector('.action-toast').textContent.includes('模拟原生采集失败')`));
+  assert.equal(await overlay.evaluate('hasSelection()&&Boolean(state.image)'),true,'启动失败保留原选区和画面');
+  update({failRegion:false});await overlay.evaluate('window.suira.capture.cancel()');
+  console.log('PASS 原生启动失败显示具体原因并保留选区，不重置为循环框选提示');
 })().catch(error=>{console.error(error);for(const offset of [0,70]){const file=path.join(tmp,'frame-'+offset+'.png');if(fs.existsSync(file))fs.copyFileSync(file,path.join(root,'.workbuddy','long-frame-'+offset+'.png'));}const trace=path.join(tmp,'trace.jsonl');if(fs.existsSync(trace)){const records=fs.readFileSync(trace,'utf8').trim().split('\n').filter(line=>line.includes('"type":"capture"'));console.error(records.slice(0,3).join('\n'));}if(fs.existsSync(path.join(tmp,'app.log')))console.error(fs.readFileSync(path.join(tmp,'app.log'),'utf8').slice(-3000));process.exitCode=1;}).finally(async()=>{
   for(const socket of sockets)socket.close();if(child&&child.exitCode===null){const done=new Promise(r=>child.once('exit',r));child.kill();await done;}await wait(300);try{fs.rmSync(tmp,{recursive:true,force:true});}catch{}
 });

@@ -171,8 +171,9 @@ function keyMarkup(key) {
     : key.state === 'unimplemented'
       ? `<span class="key-letter">${escapeHtml(key.key)}</span><span class="key-name">${escapeHtml(key.label)}</span>`
       : `<span class="key-letter">${escapeHtml(key.key)}</span>`;
-  const title = bound ? `${key.label}${key.hint ? `：${key.hint}` : ''}${key.accelerator ? `（${key.accelerator.replace(/\+/g, ' + ')}）` : ''}`
-    : custom ? `${key.label}：${key.hint}（右键可改绑）`
+  const shortcutHint=key.accelerator?`（${key.accelerator.replace(/\+/g, ' + ')}）${key.shortcutStatus?.ok===false?' 全局键不可用：'+key.shortcutStatus.error:''}`:'';
+  const title = bound ? `${key.label}${key.hint ? `：${key.hint}` : ''}${shortcutHint}`
+    : custom ? `${key.label}：${key.hint}${shortcutHint}（右键可改绑）`
     : key.state === 'unimplemented' ? `${key.label}：尚未实现` : '这个键还没有绑定动作，点击或右键可绑定';
   const aria = bound ? `${key.key}：${key.label}`
     : custom ? `${key.key}：${key.label}`
@@ -693,6 +694,13 @@ async function runAction(actionId) {
   if (!actionId) return;
   try {
     const result = await window.suira.panel.run(actionId);
+    await handleActionResult(result);
+  } catch (error) {
+    toast(error.message || '动作执行失败', 'error');
+  }
+}
+
+async function handleActionResult(result) {
     if (!result) return;
     if (result.ocr) { showOcr(result.ocr.text || '', result.ocr.itemId || ''); return; }
     if (result.translate) { await showTranslate(result.translate); return; }
@@ -706,10 +714,9 @@ async function runAction(actionId) {
       return;
     }
     if (result.closePanel) window.suira.quick.hide();
-  } catch (error) {
-    toast(error.message || '动作执行失败', 'error');
-  }
 }
+
+window.suira.panel.onResult?.(result=>handleActionResult(result).catch(error=>toast(error.message||'动作执行失败','error')));
 
 function showOcr(text, itemId) {
   closeTranslate();
@@ -828,7 +835,9 @@ async function syncShortcutChip() {
     for (const [name, selector] of [['capture', '#capture-kbd'], ['clipboardBar', '#clipboard-kbd']]) {
       const el = $(selector);
       if (!el) continue;
-      const accelerator = String(snapshot?.bindings?.[name] || '');
+      const action=name==='capture'?'capture':'clipboard';
+      const bound=state.keys.find(key=>key.actionId===action&&key.state==='bound');
+      const accelerator = String(bound?.accelerator || snapshot?.bindings?.[name] || '');
       el.textContent = accelerator ? accelerator.replace(/CommandOrControl/gi, 'Ctrl').split('+').join(' ') : '未绑定';
     }
   } catch {

@@ -4,7 +4,8 @@ const fs = require('node:fs'), os = require('node:os'), path = require('node:pat
 const { DEFAULT_BINDINGS, ShortcutManager } = require('./lib/shortcuts');
 const { SuiraStore } = require('./lib/store');
 const { assignPanelBinding, movePanelBinding } = require('./lib/panel-bindings');
-const { acceleratorKey, actionKey, alignPanelShortcuts, shortcutPatchForPanel, migrateLegacyPanelBindings } = require('./lib/panel-shortcuts');
+const { acceleratorKey, actionKey, alignPanelShortcuts, shortcutPatchForPanel, migrateLegacyPanelBindings, panelGlobalBindings, panelShortcutName } = require('./lib/panel-shortcuts');
+const {KEY_ROWS,PANEL_ACTIONS}=require('./lib/keybindings');
 let count=0;
 function check(name,fn){fn();count++;console.log('PASS '+name);}
 
@@ -46,6 +47,34 @@ check('创建钉图与钉图显隐、唤起面板与布局轮换不会错误地�
 
 const active=new Map(), blocked=new Set();
 const api={register:(key,fn)=>{if(blocked.has(key)||active.has(key))return false;active.set(key,fn);return true;},unregister:key=>active.delete(key)};
+check('所有已实现键位与自定义内容都派生 Alt 直达，未绑定和未实现不抢键',()=>{
+  const bindings=panelGlobalBindings({Q:{type:'url',target:'https://example.com',name:'测试'}},DEFAULT_BINDINGS);
+  for(const action of Object.values(PANEL_ACTIONS).filter(a=>a.implemented))assert.ok(Object.values(bindings).includes('Alt+'+action.key),action.label);
+  assert.equal(bindings['panelKey:Q'],'Alt+Q');assert.equal(bindings['panelKey:W'],'');assert.equal(bindings['panelKey:M'],'');
+  assert.equal(new Set(Object.values(bindings).filter(Boolean)).size,Object.values(bindings).filter(Boolean).length);
+  const equals=assignPanelBinding({},'=',{type:'action',id:'capture'}).bindings;
+  assert.equal(panelGlobalBindings(equals,{...DEFAULT_BINDINGS,capture:'Alt+='})['panelKey:='],'');
+  assert.equal(acceleratorKey('Alt+Plus'),'=');
+});
+check('移动长截图后 Alt+旧键释放，Alt+新键生效；S/E/H 辅助入口自动让位',()=>{
+  const moved=movePanelBinding({},'G','Q').bindings;
+  const bindings=panelGlobalBindings({...moved,S:{type:'file',target:'C:\\demo.txt'},E:{type:'url',target:'https://example.com'},H:{type:'folder',target:'C:\\Demo'}},DEFAULT_BINDINGS);
+  assert.equal(bindings['panelKey:G'],'');assert.equal(bindings['panelKey:Q'],'Alt+Q');
+  assert.equal(bindings.quick,'Alt+F1');assert.equal(bindings.panelCycle,'Alt+F2');assert.equal(bindings.pinnedToggle,'Alt+F3');
+});
+check('全局键回调执行当前绑定；新键被抢占/磁盘失败时恢复全部原注册',()=>{
+  const callbacks=Object.fromEntries([...Object.keys(DEFAULT_BINDINGS),'legacy',...KEY_ROWS.flat().map(panelShortcutName)].map(name=>[name,()=>name]));
+  const m=new ShortcutManager({globalShortcut:api,handlers:callbacks,bindings:panelGlobalBindings({},DEFAULT_BINDINGS)});m.registerAll();
+  assert.equal(active.get('Alt+G')(),'panelKey:G');const before=m.snapshot();
+  const desired=panelGlobalBindings(movePanelBinding({},'G','Q').bindings,before.bindings);
+  const patch=Object.fromEntries(Object.entries(desired).filter(([name,value])=>value!==(before.bindings[name]||'')));
+  blocked.add('Alt+Q');assert.equal(m.rebindMany(patch).ok,false);assert.equal(active.get('Alt+G')(),'panelKey:G');blocked.clear();
+  assert.equal(m.rebindMany(patch).ok,true);assert.equal(active.has('Alt+G'),false);assert.equal(active.get('Alt+Q')(),'panelKey:Q');m.restoreSnapshot(before);
+  assert.equal(active.has('Alt+Q'),false);assert.equal(active.get('Alt+G')(),'panelKey:G');
+  const custom=panelGlobalBindings({F:{type:'file',target:'C:\\demo.txt'}},m.snapshot().bindings);
+  assert.equal(m.rebindMany(Object.fromEntries(Object.entries(custom).filter(([n,v])=>v!==(m.bindings[n]||'')))).ok,true);
+  assert.equal(active.get('Alt+F')(),'panelKey:F');m.dispose();active.clear();
+});
 const manager=new ShortcutManager({globalShortcut:api,handlers:Object.fromEntries([...Object.keys(DEFAULT_BINDINGS),'legacy'].map(name=>[name,()=>{}]))});
 manager.registerAll();
 check('批量交换 C/V 不被中间状态的重复键阻止',()=>{

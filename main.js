@@ -60,7 +60,7 @@ const { keyLayout, TOOLBOX_TOOLS, PANEL_ACTIONS, DEFAULT_KEY_BINDINGS, KEY_ROWS,
 const { createPanelActions } = require('./lib/panel-actions');
 // 38 键面板的自定义键位绑定：清洗与换位是纯模型，主进程只负责落盘与执行
 const { assignPanelBinding, movePanelBinding, effectiveBinding } = require('./lib/panel-bindings');
-const { PANEL_SHORTCUT_ACTIONS, acceleratorKey, alignPanelShortcuts, shortcutPatchForPanel, migrateLegacyPanelBindings } = require('./lib/panel-shortcuts');
+const { PANEL_SHORTCUT_ACTIONS, acceleratorKey, alignPanelShortcuts, shortcutPatchForPanel, migrateLegacyPanelBindings, panelGlobalBindings, panelShortcutName, panelAccelerator } = require('./lib/panel-shortcuts');
 // 第三批：按住型唤起用常驻 PowerShell 助手拿「松开」事件；浮引岛纯模型负责暂存语义
 const { KeyWatchProbe, ensureNativeHost } = require('./lib/key-watch');
 const islandModel = require('./lib/island-model');
@@ -69,6 +69,7 @@ const notesLib = require('./lib/notes');
 const imageEditor = require('./lib/image-editor');
 const {LongCaptureSession}=require('./lib/long-capture-session');
 const {RegionCapture}=require('./lib/region-capture');
+const {longCaptureTarget,settledFirstFrame}=require('./lib/long-capture-start');
 const { contains, receiverBounds, receiverDisplay, edgeWindowShape, IslandPointerProbe } = require('./lib/island-wake');
 // 核心框架：剪贴板捕获（文件引用/去重比较）的纯模型，便于单元测试
 const clipboardCapture = require('./lib/clipboard-capture');
@@ -296,14 +297,16 @@ function queuePanelConfiguration(task) {
 async function commitPanelConfiguration(bindings, requested = {}, options = {}) {
   const before = store.getPanelBindings();
   const snapshot = shortcutManager.snapshot();
-  const patch = { ...requested, ...shortcutPatchForPanel(before, bindings, { ...snapshot.bindings, ...requested }) };
+  const dedicated = { ...snapshot.bindings, ...requested, ...shortcutPatchForPanel(before, bindings, { ...snapshot.bindings, ...requested }) };
+  const desired = panelGlobalBindings(bindings, dedicated);
+  const patch=Object.fromEntries(Object.entries(desired).filter(([name,value])=>value!==(snapshot.bindings[name]||'')));
   const momentary = options.momentary ?? momentaryAccelerator();
   if (momentary && Object.values(patch).some(value => value && normalizeAccelerator(value) === normalizeAccelerator(momentary))) {
     return { ok: false, error: '与「按住型唤起」的快捷键重复' };
   }
   const result = shortcutManager.rebindMany(patch, { notify: false });
   if (!result.ok) return result;
-  const settingsPatch = Object.fromEntries(Object.entries(patch).map(([name, value]) => [SHORTCUT_SETTING_KEYS[name], value]));
+  const settingsPatch = Object.fromEntries(Object.entries(patch).filter(([name])=>SHORTCUT_SETTING_KEYS[name]).map(([name, value]) => [SHORTCUT_SETTING_KEYS[name], value]));
   if (options.momentary !== undefined) settingsPatch.shortcutMomentary = options.momentary;
   try { await store.setPanelConfiguration(bindings, settingsPatch); }
   catch (error) {
@@ -320,8 +323,11 @@ function panelState() {
   const layout = keyLayout(appIndexReady, store.getPanelBindings());
   const shortcuts = shortcutManager?.snapshot().bindings || shortcutBindings();
   for (const key of layout.keys) {
-    const name = Object.keys(PANEL_SHORTCUT_ACTIONS).find(name => PANEL_SHORTCUT_ACTIONS[name] === key.actionId);
-    if (name) key.accelerator = shortcuts[name] || '';
+    if(key.state==='bound'||key.state==='custom') {
+      key.accelerator=panelAccelerator(key.key);
+      const name=Object.keys(shortcuts).find(name=>normalizeAccelerator(shortcuts[name])===normalizeAccelerator(key.accelerator));
+      key.shortcutStatus=shortcutManager?.status[name]||null;
+    }
   }
   return { ...layout, actions: implementedPanelActions(), tools: TOOLBOX_TOOLS };
 }
@@ -909,7 +915,8 @@ function createQuickWindow() {
   });
   quickWindow.setAlwaysOnTop(true, 'floating');
   prepareFloatingSurface(quickWindow);
-  quickWindow.loadFile(path.join(__dirname, 'src', 'quickpanel.html'));
+  quickWindow.__loaded=quickWindow.loadFile(path.join(__dirname, 'src', 'quickpanel.html'));
+  quickWindow.__loaded.catch(error=>console.warn('面板加载失败:',error.message));
   quickWindow.setMenuBarVisibility(false);
   quickWindow.webContents.once('did-finish-load', () => {
     quickReady = true;
@@ -1862,7 +1869,7 @@ function hideOverlayWindow(options = {}) {
   capturePayload = null;
   captureBusy = false;
   if (overlayWindow && !overlayWindow.isDestroyed()) {
-    try { overlayWindow.webContents.send('capture:release'); } catch {}
+    if(options.release!==false)try { overlayWindow.webContents.send('capture:release'); } catch {}
     overlayWindow.hide();
     // 画布像素已 release，保留空页面供下次截图立即复用。
   }
@@ -2076,10 +2083,9 @@ async function startLongCapture(selection) {
     const executable=await captureHost;if(!executable)throw Error('原生采集组件未就绪，请重启后重试');
     const physical=screen.dipToScreenRect(null,rect);
     worker=new RegionCapture(executable);
-    hideOverlayWindow({restoreMain:false});
+    hideOverlayWindow({restoreMain:false,release:false});
     await new Promise(resolve=>setTimeout(resolve,70));
-    const target=await queryForeground();
-    if(!target||target.pid===process.pid)throw Error('请先回到要截取的页面，再开始长截图');
+    const target=await longCaptureTarget({point:{x:Math.round(physical.x+physical.width/2),y:Math.round(physical.y+physical.height/2)},probe:foregroundProbe,ownerPid:process.pid,current:await queryForeground()});
     const captureFrame=async()=>{
       if(worker.stopped){worker=new RegionCapture(executable);if(session)session.worker=worker;}
       const raw=await worker.capture(physical),image=nativeImage.createFromDataURL(raw.dataUrl);
@@ -2087,7 +2093,7 @@ async function startLongCapture(selection) {
       const size=image.getSize();if(size.width!==physical.width||size.height!==physical.height)throw Error('采集区域尺寸发生变化');
       return {width:size.width,height:size.height,data:image.toBitmap()};
     };
-    const first=await captureFrame(),hud=longHudBounds(rect);
+    const first=await settledFirstFrame(captureFrame),hud=longHudBounds(rect);
     win=new BrowserWindow({x:hud.x,y:hud.y,width:hud.width,height:hud.height,frame:false,transparent:true,show:false,focusable:false,resizable:false,movable:false,skipTaskbar:true,alwaysOnTop:true,hasShadow:false,title:'随序 · 长截图',
       webPreferences:{preload:path.join(__dirname,'preload.js'),contextIsolation:true,nodeIntegration:false,sandbox:false,spellcheck:false,backgroundThrottling:false}});
     session={win,worker,rect,physical,target,model:null,finishing:false};
@@ -2099,10 +2105,14 @@ async function startLongCapture(selection) {
     win.on('closed',()=>{if(longCapture===session)cancelLongCapture();});
     await win.loadFile(path.join(__dirname,'src','long-capture.html'));
     win.showInactive();session.controller.start();
+    overlayWindow.webContents.send('capture:release');
     return {ok:true};
   }catch(error){
     if(session?.controller)await session.controller.stop();worker?.stop();if(win&&!win.isDestroyed())win.destroy();if(longCapture===session)longCapture=null;
-    await showOverlayWindow(source).catch(()=>restoreMainAfterCapture());
+    // 恢复原选区，不重新发送 capture:shown，避免把具体失败盖成循环框选提示。
+    capturePayload=source;captureBusy=true;
+    if(overlayWindow&&!overlayWindow.isDestroyed()){overlayWindow.show();overlayWindow.focus();}
+    else restoreMainAfterCapture();
     return {ok:false,error:error.message||'无法开始长截图'};
   }finally{longCaptureStarting=false;}
 }
@@ -2290,6 +2300,26 @@ async function runBindingKey(key) {
   const error = await shell.openPath(binding.target);
   if (error) return { ok: false, error };
   return { ok: true, closePanel: true, message: `已打开：${binding.name || binding.target}` };
+}
+
+const globalPanelRunning=new Set();
+async function runGlobalPanelKey(key) {
+  // 截图/编辑时，键盘仍只服务当前工具；避免长按重复创建多个窗口。
+  if(globalPanelRunning.has(key)||captureBusy||longCapture||longCaptureStarting||editorWindows.has(BrowserWindow.getFocusedWindow()?.webContents.id))return;
+  globalPanelRunning.add(key);
+  try {
+    const result=await runBindingKey(key);
+    if(result?.openClipboardBar){await showClipboardBar();return;}
+    if(result?.openPage){hideQuickPanel();showMain(result.openPage);return;}
+    if(result?.translate||result?.ocr||!result?.ok) {
+      await showQuickPanel();
+      await quickWindow?.__loaded;
+      quickWindow?.webContents.send('panel:result',result);
+      return;
+    }
+    if(result?.closePanel)hideQuickPanel();
+  }catch(error){await showQuickPanel();quickWindow?.webContents.send('panel:result',{ok:false,error:error.message||'动作执行失败'});}
+  finally{globalPanelRunning.delete(key);}
 }
 
 /**
@@ -3327,6 +3357,7 @@ function registerShortcuts() {
   shortcutManager = new ShortcutManager({
     globalShortcut,
     handlers: {
+      ...Object.fromEntries(KEY_ROWS.flat().map(key=>[panelShortcutName(key),()=>runGlobalPanelKey(key)])),
       quick: toggleQuickPanel,
       capture: () => beginScreenCapture('shortcut'),
       panelCycle: cyclePanelMode,
@@ -3334,7 +3365,7 @@ function registerShortcuts() {
       clipboardBar: toggleClipboardBar,
       legacy: toggleQuickPanel
     },
-    bindings: shortcutBindings(),
+    bindings: panelGlobalBindings(store.getPanelBindings(),shortcutBindings()),
     onChange: (status) => {
       // 把注册结果同步给设置页，让用户看到哪个键被占用
       broadcast('shortcuts:changed', status);
@@ -3456,7 +3487,7 @@ async function initialize() {
   createClipboardBarWindow();
   createOverlayWindow();
   captureHost = ensureNativeHost({ sourcePath: assetPath('capture-host.cs'), targetPath: path.join(userRoot(), 'capture-host-v3.exe'), references: ['System.Drawing.dll'] });
-  foregroundProbe.nativeHostReady = ensureNativeHost({ sourcePath: assetPath('foreground-host.cs'), targetPath: path.join(userRoot(), 'foreground-host-v2.exe'), references: ['System.Web.Extensions.dll'] });
+  foregroundProbe.nativeHostReady = ensureNativeHost({ sourcePath: assetPath('foreground-host.cs'), targetPath: path.join(userRoot(), 'foreground-host-v3.exe'), references: ['System.Web.Extensions.dll'] });
   foregroundProbe.start().catch(error => console.warn('前台助手预热失败:', error.message));
   armIsland();
   islandWakeReady = setupIslandPointer().catch(error => { islandWakeError = error.message; });

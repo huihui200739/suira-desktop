@@ -9,6 +9,10 @@ using System.Web.Script.Serialization;
 
 public static class ForegroundHost {
     [DllImport("user32.dll")] static extern IntPtr GetForegroundWindow();
+    [DllImport("user32.dll")] static extern bool SetProcessDpiAwarenessContext(IntPtr value);
+    [StructLayout(LayoutKind.Sequential)] struct Point {public int X,Y;public Point(int x,int y){X=x;Y=y;}}
+    [DllImport("user32.dll")] static extern IntPtr WindowFromPoint(Point point);
+    [DllImport("user32.dll")] static extern IntPtr GetAncestor(IntPtr h,uint flags);
     [DllImport("user32.dll")] static extern bool IsWindow(IntPtr h);
     [StructLayout(LayoutKind.Sequential)] struct Rect {public int Left,Top,Right,Bottom;}
     [DllImport("user32.dll")] static extern bool GetWindowRect(IntPtr h,out Rect rect);
@@ -41,6 +45,14 @@ public static class ForegroundHost {
         using (Process p=Process.GetProcessById(pid)) return started>0 && Started(p)==started;
     }
     static Input Key(ushort vk, bool up) { Input i=new Input(); i.type=1; i.u.keyboard.vk=vk; i.u.keyboard.flags=up?2u:0u; return i; }
+    static object Focus(string[] args) {
+        IntPtr target=new IntPtr(long.Parse(args[1]));int pid=int.Parse(args[2]);long started=long.Parse(args[3]);
+        if(!Matches(target,pid,started))return new{ok=false,error="target-changed"};
+        if(IsIconic(target))ShowWindow(target,9);
+        SetForegroundWindow(target);
+        for(int n=0;n<50&&GetForegroundWindow()!=target;n++)Thread.Sleep(4);
+        return new{ok=GetForegroundWindow()==target};
+    }
     static object Paste(string[] args) {
         IntPtr target=new IntPtr(long.Parse(args[1])); int pid=int.Parse(args[2]); long started=long.Parse(args[3]); int owner=int.Parse(args[4]);
         if (!Matches(target,pid,started)) return new {ok=false,error="target-changed"};
@@ -62,6 +74,7 @@ public static class ForegroundHost {
         return new {ok=SendInput(4,keys,Marshal.SizeOf(typeof(Input)))==4};
     }
     public static void Main(string[] args) {
+        try{SetProcessDpiAwarenessContext(new IntPtr(-4));}catch{}
         Console.SetOut(new StreamWriter(Console.OpenStandardOutput(),new UTF8Encoding(false)){AutoFlush=true});
         if (args.Length>0) {
             int parent=int.Parse(args[0]);
@@ -75,6 +88,8 @@ public static class ForegroundHost {
             try {
                 if(parts[0]=="ping")result=new {ok=true};
                 else if(parts[0]=="get")result=Snapshot(parts.Length>1?new IntPtr(long.Parse(parts[1])):GetForegroundWindow());
+                else if(parts[0]=="at")result=Snapshot(GetAncestor(WindowFromPoint(new Point(int.Parse(parts[1]),int.Parse(parts[2]))),2));
+                else if(parts[0]=="focus")result=Focus(parts);
                 else if(parts[0]=="paste")result=Paste(parts);
                 else result=new {ok=false,error="unknown-command"};
             } catch {result=new {ok=false,error="window-unavailable"};}

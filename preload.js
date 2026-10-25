@@ -85,6 +85,7 @@ contextBridge.exposeInMainWorld('suira', {
   panel: {
     state: () => ipcRenderer.invoke('panel:state'),
     onChanged: (callback) => subscribe('panel:changed', callback),
+    onResult: (callback) => subscribe('panel:result', callback),
     run: (actionId) => ipcRenderer.invoke('panel:run', actionId),
     // 自定义键位绑定：设置/清除（binding 传 null 表示清除）与选择本机目标
     setBinding: (payload) => ipcRenderer.invoke('panel:binding:set', payload),

@@ -56,8 +56,9 @@
     "verify:polish": "node tools/electron-polish-check.js",
     "test:image-editor": "node test-image-editor.js",
     "verify:image-editor": "node tools/electron-image-editor-check.js",
-    "test:long-capture": "node test-long-capture.js && node test-long-session.js && node test-region-capture.js",
-    "verify:long-capture": "node tools/region-native-check.js && node tools/electron-long-clipboard-check.js"
+    "test:long-capture": "node test-long-start.js && node test-long-capture.js && node test-long-session.js && node test-region-capture.js",
+    "verify:long-capture": "node tools/region-native-check.js && node tools/electron-long-clipboard-check.js && node tools/electron-long-native-check.js",
+    "verify:panel-global": "node tools/electron-panel-global-check.js"
   },
   "devDependencies": {
     "electron": "^45.0.0",
