@@ -125,6 +125,9 @@ contextBridge.exposeInMainWorld('suira', {
     onShown: callback => subscribe('image-editor:changed', callback)
   },
   longCapture: {
+    onPickerShown: callback => subscribe('long-picker:shown',callback),
+    pickerReady: revision => ipcRenderer.invoke('long-picker:ready',revision),
+    cancelPicker: () => ipcRenderer.invoke('long-picker:cancel'),
     start: selection => ipcRenderer.invoke('capture:start-long',selection),
     state: () => ipcRenderer.invoke('long-capture:state'),
     command: command => ipcRenderer.invoke('long-capture:command',command),

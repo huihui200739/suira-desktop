@@ -1,0 +1,7 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>随序 · 长截图框选</title><link rel="stylesheet" href="theme.css"><link rel="stylesheet" href="long-picker.css"></head>
+<body><main id="picker" aria-label="长截图框选区域">
+  <div class="dim" id="dim-top"></div><div class="dim" id="dim-left"></div><div class="dim" id="dim-right"></div><div class="dim" id="dim-bottom"></div>
+  <div id="region" hidden><span id="size"></span></div>
+  <div class="picker-hint"><span class="dot"></span><b>长截图</b><span id="message" role="status">拖动框选滚动内容，松开后开始</span><button id="retry" hidden>重试</button><button id="cancel" aria-label="取消长截图框选">取消 <kbd>Esc</kbd></button></div>
+</main><script src="long-picker.js"></script></body></html>

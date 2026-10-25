@@ -69,7 +69,7 @@ const notesLib = require('./lib/notes');
 const imageEditor = require('./lib/image-editor');
 const {LongCaptureSession}=require('./lib/long-capture-session');
 const {RegionCapture}=require('./lib/region-capture');
-const {longCaptureTarget,settledFirstFrame}=require('./lib/long-capture-start');
+const {longCaptureTarget,settledFirstFrame,sourceProbePoint}=require('./lib/long-capture-start');
 const { contains, receiverBounds, receiverDisplay, edgeWindowShape, IslandPointerProbe } = require('./lib/island-wake');
 // 核心框架：剪贴板捕获（文件引用/去重比较）的纯模型，便于单元测试
 const clipboardCapture = require('./lib/clipboard-capture');
@@ -99,6 +99,11 @@ let appIconHost = null;
 let captureHost = null;
 let longCapture = null;
 let longCaptureStarting = false;
+let longPickerWindow = null;
+let longPickerPayload = null;
+let longPickerEscape = false;
+let longPickerRevision = 0;
+let longPickerWorker = null;
 
 let store = null;
 let ocr = null;
@@ -1680,7 +1685,7 @@ function createMainWindow() {
     if (revealed || !mainWindow || mainWindow.isDestroyed()) return;
     revealed = true;
     // 用户已经进入高频工具时，迟到的主窗口首帧不能抢走聊天/历史条焦点。
-    if(longCapture||[quickWindow,clipboardBarWindow,overlayWindow].some(win=>win&&!win.isDestroyed()&&win.isVisible()))return;
+    if(longCapture||longPickerPayload||[quickWindow,clipboardBarWindow,overlayWindow].some(win=>win&&!win.isDestroyed()&&win.isVisible()))return;
     // 上次退出时是最大化状态：先恢复最大化再显示，避免先闪一下小窗口
     if (saved?.maximized) {
       try { mainWindow.maximize(); } catch {}
@@ -1882,6 +1887,7 @@ async function beginScreenCapture(source = 'panel', options = {}) {
   // 入口意图：从 38 键面板按 O 进来，框完直接进识别；按 P 进来直接钉图。
   // 意图随 payload 交给覆盖层，覆盖层据此预选工具或自动完成。
   const intent = ['ocr', 'pin', 'copy', 'save', 'shelf','long'].includes(options?.intent) ? options.intent : 'copy';
+  if(intent==='long')return beginLongPicker(source);
   captureBusy = true;
   try {
     // 页面加载与屏幕采集并行；启动预热尚未完成时也不串行冷建。
@@ -2057,6 +2063,42 @@ async function completeCapture(dataUrl, action) {
   return { ok: true, filePath, item };
 }
 
+function createLongPickerWindow() {
+  if(longPickerWindow&&!longPickerWindow.isDestroyed())return longPickerWindow;
+  const win=longPickerWindow=new BrowserWindow({...currentVirtualBounds(),title:'随序 · 长截图框选',frame:false,transparent:true,backgroundColor:'#00000000',show:false,focusable:false,alwaysOnTop:true,skipTaskbar:true,resizable:false,movable:false,hasShadow:false,
+    webPreferences:{preload:path.join(__dirname,'preload.js'),contextIsolation:true,nodeIntegration:false,sandbox:false,spellcheck:false,backgroundThrottling:false}});
+  win.setAlwaysOnTop(true,'screen-saver');
+  win.__loaded=win.loadFile(path.join(__dirname,'src','long-picker.html'));
+  win.__loaded.catch(error=>console.warn('长截图框选层加载失败:',error.message));
+  win.on('closed',()=>{if(longPickerWindow===win){longPickerWindow=null;cancelLongPicker();}});
+  return win;
+}
+function releaseLongPickerEscape(){if(longPickerEscape){globalShortcut.unregister('Escape');longPickerEscape=false;}}
+function cancelLongPicker() {
+  longPickerRevision++;longPickerPayload=null;
+  longPickerWorker?.stop();longPickerWorker=null;
+  const ack=longPickerWindow?.__pickerAck;if(ack){longPickerWindow.__pickerAck=null;ack.done();}
+  if(longPickerWindow&&!longPickerWindow.isDestroyed())longPickerWindow.hide();
+  releaseLongPickerEscape();captureBusy=false;restoreMainAfterCapture();return {ok:true};
+}
+async function beginLongPicker(source) {
+  const revision=++longPickerRevision;captureBusy=true;
+  try {
+    const win=createLongPickerWindow();await win.__loaded;
+    if(revision!==longPickerRevision||win.isDestroyed())return {ok:true,visible:false};
+    const bounds=currentVirtualBounds();if(!sameBounds(win.getBounds(),bounds))win.setBounds(bounds);
+    const ready=new Promise((resolve,reject)=>{const timer=setTimeout(()=>{if(win.__pickerAck?.revision===revision)win.__pickerAck=null;reject(Error('框选层未就绪，请重试'));},1200);win.__pickerAck={revision,done:()=>{clearTimeout(timer);resolve();}};});
+    longPickerPayload={bounds,size:bounds,intent:'long',source,revision,longPicker:true};
+    win.webContents.send('long-picker:shown',{bounds,revision});await ready;
+    if(revision!==longPickerRevision||win.isDestroyed())return {ok:true,visible:false};
+    mainWasVisible=Boolean(mainWindow&&!mainWindow.isDestroyed()&&mainWindow.isVisible());
+    // 框选层先显示再收起面板；无需截整屏、PNG 编解码或激活任何窗口。
+    win.showInactive();hideQuickPanel();hideClipboardBar();if(mainWasVisible)mainWindow.hide();
+    longPickerEscape=globalShortcut.register('Escape',()=>cancelLongPicker());
+    return {ok:true};
+  }catch(error){if(revision===longPickerRevision)cancelLongPicker();return {ok:false,error:error.message||'长截图框选失败'};}
+}
+
 function longHudBounds(rect) {
   const area=screen.getDisplayMatching(rect).workArea,width=Math.min(560,area.width),height=96;
   const x=Math.max(area.x,Math.min(rect.x+(rect.width-width)/2,area.x+area.width-width));
@@ -2066,10 +2108,11 @@ function longHudBounds(rect) {
   return {...(point||{x:area.x+area.width-width-12,y:area.y+area.height-height-12}),width,height,overlap:!point};
 }
 
-async function startLongCapture(selection) {
+async function startLongCapture(selection,fromPicker=false) {
   if(longCapture||longCaptureStarting)return {ok:false,error:'已有长截图正在进行'};
-  const source=capturePayload;
-  if(!source||!overlayWindow||overlayWindow.isDestroyed())return {ok:false,error:'请先框选长截图区域'};
+  const source=fromPicker?longPickerPayload:capturePayload;
+  const originWindow=fromPicker?longPickerWindow:overlayWindow;
+  if(!source||!originWindow||originWindow.isDestroyed()||(fromPicker&&selection?.revision!==source.revision))return {ok:false,error:'请先框选长截图区域'};
   const values=['x','y','width','height'];
   if(!selection||!values.every(key=>Number.isFinite(selection[key])))return {ok:false,error:'长截图区域无效'};
   const rect={x:Math.round(source.bounds.x+selection.x),y:Math.round(source.bounds.y+selection.y),width:Math.round(selection.width),height:Math.round(selection.height)};
@@ -2083,10 +2126,12 @@ async function startLongCapture(selection) {
     const executable=await captureHost;if(!executable)throw Error('原生采集组件未就绪，请重启后重试');
     const physical=screen.dipToScreenRect(null,rect);
     worker=new RegionCapture(executable);
-    hideOverlayWindow({restoreMain:false,release:false});
+    if(fromPicker)longPickerWorker=worker;
+    if(fromPicker)originWindow.hide();else hideOverlayWindow({restoreMain:false,release:false});
     await new Promise(resolve=>setTimeout(resolve,70));
     const target=await longCaptureTarget({point:{x:Math.round(physical.x+physical.width/2),y:Math.round(physical.y+physical.height/2)},probe:foregroundProbe,ownerPid:process.pid,current:await queryForeground()});
     const captureFrame=async()=>{
+      if(fromPicker&&source.revision!==longPickerRevision)throw Error('长截图已取消');
       if(worker.stopped){worker=new RegionCapture(executable);if(session)session.worker=worker;}
       const raw=await worker.capture(physical),image=nativeImage.createFromDataURL(raw.dataUrl);
       if(image.isEmpty())throw Error('区域画面无法读取');
@@ -2094,27 +2139,33 @@ async function startLongCapture(selection) {
       return {width:size.width,height:size.height,data:image.toBitmap()};
     };
     const first=await settledFirstFrame(captureFrame),hud=longHudBounds(rect);
+    if(fromPicker&&(source.revision!==longPickerRevision||longPickerPayload!==source))throw Error('长截图已取消');
     win=new BrowserWindow({x:hud.x,y:hud.y,width:hud.width,height:hud.height,frame:false,transparent:true,show:false,focusable:false,resizable:false,movable:false,skipTaskbar:true,alwaysOnTop:true,hasShadow:false,title:'随序 · 长截图',
       webPreferences:{preload:path.join(__dirname,'preload.js'),contextIsolation:true,nodeIntegration:false,sandbox:false,spellcheck:false,backgroundThrottling:false}});
     session={win,worker,rect,physical,target,model:null,finishing:false};
     longCapture=session;
-    session.controller=new LongCaptureSession({first,target,current:()=>queryForeground(),capture:async()=>{
+    const probePoint=sourceProbePoint(physical,hud.overlap?screen.dipToScreenRect(null,hud):null);
+    session.controller=new LongCaptureSession({first,target,current:()=>foregroundProbe.queryAt(probePoint),capture:async()=>{
       if(hud.overlap&&!win.isDestroyed())win.hide();
       try{return await captureFrame();}finally{if(hud.overlap&&longCapture===session&&!session.controller.stopped&&!win.isDestroyed())win.showInactive();}
     },onState:state=>{if(!win.isDestroyed())win.webContents.send('long-capture:state',state);}});
     win.on('closed',()=>{if(longCapture===session)cancelLongCapture();});
     await win.loadFile(path.join(__dirname,'src','long-capture.html'));
+    if(fromPicker&&source.revision!==longPickerRevision)throw Error('长截图已取消');
     win.showInactive();session.controller.start();
-    overlayWindow.webContents.send('capture:release');
+    if(fromPicker){longPickerPayload=null;captureBusy=false;releaseLongPickerEscape();}
+    else overlayWindow.webContents.send('capture:release');
     return {ok:true};
   }catch(error){
     if(session?.controller)await session.controller.stop();worker?.stop();if(win&&!win.isDestroyed())win.destroy();if(longCapture===session)longCapture=null;
     // 恢复原选区，不重新发送 capture:shown，避免把具体失败盖成循环框选提示。
-    capturePayload=source;captureBusy=true;
-    if(overlayWindow&&!overlayWindow.isDestroyed()){overlayWindow.show();overlayWindow.focus();}
-    else restoreMainAfterCapture();
+    if(!fromPicker||source.revision===longPickerRevision) {
+      if(!fromPicker)capturePayload=source;captureBusy=true;
+      if(!originWindow.isDestroyed()){if(fromPicker)originWindow.showInactive();else{originWindow.show();originWindow.focus();}}
+      else restoreMainAfterCapture();
+    }
     return {ok:false,error:error.message||'无法开始长截图'};
-  }finally{longCaptureStarting=false;}
+  }finally{if(longPickerWorker===worker)longPickerWorker=null;longCaptureStarting=false;}
 }
 
 async function cancelLongCapture() {
@@ -2721,7 +2772,9 @@ function registerIpc() {
   ipcMain.handle('app:restart', () => { restartApplication(); return {ok:true}; });
 
   ipcMain.handle('capture:start', (_event, options) => beginScreenCapture('main', options || {}));
-  ipcMain.handle('capture:start-long',(event,selection)=>event.sender===overlayWindow?.webContents?startLongCapture(selection):{ok:false,error:'请从截图选区开始长截图'});
+  ipcMain.handle('capture:start-long',(event,selection)=>event.sender===longPickerWindow?.webContents?startLongCapture(selection,true):event.sender===overlayWindow?.webContents&&!longPickerPayload?startLongCapture(selection):{ok:false,error:'请从截图选区开始长截图'});
+  ipcMain.handle('long-picker:ready',(event,revision)=>{const ack=longPickerWindow?.__pickerAck;if(event.sender===longPickerWindow?.webContents&&ack?.revision===revision){longPickerWindow.__pickerAck=null;ack.done();}return {ok:true};});
+  ipcMain.handle('long-picker:cancel',event=>event.sender===longPickerWindow?.webContents?cancelLongPicker():{ok:false});
   ipcMain.handle('long-capture:state',event=>event.sender===longCapture?.win.webContents?longCapture.controller.state():null);
   ipcMain.handle('long-capture:command',(event,command)=>{
     if(event.sender!==longCapture?.win.webContents)return {ok:false,error:'长截图已结束'};
@@ -2768,6 +2821,7 @@ function registerIpc() {
   });
   ipcMain.handle('capture:get-data', () => capturePayload);
   ipcMain.handle('capture:cancel', () => {
+    if(longPickerPayload)return cancelLongPicker();
     hideOverlayWindow();
     return { ok: true };
   });
@@ -3486,6 +3540,7 @@ async function initialize() {
   createQuickWindow();
   createClipboardBarWindow();
   createOverlayWindow();
+  createLongPickerWindow();
   captureHost = ensureNativeHost({ sourcePath: assetPath('capture-host.cs'), targetPath: path.join(userRoot(), 'capture-host-v3.exe'), references: ['System.Drawing.dll'] });
   foregroundProbe.nativeHostReady = ensureNativeHost({ sourcePath: assetPath('foreground-host.cs'), targetPath: path.join(userRoot(), 'foreground-host-v3.exe'), references: ['System.Web.Extensions.dll'] });
   foregroundProbe.start().catch(error => console.warn('前台助手预热失败:', error.message));
