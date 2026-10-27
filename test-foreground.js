@@ -49,6 +49,19 @@ const ta = async (n, f) => { try { await f(); console.log('  PASS  ' + n); pass+
     const probe = new ForegroundProbe({ scriptPath: path.join(os.tmpdir(), 'nope-xyz.ps1') });
     assert.strictEqual(await probe.start(), false);
   });
+  await ta('PowerShell 兼容路径也发送按物理坐标命中命令并保留窗口边界', async () => {
+    const probe = new ForegroundProbe();
+    probe.isAvailable = () => true; probe.ready = true;
+    let command;
+    probe.child = { stdin: { writable: true, write: value => {
+      command = value;
+      queueMicrotask(() => probe.handleData(JSON.stringify({ok:true,hwnd:'42',pid:2,processStartedAt:10,bounds:{x:-600,y:0,width:600,height:700}})+'\n'));
+    } } };
+    const result = await probe.queryAt({x:-300,y:100});
+    assert.equal(command,'at -300 100\n');
+    assert.deepEqual(result.bounds,{x:-600,y:0,width:600,height:700});
+    assert.equal(await probe.queryAt({x:1.5,y:0}),null);
+  });
 
   console.log('\n== 真实查询（Windows） ==');
   if (process.platform === 'win32' && fs.existsSync(new ForegroundProbe().scriptPath)) {

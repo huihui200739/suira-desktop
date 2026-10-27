@@ -57,13 +57,15 @@
     "test:image-editor": "node test-image-editor.js",
     "verify:image-editor": "node tools/electron-image-editor-check.js",
     "test:long-capture": "node test-long-start.js && node test-long-capture.js && node test-long-session.js && node test-region-capture.js",
+    "test:long-browser": "node tools/long-capture-browser-check.js",
     "verify:long-capture": "node tools/region-native-check.js && node tools/electron-long-clipboard-check.js && node tools/electron-long-native-check.js",
     "verify:panel-global": "node tools/electron-panel-global-check.js"
   },
   "devDependencies": {
     "electron": "^45.0.0",
     "electron-builder": "^26.15.3",
-    "png-to-ico": "^3.0.2"
+    "png-to-ico": "^3.0.2",
+    "pngjs": "^7.0.0"
   },
   "build": {
     "appId": "com.suira.desktop",

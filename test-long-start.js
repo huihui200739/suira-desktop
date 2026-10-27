@@ -1,12 +1,14 @@
 'use strict';
 const assert=require('node:assert/strict');
-const {longCaptureTarget,settledFirstFrame,sourceProbePoint}=require('./lib/long-capture-start');
+const {longCaptureTarget,settledFirstFrame,sourceProbePoint,frameSettled}=require('./lib/long-capture-start');
 (async()=>{
   const external={hwnd:'42',pid:2,processStartedAt:100},self={hwnd:'1',pid:1};let focusCalls=0,queried;
   const probe={queryAt:async()=>external,focusTo:async()=>{focusCalls++;return {ok:false};},query:async hwnd=>{queried=hwnd;return external;}};
   assert.deepEqual(await longCaptureTarget({point:{x:50,y:50},probe,ownerPid:1,current:self}),external);assert.equal(focusCalls,0);assert.equal(queried,'42');
   probe.queryAt=async()=>self;
-  await assert.rejects(longCaptureTarget({point:{x:50,y:50},probe,ownerPid:1,current:self}),/没有可滚动/);
+  await assert.rejects(longCaptureTarget({point:{x:50,y:50},probe,ownerPid:1,current:external,pause:async()=>{}}),/没有可滚动/,'选区命中自身时不能拿无关前台窗口替代');
+  let hits=0;probe.queryAt=async()=>++hits<3?self:external;
+  assert.deepEqual(await longCaptureTarget({point:{x:50,y:50},probe,ownerPid:1,pause:async()=>{}}),external);assert.equal(hits,3,'框选层隐藏后的旧命中应重试');
   probe.queryAt=async()=>external;probe.query=async()=>self;
   await assert.rejects(longCaptureTarget({point:{x:50,y:50},probe,ownerPid:1,current:self}),/已关闭或发生变化/);
   probe.query=async()=>({...external,processStartedAt:200});
@@ -16,5 +18,11 @@ const {longCaptureTarget,settledFirstFrame,sourceProbePoint}=require('./lib/long
   const result=await settledFirstFrame(async()=>frame(n++===0?80:255),async()=>{});
   assert.equal(result.data[0],255);assert.equal(n,4,'遮罩首帧应丢弃，连续三帧停稳才开始');
   n=0;await assert.rejects(settledFirstFrame(async()=>frame(n++%2?30:255),async()=>{}),/仍在变化/);
-  console.log('PASS 后台激活被拒仍可启动且不调用激活、不复用失效窗口、避开工具条命中源页面、遮罩首帧过滤');
+  const animated=on=>{const f={width:320,height:240,data:Buffer.alloc(320*240*4,255)};if(on)for(let y=170;y<190;y++)for(let x=220;x<236;x++)f.data.fill(0,(y*320+x)*4,(y*320+x)*4+3);return f;};
+  assert.ok(frameSettled(animated(false),animated(true)),'0.4%局部光标/动画不应阻止开始');
+  n=0;await settledFirstFrame(async()=>animated(n++%2===0),async()=>{});assert.equal(n,3,'持续局部动画仍建立首帧');
+  assert.equal(new (require('./lib/long-capture').LongCapture)(animated(false)).append(animated(true)).status,'duplicate','首帧允许的局部动态也不应在会话中误触发拼接失败');
+  const dispersed=animated(false);for(let y=0;y<240;y+=20)for(let x=0;x<320;x+=20)dispersed.data.fill(0,(y*320+x)*4,(y*320+x)*4+3);
+  assert.equal(frameSettled(animated(false),dispersed),false,'跨区域稀疏文字滚动不能作为局部动画放行');
+  console.log('PASS 后台激活被拒仍可启动、框选层旧命中重试、拒绝无关窗口、首帧过滤遮罩并容忍局部动画');
 })().catch(e=>{console.error(e);process.exitCode=1;});

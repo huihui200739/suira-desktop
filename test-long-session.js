@@ -14,5 +14,13 @@ const make=offset=>{const w=120,h=240,data=Buffer.alloc(w*h*4);for(let y=0;y<h;y
   assert.equal(sameSource(target,{...target,title:'另一标签页'}),false);assert.equal(sameSource(target,{...target,processStartedAt:44}),false);
   await session.stop();session.resume();await session.poll();assert.equal(session.stopped,true);assert.equal(session.candidate,null);
   const failure=new LongCaptureSession({first:make(0),target,current:async()=>target,capture:async()=>{throw Error('采集失败');},auto:false});await failure.poll();assert.equal(failure.paused,true);assert.equal(failure.model.height,240);await failure.stop();
+  let source=target;
+  const switched=new LongCaptureSession({first:make(0),target,current:async()=>source,capture:async()=>{source={...target,hwnd:'other'};return make(70);},auto:false});
+  await switched.poll();assert.equal(switched.paused,true);assert.equal(switched.model.frames,1,'采集过程中切窗不得拼接错误画面');await switched.stop();
+  let release,entered;
+  const waiting=new Promise(r=>{entered=r;});
+  const pendingSession=new LongCaptureSession({first:make(0),target,current:async()=>target,capture:()=>{entered();return new Promise(r=>{release=r;});},auto:false});
+  const pending=pendingSession.poll();await waiting;pendingSession.pause();pendingSession.resume();release(make(70));await pending;
+  assert.equal(pendingSession.candidate,null,'暂停继续前开始的在途采集必须丢弃');await pendingSession.stop();
   console.log('PASS 停稳后拼接、重复去重、暂停继续、切窗/移窗/换页停止采集、取消及采集失败保留有效结果');
 })().catch(error=>{console.error(error);process.exitCode=1;});

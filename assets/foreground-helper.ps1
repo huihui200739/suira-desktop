@@ -17,6 +17,12 @@ using System.Diagnostics;
 using System.Runtime.InteropServices;
 
 public class SuiraWin32 {
+  [StructLayout(LayoutKind.Sequential)] public struct Point {public int X,Y;public Point(int x,int y){X=x;Y=y;}}
+  [StructLayout(LayoutKind.Sequential)] public struct Rect {public int Left,Top,Right,Bottom;}
+  [DllImport("user32.dll")] public static extern bool SetProcessDpiAwarenessContext(IntPtr value);
+  [DllImport("user32.dll")] public static extern IntPtr WindowFromPoint(Point point);
+  [DllImport("user32.dll")] public static extern IntPtr GetAncestor(IntPtr hWnd, uint flags);
+  [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr hWnd, out Rect rect);
   [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
   [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint pid);
   [DllImport("user32.dll")] public static extern int GetWindowTextLength(IntPtr hWnd);
@@ -44,6 +50,7 @@ public class SuiraWin32 {
 "@
 
 [SuiraWin32]::WatchParent($ParentPid)
+try { [void][SuiraWin32]::SetProcessDpiAwarenessContext([IntPtr]::new(-4)) } catch {}
 
 function Get-Snapshot([string]$handle = '') {
   $hwnd = if ($handle) { [IntPtr]::new([long]$handle) } else { [SuiraWin32]::GetForegroundWindow() }
@@ -75,6 +82,10 @@ function Get-Snapshot([string]$handle = '') {
     title = $title
     elevated = $false
   }
+  $rect = New-Object SuiraWin32+Rect
+  if ([SuiraWin32]::GetWindowRect($hwnd, [ref]$rect)) {
+    $obj.bounds = @{x=$rect.Left;y=$rect.Top;width=$rect.Right-$rect.Left;height=$rect.Bottom-$rect.Top}
+  }
   return ($obj | ConvertTo-Json -Compress)
 }
 
@@ -89,6 +100,13 @@ while ($true) {
   if ($cmd -eq 'get' -or $cmd -match '^get [0-9]+$') {
     try { [Console]::Out.WriteLine((Get-Snapshot ($cmd -replace '^get\s*', ''))) }
     catch { [Console]::Out.WriteLine('{"ok":false,"error":"exception"}') }
+    [Console]::Out.Flush()
+  } elseif ($cmd -match '^at (-?[0-9]+) (-?[0-9]+)$') {
+    try {
+      $point = [SuiraWin32+Point]::new([int]$Matches[1], [int]$Matches[2])
+      $target = [SuiraWin32]::GetAncestor([SuiraWin32]::WindowFromPoint($point), 2)
+      [Console]::Out.WriteLine((Get-Snapshot ($target.ToInt64().ToString())))
+    } catch { [Console]::Out.WriteLine('{"ok":false,"error":"window-unavailable"}') }
     [Console]::Out.Flush()
   } elseif ($cmd -eq 'ping') {
     [Console]::Out.WriteLine('{"ok":true,"pong":true}')

@@ -16,6 +16,7 @@ function frame(offset,{header=0,footer=0,reverseX=false,blank=false}={}) {
 check('普通画面精确识别纵向滚动距离',()=>assert.equal(matchFrames(frame(0),frame(73)).shift,73));
 check('不变画面不重复追加',()=>assert.equal(matchFrames(frame(0),frame(0)).status,'duplicate'));
 check('反向滚动不追加',()=>assert.equal(matchFrames(frame(80),frame(20)).status,'reverse'));
+check('触控板一像素微滚动仍可对齐',()=>assert.equal(matchFrames(frame(0),frame(1)).shift,1));
 check('固定页眉/页脚只保留一次',()=>{
   const model=new LongCapture(frame(0,{header:26,footer:18}));assert.equal(model.append(frame(61,{header:26,footer:18})).status,'matched');
   assert.equal(model.append(frame(119,{header:26,footer:18})).status,'matched');
@@ -23,6 +24,16 @@ check('固定页眉/页脚只保留一次',()=>{
   const expected=Buffer.alloc(pixels.length),first=frame(0,{header:26,footer:18}),last=frame(119,{header:26,footer:18});
   first.data.copy(expected,0,0,(H-18)*W*4);frame(61,{header:26,footer:18}).data.copy(expected,(H-18)*W*4,(H-18-61)*W*4,(H-18)*W*4);
   last.data.copy(expected,(H-18+61)*W*4,(H-18-58)*W*4);assert.deepEqual(pixels,expected);
+});
+check('大固定输入框和页眉按实际边界排除，输出只保留一次',()=>{
+  const header=72,footer=64,model=new LongCapture(frame(0,{header,footer}));
+  for(const offset of [19,38,57])assert.equal(model.append(frame(offset,{header,footer})).status,'matched');
+  assert.deepEqual(model.bands,{top:header,bottom:footer});
+  const expected=Buffer.alloc(W*(H+57)*4),first=frame(0,{header,footer}),last=frame(57,{header,footer});
+  first.data.copy(expected,0,0,(H-footer)*W*4);
+  for(const offset of [19,38,57])frame(offset,{header,footer}).data.copy(expected,(H-footer+offset-19)*W*4,(H-footer-19)*W*4,(H-footer)*W*4);
+  last.data.copy(expected,(H-footer+57)*W*4,(H-footer)*W*4);
+  assert.equal(model.height,H+57);assert.deepEqual(model.bitmap(),expected);
 });
 check('全空白不会制造长图',()=>assert.equal(matchFrames(frame(0,{blank:true}),frame(100,{blank:true})).status,'duplicate'));
 check('窗口尺寸改变不能拼接',()=>assert.equal(matchFrames(frame(0),{...frame(40),width:121}).status,'size-changed'));

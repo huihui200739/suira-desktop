@@ -3,10 +3,11 @@
 const fs=require('node:fs'),path=require('node:path'),os=require('node:os'),net=require('node:net'),assert=require('node:assert/strict'),{spawn}=require('node:child_process');
 const {connect}=require('./runtime-client');
 const root=path.resolve(__dirname,'..'),tmp=fs.mkdtempSync(path.join(os.tmpdir(),'suira-long-capture-'));
+const executable=[process.env.SUIRA_ELECTRON,'C:\\suira-electron\\electron.exe',path.join(root,'node_modules/electron/dist/electron.exe')].filter(Boolean).find(fs.existsSync);
 const wait=ms=>new Promise(r=>setTimeout(r,ms)),children=[],sockets=[];
 async function port(){const s=net.createServer();await new Promise(r=>s.listen(0,'127.0.0.1',r));const p=s.address().port;await new Promise(r=>s.close(r));return p;}
 async function until(fn,label){let error;for(let n=0;n<150;n++){try{const v=await fn();if(v)return v;}catch(e){error=e;}await wait(100);}throw Error(label||error?.message||'状态超时');}
-async function launch(file,p){const env={...process.env};delete env.ELECTRON_RUN_AS_NODE;const fd=fs.openSync(file+'.log','w');const c=spawn('C:\\suira-electron\\electron.exe',[file,'--remote-debugging-port='+p],{cwd:root,env,windowsHide:true,stdio:['ignore',fd,fd]});children.push(c);fs.closeSync(fd);}
+async function launch(file,p){assert.ok(executable,'Set SUIRA_ELECTRON or install Electron');const env={...process.env};delete env.ELECTRON_RUN_AS_NODE;const fd=fs.openSync(file+'.log','w');const c=spawn(executable,[file,'--remote-debugging-port='+p],{cwd:root,env,windowsHide:true,stdio:['ignore',fd,fd]});children.push(c);fs.closeSync(fd);}
 async function page(p,select){const client=await until(()=>connect(p,select));sockets.push(client.ws);return client;}
 (async()=>{
   const ap=await port(),fp=await port(),entry=path.join(tmp,'app.js'),fixture=path.join(tmp,'fixture.js');
