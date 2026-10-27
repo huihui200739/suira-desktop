@@ -1,0 +1,26 @@
+name: Long capture Windows regression
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  long-capture:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          lfs: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: npm install
+      - name: Capture, startup and session regressions
+        run: npm run test:long-capture
+      - name: Browser text and DPI pixel checks
+        run: npm run test:long-browser
+      - name: Real Windows helper, Electron IPC and desktop capture
+        run: npm run verify:long-capture
