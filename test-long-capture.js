@@ -92,4 +92,19 @@ check('向上滚动达到上限时保留原结果',()=>{
   const model=new LongCapture(frame(200),{maxHeight:H+30});
   assert.equal(model.append(frame(150)).status,'limit');assert.deepEqual(model.bitmap(),frame(200).data);
 });
+check('底部悬浮按钮和变化的链接提示只在最终视口保留一次',()=>{
+  const floating=offset=>{
+    const f=frame(offset);
+    for(let y=H-65;y<H-35;y++)for(let x=W-18;x<W;x++)f.data.set([20,130,240,255],(y*W+x)*4);
+    for(let y=H-18;y<H;y++)for(let x=0;x<50+offset%11;x++)f.data.set([offset%200,20,30,255],(y*W+x)*4);
+    return f;
+  };
+  const model=new LongCapture(floating(0));
+  for(const offset of [31,67,105,144,185])assert.equal(model.append(floating(offset)).status,'matched');
+  const actual=model.bitmap(),stride=W*4;
+  for(let y=0;y<model.height-65;y++) {
+    const expected=frame(y).data.subarray(0,stride);
+    assert.deepEqual(actual.subarray(y*stride,(y+1)*stride),expected,'旧视口的悬浮控件不能留在正文：第 '+y+' 行');
+  }
+});
 console.log(`\n${count} 通过 / 0 失败`);
