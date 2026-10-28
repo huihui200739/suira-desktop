@@ -48,5 +48,10 @@ async function shot(){const {data}=await client.send('Page.captureScreenshot',{f
 })().catch(error=>{console.error(error);process.exitCode=1;}).finally(async()=>{
   client?.ws.close();
   if(child&&child.exitCode===null){const exited=new Promise(resolve=>child.once('exit',resolve));child.kill();await exited;}
-  fs.rmSync(tmp,{recursive:true,force:true,maxRetries:5,retryDelay:200});
+  try { fs.rmSync(tmp,{recursive:true,force:true,maxRetries:5,retryDelay:200}); }
+  catch(error) {
+    // Chromium 子进程可能仍持有 Windows 文件句柄；统一清理脚本会检查占用后重试。
+    if(!['EPERM','EBUSY'].includes(error.code))throw error;
+    console.warn('Browser checks finished; temporary profile cleanup deferred to npm run clean:',tmp);
+  }
 });

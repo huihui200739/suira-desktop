@@ -17,11 +17,11 @@ const {longCaptureTarget,settledFirstFrame,sourceProbePoint,frameSettled}=requir
   assert.deepEqual(sourceProbePoint({x:0,y:0,width:400,height:400},[{x:0,y:180,width:400,height:220},{x:0,y:0,width:200,height:200}]),{x:200,y:60},'工具条和预览窗都要避开');
   const frame=v=>({width:64,height:100,data:Buffer.alloc(64*100*4,v)});let n=0;
   const result=await settledFirstFrame(async()=>frame(n++===0?80:255),async()=>{});
-  assert.equal(result.data[0],255);assert.equal(n,4,'遮罩首帧应丢弃，连续三帧停稳才开始');
+  assert.equal(result.data[0],255);assert.equal(n,3,'遮罩首帧应丢弃，两帧一致即可开始');
   n=0;await assert.rejects(settledFirstFrame(async()=>frame(n++%2?30:255),async()=>{}),/仍在变化/);
   const animated=on=>{const f={width:320,height:240,data:Buffer.alloc(320*240*4,255)};if(on)for(let y=170;y<190;y++)for(let x=220;x<236;x++)f.data.fill(0,(y*320+x)*4,(y*320+x)*4+3);return f;};
   assert.ok(frameSettled(animated(false),animated(true)),'0.4%局部光标/动画不应阻止开始');
-  n=0;await settledFirstFrame(async()=>animated(n++%2===0),async()=>{});assert.equal(n,3,'持续局部动画仍建立首帧');
+  n=0;await settledFirstFrame(async()=>animated(n++%2===0),async()=>{});assert.equal(n,2,'持续局部动画仍建立首帧');
   assert.equal(new (require('./lib/long-capture').LongCapture)(animated(false)).append(animated(true)).status,'duplicate','首帧允许的局部动态也不应在会话中误触发拼接失败');
   const dispersed=animated(false);for(let y=0;y<240;y+=20)for(let x=0;x<320;x+=20)dispersed.data.fill(0,(y*320+x)*4,(y*320+x)*4+3);
   assert.equal(frameSettled(animated(false),dispersed),false,'跨区域稀疏文字滚动不能作为局部动画放行');

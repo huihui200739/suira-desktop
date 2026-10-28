@@ -2089,6 +2089,9 @@ function cancelLongPicker() {
 async function beginLongPicker(source) {
   const revision=++longPickerRevision;captureBusy=true;
   try {
+    // 在用户拖动选区时并行准备，松手后不再等待新渲染进程和组件编译。
+    createLongCaptureWindow();createLongPreviewWindow();createLongOutlineWindow();
+    readyCaptureHost(true).catch(()=>{});foregroundProbe.start().catch(()=>{});
     const win=createLongPickerWindow();await win.__loaded;
     if(revision!==longPickerRevision||win.isDestroyed())return {ok:true,visible:false};
     const bounds=currentVirtualBounds();if(!sameBounds(win.getBounds(),bounds))win.setBounds(bounds);
@@ -2120,6 +2123,20 @@ const LONG_HUD_WIDTH=596,LONG_HUD_HEIGHT=104,LONG_PREVIEW_WIDTH=236,LONG_PREVIEW
 let longCaptureWindow=null;
 let longPreviewWindow=null;
 let longCaptureEscape=false;
+let longCaptureEnter=false;
+let longOutlineWindow=null;
+
+function createLongOutlineWindow() {
+  if(longOutlineWindow&&!longOutlineWindow.isDestroyed())return longOutlineWindow;
+  const win=longOutlineWindow=new BrowserWindow({width:200,height:200,show:false,frame:false,transparent:true,backgroundColor:'#00000000',
+    alwaysOnTop:true,focusable:false,skipTaskbar:true,hasShadow:false,resizable:false,
+    title:'随序 · 采集区域',webPreferences:{contextIsolation:true,nodeIntegration:false,sandbox:true,backgroundThrottling:false}});
+  win.setAlwaysOnTop(true,'screen-saver');win.setIgnoreMouseEvents(true);win.setContentProtection(true);
+  win.__loaded=win.loadURL('data:text/html;charset=utf-8,'+encodeURIComponent('<!doctype html><style>html{box-sizing:border-box;width:100%;height:100%;border:3px solid #2486ff;background:transparent;pointer-events:none}body{margin:0}</style>'));
+  win.__loaded.catch(()=>{});
+  win.on('closed',()=>{if(longOutlineWindow===win)longOutlineWindow=null;});
+  return win;
+}
 
 /**
  * 工具条落点：优先放在选区外面，实在放不下才压在选区内部。
@@ -2152,6 +2169,7 @@ function longPreviewBounds(rect,avoid=null) {
 }
 
 function releaseLongCaptureEscape() {
+  if(longCaptureEnter){try{globalShortcut.unregister('Return');}catch{}longCaptureEnter=false;}
   if(!longCaptureEscape)return;
   try{if(globalShortcut.isRegistered('Escape'))globalShortcut.unregister('Escape');}catch{}
   longCaptureEscape=false;
@@ -2243,7 +2261,7 @@ async function teardownLongCapture(session) {
   try{session.controller&&await session.controller.stop();}catch{}
   try{session.worker&&session.worker.stop();}catch{}
   if(longPickerWorker===session.worker)longPickerWorker=null;
-  for(const win of [session.preview,session.win])if(win&&!win.isDestroyed())win.destroy();
+  for(const win of [session.outline,session.preview,session.win])if(win&&!win.isDestroyed())win.destroy();
   session.preview=null;session.win=null;
   if(longPickerPayload){
     longPickerPayload=null;
@@ -2278,13 +2296,18 @@ async function startLongCapture(selection,fromPicker=false) {
     const hud=longHudBounds(rect);
     win=createLongCaptureWindow();
     win.setBounds(hud);
-    session={win,preview:null,worker,rect,physical,target:null,model:null,finishing:false,canceled:false,controller:null,previewAt:0};
+    session={win,preview:null,outline:null,worker,rect,physical,target:null,model:null,finishing:false,canceled:false,controller:null,previewAt:0};
     longCapture=session;
     win.on('closed',()=>{if(longCapture===session)cancelLongCapture();});
     await win.__loaded;
     await win.__painted;
     if(session.canceled)return {ok:true,canceled:true};
     win.showInactive();
+    const outline=session.outline=createLongOutlineWindow();
+    outline.setBounds({x:rect.x-3,y:rect.y-3,width:rect.width+6,height:rect.height+6});
+    await outline.__loaded;
+    if(session.canceled)return {ok:true,canceled:true};
+    outline.showInactive();
     if(fromPicker)originWindow.hide();else hideOverlayWindow({restoreMain:false,release:false});
     await new Promise(resolve=>setTimeout(resolve,60));
     stage='识别选区窗口';
@@ -2314,8 +2337,11 @@ async function startLongCapture(selection,fromPicker=false) {
     session.preview=preview;
     preview.setBounds(previewBox);
     // 预览是锦上添花：加载失败只少一张缩略图，不能因此中断整个长截图。
-    await Promise.race([Promise.all([preview.__loaded.catch(()=>{}),preview.__painted]),new Promise(resolve=>setTimeout(resolve,1500))]).catch(()=>{});
-    if(!preview.isDestroyed())preview.showInactive();
+    Promise.all([preview.__loaded,preview.__painted]).then(()=>{
+      if(longCapture===session&&!session.canceled&&!session.finishing&&!preview.isDestroyed()){
+        preview.showInactive();sendLongPreview(session,true);
+      }
+    }).catch(()=>{});
     // 命中点要避开自己的两个悬浮窗，否则会把「当前窗口」认成随序自己。
     const probePoint=sourceProbePoint(physical,[hud,previewBox].map(box=>screen.dipToScreenRect(null,box)));
     session.controller=new LongCaptureSession({first,target,current:()=>foregroundProbe.queryAt(probePoint),capture:captureFrame,
@@ -2325,6 +2351,7 @@ async function startLongCapture(selection,fromPicker=false) {
     sendLongPreview(session,true);
     releaseLongPickerEscape();
     try{longCaptureEscape=globalShortcut.register('Escape',()=>cancelLongCapture());}catch(error){console.warn('长截图 Esc 注册失败:',error.message);}
+    try{longCaptureEnter=globalShortcut.register('Return',()=>{finishLongCapture().catch(error=>console.warn(error.message));});}catch(error){console.warn('长截图回车注册失败:',error.message);}
     if(fromPicker){longPickerPayload=null;captureBusy=false;}
     else if(overlayWindow&&!overlayWindow.isDestroyed())overlayWindow.webContents.send('capture:release');
     return {ok:true};
@@ -2335,7 +2362,7 @@ async function startLongCapture(selection,fromPicker=false) {
     if(longCapture===session)longCapture=null;
     try{session?.controller&&await session.controller.stop();}catch{}
     try{worker?.stop();}catch{}
-    for(const target of [session?.preview,win])if(target&&!target.isDestroyed())target.destroy();
+    for(const target of [session?.outline,session?.preview,win])if(target&&!target.isDestroyed())target.destroy();
     if(longPickerWorker===worker)longPickerWorker=null;
     releaseLongCaptureEscape();
     // 恢复原选区，不重新发送 capture:shown，避免把具体失败盖成循环框选提示。
@@ -2366,15 +2393,15 @@ async function finishLongCapture() {
     if(session.preview&&!session.preview.isDestroyed())session.preview.hide();
     const model=session.controller.model,image=nativeImage.createFromBitmap(model.bitmap(),{width:model.width,height:model.height,scaleFactor:1});
     const png=image.toPNG();if(png.length>imageEditor.MAX_BYTES)throw Error('长图超过 64 MB，请减小选区后重试');
+    await writeClipboardImage(image);
     await ensureDirs();const filePath=path.join(capturesDir(),makeId('long')+'.png');await fsp.writeFile(filePath,png);
     const item=store.addItem({kind:'image',title:'滚动长截图',filePath,thumbnail:thumbnailDataUrl(image),source:{type:'screenshot',acquisitionMethod:'long-capture'},meta:{width:model.width,height:model.height,hash:hashBuffer(png),captureKind:'long',frames:model.frames}});
     await store.save();broadcast('content:changed',{itemId:item.id});
     longCapture=null;
-    for(const target of [session.preview,session.win])if(target&&!target.isDestroyed())target.destroy();
+    for(const target of [session.outline,session.preview,session.win])if(target&&!target.isDestroyed())target.destroy();
     releaseLongCaptureEscape();mainWasVisible=false;
-    const opened=await openImageEditor({itemId:item.id});
-    if(!opened.ok){showMain('library');toastToUser('长图已保存在内容库，编辑窗口打开失败','error');}
-    return {ok:true,item};
+    toastToUser('长截图已复制');
+    return {ok:true,item,copied:true};
   }catch(error){
     session.finishing=false;session.controller.stage='paused';
     session.controller.message=error.message||'长图生成失败';

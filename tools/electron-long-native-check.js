@@ -12,7 +12,7 @@ async function page(p,select){const client=await until(()=>connect(p,select));so
 (async()=>{
   const ap=await port(),fp=await port(),entry=path.join(tmp,'app.js'),fixture=path.join(tmp,'fixture.js');
   const trace=path.join(tmp,'trace.jsonl');
-  fs.writeFileSync(entry,`const fs=require('node:fs');const {app,clipboard,globalShortcut}=require('electron');app.setPath('userData',${JSON.stringify(path.join(tmp,'profile'))});clipboard.read=async()=>[];clipboard.readText=async()=>'';globalShortcut.register=()=>true;globalShortcut.unregister=()=>{};globalShortcut.unregisterAll=()=>{};
+  fs.writeFileSync(entry,`const fs=require('node:fs');const {app,clipboard,globalShortcut}=require('electron');app.setPath('userData',${JSON.stringify(path.join(tmp,'profile'))});clipboard.read=async()=>[];clipboard.readText=async()=>'';const register=globalShortcut.register.bind(globalShortcut),unregister=globalShortcut.unregister.bind(globalShortcut);globalShortcut.register=(key,callback)=>{if(key!=='Return')return true;const ok=register(key,callback);log('enter',{ok});return ok;};globalShortcut.unregister=key=>{if(key==='Return')unregister(key)};globalShortcut.unregisterAll=()=>{};
   const log=(type,data={})=>fs.appendFileSync(${JSON.stringify(trace)},JSON.stringify({type,...data})+'\\n');
   const probe=require(${JSON.stringify(path.join(root,'lib/foreground-probe'))});probe.ForegroundProbe.prototype.focusTo=async()=>{throw Error('长截图不应强制激活窗口')};
   const start=require(${JSON.stringify(path.join(root,'lib/long-capture-start'))}),original=start.longCaptureTarget;start.longCaptureTarget=async options=>{const target=await original(options);log('target',{pid:target.pid});return target};
@@ -24,7 +24,7 @@ async function page(p,select){const client=await until(()=>connect(p,select));so
   await until(()=>source.evaluate(`document.readyState==='complete'&&Boolean(document.querySelector('header'))`));
   const bounds=await until(()=>source.evaluate(`require('electron').ipcRenderer.invoke('focus')`));await wait(250);
   for(const entry of ['toolbar','panel']) {
-    await source.evaluate(`scrollTo(0,0);require('electron').ipcRenderer.invoke('focus')`);await wait(200);
+    await source.evaluate(`scrollTo(0,200);require('electron').ipcRenderer.invoke('focus')`);await wait(200);
     const desktopBefore=fs.existsSync(trace)?fs.readFileSync(trace,'utf8').split('\n').filter(l=>l.includes('"desktop"')).length:0;
     const startedAt=Date.now();const capture=await main.evaluate(entry==='toolbar'?`window.suira.capture.start({intent:'copy'})`:`window.suira.panel.run('long-capture')`);assert.equal(capture.ok,true);
     if(entry==='panel'){assert.equal(fs.existsSync(trace)?fs.readFileSync(trace,'utf8').split('\n').filter(l=>l.includes('"desktop"')).length:0,desktopBefore,'直接长截图不调用整屏采集');console.log('透明框选入口耗时',Date.now()-startedAt,'ms');}
@@ -36,10 +36,12 @@ async function page(p,select){const client=await until(()=>connect(p,select));so
     if(entry==='toolbar')await overlay.evaluate(`document.querySelector('[data-action="long"]').click(),true`);
     const hud=await page(ap,t=>t.url.endsWith('/long-capture.html'));const initial=await until(()=>hud.evaluate('window.suira.longCapture.state()'));assert.equal(initial.frames,1);
     await wait(650);await source.evaluate('scrollTo(0,100)');let last;const stitched=await until(async()=>{const s=last=await hud.evaluate('window.suira.longCapture.state()');return s.frames>1?s:null;},'原生采集应在滚动后产生第二段').catch(e=>{console.log('Last state:',JSON.stringify(last));throw e;});assert.ok(stitched.height>initial.height);
+    await source.evaluate('scrollTo(0,200)');await wait(900);assert.equal((await hud.evaluate('window.suira.longCapture.state()')).height,stitched.height,'回到已截内容不重复追加');
+    await source.evaluate('scrollTo(0,300)');await until(async()=>(await hud.evaluate('window.suira.longCapture.state()')).height>stitched.height,'转向下滚动应继续追加');
     console.log('PASS',entry,'真实入口 → 选区保留/前台交接 → GDI 滚动拼接，尺寸',initial.height,'→',stitched.height);
     await hud.evaluate(`setTimeout(()=>window.suira.longCapture.command('cancel'),40),true`);
     await until(async()=>!(await(await fetch('http://127.0.0.1:'+ap+'/json/list')).json()).some(t=>t.url.endsWith('/long-capture.html')));
   }
-  const targets=fs.readFileSync(trace,'utf8').trim().split('\n').map(JSON.parse).filter(r=>r.type==='target');assert.equal(targets.length,2);assert.ok(targets.every(r=>r.pid===children[1].pid),'实际采集源必须是普通外部测试窗口');
+  const targets=fs.readFileSync(trace,'utf8').trim().split('\n').map(JSON.parse).filter(r=>r.type==='target');assert.equal(targets.length,2);const enters=fs.readFileSync(trace,'utf8').trim().split('\n').map(JSON.parse).filter(r=>r.type==='enter');assert.equal(enters.length,2);assert.ok(enters.every(r=>r.ok),'Windows 必须实际注册全局回车完成');assert.ok(targets.every(r=>r.pid===children[1].pid),'实际采集源必须是普通外部测试窗口');
   console.log('PASS 普通非置顶带标题栏窗口；后台激活不可用仍可采集；两个入口取消后均关闭原生采集');
 })().catch(error=>{console.error(error);for(const name of ['app.js.log','fixture.js.log'])if(fs.existsSync(path.join(tmp,name)))console.error(fs.readFileSync(path.join(tmp,name),'utf8').slice(-1400));process.exitCode=1;}).finally(async()=>{for(const ws of sockets)ws.close();for(const c of children)if(c.exitCode===null)c.kill();await wait(600);try{fs.rmSync(tmp,{recursive:true,force:true});}catch{}});

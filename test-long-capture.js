@@ -15,7 +15,7 @@ function frame(offset,{header=0,footer=0,reverseX=false,blank=false}={}) {
 }
 check('普通画面精确识别纵向滚动距离',()=>assert.equal(matchFrames(frame(0),frame(73)).shift,73));
 check('不变画面不重复追加',()=>assert.equal(matchFrames(frame(0),frame(0)).status,'duplicate'));
-check('反向滚动不追加',()=>assert.equal(matchFrames(frame(80),frame(20)).status,'reverse'));
+check('向上滚动识别有符号距离',()=>assert.equal(matchFrames(frame(80),frame(20)).shift,-60));
 check('触控板一像素微滚动仍可对齐',()=>assert.equal(matchFrames(frame(0),frame(1)).shift,1));
 check('固定页眉/页脚只保留一次',()=>{
   const model=new LongCapture(frame(0,{header:26,footer:18}));assert.equal(model.append(frame(61,{header:26,footer:18})).status,'matched');
@@ -68,5 +68,28 @@ check('单帧长图也能生成缩略图',()=>{
   const model=new LongCapture(frame(0)),thumb=model.thumbnail(48,96);
   assert.ok(thumb.width>0&&thumb.height>0&&thumb.height<=96);
   assert.equal(thumb.data.length,thumb.width*thumb.height*4);
+});
+check('向上追加与来回滚动逐像素去重，固定页眉页脚只留一次',()=>{
+  const header=26,footer=18,firstOffset=200,model=new LongCapture(frame(firstOffset,{header,footer}));
+  for(const offset of [140,90,140,200,250,200,140,70]) {
+    const result=model.append(frame(offset,{header,footer}));
+    assert.ok(['matched','duplicate'].includes(result.status),JSON.stringify(result));
+  }
+  const min=70,max=250,stride=W*4,expected=Buffer.alloc((H+max-min)*stride);
+  const upper=frame(min,{header,footer}),lower=frame(max,{header,footer});
+  upper.data.copy(expected,0,0,header*stride);
+  // 任一正文行必须等于其全局内容行，与到达这个位置的滚动路径无关。
+  for(let y=header;y<H-footer+max-min;y++) {
+    const source=frame(min+y-header,{header,footer});
+    source.data.copy(expected,y*stride,header*stride,(header+1)*stride);
+  }
+  lower.data.copy(expected,(H-footer+max-min)*stride,(H-footer)*stride);
+  assert.equal(model.height,H+max-min);assert.deepEqual(model.bitmap(),expected);
+  const before=model.height;model.append(frame(90,{header,footer}));assert.equal(model.height,before);
+  const thumb=model.thumbnail(60,200);assert.equal(thumb.data.length,thumb.width*thumb.height*4);
+});
+check('向上滚动达到上限时保留原结果',()=>{
+  const model=new LongCapture(frame(200),{maxHeight:H+30});
+  assert.equal(model.append(frame(150)).status,'limit');assert.deepEqual(model.bitmap(),frame(200).data);
 });
 console.log(`\n${count} 通过 / 0 失败`);
