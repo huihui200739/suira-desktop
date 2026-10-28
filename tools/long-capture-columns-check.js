@@ -49,11 +49,11 @@ async function shot(){const {data}=await client.send('Page.captureScreenshot',{f
     await client.send('Emulation.setDeviceMetricsOverride',{width:960,height:600,deviceScaleFactor:scale,mobile:false});
     await client.evaluate("document.querySelector('main').scrollTop=470");await settled();
     const capturedHeight=model.height,capturedBitmap=model.bitmap();
-    // 已截区域无须重复增长；高度相似的卡片不能确定位置时，必须保留原图。
+    // 回到已截范围时恢复已确认位置，不能重复增长或跳到相似的另一条帖子。
     for(const offset of [390,310,230,152,93,39,0]) {
       await client.evaluate(`document.querySelector('main').scrollTop=${offset};document.querySelector('footer').textContent=(100+${offset})+' 人在线'`);await settled();
-      const result=model.append(await shot());assert.ok(['duplicate','ambiguous','unmatched'].includes(result.status),JSON.stringify({scale,offset,result}));
-      assert.equal(model.height,capturedHeight);assert.ok(model.bitmap().equals(capturedBitmap),'Reverse scrolling cannot corrupt captured content');if(result.status==='duplicate')assert.ok(Math.abs(model.position-offset*scale)<=2,'Accepted reverse match must keep the feed position');
+      const result=model.append(await shot());assert.equal(result.status,'duplicate',JSON.stringify({scale,offset,result}));
+      assert.equal(model.height,capturedHeight);assert.ok(model.bitmap().equals(capturedBitmap),'Reverse scrolling cannot corrupt captured content');assert.ok(Math.abs(model.position-offset*scale)<=2,'Accepted reverse match must keep the feed position');
     }
     console.log(`PASS multi-column feed / fixed navigation and recommendations ${scale*100}% DPI / down and reverse scrolls${Number.isInteger(scale)?' / scrolling feed pixel comparison':''}`);
   }
