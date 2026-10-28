@@ -45,4 +45,28 @@ check('周期性重复内容不能猜测拼接距离',()=>{
 });
 check('高度上限保留最后一幅有效结果',()=>{const model=new LongCapture(frame(0),{maxHeight:H+50});assert.equal(model.append(frame(70)).status,'limit');assert.equal(model.height,H);assert.deepEqual(model.bitmap(),frame(0).data);});
 check('帧大小校验与变化比例',()=>{assert.throws(()=>new LongCapture({width:1,height:1,data:Buffer.alloc(4)}));assert.equal(frameDifference(frame(0),frame(0)),0);assert.ok(frameDifference(frame(0),frame(70))>.1);});
+check('预览缩略图按比例覆盖整幅长图且尺寸受控',()=>{
+  const model=new LongCapture(frame(0,{header:20,footer:16}));
+  model.append(frame(90,{header:20,footer:16}));
+  model.append(frame(160,{header:20,footer:16}));
+  const thumb=model.thumbnail(60,140);
+  assert.equal(thumb.data.length,thumb.width*thumb.height*4);
+  assert.ok(thumb.width<=60&&thumb.height<=140,'缩略图不能超过请求尺寸');
+  assert.ok(Math.abs(thumb.width/thumb.height-model.width/model.height)<.12,'缩略图要等比');
+  // 逐行与长图对应区间的均值比较：既能发现上下颠倒，也能发现只截了局部。
+  const full=model.bitmap(),stride=W*4;
+  for(const row of [1,Math.floor(thumb.height/2),thumb.height-2]){
+    const from=Math.floor(row*model.height/thumb.height),to=Math.max(from+1,Math.floor((row+1)*model.height/thumb.height));
+    let source=0,count=0;
+    for(let y=from;y<Math.min(to,model.height);y++)for(let x=0;x<W;x+=3){source+=full[y*stride+x*4];count++;}
+    let target=0,other=0;
+    for(let x=0;x<thumb.width;x++){target+=thumb.data[(row*thumb.width+x)*4];other++;}
+    assert.ok(Math.abs(target/other-source/count)<14,`缩略图第 ${row} 行应与长图对应区间一致`);
+  }
+});
+check('单帧长图也能生成缩略图',()=>{
+  const model=new LongCapture(frame(0)),thumb=model.thumbnail(48,96);
+  assert.ok(thumb.width>0&&thumb.height>0&&thumb.height<=96);
+  assert.equal(thumb.data.length,thumb.width*thumb.height*4);
+});
 console.log(`\n${count} 通过 / 0 失败`);

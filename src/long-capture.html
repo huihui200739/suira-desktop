@@ -1,3 +1,13 @@
-<!doctype html><html lang="zh-CN"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>随序 · 长截图</title><link rel="stylesheet" href="theme.css"><link rel="stylesheet" href="long-capture.css"><link rel="stylesheet" href="ui-motion.css"></head><body>
-<main class="long-bar"><div class="long-status"><span class="long-dot"></span><b>长截图</b><span id="long-size">正在准备</span></div><p id="long-message" role="status" aria-live="polite">在选区内向下滚动，停止滚动后自动拼接</p><div class="long-actions"><button type="button" data-command="cancel">取消</button><button type="button" id="long-pause" data-command="pause">暂停</button><button type="button" class="long-finish" data-command="finish">完成并预览</button></div></main>
-<script src="ui-motion.js"></script><script src="long-capture.js"></script></body></html>
+<!doctype html><html lang="zh-CN"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>随序 · 长截图</title><link rel="stylesheet" href="theme.css"><link rel="stylesheet" href="long-capture.css"><link rel="stylesheet" href="ui-motion.css"></head><body class="is-preparing">
+<main class="hud" id="hud">
+  <div class="hud-row">
+    <div class="hud-status"><span class="hud-dot"></span><b>长截图</b><span id="long-size">正在准备</span></div>
+    <div class="hud-actions">
+      <button type="button" class="hud-button" data-command="cancel">取消<kbd>Esc</kbd></button>
+      <button type="button" class="hud-button" id="long-pause" data-command="pause" hidden>暂停</button>
+      <button type="button" class="hud-button is-primary" id="long-finish" data-command="finish" disabled>完成并预览</button>
+    </div>
+  </div>
+  <p id="long-message" role="status" aria-live="polite">正在准备滚动采集…</p>
+</main>
+<script src="long-capture.js"></script></body></html>

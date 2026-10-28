@@ -63,7 +63,19 @@ require(${JSON.stringify(path.join(root,'main.js'))});`);
   update({current:'A'});await hud.evaluate(`window.suira.longCapture.command('resume')`);await until(async()=>(await hud.evaluate('window.suira.longCapture.state()')).frames===3);
   const final=await hud.evaluate('window.suira.longCapture.state()');assert.equal(final.height,first.height+120);
   update({current:'self',hit:'A'});await wait(650);assert.equal((await hud.evaluate('window.suira.longCapture.state()')).paused,false,'源窗口可见时不要求它抢到前台');update({current:'A',hit:null});
+  // 按钮必须真的在最上层、可以接住点击：旧版把工具条设成 focusable:false 并每帧隐藏，
+  // 用脚本 .click() 依然"成功"，但用户点不动。这里至少保证渲染层没有遮挡/穿透。
+  const hit=await hud.evaluate(`(()=>['cancel','pause','finish'].map(command=>{const button=document.querySelector('[data-command="'+command+'"]');if(!button||button.hidden||button.disabled)return {command,ok:false,why:'不可用'};const rect=button.getBoundingClientRect();const top=document.elementFromPoint(rect.x+rect.width/2,rect.y+rect.height/2);return {command,ok:top===button||button.contains(top),why:top?top.className:'none'};}))()`);
+  assert.ok(hit.every(item=>item.ok),'工具条按钮必须命中自身：'+JSON.stringify(hit));
   const shot=await hud.send('Page.captureScreenshot',{format:'png',fromSurface:true});fs.writeFileSync(path.join(root,'docs','screenshots','29-long-capture-hud.png'),Buffer.from(shot.data,'base64'));
+  // 右下角预览窗：确认它拿到的就是同一份拼接结果（3 段），并留一张文档截图。
+  const preview=await page(t=>t.url.endsWith('/long-preview.html')).catch(()=>null);
+  if(preview){
+    const previewState=await until(()=>preview.evaluate(`(()=>{const img=document.getElementById('preview-image');return img&&!img.hidden?{width:img.naturalWidth,height:img.naturalHeight,frames:document.getElementById('preview-frames').textContent}:null;})()`));
+    assert.ok(previewState.width>0&&previewState.height>0,'预览窗必须渲染出缩略图');assert.match(previewState.frames,/3 段/);
+    const previewShot=await preview.send('Page.captureScreenshot',{format:'png',fromSurface:true});fs.writeFileSync(path.join(root,'docs','screenshots','31-long-capture-preview.png'),Buffer.from(previewShot.data,'base64'));
+    console.log('PASS 右下角预览窗按段数刷新缩略图',previewState.width+'×'+previewState.height);
+  }else console.log('WARN 未找到长图预览窗');
   await hud.evaluate(`document.querySelector('[data-command="finish"]').click(),true`);
   const item=await until(async()=>{const items=await main.evaluate(`window.suira.content.list({kinds:['image']})`);return items.find(item=>item.meta?.captureKind==='long');});assert.equal(item.meta.frames,3);assert.equal(item.meta.height,final.height);
   const saved=fs.readFileSync(item.filePath);assert.equal(saved.readUInt32BE(16),first.width);assert.equal(saved.readUInt32BE(20),final.height);

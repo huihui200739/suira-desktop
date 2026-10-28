@@ -14,6 +14,7 @@ const {longCaptureTarget,settledFirstFrame,sourceProbePoint,frameSettled}=requir
   probe.query=async()=>({...external,processStartedAt:200});
   await assert.rejects(longCaptureTarget({point:{x:50,y:50},probe,ownerPid:1,current:self}),/已关闭或发生变化/);
   assert.deepEqual(sourceProbePoint({x:0,y:0,width:400,height:400},{x:0,y:180,width:400,height:220}),{x:200,y:60});
+  assert.deepEqual(sourceProbePoint({x:0,y:0,width:400,height:400},[{x:0,y:180,width:400,height:220},{x:0,y:0,width:200,height:200}]),{x:200,y:60},'工具条和预览窗都要避开');
   const frame=v=>({width:64,height:100,data:Buffer.alloc(64*100*4,v)});let n=0;
   const result=await settledFirstFrame(async()=>frame(n++===0?80:255),async()=>{});
   assert.equal(result.data[0],255);assert.equal(n,4,'遮罩首帧应丢弃，连续三帧停稳才开始');

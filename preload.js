@@ -131,7 +131,9 @@ contextBridge.exposeInMainWorld('suira', {
     start: selection => ipcRenderer.invoke('capture:start-long',selection),
     state: () => ipcRenderer.invoke('long-capture:state'),
     command: command => ipcRenderer.invoke('long-capture:command',command),
-    onState: callback => subscribe('long-capture:state',callback)
+    onState: callback => subscribe('long-capture:state',callback),
+    // 右下角预览窗：主进程只推缩略图与尺寸，渲染层不碰原始像素
+    onPreview: callback => subscribe('long-capture:preview',callback)
   },
   // 剪贴板历史条（屏幕底部浮层）
   clipboardBar: {
