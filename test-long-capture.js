@@ -14,6 +14,14 @@ function frame(offset,{header=0,footer=0,reverseX=false,blank=false}={}) {
   return {width:W,height:H,data};
 }
 check('普通画面精确识别纵向滚动距离',()=>assert.equal(matchFrames(frame(0),frame(73)).shift,73));
+check('固定侧栏不参与正文位移匹配，滚动区域不必居中',()=>{
+  for(const [left,right] of [[36,88],[12,54]]) {
+    const first=frame(0),next=frame(61);
+    for(let y=0;y<H;y++)for(let x=0;x<W;x++)if(x<left||x>=right)first.data.copy(next.data,(y*W+x)*4,(y*W+x)*4,(y*W+x+1)*4);
+    assert.equal(matchFrames(first,next).shift,61);
+    assert.equal(matchFrames(next,first).shift,-61);
+  }
+});
 check('不变画面不重复追加',()=>assert.equal(matchFrames(frame(0),frame(0)).status,'duplicate'));
 check('向上滚动识别有符号距离',()=>assert.equal(matchFrames(frame(80),frame(20)).shift,-60));
 check('触控板一像素微滚动仍可对齐',()=>assert.equal(matchFrames(frame(0),frame(1)).shift,1));

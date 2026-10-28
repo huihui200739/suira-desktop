@@ -60,7 +60,8 @@
     "test:long-browser": "node tools/long-capture-browser-check.js",
     "verify:long-capture": "node node_modules/electron/install.js && node tools/region-native-check.js && node tools/electron-long-clipboard-check.js && node tools/electron-long-native-check.js",
     "verify:panel-global": "node tools/electron-panel-global-check.js",
-    "test:long-grid": "node tools/long-capture-grid-check.js"
+    "test:long-grid": "node tools/long-capture-grid-check.js",
+    "test:long-columns": "node tools/long-capture-columns-check.js"
   },
   "devDependencies": {
     "electron": "^45.0.0",
