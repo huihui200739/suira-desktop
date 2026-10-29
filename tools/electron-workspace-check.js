@@ -15,7 +15,8 @@ async function until(fn){let error;for(let n=0;n<140;n++){try{const value=await 
   await until(()=>main.evaluate('Boolean(window.WorkspaceUI && window.suira?.workspace && document.querySelector(".task-list-empty"))'));
   const errors=[];main.ws.addEventListener('message',event=>{const data=JSON.parse(event.data);if(data.method==='Runtime.exceptionThrown')errors.push(data.params.exceptionDetails.text);});await main.send('Runtime.enable');
   await main.send('Emulation.setDeviceMetricsOverride',{width:1360,height:900,deviceScaleFactor:1,mobile:false});
-  const go=async page=>{await main.evaluate(`window.suira.quick.showMain(${JSON.stringify(page)})`);await wait(160);};
+  const workbench=main;
+  const go=async page=>{await workbench.evaluate(`window.suira.quick.showMain(${JSON.stringify(page)})`);if(['calendar','markdown'].includes(page)){main=await until(()=>connect(port,t=>t.url.includes('tool='+page)));sockets.push(main.ws);await until(()=>main.evaluate('Boolean(window.WorkspaceUI)'));}else main=workbench;await wait(200);};
   const shot=async name=>{const result=await main.send('Page.captureScreenshot',{format:'png'});fs.writeFileSync(path.join(root,'docs/screenshots',name),Buffer.from(result.data,'base64'));};
   const task=await main.evaluate(`window.suira.tasks.create('工作台改版')`);assert.ok(task.ok);
   await main.evaluate(`window.suira.tasks.rename({id:${JSON.stringify(task.task.id)},title:'本周工作台计划'})`);
@@ -25,22 +26,56 @@ async function until(fn){let error;for(let n=0;n<140;n++){try{const value=await 
   await go('calendar');await main.evaluate(`document.getElementById('calendar-new').click();document.getElementById('event-title').value='产品评审';document.getElementById('event-time').value='14:30';document.getElementById('event-notes').value='讨论下一版工作台';document.getElementById('event-form').requestSubmit(document.querySelector('#event-form button[type="submit"]'));true`);
   await until(()=>main.evaluate(`document.querySelector('.agenda-content b')?.textContent==='产品评审'`));
   await main.evaluate(`document.querySelector('[data-done]').click();true`);await until(()=>main.evaluate(`Boolean(document.querySelector('.agenda-item.done'))`));
-  await shot('34-workspace-calendar.png');
+  await main.evaluate(`document.querySelector('[data-calendar-view="week"]').click();true`);
+  assert.equal(await main.evaluate('document.querySelectorAll(".calendar-day").length'),7);
+  await main.evaluate(`document.querySelector('[data-calendar-view="agenda"]').click();true`);
+  assert.equal(await main.evaluate('document.querySelectorAll(".calendar-agenda-row").length'),1);
+  await main.evaluate(`document.getElementById('calendar-search').value='不存在';document.getElementById('calendar-search').dispatchEvent(new Event('input'));true`);
+  assert.equal(await main.evaluate('document.querySelectorAll(".calendar-agenda-row").length'),0);
+  await main.evaluate(`document.getElementById('calendar-search').value='';document.getElementById('calendar-search').dispatchEvent(new Event('input'));document.querySelector('[data-calendar-view="month"]').click();true`);
+  const calendarClient=main;
+  await shot('39-calendar-window.png');
   await go('markdown');await main.evaluate(`document.getElementById('md-new').click();true`);await until(()=>main.evaluate(`!document.getElementById('md-body').hidden`));
   const markdown='# 工作台计划\n\n把想法整理成可以继续的工作。\n\n## 本周重点\n\n- 完善日历与任务\n- 检查快捷键\n\n| 模块 | 状态 |\n| --- | --- |\n| 日历 | 已接入 |\n| Markdown | 已接入 |\n\n```js\nconst next = "keep going";\n```\n\n<img src=x onerror="window.__unsafe=true"><script>window.__unsafe=true</script>\n[unsafe](javascript:alert(1))';
   await main.evaluate(`document.getElementById('md-title').value='工作台计划';document.getElementById('md-editor').value=${JSON.stringify(markdown)};document.getElementById('md-editor').dispatchEvent(new Event('input'));true`);
   await until(()=>main.evaluate(`document.getElementById('md-status').textContent==='已保存'`));
   assert.equal(await main.evaluate(`document.querySelector('#md-preview table')!==null && !document.querySelector('#md-preview script,#md-preview img,#md-preview [onerror]') && !window.__unsafe`),true);
   await main.evaluate(`document.getElementById('md-editor').value=${JSON.stringify(markdown.split('<img')[0])};document.getElementById('md-editor').dispatchEvent(new Event('input'));window.WorkspaceUI.flush()`);
-  await shot('35-workspace-markdown.png');
+  const markdownClient=main;
+  assert.notEqual(markdownClient,calendarClient);
+  assert.equal(await workbench.evaluate('document.querySelector(".page.is-active").id'),'page-shelf');
+  for(const view of ['preview','edit','split']){
+    await main.evaluate(`document.querySelector('[data-md-view="${view}"]').click();true`);
+    assert.equal(await main.evaluate('document.getElementById("md-split").dataset.view'),view);
+  }
+  assert.equal(await main.evaluate('getComputedStyle(document.querySelector(".sidebar")).display'),'none');
+  await shot('40-markdown-window.png');
   await main.evaluate(`document.getElementById('md-editor').value=${JSON.stringify(markdown)};document.getElementById('md-editor').dispatchEvent(new Event('input'));window.WorkspaceUI.flush()`);
   await main.send('Page.enable');
   const reloaded=new Promise((resolve,reject)=>{const timer=setTimeout(()=>reject(Error('Reload timed out')),10000);const onMessage=event=>{const data=JSON.parse(event.data);if(data.method==='Page.loadEventFired'){main.ws.removeEventListener('message',onMessage);clearTimeout(timer);resolve();}};main.ws.addEventListener('message',onMessage);});
-  await main.send('Page.reload');await reloaded;await until(()=>main.evaluate('Boolean(window.WorkspaceUI && document.querySelector(".task-row"))'));await go('markdown');await until(()=>main.evaluate(`document.getElementById('md-title').value==='工作台计划'`));
+  await main.send('Page.reload');await reloaded;await until(()=>main.evaluate('Boolean(window.WorkspaceUI && document.querySelector("#page-markdown.is-active"))'));await go('markdown');await until(()=>main.evaluate(`document.getElementById('md-title').value==='工作台计划'`));
   assert.equal(await main.evaluate(`document.getElementById('md-editor').value`),markdown);
   await main.evaluate('window.WorkspaceUI.flush()');
   const mdItems=await main.evaluate(`window.suira.workspace.list('markdown')`);
   assert.equal((await main.evaluate(`window.suira.workspace.export(${JSON.stringify(mdItems[0].id)})`)).ok,true);assert.equal(fs.readFileSync(path.join(tmp,'output.md'),'utf8'),markdown);
+  for(const format of ['html','pdf']){console.log('EXPORT',format);
+    const result=await main.evaluate(`window.suira.workspace.export(${JSON.stringify(mdItems[0].id)},${JSON.stringify(format)})`);assert.ok(result.ok,JSON.stringify(result));
+    const bytes=fs.readFileSync(path.join(tmp,'output.md'));
+    if(format==='pdf')assert.equal(bytes.subarray(0,4).toString(),'%PDF');
+    else {const html=bytes.toString();assert.ok(html.includes('<table>'));assert.ok(!html.includes('<script'));assert.ok(!html.includes('onerror='));}
+  }
+  console.log('CALENDAR EXPORT');
+  const ics=await calendarClient.evaluate('window.suira.workspace.calendarExport()');assert.ok(ics.ok);assert.ok(fs.readFileSync(path.join(tmp,'output.md'),'utf8').includes('BEGIN:VEVENT'));
+  // Window buttons must target their own window. Closing the calendar leaves Markdown alive.
+  console.log('CLOSE CALENDAR');
+  await calendarClient.evaluate('setTimeout(()=>window.suira.window.close(),40);true');
+  await until(async()=>!(await (await fetch('http://127.0.0.1:'+port+'/json/list')).json()).some(t=>t.url.includes('tool=calendar')));
+  assert.equal(await markdownClient.evaluate('Boolean(window.WorkspaceUI)'),true);
+  await markdownClient.evaluate(`document.getElementById('md-editor').value='Saved while closing';document.getElementById('md-editor').dispatchEvent(new Event('input'));setTimeout(()=>window.suira.window.close(),40);true`);
+  await until(async()=>!(await (await fetch('http://127.0.0.1:'+port+'/json/list')).json()).some(t=>t.url.includes('tool=markdown')));
+  const savedOnClose=await workbench.evaluate(`window.suira.workspace.list('markdown')`);assert.equal(savedOnClose[0].text,'Saved while closing');
+
+  main=workbench;
   const imported=await main.evaluate('window.suira.workspace.import()');assert.ok(imported.ok);assert.equal(imported.item.text,'# Imported\n\nThis is a local file.');
   assert.equal((await main.evaluate(`window.suira.workspace.remove('markdown',${JSON.stringify(imported.item.id)})`)).ok,true);
   await go('settings');await main.evaluate(`document.querySelector('[data-setting-tab="translation"]').click();true`);await main.evaluate(`document.getElementById('setting-translate-provider').value='openai';document.getElementById('setting-translate-provider').dispatchEvent(new Event('change'));true`);await wait(150);await shot('33-workspace-settings.png');
@@ -54,6 +89,8 @@ async function until(fn){let error;for(let n=0;n<140;n++){try{const value=await 
   fs.writeFileSync(control,JSON.stringify({seq:2,key:'Alt+G'}));await until(()=>picker.evaluate('window.__longPickerState?.revision>=3'));await picker.evaluate('window.suira.longCapture.cancelPicker()');
   await main.evaluate('window.suira.quick.show()');
   const panel=await until(()=>connect(port,t=>t.url.endsWith('/quickpanel.html')));sockets.push(panel.ws);await until(()=>panel.evaluate('document.querySelectorAll(".key").length===38'));
+  await until(()=>panel.evaluate('document.visibilityState==="visible"'));await wait(350);
+  await panel.send('Input.dispatchMouseEvent',{type:'mouseMoved',x:10,y:400});await wait(350);
   const collapsed=await panel.evaluate(`(()=>{const f=document.querySelector('.search-field').getBoundingClientRect(),s=document.querySelector('.search-slot').getBoundingClientRect();return {width:f.width,left:f.left,slot:s.left,y:f.top+f.height/2};})()`);
   assert.ok(collapsed.width<=46);assert.ok(Math.abs(collapsed.left-collapsed.slot)<1,'collapsed search must align left');
   assert.equal(await panel.evaluate(`document.getElementById('search-close')===null`),true);

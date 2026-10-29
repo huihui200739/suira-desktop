@@ -28,10 +28,10 @@ try { [SuiraTestKey]::keybd_event(0x12,0,0,[UIntPtr]::Zero);[SuiraTestKey]::keyb
     await picker.evaluate('window.suira.longCapture.cancelPicker()');await wait(200);
   }
   for(const [key,page] of [['F','calendar'],['M','markdown']]){
-    press(key);await until(()=>main.evaluate(`Boolean(document.querySelector('#page-${page}.is-active'))`));
+    press(key);const tool=await until(()=>connect(port,t=>t.url.includes('tool='+page)));sockets.push(tool.ws);await until(()=>tool.evaluate(`Boolean(document.querySelector('#page-${page}.is-active'))`));
   }
   const result=await main.evaluate(`window.suira.workspace.save('markdown',{title:'Packaged preview',text:'# Ready\\n\\n**Local renderer**'})`);assert.ok(result.ok);
-  await main.evaluate(`window.WorkspaceUI.open('markdown')`);await until(()=>main.evaluate(`document.querySelector('#md-preview strong')?.textContent==='Local renderer'`));
+  const markdown=await connect(port,t=>t.url.includes('tool=markdown'));sockets.push(markdown.ws);await markdown.evaluate(`window.WorkspaceUI.open('markdown')`);await until(()=>markdown.evaluate(`document.querySelector('#md-preview strong')?.textContent==='Local renderer'`));
   assert.equal((await main.evaluate(`window.suira.shortcuts.clear({name:'longCapture'})`)).ok,true);
   await wait(200);const cleared=await main.evaluate('window.suira.shortcuts.get()');assert.equal(cleared.bindings.longCapture,'');assert.equal(cleared.bindings['panelKey:G'],'');
   const failed=Object.entries(snapshot.status).filter(([name,value])=>!value.ok&&!value.optional).map(([name,value])=>({name,error:value.error}));

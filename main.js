@@ -1649,6 +1649,23 @@ $ok = [SuiraFocus]::Focus([long]${hwnd})
   }
 }
 
+const workspaceWindows=new Map();
+let workspaceQuitRequested=false;
+function showWorkspaceWindow(type) {
+  let win=workspaceWindows.get(type);
+  if(win&&!win.isDestroyed()){if(win.isMinimized())win.restore();win.show();win.focus();return win;}
+  const area=screen.getPrimaryDisplay().workArea;
+  win=new BrowserWindow({width:Math.min(type==='markdown'?1300:1180,area.width-40),height:Math.min(860,area.height-40),minWidth:800,minHeight:600,show:false,frame:false,
+    title:type==='markdown'?'Markdown · 随序':'日历 · 随序',backgroundColor:'#00000000',backgroundMaterial:'acrylic',roundedCorners:true,icon:assetPath('suira-icon.png'),
+    webPreferences:{preload:path.join(__dirname,'preload.js'),contextIsolation:true,nodeIntegration:false,sandbox:false,spellcheck:false}});
+  workspaceWindows.set(type,win);win.__tool=type;
+  win.loadFile(path.join(__dirname,'src/index.html'),{query:{tool:type}});
+  win.once('ready-to-show',()=>{win.show();win.focus();});
+  win.on('close',event=>{if(!isQuitting&&!win.__allowClose){event.preventDefault();win.webContents.send('workspace:closing');}});
+  win.on('closed',()=>{workspaceWindows.delete(type);if(workspaceQuitRequested&&workspaceWindows.size===0)app.quit();});
+  return win;
+}
+
 function createMainWindow() {
   const displays = screen.getAllDisplays();
   const display = screen.getPrimaryDisplay();
@@ -1753,6 +1770,7 @@ function rememberMainWindowState() {
 }
 
 function showMain(page = 'shelf') {
+  if(['calendar','markdown'].includes(page))return showWorkspaceWindow(page);
   const alreadyFocused = Boolean(mainWindow && !mainWindow.isDestroyed() && mainWindow.isVisible() && mainWindow.isFocused());
   if (!mainWindow || mainWindow.isDestroyed()) createMainWindow();
   cancelIdleTeardown(mainWindow);
@@ -2920,16 +2938,17 @@ function registerIpc() {
     if (win && !win.isDestroyed()) win.close();
   });
 
-  ipcMain.handle('window:minimize', () => mainWindow?.minimize());
-  ipcMain.handle('window:maximize', () => {
-    if (!mainWindow) return false;
-    if (mainWindow.isMaximized()) mainWindow.unmaximize();
-    else mainWindow.maximize();
-    return mainWindow.isMaximized();
+  const senderWindow = event => BrowserWindow.fromWebContents(event.sender);
+  ipcMain.handle('window:minimize', event => senderWindow(event)?.minimize());
+  ipcMain.handle('window:maximize', event => {
+    const win=senderWindow(event);if(!win)return false;
+    if(win.isMaximized())win.unmaximize();else win.maximize();return win.isMaximized();
   });
-  ipcMain.handle('window:close', () => mainWindow?.hide());
-  ipcMain.handle('window:is-maximized', () => Boolean(mainWindow?.isMaximized()));
-  ipcMain.handle('window:hide', () => mainWindow?.hide());
+  ipcMain.handle('window:close', event => {const win=senderWindow(event);if(win===mainWindow)win.hide();else win?.close();});
+  ipcMain.handle('window:is-maximized', event => Boolean(senderWindow(event)?.isMaximized()));
+  ipcMain.handle('window:hide', event => senderWindow(event)?.hide());
+  ipcMain.handle('workspace:open', (_event,type) => {if(!['calendar','markdown'].includes(type))return {ok:false};showWorkspaceWindow(type);return {ok:true};});
+  ipcMain.handle('workspace:close-ready', event => {const win=senderWindow(event);if([...workspaceWindows.values()].includes(win)){win.__allowClose=true;win.close();}return {ok:true};});
 
   ipcMain.handle('quick:hide', () => hideQuickPanel());
   ipcMain.handle('quick:show', () => { showQuickPanel(); return { ok: true }; });
@@ -3479,8 +3498,8 @@ function registerIpc() {
     try { workspace.remove(type,id); await store.save(); broadcast('content:changed'); return {ok:true}; }
     catch(error){return {ok:false,error:error.message};}
   });
-  ipcMain.handle('workspace:import', async () => {
-    const result=await dialog.showOpenDialog(mainWindow,{title:'打开 Markdown',filters:[{name:'Markdown',extensions:['md','markdown','txt']}],properties:['openFile']});
+  ipcMain.handle('workspace:import', async event => {
+    const result=await dialog.showOpenDialog(BrowserWindow.fromWebContents(event.sender),{title:'打开 Markdown',filters:[{name:'Markdown',extensions:['md','markdown','txt']}],properties:['openFile']});
     if(result.canceled)return {ok:false,canceled:true};
     try {
       const file=result.filePaths[0]; if((await fsp.stat(file)).size>800000)throw Error('文件过大，请选择 800 KB 以内的文档');
@@ -3488,11 +3507,27 @@ function registerIpc() {
       await store.save(); broadcast('content:changed'); return {ok:true,item};
     }catch(error){return {ok:false,error:error.message};}
   });
-  ipcMain.handle('workspace:export', async (_event,id) => {
+  ipcMain.handle('workspace:export', async (event,id,format='md') => {
     const item=store.getItem(String(id));if(item?.meta?.workspace!=='markdown')return {ok:false,error:'文档不存在'};
-    const result=await dialog.showSaveDialog(mainWindow,{title:'导出 Markdown',defaultPath:item.title.replace(/[\\/:*?"<>|]/g,'_')+'.md',filters:[{name:'Markdown',extensions:['md']}]});
+    if(!['md','html','pdf'].includes(format))return {ok:false,error:'不支持的导出格式'};
+    const result=await dialog.showSaveDialog(BrowserWindow.fromWebContents(event.sender),{title:'导出文档',defaultPath:item.title.replace(/[\\/:*?"<>|]/g,'_')+'.'+format,filters:[{name:format.toUpperCase(),extensions:[format]}]});
     if(result.canceled)return {ok:false,canceled:true};
-    try{await fsp.writeFile(result.filePath,item.text,'utf8');return {ok:true};}catch(error){return {ok:false,error:error.message};}
+    let render;
+    try {
+      let data=item.text;
+      if(format!=='md'){
+        render=new BrowserWindow({show:false,webPreferences:{contextIsolation:true,nodeIntegration:false,sandbox:true}});
+        await render.loadFile(path.join(__dirname,'src/export.html'));
+        const html=await render.webContents.executeJavaScript(`window.renderExport(${JSON.stringify({title:item.title,text:item.text})})`);
+        data=format==='pdf'?await render.webContents.printToPDF({printBackground:true,pageSize:'A4'}):html;
+      }
+      await fsp.writeFile(result.filePath,data);return {ok:true};
+    }catch(error){return {ok:false,error:error.message};}finally{render?.destroy();}
+  });
+  ipcMain.handle('workspace:calendar-export', async event => {
+    const result=await dialog.showSaveDialog(BrowserWindow.fromWebContents(event.sender),{title:'导出日历',defaultPath:'随序日历.ics',filters:[{name:'iCalendar',extensions:['ics']}]});
+    if(result.canceled)return {ok:false,canceled:true};
+    try{await fsp.writeFile(result.filePath,require('./lib/calendar-export').calendarICS(workspace.list('calendar')),'utf8');return {ok:true};}catch(error){return {ok:false,error:error.message};}
   });
   ipcMain.handle('tasks:status', async (_event,payload) => {
     const task=store.updateTask(String(payload?.id||''),{progress:payload?.done?'done':'idle'});
@@ -4055,7 +4090,9 @@ function restartApplication() {
   setTimeout(() => app.quit(), 150);
 }
 
-app.on('before-quit', () => {
+app.on('before-quit', event => {
+  const unsaved=[...workspaceWindows.values()].filter(win=>!win.isDestroyed()&&!win.__allowClose);
+  if(unsaved.length){event.preventDefault();workspaceQuitRequested=true;isQuitting=false;for(const win of unsaved)win.webContents.send('workspace:closing');return;}
   if(longCapture){try{longCapture.worker?.stop();}catch{}try{longCapture.controller?.stop();}catch{}}
   isQuitting = true;
 });

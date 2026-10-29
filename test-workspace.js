@@ -12,6 +12,8 @@ const dir=fs.mkdtempSync(path.join(os.tmpdir(),'suira-workspace-'));
   const e=w.save('calendar',{title:'测试日程',date:'2026-10-29',time:'09:30',text:'会议备注'});
   assert.throws(()=>w.save('calendar',{id:e.id,title:'bad',date:'2026-02-30'}));
   w.save('calendar',{id:e.id,title:e.title,...e.meta,text:e.text,done:true});
+  const categorized=w.save('calendar',{id:e.id,title:e.title,...e.meta,done:true,category:'study',priority:'high',location:'教室 A'});assert.equal(categorized.meta.category,'study');assert.equal(categorized.meta.priority,'high');
+  const {calendarICS}=require('./lib/calendar-export');const ics=calendarICS([categorized]);assert.ok(ics.includes('BEGIN:VEVENT'));assert.ok(ics.includes('LOCATION:教室 A'));assert.ok(ics.includes('DTSTART:20261029T093000'));
   const md=w.save('markdown',{title:'测试文档',text:'# 标题\n\n**正文**'});
   assert.throws(()=>w.save('markdown',{id:e.id,title:'wrong'}));
   assert.throws(()=>w.save('markdown',{id:'missing',title:'gone'}));

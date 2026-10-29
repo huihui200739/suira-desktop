@@ -186,12 +186,16 @@ contextBridge.exposeInMainWorld('suira', {
     onProgress: (callback) => subscribe('ocr:progress', callback)
   },
   workspace: {
+    open: type => ipcRenderer.invoke('workspace:open',type),
+    onClosing: callback => subscribe('workspace:closing',callback),
+    closeReady: () => ipcRenderer.invoke('workspace:close-ready'),
+    calendarExport: () => ipcRenderer.invoke('workspace:calendar-export'),
     openLink: url => ipcRenderer.invoke('workspace:open-link',url),
     list: type => ipcRenderer.invoke('workspace:list',type),
     save: (type,payload) => ipcRenderer.invoke('workspace:save',type,payload),
     remove: (type,id) => ipcRenderer.invoke('workspace:remove',type,id),
     import: () => ipcRenderer.invoke('workspace:import'),
-    export: id => ipcRenderer.invoke('workspace:export',id)
+    export: (id,format) => ipcRenderer.invoke('workspace:export',id,format)
   },
   tasks: {
     status: payload => ipcRenderer.invoke('tasks:status',payload),

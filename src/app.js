@@ -66,7 +66,11 @@ function derivedChildren(itemId) {
 
 /* ---------- navigation ---------- */
 
+const workspaceType=new URLSearchParams(location.search).get('tool');
+const standaloneTool=['calendar','markdown'].includes(workspaceType)?workspaceType:'';
+if(standaloneTool){document.documentElement.classList.add('tool-window');document.documentElement.dataset.tool=standaloneTool;document.querySelector('.brand b').textContent=standaloneTool==='markdown'?'Markdown':'日历';document.getElementById('close').setAttribute('aria-label','关闭窗口');}
 function navigate(page) {
+  if(!standaloneTool && ['calendar','markdown'].includes(page)){window.suira.workspace.open(page);return;}
   window.WorkspaceUI?.flush().catch(error=>showGlobalToast(error.message,'error'));
   state.page = page;
   $$('.page').forEach((el) => el.classList.toggle('is-active', el.id === `page-${page}`));
@@ -1197,7 +1201,7 @@ async function init() {
     $('#side-version').textContent = info.version;
   }
   state.executions = (await window.suira.executions.list(200)) || [];
-  navigate('shelf');
+  navigate(standaloneTool || 'shelf');
 }
 
 init().catch((error) => {
