@@ -847,16 +847,46 @@ async function syncShortcutChip() {
   }
 }
 
+let searchPointerNear = false;
+function setSearchExpanded(expanded) {
+  if (!expanded && state.composing) return;
+  const field = document.querySelector('.search-field'), input = $('#search');
+  field.classList.toggle('is-expanded', expanded);
+  $('#search-toggle').setAttribute('aria-expanded', String(expanded));
+  input.tabIndex = expanded ? 0 : -1;
+  if (!expanded && document.activeElement === input) input.blur();
+}
 function focusSearch() {
-  document.querySelector('.search-field').classList.add('is-expanded');
-  $('#search-toggle').setAttribute('aria-expanded','true');
+  setSearchExpanded(true);
   $('#search').focus();
 }
 
 function installEvents() {
-  $('#search-toggle').addEventListener('click',focusSearch);
-  $('#search').addEventListener('focus',()=>{document.querySelector('.search-field').classList.add('is-expanded');$('#search-toggle').setAttribute('aria-expanded','true');});
-  $('#search-close').addEventListener('click',()=>{clearSearch();document.querySelector('.search-field').classList.remove('is-expanded');$('#search-toggle').setAttribute('aria-expanded','false');$('#search-toggle').focus();});
+  const slot = document.querySelector('.search-slot');
+  $('#search').tabIndex = -1;
+  $('#search-toggle').addEventListener('click', focusSearch);
+  $('#search').addEventListener('focus', () => setSearchExpanded(true));
+  $('#search-toggle').addEventListener('focus', () => {
+    if ($('#search-toggle').matches(':focus-visible')) setSearchExpanded(true);
+  });
+  slot.addEventListener('focusout', event => {
+    if (!searchPointerNear && !slot.contains(event.relatedTarget)) setSearchExpanded(false);
+  });
+  document.addEventListener('pointermove', event => {
+    if (event.pointerType === 'touch') return;
+    const box = slot.getBoundingClientRect();
+    const expanded = document.querySelector('.search-field').classList.contains('is-expanded');
+    const right = expanded ? box.right : box.left + 44;
+    searchPointerNear = event.clientX >= box.left - 14 && event.clientX <= right + 14
+      && event.clientY >= box.top - 14 && event.clientY <= box.bottom + 14;
+    setSearchExpanded(searchPointerNear);
+  }, { passive: true });
+  document.documentElement.addEventListener('pointerleave', () => {
+    searchPointerNear = false; setSearchExpanded(false);
+  });
+  $('#search').addEventListener('compositionend', () => {
+    if (!searchPointerNear) queueMicrotask(() => setSearchExpanded(false));
+  });
   document.addEventListener('pointermove', updateKeyDrag, { passive: false });
   listen(document, 'pointerup', finishKeyDrag);
   document.addEventListener('pointercancel', cancelKeyDrag);
@@ -936,6 +966,7 @@ function installEvents() {
       else window.suira.quick.hide();
       return;
     }
+    if (!inInput && event.key === 'F3') { event.preventDefault(); focusSearch(); return; }
     if (inInput) return; // 输入框自行处理，避免把字母解释成动作
     // 聚焦控件时保留浏览器的原生激活行为，空格不再误切换面板。
     if (event.target.closest?.('button') && (event.key === ' ' || event.key === 'Enter')) return;
@@ -1139,6 +1170,7 @@ function installEvents() {
     $('#toast').className = 'toast';
     clearSearch();
     setMode('actions');
+    searchPointerNear = false; setSearchExpanded(false);
     closeOcr();
     closeTranslate();
     state.appPage = 0;
