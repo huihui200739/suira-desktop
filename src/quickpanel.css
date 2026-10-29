@@ -75,6 +75,17 @@ kbd { font-family: var(--font-ui); font-size: var(--text-1); font-weight: 600; }
 .search-field svg { width: 18px; height: 18px; fill: none; stroke: var(--ink-muted); stroke-width: 1.7; flex: 0 0 auto; }
 .search-field input { min-width: 0; flex: 1; border: 0; outline: 0; background: transparent; font-size: var(--text-2); }
 .search-field input::placeholder { color: var(--ink-muted); }
+.search-slot { min-width:0; flex:1; display:flex; justify-content:center; }
+.search-slot .search-field { flex:0 0 auto; width:44px; height:44px; padding:0; gap:0; border-color:transparent; background:var(--paper); border-radius:24px; overflow:hidden; box-shadow:0 3px 12px #00000008; transition:width .38s cubic-bezier(.22,1,.36,1),box-shadow .2s,border-color .2s; }
+.search-slot .search-toggle { display:grid; place-items:center; width:44px; height:44px; flex:0 0 44px; padding:0; border:0; background:transparent; cursor:pointer; }
+.search-slot .search-toggle svg { width:19px; height:19px; }
+.search-slot input,.search-slot .search-mode,.search-close { opacity:0; pointer-events:none; transition:opacity .18s; }
+.search-slot input { width:0; }
+.search-slot .search-field.is-expanded,.search-slot .search-field:focus-within:has(input:focus) { width:100%; border-color:var(--line-strong); box-shadow:0 4px 16px #00000008; }
+.search-field.is-expanded input,.search-field.is-expanded .search-mode,.search-field.is-expanded .search-close { opacity:1; pointer-events:auto; }
+.search-field.is-expanded input { width:auto; flex:1; }
+.search-close { flex:0 0 34px; height:34px; border:0; background:transparent; color:var(--ink-muted); font-size:20px; cursor:pointer; }
+@media(prefers-reduced-motion:reduce){.search-slot .search-field,.search-slot input,.search-slot .search-mode,.search-close { transition:none; }}
 .search-mode {
   flex: 0 0 auto;
   padding: 3px 8px;
@@ -236,6 +247,8 @@ kbd { font-family: var(--font-ui); font-size: var(--text-1); font-weight: 600; }
 .key[data-action="edit-image"] { --key-tint: var(--action-violet); }
 .key[data-action="long-capture"] { --key-tint: var(--action-blue); }
 .key[data-action="translate"] { --key-tint: var(--action-green); }
+.key[data-action="calendar"] { --key-tint: var(--action-amber); }
+.key[data-action="markdown"] { --key-tint: var(--action-teal); }
 .key[data-action="ocr"], .key[data-action="clipboard"] { --key-tint: var(--action-blue); }
 .key[data-action="pin"], .key[data-action="desktop"], .key[data-action="lock"] { --key-tint: var(--action-violet); }
 .key[data-action="text-clean"] { --key-tint: var(--action-amber); }

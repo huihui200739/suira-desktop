@@ -67,6 +67,7 @@ function derivedChildren(itemId) {
 /* ---------- navigation ---------- */
 
 function navigate(page) {
+  window.WorkspaceUI?.flush().catch(error=>showGlobalToast(error.message,'error'));
   state.page = page;
   $$('.page').forEach((el) => el.classList.toggle('is-active', el.id === `page-${page}`));
   $$('.nav-item').forEach((el) => el.classList.toggle('is-active', el.dataset.page === page));
@@ -75,6 +76,7 @@ function navigate(page) {
   if (page === 'library') refreshLibrary();
   if (page === 'trail') refreshTrail();
   if (page === 'settings') refreshSettings();
+  if (page === 'calendar' || page === 'markdown') window.WorkspaceUI.open(page);
 }
 
 /* ---------- shelf / task shelf ---------- */
@@ -105,7 +107,7 @@ function renderTaskList() {
   list.innerHTML = state.tasks.map((task) => `
     <button class="task-row ${task.id === state.selectedTaskId ? 'is-active' : ''}" type="button" data-id="${escapeHtml(task.id)}">
       <span class="task-row-mark"></span>
-      <span class="task-row-body"><b>${escapeHtml(task.title)}</b><small>${task.items.length} 项，${relativeTime(task.updatedAt)}</small></span>
+      <span class="task-row-body"><b>${escapeHtml(task.title)}</b><small>${task.progress==='done'?'已完成 · ':''}${task.items.length} 项，${relativeTime(task.updatedAt)}</small></span>
     </button>
   `).join('');
   $$('.task-row', list).forEach((row) => {
@@ -144,6 +146,7 @@ function renderTaskDetail() {
   empty.hidden = true;
   body.hidden = false;
   $('#task-title').textContent = task.title;
+  $('#task-done').textContent=task.progress==='done'?'重新打开':'标记完成';
   $('#task-subtitle').textContent = `${task.items.length} 项内容，创建于 ${relativeTime(task.createdAt)}`;
 
   const chips = taskStepChips(task);
@@ -568,7 +571,10 @@ function renderTrail() {
     list.innerHTML = '<div class="library-empty">还没有动作记录。截图提字、合并换行后，这里会出现完整轨迹。</div>';
     return;
   }
-  list.innerHTML = state.executions.map((execution) => {
+  const trailFilter=$('#trail-filter').value;
+  const trailQuery=$('#trail-search').value.trim().toLowerCase();
+  const visible=state.executions.filter(e=>(!trailFilter||e.status===trailFilter)&&(!trailQuery||((ACTION_LABELS[e.actionId]||e.actionId)+' '+e.error).toLowerCase().includes(trailQuery)));
+  list.innerHTML = visible.map((execution) => {
     const statusLabel = { done: '完成', failed: '失败', running: '进行中', queued: '排队', cancelled: '已取消' }[execution.status] || execution.status;
     const inputNames = execution.inputIds.map((id) => state.items.find((item) => item.id === id)?.title).filter(Boolean);
     return `
@@ -712,7 +718,16 @@ function bindTranslateSettings() {
     const status = $('#setting-translate-status');
     status.textContent = '正在测试…';
     status.className = 'setting-hint';
-    const result = await window.suira.translate.test();
+    const button=$('#setting-translate-test');button.disabled=true;
+    let result;
+    try {
+      const patch={translateProvider:$('#setting-translate-provider').value,translateBaseUrl:$('#setting-translate-base').value,translateModel:$('#setting-translate-model').value,translateRegion:$('#setting-translate-region').value,translateTarget:$('#setting-translate-target').value};
+      if($('#setting-translate-key').value.trim())patch.translateApiKey=$('#setting-translate-key').value.trim();
+      const saved=await window.suira.settings.update(patch);
+      if(!saved?.ok)throw Error(saved?.error||'保存失败');
+      $('#setting-translate-key').value='';
+      result=await window.suira.translate.test();
+    }catch(error){result={ok:false,error:error.message};}finally{button.disabled=false;}
     if (!result?.ok) {
       status.textContent = result?.error || '测试失败';
       status.className = 'setting-hint is-error';
@@ -765,6 +780,7 @@ function prettyAccelerator(accelerator) {
 function bindShortcutEditors() {
   const editors = [
     { name: 'quick', input: $('#setting-key-quick'), status: $('#status-quick') },
+    { name: 'longCapture', input: $('#setting-key-longCapture'), status: $('#status-longCapture') },
     { name: 'capture', input: $('#setting-key-capture'), status: $('#status-capture') },
     { name: 'momentary', input: $('#setting-key-momentary'), status: $('#status-momentary') },
     { name: 'panelCycle', input: $('#setting-key-panelCycle'), status: $('#status-panelCycle') },
@@ -856,6 +872,9 @@ async function refreshShortcuts() {
       } else if (entry && !entry.ok) {
         status.textContent = entry.error || '注册失败';
         status.className = 'shortcut-status is-error';
+      } else if (entry?.fallback && entry?.ok) {
+        status.textContent = '已生效（兼容按键监听）';
+        status.className = 'shortcut-status is-ok';
       } else if (entry?.reserved) {
         status.textContent = `注意：${entry.reserved} 已被系统占用`;
         status.className = 'shortcut-status is-warn';
@@ -869,6 +888,8 @@ async function refreshShortcuts() {
     };
     render('quick', '#setting-key-quick', '#status-quick');
     render('capture', '#setting-key-capture', '#status-capture');
+    render('longCapture', '#setting-key-longCapture', '#status-longCapture');
+    window.WorkspaceUI?.shortcuts(snapshot);
     render('panelCycle', '#setting-key-panelCycle', '#status-panelCycle');
     render('pinnedToggle', '#setting-key-pinnedToggle', '#status-pinnedToggle');
     render('clipboardBar', '#setting-key-clipboardBar', '#status-clipboardBar');
@@ -896,6 +917,9 @@ async function refreshShortcuts() {
       } else if (entry && !entry.ok) {
         momentaryStatus.textContent = entry.error || '注册失败';
         momentaryStatus.className = 'shortcut-status is-error';
+      } else if (entry?.fallback && entry?.ok) {
+        status.textContent = '已生效（兼容按键监听）';
+        status.className = 'shortcut-status is-ok';
       } else if (entry?.reserved) {
         momentaryStatus.textContent = `注意：${entry.reserved} 已被系统占用`;
         momentaryStatus.className = 'shortcut-status is-warn';
@@ -978,6 +1002,9 @@ function closeModal() {
 function installEvents() {
   $$('.nav-item').forEach((item) => item.addEventListener('click', () => navigate(item.dataset.page)));
 
+  $('#trail-filter').addEventListener('change',renderTrail);
+  $('#trail-search').addEventListener('input',renderTrail);
+  $('#shelf-first').addEventListener('click',()=>$('#shelf-new').click());
   $('#show-quick').addEventListener('click', () => window.suira.quick.show());
   $('#title-capture').addEventListener('click', async () => {
     const result = await window.suira.capture.start();
@@ -988,7 +1015,7 @@ function installEvents() {
     const maximized = await window.suira.window.maximize();
     syncMaximizeIcon(maximized);
   });
-  $('#close').addEventListener('click', () => window.suira.window.close());
+  $('#close').addEventListener('click', async () => {try{await window.WorkspaceUI.flush();await window.suira.window.close();}catch(error){showGlobalToast(error.message,'error');}});
 
   $('#shelf-new').addEventListener('click', () => openModal('新建任务', '例如：竞品研究', async (title) => {
     const result = await window.suira.tasks.create(title);
@@ -1004,7 +1031,7 @@ function installEvents() {
     if (!text.trim()) { showGlobalToast('剪贴板里暂时没有文字', 'error'); return; }
     const result = await window.suira.content.addText({ text, source: 'clipboard' });
     if (!result?.ok) { showGlobalToast(result?.error || '读取失败', 'error'); return; }
-    let task = state.tasks.find((entry) => !entry.archived && entry.title === '临时收集');
+    let task = selectedTask() || state.tasks.find((entry) => !entry.archived && entry.title === '临时收集');
     if (!task) {
       const created = await window.suira.tasks.create('临时收集');
       task = created?.task;
@@ -1013,6 +1040,8 @@ function installEvents() {
     showGlobalToast('剪贴板内容已加入任务匣', 'success');
     await refreshShelf();
   });
+  $('#task-done').addEventListener('click',async()=>{const task=selectedTask();if(!task)return;await window.suira.tasks.status({id:task.id,done:task.progress!=='done'});await refreshShelf();});
+  $('#task-rename').addEventListener('click',()=>{const task=selectedTask();if(!task)return;openModal('重命名任务',task.title,async title=>{await window.suira.tasks.rename({id:task.id,title});await refreshShelf();});});
   $('#task-copy').addEventListener('click', async () => {
     const task = selectedTask();
     if (!task) return;

@@ -1,0 +1,62 @@
+'use strict';
+// Isolated profile, empty clipboard and injectable OS registration. The registered
+// callbacks, IPC, picker windows, renderer, and persistent store are production code.
+const fs=require('node:fs'),path=require('node:path'),os=require('node:os'),net=require('node:net'),assert=require('node:assert/strict'),{spawn}=require('node:child_process');
+const {connect}=require('./runtime-client');
+const root=path.resolve(__dirname,'..'),tmp=fs.mkdtempSync(path.join(os.tmpdir(),'suira-workspace-')),control=path.join(tmp,'key.json');
+const wait=ms=>new Promise(r=>setTimeout(r,ms));let child,main;const sockets=[];
+async function until(fn){let error;for(let n=0;n<140;n++){try{const value=await fn();if(value)return value;}catch(e){error=e;}await wait(80);}throw error||Error('状态超时');}
+(async()=>{
+  const server=net.createServer();await new Promise(r=>server.listen(0,'127.0.0.1',r));const port=server.address().port;await new Promise(r=>server.close(r));
+  fs.writeFileSync(path.join(tmp,'input.md'),'# Imported\n\nThis is a local file.');fs.writeFileSync(control,'{}');const entry=path.join(tmp,'app.js');
+  fs.writeFileSync(entry,`const fs=require('node:fs'),{app,clipboard,globalShortcut,dialog}=require('electron');dialog.showOpenDialog=async()=>({canceled:false,filePaths:[${JSON.stringify(path.join(tmp,'input.md'))}]});dialog.showSaveDialog=async()=>({canceled:false,filePath:${JSON.stringify(path.join(tmp,'output.md'))}});app.setPath('userData',${JSON.stringify(path.join(tmp,'profile'))});clipboard.read=async()=>[];clipboard.readText=async()=>'';const keys=new Map();globalShortcut.register=(key,fn)=>{if(keys.has(key))return false;keys.set(key,fn);return true;};globalShortcut.unregister=key=>keys.delete(key);globalShortcut.unregisterAll=()=>keys.clear();let seen=0;setInterval(()=>{const c=JSON.parse(fs.readFileSync(${JSON.stringify(control)},'utf8'));if(c.seq&&c.seq!==seen){seen=c.seq;keys.get(c.key)?.();}},40);require(${JSON.stringify(path.join(root,'main.js'))});`);
+  const env={...process.env};delete env.ELECTRON_RUN_AS_NODE;const log=fs.openSync(path.join(tmp,'app.log'),'w');child=spawn('C:\\suira-electron\\electron.exe',[entry,'--remote-debugging-port='+port],{cwd:root,env,windowsHide:true,stdio:['ignore',log,log]});fs.closeSync(log);
+  main=await until(()=>connect(port,t=>t.url.endsWith('/index.html')));sockets.push(main.ws);
+  await until(()=>main.evaluate('Boolean(window.WorkspaceUI && window.suira?.workspace && document.querySelector(".task-list-empty"))'));
+  const errors=[];main.ws.addEventListener('message',event=>{const data=JSON.parse(event.data);if(data.method==='Runtime.exceptionThrown')errors.push(data.params.exceptionDetails.text);});await main.send('Runtime.enable');
+  await main.send('Emulation.setDeviceMetricsOverride',{width:1360,height:900,deviceScaleFactor:1,mobile:false});
+  const go=async page=>{await main.evaluate(`window.suira.quick.showMain(${JSON.stringify(page)})`);await wait(160);};
+  const shot=async name=>{const result=await main.send('Page.captureScreenshot',{format:'png'});fs.writeFileSync(path.join(root,'docs/screenshots',name),Buffer.from(result.data,'base64'));};
+  const task=await main.evaluate(`window.suira.tasks.create('工作台改版')`);assert.ok(task.ok);
+  await main.evaluate(`window.suira.tasks.rename({id:${JSON.stringify(task.task.id)},title:'本周工作台计划'})`);
+  assert.equal((await main.evaluate(`window.suira.tasks.status({id:${JSON.stringify(task.task.id)},done:true})`)).ok,true);
+  assert.equal((await main.evaluate('window.suira.tasks.list()'))[0].progress,'done');
+  await go('shelf');await shot('36-workspace-tasks.png');
+  await go('calendar');await main.evaluate(`document.getElementById('calendar-new').click();document.getElementById('event-title').value='产品评审';document.getElementById('event-time').value='14:30';document.getElementById('event-notes').value='讨论下一版工作台';document.getElementById('event-form').requestSubmit(document.querySelector('#event-form button[type="submit"]'));true`);
+  await until(()=>main.evaluate(`document.querySelector('.agenda-content b')?.textContent==='产品评审'`));
+  await main.evaluate(`document.querySelector('[data-done]').click();true`);await until(()=>main.evaluate(`Boolean(document.querySelector('.agenda-item.done'))`));
+  await shot('34-workspace-calendar.png');
+  await go('markdown');await main.evaluate(`document.getElementById('md-new').click();true`);await until(()=>main.evaluate(`!document.getElementById('md-body').hidden`));
+  const markdown='# 工作台计划\n\n把想法整理成可以继续的工作。\n\n## 本周重点\n\n- 完善日历与任务\n- 检查快捷键\n\n| 模块 | 状态 |\n| --- | --- |\n| 日历 | 已接入 |\n| Markdown | 已接入 |\n\n```js\nconst next = "keep going";\n```\n\n<img src=x onerror="window.__unsafe=true"><script>window.__unsafe=true</script>\n[unsafe](javascript:alert(1))';
+  await main.evaluate(`document.getElementById('md-title').value='工作台计划';document.getElementById('md-editor').value=${JSON.stringify(markdown)};document.getElementById('md-editor').dispatchEvent(new Event('input'));true`);
+  await until(()=>main.evaluate(`document.getElementById('md-status').textContent==='已保存'`));
+  assert.equal(await main.evaluate(`document.querySelector('#md-preview table')!==null && !document.querySelector('#md-preview script,#md-preview img,#md-preview [onerror]') && !window.__unsafe`),true);
+  await main.evaluate(`document.getElementById('md-editor').value=${JSON.stringify(markdown.split('<img')[0])};document.getElementById('md-editor').dispatchEvent(new Event('input'));window.WorkspaceUI.flush()`);
+  await shot('35-workspace-markdown.png');
+  await main.evaluate(`document.getElementById('md-editor').value=${JSON.stringify(markdown)};document.getElementById('md-editor').dispatchEvent(new Event('input'));window.WorkspaceUI.flush()`);
+  await main.send('Page.enable');
+  const reloaded=new Promise((resolve,reject)=>{const timer=setTimeout(()=>reject(Error('Reload timed out')),10000);const onMessage=event=>{const data=JSON.parse(event.data);if(data.method==='Page.loadEventFired'){main.ws.removeEventListener('message',onMessage);clearTimeout(timer);resolve();}};main.ws.addEventListener('message',onMessage);});
+  await main.send('Page.reload');await reloaded;await until(()=>main.evaluate('Boolean(window.WorkspaceUI && document.querySelector(".task-row"))'));await go('markdown');await until(()=>main.evaluate(`document.getElementById('md-title').value==='工作台计划'`));
+  assert.equal(await main.evaluate(`document.getElementById('md-editor').value`),markdown);
+  await main.evaluate('window.WorkspaceUI.flush()');
+  const mdItems=await main.evaluate(`window.suira.workspace.list('markdown')`);
+  assert.equal((await main.evaluate(`window.suira.workspace.export(${JSON.stringify(mdItems[0].id)})`)).ok,true);assert.equal(fs.readFileSync(path.join(tmp,'output.md'),'utf8'),markdown);
+  const imported=await main.evaluate('window.suira.workspace.import()');assert.ok(imported.ok);assert.equal(imported.item.text,'# Imported\n\nThis is a local file.');
+  assert.equal((await main.evaluate(`window.suira.workspace.remove('markdown',${JSON.stringify(imported.item.id)})`)).ok,true);
+  await go('settings');await main.evaluate(`document.querySelector('[data-setting-tab="translation"]').click();true`);await main.evaluate(`document.getElementById('setting-translate-provider').value='openai';document.getElementById('setting-translate-provider').dispatchEvent(new Event('change'));true`);await wait(150);await shot('33-workspace-settings.png');
+  await main.evaluate(`document.querySelector('[data-setting-tab="shortcuts"]').click();true`);await until(()=>main.evaluate(`document.getElementById('setting-key-longCapture').value.includes('G')`));
+  assert.equal(await main.evaluate(`document.getElementById('status-longCapture').textContent`),'已生效');
+  // Trigger the actual registered global callback without competing for the user's OS keys.
+  fs.writeFileSync(control,JSON.stringify({seq:1,key:'Alt+G'}));
+  const picker=await until(()=>connect(port,t=>t.url.endsWith('/long-picker.html')));sockets.push(picker.ws);
+  await until(()=>picker.evaluate('window.__longPickerState?.ready'));await picker.evaluate('window.suira.longCapture.cancelPicker()');await wait(100);
+  // Repeated entry after cancellation must work, without leaving a stale busy state.
+  fs.writeFileSync(control,JSON.stringify({seq:2,key:'Alt+G'}));await until(()=>picker.evaluate('window.__longPickerState?.revision>=3'));await picker.evaluate('window.suira.longCapture.cancelPicker()');
+  await main.evaluate('window.suira.quick.show()');
+  const panel=await until(()=>connect(port,t=>t.url.endsWith('/quickpanel.html')));sockets.push(panel.ws);await until(()=>panel.evaluate('document.querySelectorAll(".key").length===38'));
+  const collapsed=await panel.evaluate(`document.querySelector('.search-field').getBoundingClientRect().width`);assert.ok(collapsed<=46);
+  await panel.evaluate(`document.getElementById('search-toggle').click();true`);await wait(450);assert.ok(await panel.evaluate(`document.querySelector('.search-field').getBoundingClientRect().width>200`));
+  await panel.evaluate(`document.getElementById('search-close').click();true`);await wait(450);assert.ok(await panel.evaluate(`document.querySelector('.search-field').getBoundingClientRect().width<=46`));
+  assert.equal(errors.length,0,errors.join('\n'));
+  console.log('PASS real Electron: calendar save/completion, Markdown rendering/sanitizing/autosave/reload, settings categories, registered Alt+G callback opens picker twice, expanding search');
+})().catch(error=>{console.error(error);if(fs.existsSync(path.join(tmp,'app.log')))console.error(fs.readFileSync(path.join(tmp,'app.log'),'utf8').slice(-1500));process.exitCode=1;}).finally(async()=>{for(const ws of sockets)ws.close();if(child&&child.exitCode===null)child.kill();await wait(500);try{fs.rmSync(tmp,{recursive:true,force:true});}catch{}});

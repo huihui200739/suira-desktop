@@ -125,15 +125,22 @@
         hint.style.top = `${box.top-size.height-8 >= 12 ? box.top-size.height-8 : Math.min(innerHeight-size.height-12,box.bottom+8)}px`;
       },delay);
     };
-    document.addEventListener('pointerover', event => showHint(event.target.closest?.('[data-hint]'),450));
+    document.addEventListener('pointerover', event => {
+      if (hintTarget && document.activeElement === hintTarget) return;
+      showHint(event.target.closest?.('[data-hint]'),450);
+    });
     document.addEventListener('pointerout', event => {
-      if (hintTarget && !hintTarget.contains(event.relatedTarget)) hideHint();
+      if (hintTarget && document.activeElement !== hintTarget && !hintTarget.contains(event.relatedTarget)) hideHint();
     });
     document.addEventListener('focusin', event => showHint(event.target.closest?.('[data-hint]'),0));
     document.addEventListener('focusout', hideHint);
     document.addEventListener('pointerdown', hideHint);
     document.addEventListener('keydown', hideHint);
-    document.addEventListener('scroll', hideHint, true);
+    document.addEventListener('scroll', event => {
+      // Expanding search can scroll its own field. Only movement of the hint's
+      // actual ancestor invalidates its position.
+      if (event.target === document || event.target?.contains?.(hintTarget)) hideHint();
+    }, true);
     window.addEventListener('blur', hideHint);
     document.addEventListener('visibilitychange', () => { if (document.hidden) hideHint(); });
     let frame = 0, last = null, point = null;

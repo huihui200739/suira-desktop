@@ -260,7 +260,7 @@ t('搜索模式下的键盘只服务结果列表，不误触 38 键动作', () =
   if (/state\.actions\[state\.focusIndex\]/.test(qpJs)) throw new Error('仍从 state.actions 取 Enter 目标');
   const searchGuard = qpJs.match(/if \(state\.query\) \{[\s\S]{0,700}?runCommand\(state\.commandIndex\)/);
   if (!searchGuard) throw new Error('搜索模式下没有把 Enter 交给 runCommand');
-  if (!qpJs.includes("if (event.key === 'Enter') {\n      if (!state.commandResults.length)")) {
+  if (!/if \(event.key === 'Enter'\) \{\s+if \(!state\.commandResults\.length\)/.test(qpJs)) {
     throw new Error('搜索框 Enter 在无结果时未做明确处理');
   }
 });

@@ -185,7 +185,16 @@ contextBridge.exposeInMainWorld('suira', {
     recognizeItem: (itemId) => ipcRenderer.invoke('ocr:recognize-item', itemId),
     onProgress: (callback) => subscribe('ocr:progress', callback)
   },
+  workspace: {
+    openLink: url => ipcRenderer.invoke('workspace:open-link',url),
+    list: type => ipcRenderer.invoke('workspace:list',type),
+    save: (type,payload) => ipcRenderer.invoke('workspace:save',type,payload),
+    remove: (type,id) => ipcRenderer.invoke('workspace:remove',type,id),
+    import: () => ipcRenderer.invoke('workspace:import'),
+    export: id => ipcRenderer.invoke('workspace:export',id)
+  },
   tasks: {
+    status: payload => ipcRenderer.invoke('tasks:status',payload),
     list: (options) => ipcRenderer.invoke('tasks:list', options),
     create: (title) => ipcRenderer.invoke('tasks:create', title),
     rename: (payload) => ipcRenderer.invoke('tasks:rename', payload),

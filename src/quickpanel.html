@@ -13,11 +13,11 @@
   <main class="panel" id="panel" data-mode="actions" aria-label="随序动作面板">
     <header class="panel-head">
       <div class="panel-brand" aria-label="随序 随手工作台"><span class="brand-symbol" aria-hidden="true"><img src="../assets/suira-icon.png" alt="" width="44" height="44"></span><span><b>随序</b><small>随手工作台</small></span></div>
-      <div class="search-field" data-glass>
+      <div class="search-slot"><div class="search-field" data-glass><button class="search-toggle" id="search-toggle" type="button" aria-label="展开搜索" aria-expanded="false">
         <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m15.5 15.5 4 4"/></svg>
-        <input id="search" type="text" autocomplete="off" spellcheck="false" placeholder="按空格查看全部应用" aria-label="搜索命令、应用或内容">
-        <kbd class="search-mode" id="mode-chip">动作</kbd>
-      </div>
+        </button><input id="search" type="text" autocomplete="off" spellcheck="false" placeholder="按空格查看全部应用" aria-label="搜索命令、应用或内容">
+        <kbd class="search-mode" id="mode-chip">动作</kbd><button class="search-close" id="search-close" type="button" aria-label="收起搜索">×</button>
+      </div></div>
       <div class="panel-modes" data-selection-group aria-label="面板模式">
         <button id="mode-actions" type="button" aria-pressed="true">动作</button>
         <button id="mode-apps" type="button" aria-pressed="false">应用</button>

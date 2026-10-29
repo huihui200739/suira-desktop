@@ -89,7 +89,7 @@ t('未绑定键显示 unbound（渲染层据此显示「绑定」）', () => {
 
 t('未实现的动作标记为 unimplemented，且带名称', () => {
   const todo = layout.keys.filter((k) => k.state === 'unimplemented');
-  assert.ok(todo.length > 0, '应有未实现占位');
+  assert.strictEqual(todo.length, Object.values(PANEL_ACTIONS).filter(a=>!a.implemented).length);
   assert.ok(todo.every((k) => k.label && k.actionId));
 });
 
@@ -131,7 +131,8 @@ t('未实现动作的提示里写明「尚未实现」', () => {
 
 t('工具箱区分已实现与未完成', () => {
   assert.ok(TOOLBOX_TOOLS.some((t_) => t_.implemented));
-  assert.ok(Object.values(PANEL_ACTIONS).some(action => !action.implemented), '动作目录仍如实保留未完成规划项');
+  assert.ok(PANEL_ACTIONS.calendar.implemented && PANEL_ACTIONS.markdown.implemented);
+  assert.strictEqual(PANEL_ACTIONS.wallpaper, undefined);
   for (const tool of TOOLBOX_TOOLS) {
     if (!tool.implemented) assert.match(tool.hint, /尚未实现/, tool.id);
   }

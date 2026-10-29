@@ -15,6 +15,8 @@ const $ = (selector, root = document) => root.querySelector(selector);
 const $$ = (selector, root = document) => Array.from(root.querySelectorAll(selector));
 
 const GLYPHS = {
+  calendar: '<svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="3"/><path d="M7 3v4m10-4v4M3 11h18m-12 4h2m4 0h2"/></svg>',
+  markdown: '<svg viewBox="0 0 24 24"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M5 16V8l3 4 3-4v8m6-8v8m-3-3 3 3 3-3"/></svg>',
   'long-capture': '<svg viewBox="0 0 24 24"><rect x="5" y="2" width="14" height="20" rx="3"/><path d="M8 7h8M8 10h8M12 13v6m-3-3 3 3 3-3"/></svg>',
   'edit-image': '<svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="3"/><circle cx="8" cy="9" r="1.5"/><path d="m4 17 5-5 4 4 4-7 4 8"/></svg>',
   capture: '<svg viewBox="0 0 24 24"><rect x="4" y="5.8" width="16" height="12.4" rx="2.6" stroke-dasharray="3.5 2.7"/><circle cx="12" cy="12" r="2.5"/></svg>',
@@ -846,10 +848,15 @@ async function syncShortcutChip() {
 }
 
 function focusSearch() {
+  document.querySelector('.search-field').classList.add('is-expanded');
+  $('#search-toggle').setAttribute('aria-expanded','true');
   $('#search').focus();
 }
 
 function installEvents() {
+  $('#search-toggle').addEventListener('click',focusSearch);
+  $('#search').addEventListener('focus',()=>{document.querySelector('.search-field').classList.add('is-expanded');$('#search-toggle').setAttribute('aria-expanded','true');});
+  $('#search-close').addEventListener('click',()=>{clearSearch();document.querySelector('.search-field').classList.remove('is-expanded');$('#search-toggle').setAttribute('aria-expanded','false');$('#search-toggle').focus();});
   document.addEventListener('pointermove', updateKeyDrag, { passive: false });
   listen(document, 'pointerup', finishKeyDrag);
   document.addEventListener('pointercancel', cancelKeyDrag);

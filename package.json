@@ -9,7 +9,7 @@
     "start": "node tools/dev-start.js",
     "dev": "node tools/dev-start.js --dev",
     "clean": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File tools/clean-dev-artifacts.ps1",
-    "test": "node test-core.js && node test-clipboard-session.js && node test-long-start.js && node test-long-capture.js && node test-long-session.js && node test-region-capture.js && node test-image-editor.js && node test-app-icons.js && node test-icon-disk-cache.js && node test-native-capture.js && node test-clipboard.js && node test-ocr.js && node test-translate.js && node test-notes.js && node test-island-store.js && node test-island.js && node test-island-wake.js && node test-actions.js && node test-capabilities.js && node test-keybindings.js && node test-panel-bindings.js && node test-panel-shortcuts.js && node test-panel-flows.js && node test-return.js && node test-foreground.js && node test-security.js && node test-key-watch.js && node test-display.js && node test-inject.js && node test-diagnostics.js && node test-ui.js && node test-render.js && node tools/panel-shot.js --check && node tools/island-check.js && node tools/notes-check.js && node tools/clipboardbar-check.js && node tools/confirm-check.js && node tools/overlay-check.js && node tools/shortcut-check.js",
+    "test": "node test-shortcut-fallback.js && node test-workspace.js && node test-core.js && node test-clipboard-session.js && node test-long-start.js && node test-long-capture.js && node test-long-session.js && node test-region-capture.js && node test-image-editor.js && node test-app-icons.js && node test-icon-disk-cache.js && node test-native-capture.js && node test-clipboard.js && node test-ocr.js && node test-translate.js && node test-notes.js && node test-island-store.js && node test-island.js && node test-island-wake.js && node test-actions.js && node test-capabilities.js && node test-keybindings.js && node test-panel-bindings.js && node test-panel-shortcuts.js && node test-panel-flows.js && node test-return.js && node test-foreground.js && node test-security.js && node test-key-watch.js && node test-display.js && node test-inject.js && node test-diagnostics.js && node test-ui.js && node test-render.js && node tools/panel-shot.js --check && node tools/island-check.js && node tools/notes-check.js && node tools/clipboardbar-check.js && node tools/confirm-check.js && node tools/overlay-check.js && node tools/shortcut-check.js",
     "test:core": "node test-core.js",
     "test:clipboard": "node test-clipboard.js",
     "test:ocr": "node test-ocr.js",
@@ -61,7 +61,12 @@
     "verify:long-capture": "node node_modules/electron/install.js && node tools/region-native-check.js && node tools/electron-long-clipboard-check.js && node tools/electron-long-native-check.js",
     "verify:panel-global": "node tools/electron-panel-global-check.js",
     "test:long-grid": "node tools/long-capture-grid-check.js",
-    "test:long-columns": "node tools/long-capture-columns-check.js"
+    "test:long-columns": "node tools/long-capture-columns-check.js",
+    "verify:workspace": "node tools/electron-workspace-check.js",
+    "prepare:vendor": "node tools/prepare-vendor.js",
+    "postinstall": "node tools/prepare-vendor.js",
+    "predist:portable": "node tools/prepare-vendor.js",
+    "predist": "node tools/prepare-vendor.js"
   },
   "devDependencies": {
     "electron": "^45.0.0",
@@ -92,7 +97,8 @@
       "assets/app-icon-host.cs",
       "assets/capture-host.cs",
       "assets/tessdata/**/*",
-      "package.json"
+      "package.json",
+      "assets/shortcut-fallback-host.cs"
     ],
     "asarUnpack": [
       "assets/tessdata/**/*",
@@ -102,7 +108,8 @@
       "assets/key-watch-host.cs",
       "assets/island-pointer-host.cs",
       "assets/app-icon-host.cs",
-      "assets/capture-host.cs"
+      "assets/capture-host.cs",
+      "assets/shortcut-fallback-host.cs"
     ],
     "win": {
       "icon": "assets/icon.ico",
@@ -127,6 +134,8 @@
     }
   },
   "dependencies": {
+    "dompurify": "^3.4.17",
+    "marked": "^18.1.2",
     "pinyin-pro": "^3.29.5",
     "tesseract.js": "^5.1.1"
   }

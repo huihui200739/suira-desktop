@@ -50,7 +50,7 @@ const api={register:(key,fn)=>{if(blocked.has(key)||active.has(key))return false
 check('所有已实现键位与自定义内容都派生 Alt 直达，未绑定和未实现不抢键',()=>{
   const bindings=panelGlobalBindings({Q:{type:'url',target:'https://example.com',name:'测试'}},DEFAULT_BINDINGS);
   for(const action of Object.values(PANEL_ACTIONS).filter(a=>a.implemented))assert.ok(Object.values(bindings).includes('Alt+'+action.key),action.label);
-  assert.equal(bindings['panelKey:Q'],'Alt+Q');assert.equal(bindings['panelKey:W'],'');assert.equal(bindings['panelKey:M'],'');
+  assert.equal(bindings['panelKey:Q'],'Alt+Q');assert.equal(bindings['panelKey:W'],'');assert.equal(bindings['panelKey:M'],'Alt+M');
   assert.equal(new Set(Object.values(bindings).filter(Boolean)).size,Object.values(bindings).filter(Boolean).length);
   const equals=assignPanelBinding({},'=',{type:'action',id:'capture'}).bindings;
   assert.equal(panelGlobalBindings(equals,{...DEFAULT_BINDINGS,capture:'Alt+='})['panelKey:='],'');
@@ -65,12 +65,13 @@ check('移动长截图后 Alt+旧键释放，Alt+新键生效；S/E/H 辅助入�
 check('全局键回调执行当前绑定；新键被抢占/磁盘失败时恢复全部原注册',()=>{
   const callbacks=Object.fromEntries([...Object.keys(DEFAULT_BINDINGS),'legacy',...KEY_ROWS.flat().map(panelShortcutName)].map(name=>[name,()=>name]));
   const m=new ShortcutManager({globalShortcut:api,handlers:callbacks,bindings:panelGlobalBindings({},DEFAULT_BINDINGS)});m.registerAll();
-  assert.equal(active.get('Alt+G')(),'panelKey:G');const before=m.snapshot();
-  const desired=panelGlobalBindings(movePanelBinding({},'G','Q').bindings,before.bindings);
+  assert.equal(active.get('Alt+G')(),'longCapture');const before=m.snapshot();
+  const after=movePanelBinding({},'G','Q').bindings;
+  const desired=panelGlobalBindings(after,{...before.bindings,...shortcutPatchForPanel({},after,before.bindings)});
   const patch=Object.fromEntries(Object.entries(desired).filter(([name,value])=>value!==(before.bindings[name]||'')));
-  blocked.add('Alt+Q');assert.equal(m.rebindMany(patch).ok,false);assert.equal(active.get('Alt+G')(),'panelKey:G');blocked.clear();
-  assert.equal(m.rebindMany(patch).ok,true);assert.equal(active.has('Alt+G'),false);assert.equal(active.get('Alt+Q')(),'panelKey:Q');m.restoreSnapshot(before);
-  assert.equal(active.has('Alt+Q'),false);assert.equal(active.get('Alt+G')(),'panelKey:G');
+  blocked.add('Alt+Q');assert.equal(m.rebindMany(patch).ok,false);assert.equal(active.get('Alt+G')(),'longCapture');blocked.clear();
+  assert.equal(m.rebindMany(patch).ok,true);assert.equal(active.has('Alt+G'),false);assert.equal(active.get('Alt+Q')(),'longCapture');m.restoreSnapshot(before);
+  assert.equal(active.has('Alt+Q'),false);assert.equal(active.get('Alt+G')(),'longCapture');
   const custom=panelGlobalBindings({F:{type:'file',target:'C:\\demo.txt'}},m.snapshot().bindings);
   assert.equal(m.rebindMany(Object.fromEntries(Object.entries(custom).filter(([n,v])=>v!==(m.bindings[n]||'')))).ok,true);
   assert.equal(active.get('Alt+F')(),'panelKey:F');m.dispose();active.clear();

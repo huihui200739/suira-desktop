@@ -532,7 +532,7 @@ try {
 
   const set = probe(runChrome('__fx_main.html', [], '?page=settings'), 'P');
   t('设置：当前页正确', () => assert.strictEqual(set.activePage, 'page-settings'));
-  t('设置：渲染出六个改键输入框', () => assert.strictEqual(set.shortcutInputs, 6));
+  t('设置：包含长截图的七个改键输入框', () => assert.strictEqual(set.shortcutInputs, 7));
   t('设置：改键框显示当前键位（Ctrl + Alt + Space）', () => {
     assert.ok(set.quickKeyValue.includes('Ctrl'), '实际: ' + set.quickKeyValue);
     assert.ok(set.quickKeyValue.includes('Space'), '实际: ' + set.quickKeyValue);
