@@ -1194,6 +1194,7 @@ async function syncShortcutPills() {
 
 async function init() {
   installEvents();
+  if (standaloneTool) { navigate(standaloneTool); return; }
   syncShortcutPills();
   const info = await window.suira.app.info();
   if (info?.version) {

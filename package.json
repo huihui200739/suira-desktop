@@ -62,6 +62,7 @@
     "verify:panel-global": "node tools/electron-panel-global-check.js",
     "test:long-grid": "node tools/long-capture-grid-check.js",
     "test:long-columns": "node tools/long-capture-columns-check.js",
+    "verify:glass": "node tools/glass-performance-check.js",
     "verify:workspace": "node tools/electron-workspace-check.js",
     "prepare:vendor": "node tools/prepare-vendor.js",
     "postinstall": "node tools/prepare-vendor.js",

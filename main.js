@@ -788,7 +788,10 @@ async function writeClipboardImage(image) {
   clipboardWriteGuard = '';
 }
 
+let clipboardPollBusy = false;
 async function pollClipboard() {
+  if (clipboardPollBusy) return;
+  clipboardPollBusy = true;
   try {
     const generation = ++captureGeneration;
     const snapshot = await readClipboardSnapshot();
@@ -835,7 +838,7 @@ async function pollClipboard() {
     if (clipboardWriteGuard && text === clipboardWriteGuard) clipboardWriteGuard = '';
   } catch (error) {
     console.warn('剪贴板读取失败:', error.message);
-  }
+  } finally { clipboardPollBusy = false; }
 }
 
 async function startClipboardWatcher() {
@@ -967,10 +970,11 @@ async function rememberReturnTarget(selectionMethod = 'unknown') {
 /* ---------- 浮层生命周期：用完一段时间就还内存 ---------- */
 
 /*
- * 主窗口闲置后回收；截图、动作面板和剪贴板条是高频热键入口，保留页面。
+ * 主窗口闲置后回收；高频热键入口保留三分钟，之后释放渲染进程。
  * 截图隐藏时立即释放图像和画布，兼顾再次唤起速度与大图内存占用。
  */
 const WINDOW_IDLE_TEARDOWN_MS = 60 * 1000;
+const HOT_WINDOW_IDLE_MS = 3 * 60 * 1000;
 // 主窗口是"正门"，用户随时可能回来，回收前多留一段时间。
 // 90s 是折中：关到托盘后 1 分半还占着上百 MB 没有意义，而从托盘唤醒重建
 // 主窗口约 200–400ms，用户体感仍然接近即时。
@@ -1014,7 +1018,7 @@ function hideQuickPanel() {
   quickShowRevision++;
   if (quickWindow && !quickWindow.isDestroyed()) {
     quickWindow.hide();
-    // 保留热键入口，降低再次唤起的延迟。
+    scheduleIdleTeardown(quickWindow, '动作面板', HOT_WINDOW_IDLE_MS);
   }
 }
 
@@ -1419,7 +1423,7 @@ function hideClipboardBar() {
   clipboardSessionTarget = null;
   if (clipboardBarWindow && !clipboardBarWindow.isDestroyed()) {
     clipboardBarWindow.hide();
-    // 高频浮层保留页面和历史缓存，避免下一次快捷键重新启动渲染进程。
+    scheduleIdleTeardown(clipboardBarWindow, '剪贴板', HOT_WINDOW_IDLE_MS);
   }
   return { ok: true, visible: false };
 }
@@ -1685,7 +1689,8 @@ function createMainWindow() {
     minHeight: 680,
     show: false,
     frame: false,
-    backgroundColor: '#F4F6FA',
+    backgroundColor: '#00000000',
+    backgroundMaterial: 'acrylic',
     title: APP_NAME,
     icon: assetPath('suira-icon.png'),
     roundedCorners: true,
@@ -1899,7 +1904,7 @@ function hideOverlayWindow(options = {}) {
   if (overlayWindow && !overlayWindow.isDestroyed()) {
     if(options.release!==false)try { overlayWindow.webContents.send('capture:release'); } catch {}
     overlayWindow.hide();
-    // 画布像素已 release，保留空页面供下次截图立即复用。
+    if (options.release !== false) scheduleIdleTeardown(overlayWindow, '截图', HOT_WINDOW_IDLE_MS);
   }
   if(options.restoreMain!==false)restoreMainAfterCapture();
 }
@@ -3872,6 +3877,7 @@ async function initialize() {
   createQuickWindow();
   createClipboardBarWindow();
   createOverlayWindow();
+  for (const win of [quickWindow, clipboardBarWindow, overlayWindow]) scheduleIdleTeardown(win, '预热入口', HOT_WINDOW_IDLE_MS);
   createLongPickerWindow();
   captureHost = prepareCaptureHost();
   foregroundProbe.nativeHostReady = ensureNativeHost({ sourcePath: assetPath('foreground-host.cs'), targetPath: path.join(userRoot(), 'foreground-host-v3.exe'), references: ['System.Web.Extensions.dll'] });
