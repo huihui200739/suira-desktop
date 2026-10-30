@@ -1,0 +1,61 @@
+{
+  "date": "2026-10-30",
+  "timezone": "Asia/Shanghai",
+  "status": "Root cause not established",
+  "historicalWindow": {
+    "start": "13:20:00",
+    "end": "13:38:00",
+    "matchingSystemAndApplicationFaultEvents": 0,
+    "nvidiaErrorAt": "12:55:36",
+    "note": "The NVIDIA event predates the installation window; it does not establish causality."
+  },
+  "desktopRefreshProbe": {
+    "time": "2026-10-30T05:46:00.202Z",
+    "note": "One desktop association-refresh notification; not a full installation reproduction. A negative probe does not rule out an intermittent GPU or I/O stall.",
+    "before": {
+      "maxSampleGapMs": 63.93,
+      "maxShellPingMs": 0.7,
+      "shellPingTimeouts": 0,
+      "samples": 32
+    },
+    "notificationMs": 2.89,
+    "after": {
+      "maxSampleGapMs": 79.64,
+      "maxShellPingMs": 20.57,
+      "shellPingTimeouts": 0,
+      "samples": 32
+    }
+  },
+  "reinstall": {
+    "userAuthorized": true,
+    "installedVersion": "0.2.2",
+    "installClickedAt": "13:54:59",
+    "completionObservedBy": "13:55:39",
+    "userObservation": "User did not notice whether the freeze recurred",
+    "processSampling": {
+      "start": "2026-10-30T13:55:00.3249238+08:00",
+      "end": "2026-10-30T13:56:03.8542934+08:00",
+      "samples": 120,
+      "maxSampleGapSeconds": 0.9413597
+    },
+    "etw": {
+      "start": "2026-10-30T13:49:49.7850346+08:00",
+      "end": "2026-10-30T13:55:23.0806646+08:00",
+      "eventsLost": 0,
+      "analyzedDiskOperations": 18564,
+      "maxObservedDiskIoMs": 25.0449,
+      "limitations": [
+        "The five-minute ETW limit caused tracing to wind down during installation; final completion-page coverage is incomplete.",
+        "No DPC events were available in the filtered installation window; zero reported DPC duration must not be interpreted as zero driver latency.",
+        "CPU process-name attribution was incomplete; no process or driver is assigned as the cause."
+      ]
+    }
+  },
+  "conclusion": "No confirmed causal finding. Disk latency in the captured portion and the standalone refresh probe did not demonstrate a multi-second system stall. A complete trace spanning a confirmed recurrence is still needed.",
+  "privacy": "Raw ETL, application names and file activity are not included in the repository.",
+  "diagnosticTool": {
+    "command": "node tools/desktop-refresh-check.js",
+    "behavior": "Opt-in: sends one desktop association-refresh notification; prints JSON to stdout without overwriting historical evidence. Removes its unique native build directory on success or failure.",
+    "scope": "A two-second sampling phase before and after the notification; shell response and scheduling measurements only. Does not measure full installation or establish the cause of an intermittent freeze."
+  }
+}

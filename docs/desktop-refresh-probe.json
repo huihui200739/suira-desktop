@@ -1,0 +1,17 @@
+{
+  "time": "2026-10-30T05:46:00.202Z",
+  "note": "One desktop association-refresh notification; not a full installation reproduction. A negative probe does not rule out an intermittent GPU or I/O stall.",
+  "before": {
+    "maxSampleGapMs": 63.93,
+    "maxShellPingMs": 0.7,
+    "shellPingTimeouts": 0,
+    "samples": 32
+  },
+  "notificationMs": 2.89,
+  "after": {
+    "maxSampleGapMs": 79.64,
+    "maxShellPingMs": 20.57,
+    "shellPingTimeouts": 0,
+    "samples": 32
+  }
+}

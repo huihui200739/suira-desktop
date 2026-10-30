@@ -2,6 +2,7 @@
 param(
   [switch]$Preview,
   [switch]$IncludeObsoletePackages,
+  [switch]$InstalledOnly,
   [switch]$IncludeLegacyRuntimes,
   [switch]$IncludeLegacyProbes
 )
@@ -28,7 +29,8 @@ function Add-Target([string]$candidate, [string]$owner, [string]$group) {
   if ($item.Attributes -band [IO.FileAttributes]::ReparsePoint) { $skipped.Add("Link: $absolute"); return }
   foreach ($process in $processes) {
     if (($process.CommandLine -and $process.CommandLine.IndexOf($absolute, [StringComparison]::OrdinalIgnoreCase) -ge 0) -or
-        ($process.ExecutablePath -and $process.ExecutablePath.StartsWith($absolute + '\', [StringComparison]::OrdinalIgnoreCase))) {
+        ($process.ExecutablePath -and ($process.ExecutablePath.Equals($absolute, [StringComparison]::OrdinalIgnoreCase) -or
+          $process.ExecutablePath.StartsWith($absolute + '\', [StringComparison]::OrdinalIgnoreCase)))) {
       $skipped.Add("In use: $absolute"); return
     }
   }
@@ -95,22 +97,32 @@ if ($IncludeLegacyProbes) {
 $removedBytes = 0L
 $removedCount = 0
 $failed = [Collections.Generic.List[string]]::new()
-if ($IncludeObsoletePackages) {
-  # Explicit opt-in only. Keep a verified latest installer on the desktop before
-  # removing redundant build output; never touch the installed application.
+if ($IncludeObsoletePackages -or $InstalledOnly) {
+  # Explicit opt-in only. Verify the retained installer or installed application
+  # before removing redundant build output; never touch the installed application.
   $package = Get-Content -LiteralPath (Join-Path $repoRoot 'package.json') -Raw -Encoding UTF8 | ConvertFrom-Json
   $version = [string]$package.version
   if ($version -notmatch '^\d+\.\d+\.\d+$') { throw 'Unexpected package version' }
   $desktop = [Environment]::GetFolderPath('Desktop')
   $latest = Join-Path $desktop ('Suira-' + $version + '-Setup.exe')
-  $manifest = Get-Content -LiteralPath (Join-Path $repoRoot ('docs\release-' + $version + '.json')) -Raw -Encoding UTF8 | ConvertFrom-Json
-  if (-not (Test-Path -LiteralPath $latest -PathType Leaf)) { throw 'Keep the latest desktop installer before cleaning builds' }
-  $hashStream = [IO.File]::OpenRead($latest)
-  $sha256 = [Security.Cryptography.SHA256]::Create()
-  try { $latestHash = ([BitConverter]::ToString($sha256.ComputeHash($hashStream))).Replace('-', '') }
-  finally { $hashStream.Dispose(); $sha256.Dispose() }
-  if ($latestHash -ne $manifest.sha256) { throw 'Latest desktop installer hash mismatch' }
-  if ((Get-Item -LiteralPath $latest).Length -ne $manifest.bytes) { throw 'Latest desktop installer size mismatch' }
+  if ($InstalledOnly) {
+    # Explicit request to keep only the installed application, with no installer.
+    $exeName = ([string][char]0x968f) + ([string][char]0x5e8f) + '.exe'
+    $installedExe = Join-Path $env:LOCALAPPDATA ('Programs\suira-desktop\' + $exeName)
+    if (-not (Test-Path -LiteralPath $installedExe -PathType Leaf)) { throw 'Installed application not found' }
+    $installedVersion = (Get-Item -LiteralPath $installedExe).VersionInfo.ProductVersion
+    if ($installedVersion -notin @($version, ($version + '.0'))) { throw 'Installed application version mismatch' }
+    Add-Target $latest $desktop 'redundant-desktop-installer'
+  } else {
+    $manifest = Get-Content -LiteralPath (Join-Path $repoRoot ('docs\release-' + $version + '.json')) -Raw -Encoding UTF8 | ConvertFrom-Json
+    if (-not (Test-Path -LiteralPath $latest -PathType Leaf)) { throw 'Keep the latest desktop installer before cleaning builds' }
+    $hashStream = [IO.File]::OpenRead($latest)
+    $sha256 = [Security.Cryptography.SHA256]::Create()
+    try { $latestHash = ([BitConverter]::ToString($sha256.ComputeHash($hashStream))).Replace('-', '') }
+    finally { $hashStream.Dispose(); $sha256.Dispose() }
+    if ($latestHash -ne $manifest.sha256) { throw 'Latest desktop installer hash mismatch' }
+    if ((Get-Item -LiteralPath $latest).Length -ne $manifest.bytes) { throw 'Latest desktop installer size mismatch' }
+  }
   # These exact superseded files were inventoried and approved for removal.
   foreach ($name in @('Suira-0.2.0-portable.exe','Suira-0.2.1-Setup.exe')) {
     if ($name -ne (Split-Path -Leaf $latest)) { Add-Target (Join-Path $desktop $name) $desktop 'obsolete-desktop-packages' }
