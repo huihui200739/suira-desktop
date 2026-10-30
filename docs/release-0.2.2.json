@@ -1,0 +1,24 @@
+{
+  "version": "0.2.2",
+  "artifact": "dist/v0.2.2/Suira-0.2.2-Setup.exe",
+  "bytes": 155751390,
+  "sha256": "A74DED90DBF916D77E0B029D2A50DF0A219587D82D01C83A5F51D8074D722B5F",
+  "changes": [
+    "Native NSIS process check with close/retry prompt; no forced process termination",
+    "No automatic application launch at installation finish",
+    "Staggered tool renderer prewarming"
+  ],
+  "checks": [
+    "Full npm test passed",
+    "Real Electron workspace regression passed",
+    "Cold isolated startup: first workbench at 1610ms, tool prewarming afterwards",
+    "Packaged diagnostic exited 0",
+    "ASAR sources matched",
+    "NSIS archive integrity passed"
+  ],
+  "limitations": [
+    "User reported entire-desktop freeze; exact cause not reproduced",
+    "NVIDIA driver error event 153 observed at 2026-10-30 12:55:36 Asia/Shanghai; not correlated to installer timing",
+    "Existing 0.2.1 installation and running application were not replaced during verification"
+  ]
+}

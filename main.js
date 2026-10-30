@@ -3881,8 +3881,20 @@ async function initialize() {
   // 浮引岛启动即"上岗"，但处在休眠态：屏幕上看不见，只等文件拖到顶部中央。
   // 热键入口预建并保留空页面；截图结束仍立即释放大图与画布。
   if (!process.argv.includes('--background')) {
-    createQuickWindow();createClipboardBarWindow();createOverlayWindow();
-    for (const win of [quickWindow, clipboardBarWindow, overlayWindow]) scheduleIdleTeardown(win, '预热入口', HOT_WINDOW_IDLE_MS);
+    // First render the workbench; then warm one tool at a time. Each creator
+    // checks for an existing window because a shortcut may beat this timer.
+    [
+      [1200, () => { if (!quickWindow || quickWindow.isDestroyed()) createQuickWindow(); return quickWindow; }],
+      [1800, createClipboardBarWindow],
+      [2400, createOverlayWindow]
+    ].forEach(([delay, create]) => {
+      const timer = setTimeout(() => {
+        if (isQuitting) return;
+        const win = create();
+        if (win && !win.isDestroyed() && !win.isVisible()) scheduleIdleTeardown(win, '预热入口', HOT_WINDOW_IDLE_MS);
+      }, delay);
+      timer.unref?.();
+    });
   }
   captureHost = prepareCaptureHost();
   foregroundProbe.nativeHostReady = ensureNativeHost({ sourcePath: assetPath('foreground-host.cs'), targetPath: path.join(userRoot(), 'foreground-host-v3.exe'), references: ['System.Web.Extensions.dll'] });
