@@ -1,0 +1,19 @@
+{
+  "version": "0.2.1",
+  "artifact": "dist/v0.2.1/Suira-0.2.1-Setup.exe",
+  "bytes": 155759685,
+  "sha256": "ED5D52D9ECC0ADC5DF7F25FE6EEA84F269133F209C0F89FA17E7BD107E5C26A8",
+  "checks": [
+    "npm test passed",
+    "Electron workspace regression passed",
+    "Idle teardown and recreate passed",
+    "Packaged diagnostics exited 0 in ASCII and Chinese temporary directories",
+    "ASAR sources and calendar vendor/license matched",
+    "NSIS archive integrity passed"
+  ],
+  "limitations": [
+    "No installation over the existing user installation was performed",
+    "Alt+G was occupied during packaged diagnostics; other registered shortcuts and clipboard watcher were available",
+    "Performance measurements include test windows, not tray-only memory"
+  ]
+}

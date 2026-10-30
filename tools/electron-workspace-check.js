@@ -23,7 +23,7 @@ async function until(fn){let error;for(let n=0;n<140;n++){try{const value=await 
   assert.equal((await main.evaluate(`window.suira.tasks.status({id:${JSON.stringify(task.task.id)},done:true})`)).ok,true);
   assert.equal((await main.evaluate('window.suira.tasks.list()'))[0].progress,'done');
   await go('shelf');await shot('36-workspace-tasks.png');
-  await go('calendar');await main.evaluate(`document.getElementById('calendar-new').click();document.getElementById('event-title').value='产品评审';document.getElementById('event-time').value='14:30';document.getElementById('event-notes').value='讨论下一版工作台';document.getElementById('event-form').requestSubmit(document.querySelector('#event-form button[type="submit"]'));true`);
+  await go('calendar');await until(()=>main.evaluate('document.querySelectorAll(".calendar-day").length===42'));await main.evaluate(`document.querySelector('[data-agenda="todo"]').click();true`);await main.evaluate(`document.getElementById('calendar-new').click();document.getElementById('event-title').value='产品评审';document.getElementById('event-time').value='14:30';document.getElementById('event-notes').value='讨论下一版工作台';document.getElementById('event-form').requestSubmit(document.querySelector('#event-form button[type="submit"]'));true`);
   await until(()=>main.evaluate(`document.querySelector('.agenda-content b')?.textContent==='产品评审'`));
   await main.evaluate(`document.querySelector('[data-done]').click();true`);await until(()=>main.evaluate(`Boolean(document.querySelector('.agenda-item.done'))`));
   await main.evaluate(`document.querySelector('[data-calendar-view="week"]').click();true`);
@@ -34,10 +34,14 @@ async function until(fn){let error;for(let n=0;n<140;n++){try{const value=await 
   assert.equal(await main.evaluate('document.querySelectorAll(".calendar-agenda-row").length'),0);
   await main.evaluate(`document.getElementById('calendar-search').value='';document.getElementById('calendar-search').dispatchEvent(new Event('input'));document.querySelector('[data-calendar-view="month"]').click();true`);
   const calendarClient=main;
-  assert.equal(await main.evaluate(`Array.from(document.querySelectorAll('.lunar-day')).every(el=>/^(初|十|廿|二|三)/.test(el.textContent))`),true);
-  await main.evaluate(`document.querySelector('[data-agenda="countdown"]').click();true`);
+  assert.equal(await main.evaluate(`Array.from(document.querySelectorAll('.lunar-day:not(:has(.date-badge))')).every(el=>/^(初|十|廿|二|三)/.test(el.textContent))`),true);
+  await main.evaluate(`document.querySelector('[data-agenda="countdown"]').click();document.querySelector('[data-countdown="custom"]').click();true`);
   assert.equal(await main.evaluate(`document.querySelectorAll('.countdown-row').length`),0,'Completed events excluded from countdown');
   await main.evaluate(`document.querySelector('[data-agenda="todo"]').click();true`);
+  await main.evaluate(`document.querySelector('[data-agenda="countdown"]').click();document.querySelector('[data-countdown="all"]').click();true`);
+  assert.ok(await main.evaluate(`document.querySelectorAll('[data-builtin-date]').length>0`));
+  assert.equal(await main.evaluate(`window.CalendarData.day(new Date(2026,9,18)).festival`),'重阳节');
+  assert.equal(await main.evaluate(`window.CalendarData.day(new Date(2026,9,10)).work`),true);
   await shot('39-calendar-window.png');
   await go('markdown');
   assert.equal(await main.evaluate(`document.getElementById('md-import').closest('.titlebar')!==null`),true);

@@ -1,6 +1,6 @@
 {
   "name": "suira-desktop",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "随序 SUIRA：你的 Windows 随手工作台。截图、文字、剪贴板与任务匣共用一套内容与动作，顺手接住，让工作继续。",
   "main": "main.js",
   "author": "huihui200739",
@@ -136,6 +136,7 @@
   },
   "dependencies": {
     "dompurify": "^3.4.17",
+    "lunar-javascript": "1.7.7",
     "marked": "^18.1.2",
     "pinyin-pro": "^3.29.5",
     "tesseract.js": "^5.1.1"

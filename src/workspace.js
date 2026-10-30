@@ -7,7 +7,7 @@
   const lunarDays = ['初一','初二','初三','初四','初五','初六','初七','初八','初九','初十','十一','十二','十三','十四','十五','十六','十七','十八','十九','二十','廿一','廿二','廿三','廿四','廿五','廿六','廿七','廿八','廿九','三十'];
   const lunar = day => lunarDays[Number(lunarFormatter.formatToParts(day).find(p=>p.type==='day')?.value)-1] || lunarFormatter.format(day);
   let previewTimer;
-  let agendaMode='todo';
+  let agendaMode='countdown', countdownFilter='all', upcomingDays=[];
   let calendarView='month';
   let month=new Date(), selected=dateKey(month), events=[], editing='', docs=[], current='', revision=0, savedRevision=0, timer, chain=Promise.resolve();
   const notify=message=>{const el=$('global-toast');el.textContent=message;el.classList.add('is-visible');setTimeout(()=>el.classList.remove('is-visible'),2600);};
@@ -27,24 +27,32 @@
     $('calendar-agenda').innerHTML=visible.filter(e=>e.meta.date.startsWith(monthPrefix)).sort((a,b)=>(a.meta.date+(a.meta.time||'')).localeCompare(b.meta.date+(b.meta.time||''))).map(e=>`<button class="calendar-agenda-row" data-event-id="${esc(e.id)}"><time>${esc(e.meta.date.slice(5))} ${esc(e.meta.time||'全天')}</time><b>${esc(e.title)}</b><small>${esc(e.meta.location||({work:'工作',personal:'生活',study:'学习'}[e.meta.category||'work']))}</small></button>`).join('')||'<div class="workspace-empty">这个月没有匹配的日程</div>';
     $('calendar-agenda').querySelectorAll('[data-event-id]').forEach(b=>b.onclick=()=>{const item=events.find(e=>e.id===b.dataset.eventId);selected=item.meta.date;editEvent(item);});
     $('calendar-grid').innerHTML=Array.from({length:calendarView==='week'?7:42},(_,i)=>{
-      const day=calendarView==='week'?new Date(first.getFullYear(),first.getMonth(),first.getDate()+i):new Date(month.getFullYear(),month.getMonth(),i-offset+1), key=dateKey(day), items=byDate.get(key)||[];
-      return `<button class="calendar-day ${day.getMonth()!==month.getMonth()?'outside':''} ${key===dateKey(new Date())?'today':''} ${key===selected?'selected':''}" data-date="${key}" aria-pressed="${key===selected}"><span>${day.getDate()}</span><label class="lunar-day">${lunar(day)}</label>${items.slice(0,calendarView==='week'?8:2).map(e=>`<small class="category-${e.meta.category||'work'} ${e.meta.done?'done':''}">${e.meta.priority==='high'?'! ':''}${esc(e.title)}</small>`).join('')}${items.length>2?`<em>还有 ${items.length-2} 项</em>`:''}</button>`;
+      const day=calendarView==='week'?new Date(first.getFullYear(),first.getMonth(),first.getDate()+i):new Date(month.getFullYear(),month.getMonth(),i-offset+1), key=dateKey(day), items=byDate.get(key)||[], info=window.CalendarData.day(day);
+      const badge=info.term||info.festival;
+      return `<button class="calendar-day ${day.getMonth()!==month.getMonth()?'outside':''} ${key===dateKey(new Date())?'today':''} ${key===selected?'selected':''}" data-date="${key}" aria-pressed="${key===selected}"><span class="day-number">${day.getDate()}${info.work!==null?`<i class="work-badge ${info.work?'work':'rest'}">${info.work?'班':'休'}</i>`:''}</span><label class="lunar-day">${badge?`<span class="date-badge ${info.term?'term':'holiday'}">${esc(badge)}</span>`:info.lunar}</label>${items.slice(0,calendarView==='week'?8:2).map(e=>`<small class="category-${e.meta.category||'work'} ${e.meta.done?'done':''}">${e.meta.priority==='high'?'! ':''}${esc(e.title)}</small>`).join('')}${items.length>2?`<em>还有 ${items.length-2} 项</em>`:''}</button>`;
     }).join('');
     $('calendar-grid').querySelectorAll('[data-date]').forEach(button=>button.onclick=()=>{selected=button.dataset.date;$('event-form').hidden=true;calendar();});
+    if($('calendar-week-numbers')){const start=calendarView==='week'?first:new Date(month.getFullYear(),month.getMonth(),1-offset);$('calendar-week-numbers').innerHTML=Array.from({length:calendarView==='week'?1:6},(_,i)=>`<span>${window.CalendarData.week(new Date(start.getFullYear(),start.getMonth(),start.getDate()+i*7))}</span>`).join('');}
+    if($('calendar-selected')){const d=new Date(selected+'T12:00:00'),v=window.CalendarData.day(d);$('calendar-selected').textContent=d.toLocaleDateString('zh-CN',{month:'long',day:'numeric',weekday:'short'})+' '+v.month+v.lunar;}
     $('agenda-date').textContent=new Date(selected+'T12:00:00').toLocaleDateString('zh-CN',{month:'long',day:'numeric',weekday:'long'});
     const entries=visible.filter(e=>e.meta.date===selected).sort((a,b)=>(a.meta.time||'').localeCompare(b.meta.time||''));
     $('agenda-count').textContent=`${entries.filter(e=>!e.meta.done).length} 项待办`;
     $('agenda-list').innerHTML=entries.length?entries.map(e=>`<div class="agenda-item ${e.meta.done?'done':''}"><button class="agenda-check" data-done="${e.id}" aria-label="${e.meta.done?'重新打开':'标记完成'}">${e.meta.done?'✓':'○'}</button><button class="agenda-content" data-event="${e.id}"><small>${esc(e.meta.time||'全天')} ${e.meta.priority==='high'?' · 重要':''}</small><b>${esc(e.title)}</b><p>${esc(e.text)}</p><small>${esc(e.meta.location||'')}</small></button><button class="agenda-remove" data-remove="${e.id}" aria-label="删除日程">×</button></div>`).join(''):'<div class="workspace-empty"><b>这一天，留给你安排</b><p>添加日程，或给自己留一点空闲。</p></div>';
     if(agendaMode==='countdown'){
       const todayUTC=Date.UTC(new Date().getFullYear(),new Date().getMonth(),new Date().getDate());
-      const upcoming=visible.filter(e=>!e.meta.done&&e.meta.date>=today).sort((a,b)=>a.meta.date.localeCompare(b.meta.date));
-      $('agenda-list').innerHTML=upcoming.map(e=>{const days=Math.round((Date.parse(e.meta.date+'T00:00:00Z')-todayUTC)/86400000);return `<button class="countdown-row" data-event="${esc(e.id)}"><div><b>${esc(e.title)}</b><small>${esc(e.meta.date)}</small></div><strong>${days}</strong><small>天后</small></button>`;}).join('')||'<div class="workspace-empty">还没有即将到来的日程</div>';
+      const builtins=upcomingDays.filter(e=>(countdownFilter==='all'||countdownFilter===e.kind)&&(!search||e.title.toLowerCase().includes(search))).map(e=>({title:e.title,meta:{date:e.date},builtin:e.kind}));
+      const custom=['all','custom'].includes(countdownFilter)?visible.filter(e=>!e.meta.done&&e.meta.date>=today):[];
+      const upcoming=[...builtins,...custom].sort((a,b)=>a.meta.date.localeCompare(b.meta.date));
+      $('agenda-list').innerHTML=upcoming.map(e=>{const days=Math.round((Date.parse(e.meta.date+'T00:00:00Z')-todayUTC)/86400000);return `<button class="countdown-row" ${e.builtin?`data-builtin-date="${e.meta.date}"`:`data-event="${esc(e.id)}"`}><div><b>${esc(e.title)}</b><small>${e.builtin==='term'?'节气 · ':e.builtin==='holiday'?'节日 · ':'自定义 · '}${esc(e.meta.date)}</small></div><strong>${days}</strong><small>天后</small></button>`;}).join('')||'<div class="workspace-empty">还没有即将到来的日程</div>';
     }
+    $('countdown-filters')?.toggleAttribute('hidden',agendaMode!=='countdown');
+    $('calendar-new').textContent=agendaMode==='countdown'?'⊕ 添加倒数日':'⊕ 添加待办';
+    $('agenda-list').querySelectorAll('[data-builtin-date]').forEach(b=>b.onclick=()=>{selected=b.dataset.builtinDate;month=new Date(selected+'T12:00:00');calendar();});
     $('agenda-list').querySelectorAll('[data-event]').forEach(b=>b.onclick=()=>editEvent(events.find(e=>e.id===b.dataset.event)));
     $('agenda-list').querySelectorAll('[data-done]').forEach(b=>b.onclick=safe(async()=>{const e=events.find(e=>e.id===b.dataset.done);await checked(api.save('calendar',{id:e.id,title:e.title,text:e.text,...e.meta,done:!e.meta.done}));await loadCalendar();}));
     $('agenda-list').querySelectorAll('[data-remove]').forEach(b=>b.onclick=safe(async()=>{if(!confirm('删除这条日程？'))return;await checked(api.remove('calendar',b.dataset.remove));await loadCalendar();}));
   }
-  async function loadCalendar(){events=await api.list('calendar');calendar();}
+  async function loadCalendar(){await window.CalendarData.ready();events=await api.list('calendar');upcomingDays=window.CalendarData.upcoming(new Date());calendar();}
   function editEvent(item){editing=item?.id||'';$('event-form').hidden=false;$('event-title').value=item?.title||'';$('event-notes').value=item?.text||'';$('event-date').value=item?.meta.date||selected;$('event-time').value=item?.meta.time||'';$('event-category').value=item?.meta.category||'work';$('event-priority').value=item?.meta.priority||'normal';$('event-location').value=item?.meta.location||'';$('event-title').focus();}
   $('calendar-prev').onclick=()=>{if(calendarView==='week'){const day=new Date(selected+'T12:00:00');day.setDate(day.getDate()-7);selected=dateKey(day);month=day;calendar();return;}month=new Date(month.getFullYear(),month.getMonth()-1,1);calendar();};
   $('calendar-next').onclick=()=>{if(calendarView==='week'){const day=new Date(selected+'T12:00:00');day.setDate(day.getDate()+7);selected=dateKey(day);month=day;calendar();return;}month=new Date(month.getFullYear(),month.getMonth()+1,1);calendar();};
@@ -64,7 +72,7 @@
     const headings=[...$('md-preview').querySelectorAll('h1,h2,h3')];$('md-outline').innerHTML=headings.map((h,i)=>{h.id='md-heading-'+i;return `<button data-heading="${i}" title="${esc(h.textContent)}">${esc(h.textContent)}</button>`;}).join('');$('md-outline').querySelectorAll('button').forEach(b=>b.onclick=()=>headings[+b.dataset.heading].scrollIntoView({block:'start'}));
     $('md-words').textContent=`${text.length.toLocaleString()} 字符 · ${text.split('\n').length} 行`;
   }
-  function docList(){const query=$('md-search').value.trim().toLowerCase();$('md-list').innerHTML=docs.filter(d=>(d.title+' '+d.text).toLowerCase().includes(query)).map(d=>`<button class="document-row ${d.id===current?'is-active':''}" data-document="${d.id}"><span>Md</span><div><b>${esc(d.title)}</b><small>${new Date(d.updatedAt).toLocaleDateString('zh-CN')}</small></div></button>`).join('')||'<div class="workspace-empty">没有匹配的文档</div>';$('md-list').querySelectorAll('[data-document]').forEach(b=>b.onclick=safe(()=>selectDoc(b.dataset.document)));}
+  function docList(){const query=$('md-search').value.trim().toLowerCase();$('md-list').innerHTML=docs.filter(d=>(d.title+' '+d.text).toLowerCase().includes(query)).map(d=>`<button class="document-row ${d.id===current?'is-active':''}" data-document="${d.id}"><span class="recent-icon">▤</span><div><b>${esc(d.title)}.md</b><small>本地文档 · ${new Date(d.updatedAt).toLocaleDateString('zh-CN')}</small></div><em>›</em></button>`).join('')||'<div class="workspace-empty">没有匹配的文档</div>';$('md-list').querySelectorAll('[data-document]').forEach(b=>b.onclick=safe(()=>selectDoc(b.dataset.document)));}
   function flush(){
     clearTimeout(timer);if(!current||revision===savedRevision)return chain;
     const id=current, version=revision, payload={id,title:$('md-title').value.trim()||'未命名文档',text:$('md-editor').value};
@@ -74,7 +82,7 @@
     // Callers can await rejection, while the background save also has an observer.
     chain.catch(()=>{});return chain;
   }
-  async function selectDoc(id){clearTimeout(previewTimer);await flush();current=id;revision=savedRevision=0;const item=docs.find(d=>d.id===id);$('md-body').hidden=!item;$('md-empty').hidden=Boolean(item);if(item){$('md-title').value=item.title;$('md-editor').value=item.text;$('md-status').textContent='已保存';preview();}document.documentElement.classList.toggle('md-home',!item);for(const id of ['md-save','md-export','md-export-format','md-delete'])$(id).disabled=!item;docList();}
+  async function selectDoc(id){clearTimeout(previewTimer);await flush();current=id;revision=savedRevision=0;const item=docs.find(d=>d.id===id);$('md-body').hidden=!item;$('md-empty').hidden=Boolean(item);if(item){$('md-title').value=item.title;$('md-editor').value=item.text;$('md-status').textContent='已保存';preview();}document.documentElement.classList.toggle('md-home',!item);if(document.documentElement.dataset.tool==='markdown')document.querySelector('.brand b').textContent=item?item.title+'.md':'未打开 Markdown';for(const id of ['md-save','md-export','md-export-format','md-delete'])$(id).disabled=!item;docList();}
   async function loadDocs(){docs=await api.list('markdown');await selectDoc(docs.some(d=>d.id===current)?current:docs[0]?.id||'');}
   function dirty(){revision++;$('md-status').textContent='未保存';clearTimeout(previewTimer);previewTimer=setTimeout(preview,120);clearTimeout(timer);timer=setTimeout(()=>flush().catch(error=>notify(error.message)),400);}
   $('md-editor').oninput=dirty;$('md-title').oninput=dirty;$('md-search').oninput=docList;
@@ -103,6 +111,8 @@
   if(tool){
     const top=document.createElement('div');top.className='tool-top-actions';
     document.querySelector('.titlebar').insertBefore(top,document.querySelector('.window-actions'));
+    const theme=document.createElement('button');theme.className='quiet-btn tool-icon';theme.title='切换明暗主题';theme.setAttribute('aria-label',theme.title);theme.innerHTML='<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M12 4a8 8 0 0 1 0 16z" fill="currentColor"/></svg>';theme.onclick=safe(()=>window.suira.settings.update({theme:matchMedia('(prefers-color-scheme: dark)').matches?'light':'dark'}));top.append(theme);
+    const pin=document.createElement('button');pin.className='quiet-btn tool-icon';pin.title='窗口置顶';pin.setAttribute('aria-label',pin.title);pin.innerHTML='<svg viewBox="0 0 24 24"><path d="M8 3h8l-1 7 4 4H5l4-4z M12 14v7"/></svg>';pin.onclick=safe(async()=>pin.setAttribute('aria-pressed',String(await window.suira.window.pin())));top.append(pin);
     if(tool==='markdown'){
       for(const node of document.querySelectorAll('#page-markdown .page-actions > *'))top.append(node);
       top.append(document.querySelector('.markdown-toolbar .view-switch'));
@@ -110,8 +120,12 @@
       const home=document.createElement('button');home.className='quiet-btn';home.textContent='最近';home.title='返回最近文档';home.onclick=safe(()=>selectDoc(''));top.prepend(home);
       const icons={'md-import':'M3 7h6l2 2h10v11H3z M3 7V4h6l2 3','md-new':'M6 3h8l4 4v14H6z M12 10v7 M9 13h6','md-save':'M4 3h14l3 3v15H3V3z M7 3v6h10V3 M7 21v-8h10v8','md-export':'M12 3v12 M8 11l4 4 4-4 M4 16v5h16v-5','md-delete':'M3 6h18 M9 6V3h6v3 M6 6l1 15h10l1-15 M10 10v7 M14 10v7'};
       for(const [id,path] of Object.entries(icons)){const button=$(id);button.title=button.textContent;button.setAttribute('aria-label',button.textContent);button.classList.add('tool-icon');button.innerHTML=`<svg viewBox="0 0 24 24" aria-hidden="true"><path d="${path}"/></svg>`;}
-      const empty=$('md-empty');empty.innerHTML='<span class="welcome-document">▤</span><b>未打开 Markdown</b><p>打开 Markdown 文件，或新建空白文档</p><div class="welcome-actions"><button class="primary-btn" id="welcome-open">打开 Markdown</button><button class="quiet-btn" id="welcome-new">新建空白 Markdown</button></div>';
+      const viewIcons={edit:'M4 20l4-1L20 7l-3-3L5 16z',split:'M3 4h18v16H3z M12 4v16',preview:'M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z M12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6'};
+      document.querySelectorAll('[data-md-view]').forEach(b=>{b.title=b.textContent;b.setAttribute('aria-label',b.textContent);b.innerHTML=`<svg viewBox="0 0 24 24"><path d="${viewIcons[b.dataset.mdView]}"/></svg>`;});
+      const search=document.createElement('button');search.className='quiet-btn tool-icon';search.title='搜索文档';search.setAttribute('aria-label',search.title);search.innerHTML='<svg viewBox="0 0 24 24"><circle cx="10" cy="10" r="6"/><path d="m15 15 6 6"/></svg>';search.onclick=()=>{$('md-search').focus();};top.prepend(search);
+      const empty=$('md-empty');empty.innerHTML='<span class="welcome-document"><svg viewBox="0 0 48 56"><rect x="5" y="2" width="38" height="52" rx="5"/><path d="M13 13h11 M18 9v13 M12 18h14 M30 12h6 M30 19h6 M12 43l9-10 7 6 8-12v19H12z"/></svg></span><b>未打开 Markdown</b><p>打开 Markdown 文件，或新建空白文档</p><div class="welcome-actions"><button class="primary-btn" id="welcome-open">打开 Markdown</button><button class="quiet-btn" id="welcome-new">新建空白 Markdown</button></div>';
       $('welcome-open').onclick=()=>$('md-import').click();$('welcome-new').onclick=()=>$('md-new').click();
+      const paste=document.createElement('button');paste.className='quiet-btn';paste.id='md-paste';paste.title='从剪贴板新建';paste.textContent='从剪贴板新建';paste.onclick=safe(async()=>{await flush();const clip=await checked(api.clipboard());if(!clip.text.trim())return notify('剪贴板没有文本');const r=await checked(api.save('markdown',{title:'剪贴板文档',text:clip.text}));docs.unshift(r.item);await selectDoc(r.item.id);});empty.querySelector('.welcome-actions').after(paste);
       const label=document.createElement('h3');label.textContent='◷  最近打开';document.querySelector('.document-sidebar').prepend(label);
     }else{
       top.append($('calendar-export'));
@@ -119,7 +133,12 @@
       let tick;const updateClock=()=>{clearTimeout(tick);if(document.hidden)return;clock.textContent=new Date().toLocaleTimeString('zh-CN',{hour12:false});tick=setTimeout(updateClock,1000);};document.addEventListener('visibilitychange',updateClock);updateClock();
       const nav=document.querySelector('.calendar-month');nav.prepend($('calendar-prev'));nav.append($('calendar-next'),$('calendar-today'));
       const aside=document.querySelector('.agenda-card');aside.prepend($('calendar-new'));
-      const tabs=document.createElement('div');tabs.className='agenda-tabs view-switch';tabs.innerHTML='<button data-agenda="countdown">倒数日</button><button data-agenda="todo" class="is-active">待办</button>';aside.prepend(tabs);
+      const tabs=document.createElement('div');tabs.className='agenda-tabs view-switch';tabs.innerHTML='<button data-agenda="countdown" class="is-active">⌛ 倒数日</button><button data-agenda="todo">☷ 待办</button>';aside.prepend(tabs);
+      const filters=document.createElement('div');filters.id='countdown-filters';filters.innerHTML=[['all','全部'],['holiday','节假日'],['term','24 节气'],['custom','自定义']].map(([id,label])=>`<button data-countdown="${id}" class="${id==='all'?'is-active':''}">${label}</button>`).join('');tabs.after(filters);
+      filters.querySelectorAll('button').forEach(b=>b.onclick=()=>{countdownFilter=b.dataset.countdown;filters.querySelectorAll('button').forEach(x=>x.classList.toggle('is-active',x===b));calendar();});
+      const numbers=document.createElement('div');numbers.id='calendar-week-numbers';$('calendar-grid').before(numbers);const dates=document.createElement('div');dates.className='calendar-dates';numbers.before(dates);dates.append(numbers,$('calendar-grid'));
+      const selectedLabel=document.createElement('span');selectedLabel.id='calendar-selected';nav.append(selectedLabel);
+      const filterToggle=document.createElement('button');filterToggle.className='quiet-btn';filterToggle.textContent='☰';filterToggle.title='搜索和视图';filterToggle.onclick=()=>document.querySelector('.calendar-controls').classList.toggle('is-open');top.prepend(filterToggle);
       tabs.querySelectorAll('button').forEach(button=>button.onclick=()=>{agendaMode=button.dataset.agenda;tabs.querySelectorAll('button').forEach(b=>{b.classList.toggle('is-active',b===button);b.setAttribute('aria-pressed',String(b===button));});calendar();});
     }
   }

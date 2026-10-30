@@ -26,6 +26,7 @@ function pathForFile(file) {
 
 contextBridge.exposeInMainWorld('suira', {
   window: {
+    pin: () => ipcRenderer.invoke('window:pin'),
     minimize: () => ipcRenderer.invoke('window:minimize'),
     maximize: () => ipcRenderer.invoke('window:maximize'),
     close: () => ipcRenderer.invoke('window:close'),
@@ -186,6 +187,7 @@ contextBridge.exposeInMainWorld('suira', {
     onProgress: (callback) => subscribe('ocr:progress', callback)
   },
   workspace: {
+    clipboard: () => ipcRenderer.invoke('workspace:clipboard'),
     open: type => ipcRenderer.invoke('workspace:open',type),
     onClosing: callback => subscribe('workspace:closing',callback),
     closeReady: () => ipcRenderer.invoke('workspace:close-ready'),

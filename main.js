@@ -974,11 +974,11 @@ async function rememberReturnTarget(selectionMethod = 'unknown') {
  * 截图隐藏时立即释放图像和画布，兼顾再次唤起速度与大图内存占用。
  */
 const WINDOW_IDLE_TEARDOWN_MS = 60 * 1000;
-const HOT_WINDOW_IDLE_MS = 3 * 60 * 1000;
+const HOT_WINDOW_IDLE_MS = 60 * 1000;
 // 主窗口是"正门"，用户随时可能回来，回收前多留一段时间。
 // 90s 是折中：关到托盘后 1 分半还占着上百 MB 没有意义，而从托盘唤醒重建
 // 主窗口约 200–400ms，用户体感仍然接近即时。
-const MAIN_WINDOW_IDLE_MS = 90 * 1000;
+const MAIN_WINDOW_IDLE_MS = 30 * 1000;
 
 /** 窗口隐藏后开始计时；期间被再次唤起会取消。 */
 function scheduleIdleTeardown(win, label, delay = WINDOW_IDLE_TEARDOWN_MS) {
@@ -1158,7 +1158,8 @@ function setIslandMode(mode) {
   const win = islandWindow;
   islandMode = next;
   if (win && !win.isDestroyed()) {
-    if (next === 'sleep') win.hide();
+    if (next === 'sleep') { win.hide(); scheduleIdleTeardown(win, '文件中转', HOT_WINDOW_IDLE_MS); }
+    else cancelIdleTeardown(win);
     syncIslandFrame();
     win.setIgnoreMouseEvents(next === 'sleep');
     pushIslandMode();
@@ -1223,13 +1224,15 @@ function armIsland() {
   win.setBounds(islandBounds('sleep'));
   win.setIgnoreMouseEvents(true);
   win.hide();
+  scheduleIdleTeardown(win, '文件中转', HOT_WINDOW_IDLE_MS);
   pushIslandMode();
   return { ok: true, mode: 'sleep' };
 }
 
 function handleIslandPointer(point) {
-  const win = islandWindow;
-  if (!win || win.isDestroyed()) return;
+  const receiver = receiverDisplay(screen.getAllDisplays(), point);
+  if ((!islandWindow || islandWindow.isDestroyed()) && !receiver) return;
+  const win = createIslandWindow();
   if (islandMode !== 'sleep') {
     if (point.down && !contains(win.getBounds(), point)) setIslandMode('sleep');
     return;
@@ -1237,9 +1240,10 @@ function handleIslandPointer(point) {
   const display = receiverDisplay(screen.getAllDisplays(), point);
   if (!display) {
     win.setIgnoreMouseEvents(true);
-    if (win.isVisible()) win.hide();
+    if (win.isVisible()) { win.hide(); scheduleIdleTeardown(win, '文件中转', HOT_WINDOW_IDLE_MS); }
     return;
   }
+  cancelIdleTeardown(win);
   islandDisplayId = display.id;
   win.setBounds(islandBounds('sleep'));
   win.setIgnoreMouseEvents(false);
@@ -2106,7 +2110,7 @@ function cancelLongPicker() {
   longPickerRevision++;longPickerPayload=null;
   longPickerWorker?.stop();longPickerWorker=null;
   const ack=longPickerWindow?.__pickerAck;if(ack){longPickerWindow.__pickerAck=null;ack.done();}
-  if(longPickerWindow&&!longPickerWindow.isDestroyed())longPickerWindow.hide();
+  if(longPickerWindow&&!longPickerWindow.isDestroyed()){longPickerWindow.hide();scheduleIdleTeardown(longPickerWindow,'长截图框选',HOT_WINDOW_IDLE_MS);}
   releaseLongPickerEscape();
   // 首帧还没准备好的取消：把正在准备的会话一起收掉，否则采集回来又会把
   // 框选层重新弹出来（用户已经按过取消）。
@@ -2119,7 +2123,7 @@ async function beginLongPicker(source) {
     // 在用户拖动选区时并行准备，松手后不再等待新渲染进程和组件编译。
     createLongCaptureWindow();createLongPreviewWindow();createLongOutlineWindow();
     readyCaptureHost(true).catch(()=>{});foregroundProbe.start().catch(()=>{});
-    const win=createLongPickerWindow();await win.__loaded;
+    const win=createLongPickerWindow();cancelIdleTeardown(win);await win.__loaded;
     if(revision!==longPickerRevision||win.isDestroyed())return {ok:true,visible:false};
     const bounds=currentVirtualBounds();if(!sameBounds(win.getBounds(),bounds))win.setBounds(bounds);
     const ready=new Promise((resolve,reject)=>{const timer=setTimeout(()=>{if(win.__pickerAck?.revision===revision)win.__pickerAck=null;reject(Error('框选层未就绪，请重试'));},1200);win.__pickerAck={revision,done:()=>{clearTimeout(timer);resolve();}};});
@@ -2292,7 +2296,7 @@ async function teardownLongCapture(session) {
   session.preview=null;session.win=null;
   if(longPickerPayload){
     longPickerPayload=null;
-    if(longPickerWindow&&!longPickerWindow.isDestroyed())longPickerWindow.hide();
+    if(longPickerWindow&&!longPickerWindow.isDestroyed()){longPickerWindow.hide();scheduleIdleTeardown(longPickerWindow,'长截图框选',HOT_WINDOW_IDLE_MS);}
   }
   captureBusy=false;
   restoreMainAfterCapture();
@@ -2950,6 +2954,7 @@ function registerIpc() {
     if(win.isMaximized())win.unmaximize();else win.maximize();return win.isMaximized();
   });
   ipcMain.handle('window:close', event => {const win=senderWindow(event);if(win===mainWindow)win.hide();else win?.close();});
+  ipcMain.handle('window:pin', event => {const win=senderWindow(event);if(!win)return false;win.setAlwaysOnTop(!win.isAlwaysOnTop());return win.isAlwaysOnTop();});
   ipcMain.handle('window:is-maximized', event => Boolean(senderWindow(event)?.isMaximized()));
   ipcMain.handle('window:hide', event => senderWindow(event)?.hide());
   ipcMain.handle('workspace:open', (_event,type) => {if(!['calendar','markdown'].includes(type))return {ok:false};showWorkspaceWindow(type);return {ok:true};});
@@ -3494,6 +3499,7 @@ function registerIpc() {
     if(!isSafeHttpUrl(url))return {ok:false,error:'只能打开 http(s) 链接'};
     await shell.openExternal(url);return {ok:true};
   });
+  ipcMain.handle('workspace:clipboard', async()=>({ok:true,text:(await readClipboardText()).slice(0,200000)}));
   ipcMain.handle('workspace:list', (_event,type) => workspace.list(type));
   ipcMain.handle('workspace:save', async (_event,type,payload) => {
     try { const item=workspace.save(type,payload); await store.save(); broadcast('content:changed'); return {ok:true,item}; }
@@ -3874,11 +3880,10 @@ async function initialize() {
   registerShortcuts();
   // 浮引岛启动即"上岗"，但处在休眠态：屏幕上看不见，只等文件拖到顶部中央。
   // 热键入口预建并保留空页面；截图结束仍立即释放大图与画布。
-  createQuickWindow();
-  createClipboardBarWindow();
-  createOverlayWindow();
-  for (const win of [quickWindow, clipboardBarWindow, overlayWindow]) scheduleIdleTeardown(win, '预热入口', HOT_WINDOW_IDLE_MS);
-  createLongPickerWindow();
+  if (!process.argv.includes('--background')) {
+    createQuickWindow();createClipboardBarWindow();createOverlayWindow();
+    for (const win of [quickWindow, clipboardBarWindow, overlayWindow]) scheduleIdleTeardown(win, '预热入口', HOT_WINDOW_IDLE_MS);
+  }
   captureHost = prepareCaptureHost();
   foregroundProbe.nativeHostReady = ensureNativeHost({ sourcePath: assetPath('foreground-host.cs'), targetPath: path.join(userRoot(), 'foreground-host-v3.exe'), references: ['System.Web.Extensions.dll'] });
   foregroundProbe.start().catch(error => console.warn('前台助手预热失败:', error.message));

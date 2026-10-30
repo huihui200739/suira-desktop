@@ -1,5 +1,5 @@
 'use strict';
-// Isolated profile. Shorten only the production 180-second idle timer to test
+// Isolated profile. Shorten only the production 60-second idle timer to test
 // actual teardown/reopen paths without touching the user's running instance.
 const fs=require('node:fs'),path=require('node:path'),os=require('node:os'),net=require('node:net'),assert=require('node:assert/strict'),{spawn}=require('node:child_process');
 const {connect}=require('./runtime-client');
@@ -10,7 +10,7 @@ async function until(fn){let error;for(let i=0;i<160;i++){try{const v=await fn()
  const server=net.createServer();await new Promise(r=>server.listen(0,'127.0.0.1',r));const port=server.address().port;await new Promise(r=>server.close(r));
  const entry=path.join(tmp,'app.js');
  fs.writeFileSync(entry,`const {app,ipcMain,clipboard,globalShortcut}=require('electron');app.setPath('userData',${JSON.stringify(path.join(tmp,'profile'))});clipboard.read=async()=>[];clipboard.readText=async()=>'';globalShortcut.register=()=>true;globalShortcut.unregister=()=>{};globalShortcut.unregisterAll=()=>{};
- const timer=global.setTimeout;global.setTimeout=(fn,ms,...args)=>timer(fn,ms===180000?2000:ms,...args);
+ const timer=global.setTimeout;global.setTimeout=(fn,ms,...args)=>timer(fn,ms===60000?2000:ms,...args);
  const handle=ipcMain.handle.bind(ipcMain);ipcMain.handle=(name,fn)=>handle(name,name==='app:info'?async(...args)=>({...await fn(...args),metrics:app.getAppMetrics().map(p=>({type:p.type,kb:p.memory.workingSetSize}))}):fn);
  require(${JSON.stringify(path.join(root,'main.js'))});`);
  const env={...process.env};delete env.ELECTRON_RUN_AS_NODE;const log=fs.openSync(path.join(tmp,'app.log'),'w');child=spawn('C:\\suira-electron\\electron.exe',[entry,'--remote-debugging-port='+port],{cwd:root,env,windowsHide:true,stdio:['ignore',log,log]});fs.closeSync(log);
@@ -27,6 +27,6 @@ async function until(fn){let error;for(let i=0;i<160;i++){try{const v=await fn()
    await page.evaluate(hide);report[name+'BeforeIdle']=await metrics();await until(async()=>!(await targets()).some(t=>t.url.endsWith(suffix)));report[name+'AfterIdle']=await metrics();
    const cold=performance.now();await main.evaluate(show);page=await get(suffix);await until(()=>page.evaluate(name==='capture'?'document.visibilityState==="visible" && document.getElementById("screen-canvas").width>0 && document.getElementById("loading-state").hidden':'document.visibilityState==="visible"'));report[name+'RecreatedMs']=Math.round(performance.now()-cold);assert.notEqual((await targets()).find(t=>t.url.endsWith(suffix)).id,original);await page.evaluate(hide);
  }
- fs.writeFileSync(path.join(root,'docs/glass-performance.json'),JSON.stringify({note:'Single isolated Electron run; working set sums may include shared pages. Production idle timeout 180s shortened to 2s for lifecycle verification; timings are IPC-to-ready, not physical hotkey latency.',...report},null,2)+'\n');
+ fs.writeFileSync(path.join(root,'docs/glass-performance.json'),JSON.stringify({note:'Single isolated Electron run; working set sums may include shared pages. Production idle timeout 60s shortened to 2s for lifecycle verification; timings are IPC-to-ready, not physical hotkey latency.',...report},null,2)+'\n');
  console.log(JSON.stringify(report,null,2));console.log('PASS real idle teardown, visible-window protection, warm reopen and cold recreation');
 })().catch(e=>{console.error(e);process.exitCode=1;}).finally(()=>{for(const s of sockets)s.close();child?.kill();});

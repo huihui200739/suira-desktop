@@ -126,3 +126,35 @@ body { background:transparent; }
 .tool-top-actions .tool-icon:hover { background:color-mix(in srgb,var(--paper-raised) 60%,transparent); border-color:var(--line); color:var(--accent); }
 .tool-icon svg { width:20px; height:20px; }
 .tool-window .calendar-day.selected { border-radius:50%; }
+/* Reference detail pass: airy acrylic, hairline controls and inset date rings. */
+.tool-window .app-shell { background:color-mix(in srgb,var(--paper) 28%,transparent); border:1px solid color-mix(in srgb,var(--paper-raised) 55%,transparent); }
+.tool-window .titlebar { padding:0 22px; }
+.tool-window .brand { min-width:0; max-width:230px; }.tool-window .brand b { overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }
+.tool-top-actions { gap:9px; }.tool-top-actions .view-switch { border:0;background:transparent;gap:5px; }.tool-top-actions .view-switch button { padding:8px; }.tool-top-actions .view-switch svg { width:19px;height:19px; }
+.tool-top-actions .tool-icon[aria-pressed="true"] { color:var(--accent);background:var(--accent-soft); }
+.tool-window .quiet-btn { background:color-mix(in srgb,var(--paper-raised) 24%,transparent);border-color:color-mix(in srgb,var(--line) 50%,transparent); }
+.tool-window #md-empty { min-height:305px;padding-top:38px;gap:14px; }
+.tool-window #md-empty .welcome-document { width:50px;height:62px;margin-bottom:8px; }.welcome-document svg { width:44px;height:54px;stroke-width:2.6; }
+.tool-window #md-empty>b { font-size:24px;letter-spacing:-.02em; }.tool-window #md-empty>p { margin:0 0 10px; }
+.tool-window #md-empty #md-paste { min-height:26px;border:0;background:transparent;font-size:12px;color:var(--ink-muted); }
+.tool-window .welcome-actions button { min-height:48px;padding:12px 22px;box-shadow:none;font-weight:600; }
+.tool-window.md-home .document-sidebar { padding:0 50px; }.tool-window.md-home .document-sidebar>input { float:right;margin-top:-45px;max-width:200px; }
+.tool-window.md-home #md-list { grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:18px; }
+.tool-window.md-home .document-row { min-height:88px;border-radius:17px;padding:20px;background:color-mix(in srgb,var(--paper-raised) 50%,transparent);box-shadow:inset 0 1px 0 #ffffff45; }
+.document-row .recent-icon { display:grid;place-items:center;width:36px;height:40px;flex-shrink:0;color:var(--accent);background:color-mix(in srgb,var(--accent) 7%,transparent);border-radius:9px;font-size:22px; }.document-row em { margin-left:auto;color:var(--ink-faint);font-style:normal; }
+.tool-window .calendar-controls { display:none; }.tool-window .calendar-controls.is-open { display:flex; }
+.tool-window[data-tool="calendar"] .page { padding:40px 26px 24px; }
+.tool-window .calendar-layout { grid-template-columns:minmax(0,1fr) 32%; }
+.tool-window .calendar-month { gap:4px;padding:0 0 20px;min-height:54px; }.tool-window .calendar-month h2 { font-size:21px;padding:0 10px; }.tool-window .calendar-month #calendar-selected { margin-left:auto;font-size:12px;color:var(--ink);white-space:nowrap; }
+.tool-window .calendar-week { margin-left:26px; }.calendar-dates { display:grid;grid-template-columns:26px minmax(0,1fr);flex:1;min-height:0; }
+#calendar-week-numbers { display:grid;grid-auto-rows:1fr;color:var(--ink-muted);font-size:11px;text-align:left;align-items:center; }
+.tool-window .calendar-day.selected { border-radius:0;box-shadow:none;background:transparent; }
+.tool-window .calendar-day.selected::before { content:'';position:absolute;width:64px;height:64px;border:1px solid color-mix(in srgb,var(--accent) 40%,transparent);border-radius:50%;background:color-mix(in srgb,var(--accent) 7%,transparent);left:50%;top:50%;transform:translate(-50%,-50%);pointer-events:none; }
+.tool-window .calendar-day { display:flex;flex-direction:column;justify-content:center;align-items:center; }.tool-window .calendar-day>span { position:relative;font-size:25px;line-height:1.25; }.tool-window .calendar-day .lunar-day { position:relative;margin-top:4px;min-height:18px; }
+.work-badge { position:absolute;right:-17px;top:-2px;width:15px;height:15px;border-radius:50%;font:10px/15px var(--font-ui);color:white; }.work-badge.rest { background:#29b9a5; }.work-badge.work { background:#e17d6f; }
+.date-badge { display:inline-block;border:1px solid currentColor;border-radius:5px;padding:0 4px;font-size:11px;line-height:17px; }.date-badge.term { color:#238bc3;background:#51baff12; }.date-badge.holiday { color:#c67065;background:#df786412; }
+#countdown-filters { display:flex;justify-content:space-between;gap:4px;border-bottom:1px solid var(--line);margin:0 0 15px; }#countdown-filters button { padding:10px 3px;font-size:12px;color:var(--ink-muted);border-bottom:2px solid transparent; }#countdown-filters .is-active { color:var(--accent);border-color:var(--accent); }
+.tool-window .agenda-tabs { width:210px;max-width:100%;margin-bottom:14px; }.tool-window .agenda-tabs .is-active { color:var(--accent);background:color-mix(in srgb,var(--accent) 9%,transparent);box-shadow:none; }
+.tool-window .agenda-card:has([data-agenda="countdown"].is-active)>.setting-title { display:none; }
+.tool-window .agenda-card { max-height:none; }.tool-window .calendar-layout[data-view="agenda"] .calendar-dates { display:none; }
+@media(max-width:1000px){.tool-top-actions{gap:3px}.tool-window .calendar-month #calendar-selected{display:none}.tool-window .calendar-month h2{font-size:18px}.tool-window .calendar-day>span{font-size:22px}.tool-window.md-home .document-sidebar{padding:0 18px}}
