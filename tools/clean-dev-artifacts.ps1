@@ -1,6 +1,7 @@
 # Remove only known Suira development artifacts. Never clean the live user profile.
 param(
   [switch]$Preview,
+  [switch]$IncludeObsoletePackages,
   [switch]$IncludeLegacyRuntimes,
   [switch]$IncludeLegacyProbes
 )
@@ -94,6 +95,28 @@ if ($IncludeLegacyProbes) {
 $removedBytes = 0L
 $removedCount = 0
 $failed = [Collections.Generic.List[string]]::new()
+if ($IncludeObsoletePackages) {
+  # Explicit opt-in only. Keep a verified latest installer on the desktop before
+  # removing redundant build output; never touch the installed application.
+  $package = Get-Content -LiteralPath (Join-Path $repoRoot 'package.json') -Raw -Encoding UTF8 | ConvertFrom-Json
+  $version = [string]$package.version
+  if ($version -notmatch '^\d+\.\d+\.\d+$') { throw 'Unexpected package version' }
+  $desktop = [Environment]::GetFolderPath('Desktop')
+  $latest = Join-Path $desktop ('Suira-' + $version + '-Setup.exe')
+  $manifest = Get-Content -LiteralPath (Join-Path $repoRoot ('docs\release-' + $version + '.json')) -Raw -Encoding UTF8 | ConvertFrom-Json
+  if (-not (Test-Path -LiteralPath $latest -PathType Leaf)) { throw 'Keep the latest desktop installer before cleaning builds' }
+  $hashStream = [IO.File]::OpenRead($latest)
+  $sha256 = [Security.Cryptography.SHA256]::Create()
+  try { $latestHash = ([BitConverter]::ToString($sha256.ComputeHash($hashStream))).Replace('-', '') }
+  finally { $hashStream.Dispose(); $sha256.Dispose() }
+  if ($latestHash -ne $manifest.sha256) { throw 'Latest desktop installer hash mismatch' }
+  if ((Get-Item -LiteralPath $latest).Length -ne $manifest.bytes) { throw 'Latest desktop installer size mismatch' }
+  # These exact superseded files were inventoried and approved for removal.
+  foreach ($name in @('Suira-0.2.0-portable.exe','Suira-0.2.1-Setup.exe')) {
+    if ($name -ne (Split-Path -Leaf $latest)) { Add-Target (Join-Path $desktop $name) $desktop 'obsolete-desktop-packages' }
+  }
+  Add-Target (Join-Path $repoRoot 'dist') $repoRoot 'redundant-build-output'
+}
 if ($Preview) {
   $targets | Group-Object Group | ForEach-Object {
     [pscustomobject]@{ Group=$_.Name; Targets=$_.Count; MB=[math]::Round(($_.Group | Measure-Object Bytes -Sum).Sum / 1MB, 1) }
