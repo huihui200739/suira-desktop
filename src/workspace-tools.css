@@ -1,6 +1,6 @@
 /* Standalone tools share the same translucent surfaces and controls. */
 .tool-window body { background:transparent; }
-.tool-window .app-shell { border:1px solid color-mix(in srgb,var(--line) 55%,white 25%); background:color-mix(in srgb,var(--paper) 68%,transparent); border-radius:16px; }
+.tool-window .app-shell { border:1px solid color-mix(in srgb,var(--line) 55%,white 25%); background:color-mix(in srgb,var(--paper) 68%,transparent); border-radius:var(--radius-panel); }
 .tool-window .sidebar,.tool-window .titlebar-center { display:none; }
 .tool-window .app-body { display:block; min-height:0; }
 .tool-window .main-scroll { height:100%; background:transparent; padding:0; }

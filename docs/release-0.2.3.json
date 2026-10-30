@@ -1,0 +1,25 @@
+{
+  "version": "0.2.3",
+  "artifact": "dist/Suira-0.2.3-x64.exe",
+  "bytes": 155344636,
+  "sha256": "9B3EE00382F1C1E06D416500A0A5DC0A38FA2215B11122D7C8B2662BDA4815F2",
+  "changes": [
+    "Remove system thick-frame decoration from standalone windows and synchronize native rounded regions",
+    "Preserve edge resizing with eight page-owned hit areas and constrained per-window IPC",
+    "Move 34 regression modules under tests; refresh product homepage, description, topics and real current screenshots",
+    "Keep regression screenshots in temporary directories"
+  ],
+  "checks": [
+    "Full npm test passed",
+    "Real Windows HWND region and WS_THICKFRAME checks passed for main, panel, clipboard, calendar, Markdown, notes, image editor and pin",
+    "Calendar resize and maximize/restore passed",
+    "Windows visual inspection: no rectangular gray frame; actual pointer drag resized image editor",
+    "Real Electron workspace save, reload, HTML/PDF/ICS export passed",
+    "Packaged diagnostic exited 0; sources matched ASAR; test modules excluded",
+    "NSIS archive integrity passed"
+  ],
+  "limitations": [
+    "The currently installed 0.2.2 application has not been replaced; install this package after saving documents and exiting from the tray",
+    "Installation freeze root cause remains unconfirmed; this release does not claim to fix it"
+  ]
+}

@@ -34,7 +34,7 @@ svg { fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round
   display: grid;
   grid-template-rows: 52px 1fr;
   overflow: hidden;
-  border-radius: var(--radius-inner);
+  border-radius: var(--radius-panel);
   background: var(--paper);
 }
 

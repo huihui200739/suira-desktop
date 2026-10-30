@@ -287,7 +287,7 @@ const check = (name, cond, detail) => {
       check(scheme+' 工具栏单排、无字母行且在视口内',layout.singleRow&&!layout.hasKeyLabels&&layout.inViewport&&layout.height<=48,JSON.stringify(layout));
       const shot = await send('Page.captureScreenshot', {format:'png',fromSurface:true,
         clip:{x:Math.max(0,layout.x-8),y:Math.max(0,layout.y-8),width:layout.width+16,height:layout.height+16,scale:2}});
-      fs.writeFileSync(path.join(ROOT,'docs','screenshots','27-overlay-toolbar-'+scheme+'.png'),Buffer.from(shot.data,'base64'));
+      fs.writeFileSync(path.join(TMP,'27-overlay-toolbar-'+scheme+'.png'),Buffer.from(shot.data,'base64'));
     }
     await send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: 'light' }] });
 
@@ -562,10 +562,10 @@ const check = (name, cond, detail) => {
     // 留存截图作为证据
     try {
       const shot = await send('Page.captureScreenshot', { format: 'png', fromSurface: true });
-      const outDir = path.join(ROOT, 'docs', 'screenshots');
+      const outDir = TMP;
       fs.mkdirSync(outDir, { recursive: true });
       fs.writeFileSync(path.join(outDir, '16-overlay-original.png'), Buffer.from(shot.data, 'base64'));
-      console.log('  已保存 docs/screenshots/16-overlay-original.png');
+      console.log('  已保存临时回归截图: ' + path.join(outDir, '16-overlay-original.png'));
     } catch (e) {
       console.log('  （截图跳过：' + e.message + '）');
     }

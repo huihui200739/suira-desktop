@@ -46,7 +46,7 @@ function finish() {
  * ------------------------------------------------------------------ */
 
 console.log('\n== 文件与静态约束 ==');
-const islandFiles = ['src/island.html', 'src/island.css', 'src/island.js', 'lib/island-model.js', 'test-island.js'];
+const islandFiles = ['src/island.html', 'src/island.css', 'src/island.js', 'lib/island-model.js', 'tests/test-island.js'];
 const missingFiles = islandFiles.filter((file) => !fs.existsSync(path.join(ROOT, file)));
 check('浮引岛相关文件齐备', missingFiles.length === 0, '缺失: ' + missingFiles.join(', '));
 

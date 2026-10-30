@@ -17,7 +17,7 @@ async function until(fn){let error;for(let n=0;n<140;n++){try{const value=await 
   await main.send('Emulation.setDeviceMetricsOverride',{width:1360,height:900,deviceScaleFactor:1,mobile:false});
   const workbench=main;
   const go=async page=>{await workbench.evaluate(`window.suira.quick.showMain(${JSON.stringify(page)})`);if(['calendar','markdown'].includes(page)){main=await until(()=>connect(port,t=>t.url.includes('tool='+page)));sockets.push(main.ws);await until(()=>main.evaluate('Boolean(window.WorkspaceUI)'));}else main=workbench;await wait(200);};
-  const shot=async name=>{const result=await main.send('Page.captureScreenshot',{format:'png'});fs.writeFileSync(path.join(root,'docs/screenshots',name),Buffer.from(result.data,'base64'));};
+  const shot=async name=>{const result=await main.send('Page.captureScreenshot',{format:'png'});fs.writeFileSync(path.join(tmp,name),Buffer.from(result.data,'base64'));};
   const task=await main.evaluate(`window.suira.tasks.create('工作台改版')`);assert.ok(task.ok);
   await main.evaluate(`window.suira.tasks.rename({id:${JSON.stringify(task.task.id)},title:'本周工作台计划'})`);
   assert.equal((await main.evaluate(`window.suira.tasks.status({id:${JSON.stringify(task.task.id)},done:true})`)).ok,true);
@@ -109,7 +109,7 @@ async function until(fn){let error;for(let n=0;n<140;n++){try{const value=await 
   const collapsed=await panel.evaluate(`(()=>{const f=document.querySelector('.search-field').getBoundingClientRect(),s=document.querySelector('.search-slot').getBoundingClientRect();return {width:f.width,left:f.left,slot:s.left,y:f.top+f.height/2};})()`);
   assert.ok(collapsed.width<=46);assert.ok(Math.abs(collapsed.left-collapsed.slot)<1,'collapsed search must align left');
   assert.equal(await panel.evaluate(`document.getElementById('search-close')===null`),true);
-  const searchShot=async name=>{const result=await panel.send('Page.captureScreenshot',{format:'png'});fs.writeFileSync(path.join(root,'docs/screenshots',name),Buffer.from(result.data,'base64'));};
+  const searchShot=async name=>{const result=await panel.send('Page.captureScreenshot',{format:'png'});fs.writeFileSync(path.join(tmp,name),Buffer.from(result.data,'base64'));};
   await searchShot('37-search-collapsed.png');
   await panel.send('Input.dispatchMouseEvent',{type:'mouseMoved',x:collapsed.left-8,y:collapsed.y});await wait(350);
   assert.ok(await panel.evaluate(`document.querySelector('.search-field').getBoundingClientRect().width>200`),'proximity alone expands');

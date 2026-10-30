@@ -223,3 +223,42 @@ contextBridge.exposeInMainWorld('suira', {
     onChanged: (callback) => subscribe('settings:changed', callback)
   }
 });
+
+// Frameless Windows surfaces use page-owned resize hit areas. Keeping the system
+// thick frame would reintroduce its rectangular gray backdrop outside CSS corners.
+window.addEventListener('DOMContentLoaded', () => {
+  if (process.platform !== 'win32') return;
+  const page = location.pathname.split('/').pop();
+  if (!['index.html', 'notes.html'].includes(page) && !(page === 'overlay.html' && new URLSearchParams(location.search).get('mode') === 'image-editor')) return;
+  const style = document.createElement('style');
+  style.textContent = `.suira-resize{position:fixed;z-index:2147483647;-webkit-app-region:no-drag;touch-action:none}
+  .suira-resize[data-edge=n],.suira-resize[data-edge=s]{left:24px;right:24px;height:6px;cursor:ns-resize}
+  .suira-resize[data-edge=n]{top:0}.suira-resize[data-edge=s]{bottom:0}
+  .suira-resize[data-edge=e],.suira-resize[data-edge=w]{top:24px;bottom:24px;width:6px;cursor:ew-resize}
+  .suira-resize[data-edge=e]{right:0}.suira-resize[data-edge=w]{left:0}
+  .suira-resize[data-edge=ne],.suira-resize[data-edge=nw],.suira-resize[data-edge=se],.suira-resize[data-edge=sw]{width:24px;height:24px}
+  .suira-resize[data-edge=ne]{right:0;top:0;cursor:nesw-resize}.suira-resize[data-edge=nw]{left:0;top:0;cursor:nwse-resize}
+  .suira-resize[data-edge=se]{right:0;bottom:0;cursor:nwse-resize}.suira-resize[data-edge=sw]{left:0;bottom:0;cursor:nesw-resize}`;
+  document.head.appendChild(style);
+  for (const edge of ['n','s','e','w','ne','nw','se','sw']) {
+    const handle = document.createElement('div');
+    handle.className = 'suira-resize'; handle.dataset.edge = edge; handle.setAttribute('aria-hidden', 'true');
+    let dragging = false, frame = 0;
+    handle.addEventListener('pointerdown', event => {
+      if (event.button !== 0) return;
+      event.preventDefault(); dragging = true; handle.setPointerCapture(event.pointerId);
+      ipcRenderer.send('window:resize-start', edge);
+    });
+    handle.addEventListener('pointermove', () => {
+      if (!dragging || frame) return;
+      frame = requestAnimationFrame(() => { frame = 0; if (dragging) ipcRenderer.send('window:resize-step'); });
+    });
+    const finish = () => {
+      if (!dragging) return;
+      dragging = false; cancelAnimationFrame(frame); frame = 0;
+      ipcRenderer.send('window:resize-step'); ipcRenderer.send('window:resize-end');
+    };
+    handle.addEventListener('pointerup', finish); handle.addEventListener('pointercancel', finish); handle.addEventListener('lostpointercapture', finish);
+    document.body.appendChild(handle);
+  }
+});

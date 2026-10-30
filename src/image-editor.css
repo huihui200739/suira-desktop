@@ -1,4 +1,4 @@
-.is-image-editor { background:var(--paper);color:var(--ink);font-family:var(--font-ui); }
+.is-image-editor { border-radius:var(--radius-panel);overflow:hidden; background:var(--paper);color:var(--ink);font-family:var(--font-ui); }
 .is-image-editor .editor-head { position:fixed;inset:0 0 auto;display:flex;align-items:center;gap:16px;height:60px;padding:0 12px 0 22px;background:linear-gradient(135deg,var(--floating-light),transparent),var(--floating-surface);border-bottom:1px solid var(--line);-webkit-app-region:drag; }
 .editor-brand { display:flex;align-items:center;gap:10px;min-width:0;flex:1; }
 .editor-brand img { width:28px;height:28px; }

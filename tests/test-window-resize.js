@@ -1,0 +1,10 @@
+'use strict';
+const assert = require('node:assert/strict');
+const { resizeBounds } = require('../lib/window-resize');
+const b = { x: -800, y: 40, width: 600, height: 400 };
+assert.deepEqual(resizeBounds(b, 'nw', 500, 500, 240, 200), { x: -440, y: 240, width: 240, height: 200 });
+assert.deepEqual(resizeBounds(b, 'se', 100, 50, 240, 200), { x: -800, y: 40, width: 700, height: 450 });
+assert.deepEqual(resizeBounds(b, 'w', -100, 0, 240, 200), { x: -900, y: 40, width: 700, height: 400 });
+assert.deepEqual(resizeBounds(b, 'invalid', 10, 10, 240, 200), b);
+assert.deepEqual(resizeBounds(b, 'e', Infinity, 0, 240, 200), b);
+console.log('PASS frameless resize: opposite edge anchored, minimum size, negative monitor coordinates, invalid input');

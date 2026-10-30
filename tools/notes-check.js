@@ -42,7 +42,7 @@ function finish() {
  * ------------------------------------------------------------------ */
 
 console.log('\n== 文件与静态约束 ==');
-const files = ['src/notes.html', 'src/notes.css', 'src/notes.js', 'lib/notes.js', 'test-notes.js'];
+const files = ['src/notes.html', 'src/notes.css', 'src/notes.js', 'lib/notes.js', 'tests/test-notes.js'];
 const missing = files.filter((file) => !fs.existsSync(path.join(ROOT, file)));
 check('速记相关文件齐备', missing.length === 0, '缺失: ' + missing.join(', '));
 

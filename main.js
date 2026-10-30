@@ -67,6 +67,7 @@ const islandModel = require('./lib/island-model');
 // 第三批第 4 项：速记的纯模型（标题推导 / 容量 / 位置校验）
 const notesLib = require('./lib/notes');
 const imageEditor = require('./lib/image-editor');
+const { EDGES: WINDOW_EDGES, resizeBounds } = require('./lib/window-resize');
 const {LongCaptureSession,sameSource:sameLongCaptureSource}=require('./lib/long-capture-session');
 const {RegionCapture}=require('./lib/region-capture');
 const {longCaptureTarget,settledFirstFrame,sourceProbePoint}=require('./lib/long-capture-start');
@@ -887,16 +888,23 @@ function positionQuickPanel(win) {
 function clipFloatingSurface(win) {
   if (process.platform !== 'win32' || !win || win.isDestroyed()) return;
   const { width, height } = win.getBounds();
-  try { win.setShape(roundedWindowShape(width, height)); } catch {}
+  try { win.setShape(roundedWindowShape(width, height, win.isMaximized() ? 0 : (win.__surfaceRadius || 24))); } catch {}
 }
 
-function prepareFloatingSurface(win) {
+function prepareFloatingSurface(win, radius = 24) {
   if (process.platform !== 'win32') return;
+  win.__surfaceRadius = radius;
   // DWM acrylic 在透明 HWND 的 HRGN 外仍会绘制灰色底板。
   // 由页面保留透光材质，原生层不再画越过圆角的系统背景。
   try { win.setBackgroundMaterial('none'); win.__surfaceMaterial = 'transparent'; }
   catch { win.__surfaceMaterial = 'fallback'; }
   clipFloatingSurface(win);
+  if (!win.__surfaceClippingBound) {
+    win.__surfaceClippingBound = true;
+    for (const event of ['resize', 'show', 'restore', 'maximize', 'unmaximize']) {
+      win.on(event, () => clipFloatingSurface(win));
+    }
+  }
 }
 
 function createQuickWindow() {
@@ -905,6 +913,7 @@ function createQuickWindow() {
     height: QUICK_HEIGHT,
     show: false,
     frame: false,
+    thickFrame: false,
     transparent: true,
     backgroundColor: '#00000000',
     hasShadow: false,
@@ -1093,6 +1102,7 @@ function createIslandWindow() {
     ...islandBounds(islandMode),
     show: false,
     frame: false,
+    thickFrame: false,
     transparent: true,
     backgroundColor: '#00000000',
     hasShadow: false,
@@ -1366,6 +1376,7 @@ function createClipboardBarWindow() {
     ...clipboardBarBounds(),
     show: false,
     frame: false,
+    thickFrame: false,
     transparent: true,
     backgroundColor: '#00000000',
     hasShadow: false,
@@ -1663,9 +1674,10 @@ function showWorkspaceWindow(type) {
   let win=workspaceWindows.get(type);
   if(win&&!win.isDestroyed()){if(win.isMinimized())win.restore();win.show();win.focus();return win;}
   const area=screen.getPrimaryDisplay().workArea;
-  win=new BrowserWindow({width:Math.min(type==='markdown'?1300:1180,area.width-40),height:Math.min(860,area.height-40),minWidth:800,minHeight:600,show:false,frame:false,
-    title:type==='markdown'?'Markdown · 随序':'日历 · 随序',backgroundColor:'#00000000',backgroundMaterial:'acrylic',roundedCorners:true,icon:assetPath('suira-icon.png'),
+  win=new BrowserWindow({width:Math.min(type==='markdown'?1300:1180,area.width-40),height:Math.min(860,area.height-40),minWidth:800,minHeight:600,show:false,frame:false,thickFrame:false,
+    title:type==='markdown'?'Markdown · 随序':'日历 · 随序',backgroundColor:'#00000000',backgroundMaterial:'none',hasShadow:false,roundedCorners:true,icon:assetPath('suira-icon.png'),
     webPreferences:{preload:path.join(__dirname,'preload.js'),contextIsolation:true,nodeIntegration:false,sandbox:false,spellcheck:false}});
+  prepareFloatingSurface(win);
   workspaceWindows.set(type,win);win.__tool=type;
   win.loadFile(path.join(__dirname,'src/index.html'),{query:{tool:type}});
   win.once('ready-to-show',()=>{win.show();win.focus();});
@@ -1693,8 +1705,10 @@ function createMainWindow() {
     minHeight: 680,
     show: false,
     frame: false,
+    thickFrame: false,
     backgroundColor: '#00000000',
-    backgroundMaterial: 'acrylic',
+    backgroundMaterial: 'none',
+    hasShadow: false,
     title: APP_NAME,
     icon: assetPath('suira-icon.png'),
     roundedCorners: true,
@@ -1707,6 +1721,7 @@ function createMainWindow() {
       spellcheck: false
     }
   });
+  prepareFloatingSurface(mainWindow);
   mainWindow.loadFile(path.join(__dirname, 'src', 'index.html'));
   // ready-to-show 是首选：等首帧画完再显示，避免白屏闪一下。
   // 但它在「桌面已锁定 / 合成器异常 / GPU 未就绪」时可能永远不触发，
@@ -1826,6 +1841,7 @@ function createOverlayWindow() {
     height: bounds.height,
     show: false,
     frame: false,
+    thickFrame: false,
     transparent: false,
     backgroundColor: '#0b0e13',
     alwaysOnTop: true,
@@ -2096,7 +2112,7 @@ async function completeCapture(dataUrl, action) {
 
 function createLongPickerWindow() {
   if(longPickerWindow&&!longPickerWindow.isDestroyed())return longPickerWindow;
-  const win=longPickerWindow=new BrowserWindow({...currentVirtualBounds(),title:'随序 · 长截图框选',frame:false,transparent:true,backgroundColor:'#00000000',show:false,focusable:false,alwaysOnTop:true,skipTaskbar:true,resizable:false,movable:false,hasShadow:false,
+  const win=longPickerWindow=new BrowserWindow({...currentVirtualBounds(),title:'随序 · 长截图框选',frame:false,thickFrame:false,transparent:true,backgroundColor:'#00000000',show:false,focusable:false,alwaysOnTop:true,skipTaskbar:true,resizable:false,movable:false,hasShadow:false,
     webPreferences:{preload:path.join(__dirname,'preload.js'),contextIsolation:true,nodeIntegration:false,sandbox:false,spellcheck:false,backgroundThrottling:false}});
   win.setAlwaysOnTop(true,'screen-saver');
   win.__loaded=win.loadFile(path.join(__dirname,'src','long-picker.html'));
@@ -2159,7 +2175,7 @@ let longOutlineWindow=null;
 
 function createLongOutlineWindow() {
   if(longOutlineWindow&&!longOutlineWindow.isDestroyed())return longOutlineWindow;
-  const win=longOutlineWindow=new BrowserWindow({width:200,height:200,show:false,frame:false,transparent:true,backgroundColor:'#00000000',
+  const win=longOutlineWindow=new BrowserWindow({width:200,height:200,show:false,frame:false,thickFrame:false,transparent:true,backgroundColor:'#00000000',
     alwaysOnTop:true,focusable:false,skipTaskbar:true,hasShadow:false,resizable:false,
     title:'随序 · 采集区域',webPreferences:{contextIsolation:true,nodeIntegration:false,sandbox:true,backgroundThrottling:false}});
   win.setAlwaysOnTop(true,'screen-saver');win.setIgnoreMouseEvents(true);win.setContentProtection(true);
@@ -2225,11 +2241,12 @@ function whenPainted(win) {
 function createLongCaptureWindow() {
   if(longCaptureWindow&&!longCaptureWindow.isDestroyed())return longCaptureWindow;
   const win=longCaptureWindow=new BrowserWindow({
-    width:LONG_HUD_WIDTH,height:LONG_HUD_HEIGHT,show:false,frame:false,transparent:true,backgroundColor:'#00000000',
+    width:LONG_HUD_WIDTH,height:LONG_HUD_HEIGHT,show:false,frame:false,thickFrame:false,transparent:true,backgroundColor:'#00000000',
     hasShadow:false,resizable:false,movable:false,minimizable:false,maximizable:false,skipTaskbar:true,
     alwaysOnTop:true,focusable:true,acceptFirstMouse:true,title:'随序 · 长截图',
     webPreferences:{preload:path.join(__dirname,'preload.js'),contextIsolation:true,nodeIntegration:false,sandbox:false,spellcheck:false,backgroundThrottling:false}
   });
+  prepareFloatingSurface(win, 16);
   // 看得见、拍不到：这样就不必每帧 hide/show，用户不会再看到闪烁，
   // 按钮也不会因为窗口被临时隐藏而点不动。
   try{win.setContentProtection(true);}catch(error){console.warn('长截图工具条内容保护不可用:',error.message);}
@@ -2244,11 +2261,12 @@ function createLongCaptureWindow() {
 function createLongPreviewWindow() {
   if(longPreviewWindow&&!longPreviewWindow.isDestroyed())return longPreviewWindow;
   const win=longPreviewWindow=new BrowserWindow({
-    width:LONG_PREVIEW_WIDTH,height:LONG_PREVIEW_HEIGHT,show:false,frame:false,transparent:true,backgroundColor:'#00000000',
+    width:LONG_PREVIEW_WIDTH,height:LONG_PREVIEW_HEIGHT,show:false,frame:false,thickFrame:false,transparent:true,backgroundColor:'#00000000',
     hasShadow:false,resizable:false,movable:false,minimizable:false,maximizable:false,skipTaskbar:true,
     alwaysOnTop:true,focusable:false,title:'随序 · 长图预览',
     webPreferences:{preload:path.join(__dirname,'preload.js'),contextIsolation:true,nodeIntegration:false,sandbox:false,spellcheck:false,backgroundThrottling:false}
   });
+  prepareFloatingSurface(win, 14);
   try{win.setContentProtection(true);}catch{}
   win.setAlwaysOnTop(true,'screen-saver');
   // 预览只负责看：鼠标事件穿透，滚轮直接落到下面的页面。
@@ -2456,10 +2474,11 @@ async function openImageEditor(options = {}) {
     const area = screen.getDisplayNearestPoint(screen.getCursorScreenPoint()).workArea;
     const win = new BrowserWindow({
       width:Math.min(1120,area.width),height:Math.min(800,area.height),minWidth:640,minHeight:480,
-      show:false,frame:false,backgroundColor:nativeTheme.shouldUseDarkColors?'#18191b':'#f0f0f3',
+      show:false,frame:false,thickFrame:false,hasShadow:false,backgroundColor:nativeTheme.shouldUseDarkColors?'#18191b':'#f0f0f3',
       title:'随序 · 改图',icon:assetPath('icon.ico'),
       webPreferences:{preload:path.join(__dirname,'preload.js'),contextIsolation:true,nodeIntegration:false,sandbox:false,spellcheck:false}
     });
+    prepareFloatingSurface(win);
     const session = {win,payload,filePath,sourceId:sourceItem?.id||'',busy:false};
     const editorId=win.webContents.id;
     editorWindows.set(editorId,session);
@@ -2671,13 +2690,12 @@ function createPinWindow(dataUrl, size = {}) {
     // 程序化移动时系统会反复改写窗口尺寸，表现为「一拖就越来越大」。
     // 缩放一律走 zoom() → pin:resize 的 setBounds，不依赖原生边缘拖拽。
     width:Math.round(width),height,frame:false,alwaysOnTop:true,resizable:false,skipTaskbar:false,
-    transparent:true,hasShadow:false,backgroundColor:'#00000000',title:'随序 · 钉图',
+    transparent:true,thickFrame:false,hasShadow:false,backgroundColor:'#00000000',title:'随序 · 钉图',
     webPreferences:{contextIsolation:true,nodeIntegration:false,sandbox:false,spellcheck:false,preload: path.join(__dirname, 'pin-preload.js')}
   });
   pin.__pinData={url:String(dataUrl),width:Math.round(width),height};
   pinExpectedSize.set(pin,{width:Math.round(width),height});
   prepareFloatingSurface(pin);
-  pin.on('resize',()=>clipFloatingSurface(pin));
   pin.loadFile(path.join(__dirname,'src','pin.html'));
   pinWindows.add(pin);
   pin.on('closed',()=>pinWindows.delete(pin));
@@ -2739,6 +2757,7 @@ function createNoteWindow(noteId) {
     minHeight: 200,
     show: false,
     frame: false,
+    thickFrame: false,
     // 钉住的速记浮在其它窗口之上；未钉住就是普通窗口，不抢屏幕
     alwaysOnTop: Boolean(note.pinned),
     transparent: true,
@@ -2757,7 +2776,6 @@ function createNoteWindow(noteId) {
   });
   noteWindows.set(noteId, win);
   prepareFloatingSurface(win);
-  win.on('resize',()=>clipFloatingSurface(win));
   win.loadFile(path.join(__dirname, 'src', 'notes.html'));
   win.setMenuBarVisibility(false);
   win.webContents.once('did-finish-load', () => {
@@ -2948,6 +2966,22 @@ function registerIpc() {
   });
 
   const senderWindow = event => BrowserWindow.fromWebContents(event.sender);
+  const resizingWindows = new WeakMap();
+  ipcMain.on('window:resize-start', (event, edge) => {
+    const win = senderWindow(event);
+    if (!win || !win.__surfaceRadius || !win.isResizable() || win.isMaximized() || !WINDOW_EDGES.has(edge)) return;
+    resizingWindows.set(win, { edge, bounds: win.getBounds(), cursor: screen.getCursorScreenPoint() });
+  });
+  ipcMain.on('window:resize-step', event => {
+    const win = senderWindow(event), drag = win && resizingWindows.get(win);
+    if (!drag || win.isDestroyed() || win.isMaximized()) return;
+    const cursor = screen.getCursorScreenPoint(), minimum = win.getMinimumSize();
+    win.setBounds(resizeBounds(drag.bounds, drag.edge, cursor.x - drag.cursor.x, cursor.y - drag.cursor.y, minimum[0] || 240, minimum[1] || 200));
+  });
+  ipcMain.on('window:resize-end', event => {
+    const win = senderWindow(event); if (win) resizingWindows.delete(win);
+  });
+
   ipcMain.handle('window:minimize', event => senderWindow(event)?.minimize());
   ipcMain.handle('window:maximize', event => {
     const win=senderWindow(event);if(!win)return false;
