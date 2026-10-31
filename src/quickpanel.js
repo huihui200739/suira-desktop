@@ -99,6 +99,10 @@ function listen(target, type, handler) {
 
 /* ---------- 模式 ---------- */
 
+function fitFullscreenKeys(){
+  const fit=()=>{if(presentation!=='fullscreen'||state.mode!=='actions')return;const grid=$('#key-grid'),body=$('#panel-body');if(!grid.offsetWidth||!grid.offsetHeight)return;$('#panel').style.setProperty('--keyboard-scale',Math.min((body.clientWidth-16)/grid.offsetWidth,(body.clientHeight-16)/grid.offsetHeight));};
+  fit();requestAnimationFrame(fit);
+}
 function setMode(mode) {
   $('#mode-actions')?.setAttribute('aria-pressed', String(mode === 'actions'));
   $('#mode-apps')?.setAttribute('aria-pressed', String(mode === 'apps'));
@@ -127,6 +131,7 @@ function setMode(mode) {
   if (mode === 'apps' && !state.appsLoaded) loadApps();
   if (mode === 'apps') renderApps();
   if (mode === 'toolbox') renderTools();
+  fitFullscreenKeys();
 }
 
 function toggleApps() {
@@ -161,7 +166,7 @@ function renderKeys() {
       openBindingEditor(button.dataset.key);
     });
   });
-  loadAppIcons();
+  loadAppIcons();fitFullscreenKeys();
 }
 
 function keyMarkup(key) {
@@ -907,6 +912,20 @@ function deferCloseSubmenu(){
     if(!$('#panel-more-menu').matches(':hover')&&!$$('[data-menu-group]').some(group=>!group.hidden&&group.matches(':hover')))closeMoreSubmenu();
   },180);
 }
+let updateState={phase:'idle'};
+function renderUpdate(value){
+  updateState=value;$('#update-version').textContent=`当前 ${value.current||''}${value.version?' → '+value.version:''}`;
+  $('#update-message').textContent=value.message||'检查是否有新的正式版本。';
+  $('#update-progress').hidden=value.phase!=='downloading';$('#update-progress').value=value.percent||0;
+  const button=$('#update-action');button.disabled=['checking','downloading','preparing','installing','unsupported'].includes(value.phase);
+  button.textContent=value.phase==='available'?'下载更新':value.phase==='ready'?'保存草稿并重启更新':value.phase==='downloading'?`正在下载 ${Math.round(value.percent||0)}%`:value.phase==='checking'?'正在检查…':'检查更新';
+}
+function closeUpdates(){$('#update-dialog')._dialogCleanup?.(false);$('#update-dialog').hidden=true;$('#panel-more').focus();}
+async function openUpdates(){
+  $('#update-dialog').hidden=false;$('#update-close').focus();
+  window.SuiraUI?.openDialog($('#update-dialog'),{surface:$('.update-card'),trigger:$('#panel-more'),close:closeUpdates});
+  try{renderUpdate(await window.suira.updates.check());}catch{renderUpdate({phase:'error',message:'检查失败，请稍后重试。'});}
+}
 function closeMoreMenu(restore=true){
   const inside=document.activeElement?.closest('#panel-more-menu,[data-menu-group]');
   closeMoreSubmenu();$('#panel-more-menu').hidden=true;$('#panel-more').setAttribute('aria-expanded','false');
@@ -942,9 +961,9 @@ function syncPresentation(value){
   const full=presentation==='fullscreen',button=$('#presentation-toggle');
   $('#panel').dataset.presentation=presentation;button.setAttribute('aria-pressed',String(full));
   button.setAttribute('aria-label',full?'切换到窗口启动台':'切换到全屏启动台');
-  if(full&&previous!==presentation){state.appPage=0;clearSearch();setMode('apps');loadImmersiveBackground();}
+  if(full&&previous!==presentation){const mode=state.mode;state.appPage=0;clearSearch();setMode(mode);loadImmersiveBackground();}
   if(!full&&previous!==presentation){$('#launchpad-backdrop').style.backgroundImage='';renderApps();}
-  if(full){setSearchExpanded(true);$('#search').placeholder='直接按首字母搜索';renderApps();loadAppIcons();}
+  if(full){setSearchExpanded(true);$('#search').placeholder=state.mode==='apps'?'直接按首字母搜索':'搜索工具、应用或内容';renderApps();loadAppIcons();fitFullscreenKeys();}
   button.title=full?'窗口模式 (F11 / Esc)':'全屏启动台 (F11)';button.querySelector('span').textContent=full?'窗口':'全屏';
 }
 async function changePresentation(mode=presentation==='fullscreen'?'window':'fullscreen'){
@@ -966,12 +985,18 @@ function focusSearch() {
 }
 
 function installEvents() {
+  $('#update-close').onclick=closeUpdates;
+  window.suira.updates?.onState(renderUpdate);
+  listen($('#update-action'),'click',async()=>{const api=window.suira.updates;renderUpdate(await (updateState.phase==='available'?api.download():updateState.phase==='ready'?api.install():api.check()));});
+  $('#update-dialog').addEventListener('click',event=>{if(event.target===$('#update-dialog'))closeUpdates();});
+  $('#update-dialog').addEventListener('keydown',event=>{event.stopPropagation();if(event.key==='Escape'){event.preventDefault();closeUpdates();}});
+
   setSearchExpanded();
   $('#search-toggle').addEventListener('click',focusSearch);
   $('#panel-more').addEventListener('click',()=>toggleMoreMenu());
   $('#panel-more').addEventListener('keydown',event=>{if(['ArrowDown','ArrowUp'].includes(event.key)){event.preventDefault();toggleMoreMenu();}});
   document.addEventListener('pointerdown',event=>{if(!event.target.closest('#panel-more-menu,#panel-more,[data-menu-group]'))closeMoreMenu(false);});
-  window.addEventListener('resize',positionMoreMenu);
+  window.addEventListener('resize',()=>{positionMoreMenu();fitFullscreenKeys();});
   window.addEventListener('blur',()=>closeMoreMenu(false));
   $$('[data-menu-group]').forEach(group=>{
     group.classList.add('panel-more-submenu');group.setAttribute('role','menu');group.id='panel-submenu-'+group.dataset.menuGroup;
@@ -996,7 +1021,7 @@ function installEvents() {
   $$('#panel-more-menu [data-menu-action]').forEach(button=>listen(button,'click',async()=>{
     const action=button.dataset.menuAction;closeMoreMenu(false);
     if(action==='settings'||action==='shortcuts')await window.suira.quick.showMain(action==='shortcuts'?'settings:shortcuts':'settings');
-    else if(action==='releases')await window.suira.app.releases();
+    else if(action==='releases')await openUpdates();
     else if(action==='restart')await window.suira.app.restart();
     else if(action==='quit')await window.suira.app.quit();
   }));
@@ -1067,6 +1092,7 @@ function installEvents() {
 
   document.addEventListener('keydown', (event) => {
     if (event.defaultPrevented || event.isComposing || state.composing) return;
+    if(!$('#update-dialog').hidden)return;
     if(event.key==='F11'){event.preventDefault();changePresentation();return;}
     if (dragState.source) {
       if (event.key === 'Escape') { event.preventDefault(); cancelKeyDrag(); }
@@ -1321,7 +1347,7 @@ function installEvents() {
     clearTimeout(state.toastTimer);
     $('#toast').className = 'toast';
     clearSearch();
-    setMode(presentation==='fullscreen'?'apps':'actions');
+    setMode(presentation==='fullscreen'?state.mode:'actions');
     if(presentation==='fullscreen')loadImmersiveBackground();
     searchPointerNear = false; setSearchExpanded(false);
     closeOcr();

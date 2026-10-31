@@ -136,6 +136,10 @@ class RegionCheck {
     const panel = await page(t => t.url.endsWith('/quickpanel.html'));
     await until(() => panel.evaluate('document.querySelectorAll(".key").length===38'));
     await check('/quickpanel.html'); await shot(panel, 'panel'); await shot(panel, 'panel-dark', 'dark');
+    await panel.evaluate(`window.suira.quick.setPresentation('fullscreen')`);
+    await until(()=>panel.evaluate('document.getElementById("panel").dataset.mode==="actions"&&document.querySelector(".key-card").getBoundingClientRect().width>72')).catch(async error=>{console.error('Fullscreen state:',await panel.evaluate(`({mode:state.mode,presentation,scale:document.getElementById('panel').style.getPropertyValue('--keyboard-scale'),key:document.querySelector('.key-card').getBoundingClientRect().width,width:innerWidth,height:innerHeight})`));throw error;});
+    await shot(panel,'keyboard-fullscreen');
+    await panel.evaluate(`window.suira.quick.setPresentation('window')`);
     await panel.send('Emulation.setEmulatedMedia',{features:[{name:'prefers-color-scheme',value:'light'}]});
     await panel.evaluate(`document.getElementById('panel-more').click();true`);
     const hoverDisplay=async()=>{const point=await panel.evaluate(`(()=>{const r=document.querySelector('[data-menu-section="display"]').getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2};})()`);await panel.send('Input.dispatchMouseEvent',{type:'mouseMoved',...point});};

@@ -24,6 +24,7 @@ function Assert-Contained([string]$target, [string]$owner) {
 
 function Add-Target([string]$candidate, [string]$owner, [string]$group) {
   $absolute = Assert-Contained $candidate $owner
+  if ($targets.Path -contains $absolute) { return }
   if (-not (Test-Path -LiteralPath $absolute)) { return }
   $item = Get-Item -LiteralPath $absolute -Force
   if ($item.Attributes -band [IO.FileAttributes]::ReparsePoint) { $skipped.Add("Link: $absolute"); return }
@@ -43,7 +44,7 @@ function Add-Target([string]$candidate, [string]$owner, [string]$group) {
 }
 
 foreach ($name in @('edge-profile','edge-profile2','mem','probe-app','probe-app2','udata-copy','udata-default','udata-test',
-                    'launch-suira.cmd','run-app.cmd','run-app2.cmd','run-probe.cmd')) {
+                    'launch-suira.cmd','run-app.cmd','run-app2.cmd','run-probe.cmd','release-edit.py','release-ui-edit.py','update-repo.py','repo-info.json','latest-release.json')) {
   Add-Target (Join-Path $repoRoot ('.workbuddy\' + $name)) $repoRoot 'workspace-test-artifacts'
 }
 if (Test-Path -LiteralPath (Join-Path $repoRoot '.workbuddy')) {
@@ -127,21 +128,42 @@ if ($IncludeObsoletePackages -or $InstalledOnly) {
   foreach ($name in @('Suira-0.2.0-portable.exe','Suira-0.2.1-Setup.exe')) {
     if ($name -ne (Split-Path -Leaf $latest)) { Add-Target (Join-Path $desktop $name) $desktop 'obsolete-desktop-packages' }
   }
-  # Retire the confirmed 0.2.5 size-drift candidate only when it is the exact
-  # installer produced by this repository, after the new installer was verified.
-  $obsolete = Join-Path $desktop 'Suira-0.2.5-Setup.exe'
-  $obsoleteManifest = Join-Path $repoRoot 'docs\release-0.2.5.json'
-  if ($version -ne '0.2.5' -and (Test-Path -LiteralPath $obsolete) -and (Test-Path -LiteralPath $obsoleteManifest)) {
-    $old = Get-Content -LiteralPath $obsoleteManifest -Raw -Encoding UTF8 | ConvertFrom-Json
-    $oldStream = [IO.File]::OpenRead($obsolete)
-    $oldSha256 = [Security.Cryptography.SHA256]::Create()
-    try { $oldHash = ([BitConverter]::ToString($oldSha256.ComputeHash($oldStream))).Replace('-', '') }
-    finally { $oldStream.Dispose(); $oldSha256.Dispose() }
-    if ((Get-Item -LiteralPath $obsolete).Length -eq $old.bytes -and $oldHash -eq $old.sha256) {
-      Add-Target $obsolete $desktop 'obsolete-size-drift-installer'
-    } else { $skipped.Add("Changed installer, preserved: $obsolete") }
+  # User requested retirement of old installers. Only exact repository-produced
+  # files with a matching historical checksum are eligible; changed files stay.
+  foreach ($installerRoot in @($desktop,(Join-Path ([Environment]::GetFolderPath('UserProfile')) 'Downloads'))) {
+    if (-not (Test-Path -LiteralPath $installerRoot)) { continue }
+    Get-ChildItem -LiteralPath $installerRoot -File -Filter 'Suira-*-Setup.exe' | ForEach-Object {
+      if ($_.Name -notmatch '^Suira-(\d+\.\d+\.\d+)-Setup\.exe$') { return }
+      $oldVersion = $Matches[1]
+      if ([version]$oldVersion -ge [version]$version) { return }
+      $obsolete = $_.FullName
+      $obsoleteManifest = Join-Path $repoRoot ('docs\release-' + $oldVersion + '.json')
+      if (-not (Test-Path -LiteralPath $obsoleteManifest)) { $skipped.Add("Unverified installer, preserved: $obsolete"); return }
+      $old = Get-Content -LiteralPath $obsoleteManifest -Raw -Encoding UTF8 | ConvertFrom-Json
+      $oldStream = [IO.File]::OpenRead($obsolete)
+      $oldSha256 = [Security.Cryptography.SHA256]::Create()
+      try { $oldHash = ([BitConverter]::ToString($oldSha256.ComputeHash($oldStream))).Replace('-', '') }
+      finally { $oldStream.Dispose(); $oldSha256.Dispose() }
+      if ((Get-Item -LiteralPath $obsolete).Length -eq $old.bytes -and $oldHash -eq $old.sha256) {
+        Add-Target $obsolete $installerRoot 'obsolete-desktop-installers'
+      } else { $skipped.Add("Changed installer, preserved: $obsolete") }
+    }
   }
   Add-Target (Join-Path $repoRoot 'dist') $repoRoot 'redundant-build-output'
+  # Inventoried 2026-10-30 upgrade investigation copies: remove only runtime
+  # binaries and extracted installer files. Keep every udata/profile and key.
+  $backupRoot = Join-Path $env:LOCALAPPDATA 'Programs\suira-desktop.backup-20261030'
+  if (Test-Path -LiteralPath $backupRoot) {
+    foreach ($name in @('locales','resources')) { Add-Target (Join-Path $backupRoot $name) $backupRoot 'obsolete-upgrade-runtime' }
+    $oldExeName = ([string][char]0x968f) + ([string][char]0x5e8f) + '.exe'
+    Get-ChildItem -LiteralPath $backupRoot -File | Where-Object {
+      $_.Name -eq $oldExeName -or $_.Name -match '^(?:Uninstall .+\.exe|.+\.dll|.+\.pak|icudtl\.dat|LICENSE.*|snapshot_blob\.bin|v8_context_snapshot\.bin|vk_swiftshader_icd\.json|version|debug\.log)$'
+    } | ForEach-Object { Add-Target $_.FullName $backupRoot 'obsolete-upgrade-runtime' }
+  }
+  $investigation = Join-Path $repoRoot '.workbuddy\upgrade-backup-20261030'
+  Add-Target (Join-Path $investigation 'installer-extracted') $investigation 'obsolete-installer-extraction'
+  foreach ($name in @('locales','resources')) { Add-Target (Join-Path $investigation ('rename-probe\' + $name)) $investigation 'obsolete-upgrade-runtime' }
+  foreach ($name in @('old-uninstaller.exe','install-write-probe.tmp')) { Add-Target (Join-Path $investigation $name) $investigation 'obsolete-upgrade-probes' }
 }
 if ($Preview) {
   $targets | Group-Object Group | ForEach-Object {

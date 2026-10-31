@@ -1,0 +1,23 @@
+'use strict';
+// Real electron-updater download and checksum verification against an isolated
+// loopback release feed. Never execute the downloaded fixture or touch user data.
+const fs=require('node:fs'),path=require('node:path'),os=require('node:os'),http=require('node:http'),crypto=require('node:crypto'),assert=require('node:assert/strict'),{spawn}=require('node:child_process');
+const root=path.resolve(__dirname,'..'),tmp=fs.mkdtempSync(path.join(os.tmpdir(),'suira-workspace-'));
+const payload=Buffer.from('Suira updater transport fixture, never executable'),sha=crypto.createHash('sha512').update(payload).digest('base64');
+let child,server;
+(async()=>{
+ let corrupted=false;server=http.createServer((req,res)=>{
+   if(req.url.startsWith('/latest.yml')){res.end(`version: 9.0.0\nfiles:\n  - url: fixture.exe\n    sha512: ${corrupted?'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==':sha}\n    size: ${payload.length}\npath: fixture.exe\nsha512: ${sha}\nreleaseDate: '2026-10-31T00:00:00Z'\n`);}
+   else if(req.url.startsWith('/fixture.exe')){res.setHeader('Content-Length',payload.length);res.end(payload);}else{res.statusCode=404;res.end();}
+ });await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));const url='http://127.0.0.1:'+server.address().port;
+ const entry=path.join(tmp,'check.js');fs.writeFileSync(entry,`const {app}=require('electron'),fs=require('node:fs'),assert=require('node:assert/strict');const bad=process.argv.includes('--bad-checksum');app.setPath('userData',${JSON.stringify(path.join(tmp,'profile'))}+(bad?'-bad':''));app.getVersion=()=>'0.2.12';
+ app.whenReady().then(async()=>{const {NsisUpdater}=require(${JSON.stringify(path.join(root,'node_modules','electron-updater'))});const {UpdateController}=require(${JSON.stringify(path.join(root,'lib','update-controller'))});
+ const engine=new NsisUpdater({provider:'generic',url:${JSON.stringify(url)}});engine.forceDevUpdateConfig=true;engine.disableDifferentialDownload=true;engine.logger=null;engine.updateConfigPath=${JSON.stringify(path.join(tmp,'config.yml'))};
+ const controller=new UpdateController({version:'0.2.12',supported:()=>true,factory:()=>engine});await controller.check();assert.equal(controller.snapshot().phase,'available');await controller.download();if(bad){assert.equal(controller.snapshot().phase,'error');assert.ok(!engine.installerPath);}else{assert.equal(controller.snapshot().phase,'ready');const file=engine.installerPath;assert.equal(fs.readFileSync(file,'utf8'),${JSON.stringify(payload.toString())});}
+ fs.writeFileSync(${JSON.stringify(path.join(tmp,'passed'))}+(bad?'-bad':''),'download verified');app.quit();}).catch(error=>{console.error(error);app.exit(1);});`);
+ fs.writeFileSync(path.join(tmp,'config.yml'),`provider: generic\nurl: ${url}\nupdaterCacheDirName: suira-test-${path.basename(tmp)}\n`);
+ const env={...process.env,APPDATA:path.join(tmp,'roaming'),LOCALAPPDATA:path.join(tmp,'local')};delete env.ELECTRON_RUN_AS_NODE;fs.mkdirSync(env.APPDATA);fs.mkdirSync(env.LOCALAPPDATA);
+ const runtime=[process.env.SUIRA_ELECTRON,'C:\\suira-electron\\electron.exe',path.join(root,'node_modules','electron','dist','electron.exe')].filter(Boolean).find(fs.existsSync);assert.ok(runtime);
+ for(const bad of [false,true]){corrupted=bad;fs.writeFileSync(path.join(tmp,'config.yml'),`provider: generic\nurl: ${url}\nupdaterCacheDirName: suira-test-${path.basename(tmp)}-${bad}\n`);const result=await new Promise((resolve,reject)=>{child=spawn(runtime,[entry,...(bad?['--bad-checksum']:[])],{cwd:tmp,env,windowsHide:true,stdio:['ignore','pipe','pipe']});let output='';child.stdout.on('data',data=>output+=data);child.stderr.on('data',data=>output+=data);const timer=setTimeout(()=>{child.kill();reject(Error('Updater integration timeout: '+output));},45000);child.on('error',reject);child.on('exit',code=>{clearTimeout(timer);resolve({code,output});});});assert.equal(result.code,0,result.output);assert.ok(fs.existsSync(path.join(tmp,'passed')+(bad?'-bad':'')));}
+ console.log('PASS real electron-updater downloads valid fixture and rejects incorrect SHA512; no installer executed');
+})().catch(error=>{console.error(error);process.exitCode=1;}).finally(async()=>{if(child&&child.exitCode===null)child.kill();if(server)server.close();await new Promise(resolve=>setTimeout(resolve,400));const absolute=path.resolve(tmp);if(path.dirname(absolute)!==path.resolve(os.tmpdir())||!path.basename(absolute).startsWith('suira-workspace-'))throw Error('Unsafe cleanup');fs.rmSync(absolute,{recursive:true,force:true,maxRetries:4,retryDelay:200});});

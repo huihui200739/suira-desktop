@@ -223,4 +223,5 @@ window.addEventListener('beforeunload', () => {
   if (state.id && state.dirty) window.suira.notes.update({ id: state.id, text: $('#note-body').value });
 });
 
+window.NoteUI={flush:async()=>{clearTimeout(saveTimer);if(!state.id)return;const result=await window.suira.notes.update({id:state.id,text:$('#note-body').value});if(!result?.ok)throw Error(result?.error||'速记保存失败');state.dirty=false;}};
 boot();

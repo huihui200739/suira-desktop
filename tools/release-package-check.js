@@ -13,7 +13,11 @@ assert.equal(JSON.parse(asar.extractFile(payload,'package.json')).version,versio
 assert.ok(!fs.existsSync(path.join(root,'dist','win-unpacked','resources','app.asar.unpacked','assets','shortcut-fallback-host.cs')));
 execFileSync(path.join(root,'node_modules','electron-winstaller','vendor','7z-x64.exe'),['t',installer],{stdio:'ignore',windowsHide:true,timeout:90000});
 const sha256=crypto.createHash('sha256').update(fs.readFileSync(installer)).digest('hex').toUpperCase();
-const manifest={version,artifact:path.basename(installer),bytes:fs.statSync(installer).size,sha256,platform:'win32',arch:'x64',electron:'45.0.0',checkedSourceFiles:checked,checks:['source-payload-byte-match','no-test-profile-or-obsolete-key-hook','installer-archive-crc'],signature:'unsigned',published:false};
+const yaml=require('js-yaml'),feed=yaml.load(fs.readFileSync(path.join(root,'dist','latest.yml'),'utf8')),config=yaml.load(fs.readFileSync(path.join(root,'dist','win-unpacked','resources','app-update.yml'),'utf8'));
+const publish=require('../package.json').build.publish[0],sha512=crypto.createHash('sha512').update(fs.readFileSync(installer)).digest('base64');
+assert.equal(config.provider,publish.provider);assert.equal(config.owner,publish.owner);assert.equal(config.repo,publish.repo);assert.equal(feed.version,version);
+const updateFile=feed.files.find(file=>file.url===path.basename(installer));assert.ok(updateFile);assert.equal(updateFile.sha512,sha512);assert.equal(updateFile.size,fs.statSync(installer).size);assert.ok(fs.existsSync(installer+'.blockmap'));assert.ok(files.includes('node_modules/electron-updater/out/main.js'));
+const manifest={version,artifact:path.basename(installer),bytes:fs.statSync(installer).size,sha256,sha512,platform:'win32',arch:'x64',electron:'45.0.0',checkedSourceFiles:checked,checks:['source-payload-byte-match','no-test-profile-or-obsolete-key-hook','installer-archive-crc','updater-feed-and-sha512-match'],signature:'unsigned',published:false};
 fs.writeFileSync(path.join(root,'docs',`release-${version}.json`),JSON.stringify(manifest,null,2)+'\n');
 console.log('PASS packaged source matches '+checked+' files; no private/test data or obsolete fallback; installer CRC verified');
 console.log(JSON.stringify(manifest,null,2));

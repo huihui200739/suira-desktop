@@ -37,6 +37,21 @@ const fsp = require('node:fs/promises');
 const os = require('node:os');
 const crypto = require('node:crypto');
 const {readLaunchpadBackground}=require('./lib/launchpad-background');
+const {UpdateController}=require('./lib/update-controller');
+let updateController;
+let updateInstallPrepared=false;
+function updates(){
+  if(updateController)return updateController;
+  updateController=new UpdateController({version:app.getVersion(),supported:()=>app.isPackaged&&process.platform==='win32'&&process.arch==='x64'&&!process.env.PORTABLE_EXECUTABLE_DIR,
+    factory:()=>require('electron-updater').autoUpdater,
+    beforeInstall:async()=>{
+      if(captureBusy||longCapture)throw Error('请先完成截图');
+      const windows=[mainWindow,...workspaceWindows.values(),...noteWindows.values()].filter(win=>win&&!win.isDestroyed());
+      await Promise.all(windows.map(win=>win.webContents.executeJavaScript('Promise.resolve(window.WorkspaceUI?.flush()).then(()=>window.NoteUI?.flush())')));
+      await store.save();for(const win of workspaceWindows.values())win.__allowClose=true;isQuitting=true;updateInstallPrepared=true;
+    }});
+  updateController.on('state',state=>{if(state.phase==='error'&&updateInstallPrepared){isQuitting=false;updateInstallPrepared=false;for(const win of workspaceWindows.values())win.__allowClose=false;}broadcast('updates:state',state);});return updateController;
+}
 const { pathToFileURL, fileURLToPath } = require('node:url');
 const { SuiraStore, makeId } = require('./lib/store');
 const { OcrService } = require('./lib/ocr');
@@ -3208,6 +3223,10 @@ function registerIpc() {
   }));
   ipcMain.handle('app:open-data-dir', () => shell.openPath(userRoot()));
   ipcMain.handle('app:restart', () => { restartApplication(); return {ok:true}; });
+  ipcMain.handle('updates:state',()=>updates().snapshot());
+  ipcMain.handle('updates:check',()=>updates().check());
+  ipcMain.handle('updates:download',()=>updates().download());
+  ipcMain.handle('updates:install',event=>event.sender===quickWindow?.webContents?updates().install():{phase:'error',message:'请从更新面板安装'});
   ipcMain.handle('app:quit',event=>{if(event.sender!==quickWindow?.webContents)return {ok:false};isQuitting=true;app.quit();return {ok:true};});
   ipcMain.handle('app:releases',async()=>{await shell.openExternal('https://github.com/huihui200739/suira-desktop/releases');return {ok:true};});
 

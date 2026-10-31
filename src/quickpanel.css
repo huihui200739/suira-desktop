@@ -705,6 +705,16 @@ kbd { font-family: var(--font-ui); font-size: var(--text-1); font-weight: 600; }
 .panel-more-submenu button[aria-checked="true"]::before{content:'✓';color:var(--accent-deep)}
 .panel-more-submenu button:hover,.panel-more-submenu button:focus-visible{outline:none;background:var(--accent-soft)}
 .panel-more-menu,.panel-more-submenu{font-family:"Segoe UI","Microsoft YaHei UI","Microsoft YaHei",sans-serif}
+.panel[data-presentation="fullscreen"][data-mode="actions"]{--key-size:72px;--key-gap:17px}
+.panel[data-presentation="fullscreen"] .keyboard{max-width:none;gap:24px;transform:scale(var(--keyboard-scale,1));transform-origin:center}
+.panel[data-presentation="fullscreen"] .key-glyph{color:color-mix(in srgb,var(--key-tint) 35%,#fff);background:color-mix(in srgb,var(--key-tint) 23%,#ffffff14)}
+.panel[data-presentation="fullscreen"] .key-badge{background:color-mix(in srgb,var(--key-tint) 40%,#fff);color:#102031}
+.update-dialog{position:absolute;inset:0;z-index:80;display:grid;place-items:center;background:#0004;backdrop-filter:blur(8px)}
+.update-card{width:min(400px,calc(100% - 32px));padding:22px;border:1px solid var(--line-strong);border-radius:18px;background:var(--paper-raised);box-shadow:var(--shadow-float);color:var(--ink);font-family:var(--font-ui)}
+.update-card header{display:flex;align-items:center;justify-content:space-between;font-size:15px}.update-card header button{width:28px;height:28px;border-radius:8px;font-size:20px}
+.update-card p{line-height:1.6}.update-card small{display:block;color:var(--ink-muted);font-size:12px;line-height:1.6}.update-card progress{width:100%;margin:6px 0 14px}
+#update-action{width:100%;padding:10px;margin-top:16px;border-radius:10px;background:var(--accent);color:white;font-size:13px}#update-action:disabled{opacity:.6;cursor:default}
+.panel[data-presentation="fullscreen"] .update-card{background:#142231;color:#f6fbff}
 .panel[data-presentation="window"] .key-letter{color:var(--ink)}
 .panel-more-menu [data-menu-section][aria-expanded="true"]{background:var(--accent-soft)}
 .panel[data-presentation="fullscreen"] .panel-more-submenu{background:#172837fa;color:#f6fbff;border-color:#ffffff40}

@@ -42,11 +42,24 @@ async function until(fn){for(let n=0;n<200;n++){if(fn())return;await wait(100);}
     assert.deepEqual(JSON.parse(defaults()),before,'Existing default associations changed');
     console.log('PASS NSIS '+stage+': installed payload verified; quoted OpenWith commands; existing defaults unchanged');
   }
+  // Exercise the updater's --updated path while a same-name test process exits.
+  // This fixture is unrelated to the installed Suira process and profile.
+  const {ensureNativeHost}=require('../lib/key-watch');
+  const sleeperSource=path.join(tmp,'wait.cs'),sleeperDir=path.join(tmp,'sleeper');fs.mkdirSync(sleeperDir);
+  fs.writeFileSync(sleeperSource,'class WaitForExit { static void Main(){System.Threading.Thread.Sleep(5000);} }');
+  const sleeper=await ensureNativeHost({sourcePath:sleeperSource,targetPath:path.join(sleeperDir,product+'.exe')});assert.ok(sleeper);
+  const feedFile=path.join(target,'resources','app-update.yml'),expectedFeed=fs.readFileSync(path.join(appDir,'resources','app-update.yml'));
+  fs.writeFileSync(feedFile,'old fixture');
+  const waiting=spawn(sleeper,[],{windowsHide:true,stdio:'ignore'});await new Promise((resolve,reject)=>{waiting.once('spawn',resolve);waiting.once('error',reject);});
+  await run(installer,['/S','/currentuser','--updated','/D='+target]);
+  assert.deepEqual(fs.readFileSync(feedFile),expectedFeed,'Updated install must replace the old payload after the process exits');
+  assert.deepEqual(JSON.parse(defaults()),before);
+  console.log('PASS --updated installer waits for exiting test process and reinstalls verified feed without changing defaults');
   await run(path.join(target,uninstall),['/S','/currentuser']);await until(()=>!fs.existsSync(exe));
   assert.equal(ps(`Test-Path -LiteralPath ${quote('Registry::HKEY_CURRENT_USER\\Software\\Classes\\'+appId+'.Markdown')}`),'False');
   assert.deepEqual(JSON.parse(defaults()),before);
   console.log('PASS NSIS uninstall: test product and own file association removed; existing defaults unchanged');
-  fs.writeFileSync(path.join(root,'.workbuddy','installer-lifecycle-result.json'),JSON.stringify({version,appId,passed:[process.argv.includes('--legacy-upgrade')?'legacy-process-macro-upgrade':'fresh-install','reinstall-upgrade','uninstall','unicode-space-path','payload-hash','open-with-both-extensions','defaults-preserved'],date:new Date().toISOString()},null,2));
+  fs.writeFileSync(path.join(root,'.workbuddy','installer-lifecycle-result.json'),JSON.stringify({version,appId,passed:[process.argv.includes('--legacy-upgrade')?'legacy-process-macro-upgrade':'fresh-install','reinstall-upgrade','updated-waits-for-exiting-process','uninstall','unicode-space-path','payload-hash','open-with-both-extensions','defaults-preserved'],date:new Date().toISOString()},null,2));
 })().catch(error=>{console.error(error);console.error('Test artifacts:',tmp);process.exitCode=1;}).finally(async()=>{
   // Preserve failed test installations for diagnosis; do not touch production registration.
   if(process.exitCode || fs.existsSync(exe))return;

@@ -1,0 +1,19 @@
+{
+  "version": "0.2.12",
+  "artifact": "Suira-0.2.12-x64.exe",
+  "bytes": 155578102,
+  "sha256": "90F4D3FE4CFD4CF6FDAD6B5F6E65A507DC1FFBC6DBF257A96A78687ACF955040",
+  "sha512": "NkSXzSdQ8yXE4G0RNynTh60GBK/SH+zzcgjkmM8BaM7wpmd0hOLt5pE3ZKA/wi6PDKOEOsM6BQK9E2c/QMHkMQ==",
+  "platform": "win32",
+  "arch": "x64",
+  "electron": "45.0.0",
+  "checkedSourceFiles": 93,
+  "checks": [
+    "source-payload-byte-match",
+    "no-test-profile-or-obsolete-key-hook",
+    "installer-archive-crc",
+    "updater-feed-and-sha512-match"
+  ],
+  "signature": "unsigned",
+  "published": false
+}
