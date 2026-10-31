@@ -1931,7 +1931,9 @@ function showMain(page = 'shelf') {
   }
   mainWindow.show();
   mainWindow.focus();
-  mainWindow.webContents.send('app:navigate', page);
+  const destination=mainWindow;
+  const navigate=()=>{if(!destination.isDestroyed())destination.webContents.send('app:navigate',page);};
+  if(destination.webContents.isLoadingMainFrame())destination.webContents.once('did-finish-load',navigate);else navigate();
 }
 
 /* ---------- 截图覆盖层：预热常驻窗口 ---------- */
@@ -3206,6 +3208,8 @@ function registerIpc() {
   }));
   ipcMain.handle('app:open-data-dir', () => shell.openPath(userRoot()));
   ipcMain.handle('app:restart', () => { restartApplication(); return {ok:true}; });
+  ipcMain.handle('app:quit',event=>{if(event.sender!==quickWindow?.webContents)return {ok:false};isQuitting=true;app.quit();return {ok:true};});
+  ipcMain.handle('app:releases',async()=>{await shell.openExternal('https://github.com/huihui200739/suira-desktop/releases');return {ok:true};});
 
   ipcMain.handle('capture:start', (_event, options) => beginScreenCapture('main', options || {}));
   ipcMain.handle('capture:start-long',(event,selection)=>event.sender===longPickerWindow?.webContents?startLongCapture(selection,true):event.sender===overlayWindow?.webContents&&!longPickerPayload?startLongCapture(selection):{ok:false,error:'请从截图选区开始长截图'});

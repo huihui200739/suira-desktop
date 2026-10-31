@@ -38,6 +38,11 @@ async function until(fn){let last;for(let n=0;n<160;n++){try{const value=await f
   await until(()=>panel.evaluate('document.getElementById("binding-app-status").textContent!=="正在查找本机应用…"'));
   assert.equal(await panel.evaluate('!document.getElementById("binding-apps-view").hidden&&document.getElementById("binding-app-search").getAttribute("placeholder").includes("拼音")'),true);
   console.log('PASS actual packaged launchpad: full-display geometry, Escape returns window, apps-only search and searchable binding picker');
+  await panel.evaluate(`document.getElementById('binding-close').click();document.getElementById('panel-more').click();true`);
+  assert.equal(await panel.evaluate('document.getElementById("panel-more-menu").hidden'),false);
+  await panel.evaluate(`document.querySelector('[data-menu-action="shortcuts"]').click();true`);
+  await until(()=>workbench.evaluate('document.querySelector("[data-setting-tab=shortcuts]").classList.contains("is-active")'));
+  console.log('PASS actual packaged shared menu opens the shortcut settings section');
 })().catch(error=>{console.error(error);if(fs.existsSync(path.join(tmp,'app.log')))console.error(fs.readFileSync(path.join(tmp,'app.log'),'utf8').slice(-1800));process.exitCode=1;}).finally(async()=>{
   sockets.forEach(ws=>ws.close());children.forEach(c=>{if(c.exitCode===null)c.kill();});await wait(600);
   const absolute=path.resolve(tmp);if(path.dirname(absolute)!==path.resolve(os.tmpdir())||!path.basename(absolute).startsWith('suira-workspace-'))throw Error('Unsafe cleanup path');

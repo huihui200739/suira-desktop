@@ -100,6 +100,7 @@ class RegionCheck {
     };
     const shot = async (client, name, theme = 'light') => {
       if (!screenshots) return;
+      console.log('SHOT '+name);
       await client.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: theme }] });
       await client.evaluate('document.fonts.ready'); await wait(350);
       const png = await client.send('Page.captureScreenshot', { format: 'png' });
@@ -135,6 +136,9 @@ class RegionCheck {
     const panel = await page(t => t.url.endsWith('/quickpanel.html'));
     await until(() => panel.evaluate('document.querySelectorAll(".key").length===38'));
     await check('/quickpanel.html'); await shot(panel, 'panel'); await shot(panel, 'panel-dark', 'dark');
+    await panel.send('Emulation.setEmulatedMedia',{features:[{name:'prefers-color-scheme',value:'light'}]});
+    await panel.evaluate(`document.getElementById('panel-more').click();true`);await shot(panel,'panel-menu');
+    await panel.evaluate(`closeMoreMenu(false);true`);
     await panel.evaluate(`document.getElementById('mode-apps').click();true`);
     await until(()=>panel.evaluate('document.querySelectorAll(".app-item").length>0'));
     await until(()=>panel.evaluate('[...document.querySelectorAll(".app-icon img")].filter(img=>img.naturalWidth>0).length>=Math.min(8,document.querySelectorAll(".app-item").length)'));
@@ -154,6 +158,8 @@ class RegionCheck {
     await until(()=>panel.evaluate('document.getElementById("panel").dataset.presentation==="fullscreen"'));
     await until(()=>panel.evaluate('[...document.querySelectorAll(".app-icon img")].filter(image=>image.naturalWidth>0).length>=Math.min(32,document.querySelectorAll(".app-item").length)'));
     await shot(panel,'apps-fullscreen');
+    await panel.evaluate(`document.getElementById('panel-more').click();true`);await shot(panel,'fullscreen-menu');
+    await panel.evaluate(`closeMoreMenu(false);true`);
     await panel.evaluate(`(()=>{const input=document.getElementById('search');input.focus();input.value='wei';input.dispatchEvent(new Event('input',{bubbles:true}));return true;})()`);
     await until(()=>panel.evaluate('document.querySelectorAll(".command-item").length>0'));
     await shot(panel,'app-search-fullscreen');

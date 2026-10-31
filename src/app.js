@@ -1187,7 +1187,7 @@ function installEvents() {
     if (state.page === 'shelf') refreshShelf();
   });
   window.suira.app.onToast((payload) => showGlobalToast(payload.message || '', payload.type || ''));
-  window.suira.app.onNavigate((page) => navigate(page));
+  window.suira.app.onNavigate((page) => {if(page==='settings:shortcuts'){navigate('settings');document.querySelector('[data-setting-tab="shortcuts"]')?.click();}else navigate(page);});
   // 改键后顶栏提示同步刷新
   window.suira.shortcuts.onChanged(() => { syncShortcutPills(); refreshShortcuts(); });
   window.suira.ocr.onProgress((payload) => {

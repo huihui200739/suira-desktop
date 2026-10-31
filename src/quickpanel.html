@@ -18,6 +18,7 @@
         <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m15.5 15.5 4 4"/></svg>
         </button><input id="search" type="text" autocomplete="off" spellcheck="false" placeholder="按空格查看全部应用" aria-label="搜索命令、应用或内容">
         <kbd class="search-mode" id="mode-chip">动作</kbd>
+        <button id="panel-more" class="panel-more" type="button" aria-label="更多选项" aria-haspopup="menu" aria-expanded="false" aria-controls="panel-more-menu">⋯</button>
       </div></div>
       <div class="panel-modes" data-selection-group aria-label="面板模式">
         <button id="mode-actions" type="button" aria-pressed="true">动作</button>
@@ -29,6 +30,19 @@
         <span>工具箱</span>
       </button>
     </header>
+    <div id="panel-more-menu" class="panel-more-menu" role="menu" aria-label="面板选项" hidden>
+      <button type="button" role="menuitem" data-menu-action="settings">设置<span>打开工作台</span></button>
+      <button type="button" role="menuitem" data-menu-section="display" aria-expanded="false">显示模式<span>›</span></button>
+      <div data-menu-group="display" hidden><button type="button" role="menuitemradio" data-display="window">窗口</button><button type="button" role="menuitemradio" data-display="fullscreen">全屏</button></div>
+      <button type="button" role="menuitem" data-menu-action="shortcuts">键位与快捷键<span>›</span></button>
+      <button type="button" role="menuitem" data-menu-section="layout" aria-expanded="false">布局<span>›</span></button>
+      <div data-menu-group="layout" hidden><button type="button" role="menuitemradio" data-layout="actions">动作面板</button><button type="button" role="menuitemradio" data-layout="apps">应用启动台</button><button type="button" role="menuitemradio" data-layout="toolbox">工具箱</button></div>
+      <button type="button" role="menuitem" data-menu-section="appearance" aria-expanded="false">外观<span>›</span></button>
+      <div data-menu-group="appearance" hidden><button type="button" role="menuitemradio" data-theme="light">浅色</button><button type="button" role="menuitemradio" data-theme="dark">深色</button><button type="button" role="menuitemradio" data-theme="system">跟随系统</button></div>
+      <hr><button type="button" role="menuitem" data-menu-action="releases">版本与更新<span>↗</span></button>
+      <button type="button" role="menuitem" data-menu-action="restart">重启随序</button>
+      <button type="button" role="menuitem" data-menu-action="quit">退出随序</button>
+    </div>
 
     <section class="panel-body" id="panel-body">
       <!-- 动作面板：38 键固定布局 -->

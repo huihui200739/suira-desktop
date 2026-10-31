@@ -108,6 +108,8 @@ contextBridge.exposeInMainWorld('suira', {
     info: () => ipcRenderer.invoke('app:info'),
     openDataDir: () => ipcRenderer.invoke('app:open-data-dir'),
     restart: () => ipcRenderer.invoke('app:restart'),
+    quit: () => ipcRenderer.invoke('app:quit'),
+    releases: () => ipcRenderer.invoke('app:releases'),
     onNavigate: (callback) => subscribe('app:navigate', callback),
     onToast: (callback) => subscribe('app:toast', callback)
   },
