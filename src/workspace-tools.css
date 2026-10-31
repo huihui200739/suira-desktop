@@ -51,7 +51,7 @@
 .document-foot label { font-size:11px; display:flex; align-items:center; gap:4px; }
 @media(max-width:1000px){.tool-window .page{padding:20px}.tool-window .calendar-layout{grid-template-columns:minmax(0,1fr) 252px}.tool-window .calendar-controls{gap:7px}.tool-window .markdown-layout{grid-template-columns:156px minmax(0,1fr)}.tool-window .document-heading input{font-size:16px}.tool-window .markdown-split[data-view="split"]{grid-template-columns:1fr 1fr}.tool-window .calendar-day{padding:8px 5px}}
 @media(prefers-reduced-motion:reduce){.tool-window button{transition:none}}
-/* A single native acrylic backdrop; cards only tint it, avoiding nested GPU blur. */
+/* Page tint keeps the glass appearance. Native acrylic stays off for clean corners. */
 body { background:transparent; }
 .app-shell { background:color-mix(in srgb,var(--paper) 68%,transparent); border:1px solid var(--floating-edge,var(--line)); border-radius:22px; }
 .main-scroll,.sidebar,.titlebar { background:transparent; }

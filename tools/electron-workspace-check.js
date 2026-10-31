@@ -112,7 +112,8 @@ async function until(fn){let error;for(let n=0;n<140;n++){try{const value=await 
   assert.equal(await panel.evaluate(`document.getElementById('search-close')===null`),true);
   const searchShot=async name=>{const result=await panel.send('Page.captureScreenshot',{format:'png'});fs.writeFileSync(path.join(tmp,name),Buffer.from(result.data,'base64'));};
   await searchShot('37-search-collapsed.png');
-  await panel.send('Input.dispatchMouseEvent',{type:'mouseMoved',x:collapsed.left-8,y:collapsed.y});await wait(350);
+  await panel.send('Input.dispatchMouseEvent',{type:'mouseMoved',x:collapsed.left-8,y:collapsed.y});
+  await until(()=>panel.evaluate(`document.querySelector('.search-field').getBoundingClientRect().width>200`));
   assert.ok(await panel.evaluate(`document.querySelector('.search-field').getBoundingClientRect().width>200`),'proximity alone expands');
   await searchShot('38-search-expanded.png');
   await panel.evaluate(`document.getElementById('search').value='日历';document.getElementById('search').dispatchEvent(new Event('input'));true`);

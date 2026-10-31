@@ -21,6 +21,8 @@ Ctrl+字母/数字、Windows 组合键及已知系统保留键不可设为全局
 
 启动时检查本软件配置的组合键，也可手动重新检查。结果表示检查时能否注册为全局热键；其他软件之后启动或更改设置，结果可能变化。
 
+0.2.5 起，已启用全局模式时点击「检查并重试快捷键」，会重新尝试注册。另一软件释放按键后不必重启随序；若仍被占用，请点击对应输入框录制其他组合键。长截图等功能也可从随手面板点击使用。
+
 Windows 没有统一列出所有应用内部快捷键或给某个软件设置“最高优先级”的接口。文件快捷方式、菜单键和应用内部按键也不等同于系统全局热键。检查不能保证与所有程序的内部操作毫无重叠，因此全局模式需要用户主动选择。
 
 参考：[Windows RegisterHotKey](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-registerhotkey)、[Electron globalShortcut](https://www.electronjs.org/docs/latest/api/global-shortcut)。

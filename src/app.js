@@ -656,7 +656,7 @@ function bindSettings() {
   });
   $('#shortcut-check').addEventListener('click',async event=>{
     const button=event.target;button.disabled=true;
-    try{const report=await window.suira.shortcuts.check();renderShortcutCheck(report.entries);}
+    try{const snapshot=await window.suira.shortcuts.get();if(snapshot.globalEnabled){await window.suira.shortcuts.retry();await refreshShortcuts();}const report=await window.suira.shortcuts.check();renderShortcutCheck(report.entries);}
     catch(error){showGlobalToast(error.message,'error');}finally{button.disabled=false;}
   });
   $('#setup-shortcuts')?.addEventListener('click',async()=>{await navigate('settings');document.querySelector('[data-setting-tab="shortcuts"]')?.click();$('#setting-global-shortcuts')?.scrollIntoView({block:'center'});$('#shortcut-check')?.click();});
@@ -881,6 +881,7 @@ async function refreshShortcuts() {
   try {
     const snapshot = await window.suira.shortcuts.get();
     renderShortcutCheck(snapshot.startupCheck);
+    if($('#shortcut-check'))$('#shortcut-check').textContent=snapshot.globalEnabled?'检查并重试快捷键':'检查本软件的快捷键';
     if($('#setting-global-shortcuts'))$('#setting-global-shortcuts').checked=snapshot.globalEnabled===true;
     if($('#shortcut-policy-status'))$('#shortcut-policy-status').textContent=snapshot.globalEnabled===true?'全局模式：只响应成功注册的组合键，冲突不会被绕过。':'面板模式：没有接管系统热键，可点击工具或在面板内按字母。';
     const render = (name, inputId, statusId) => {
@@ -897,7 +898,7 @@ async function refreshShortcuts() {
       } else if(entry?.localOnly){
         status.textContent='仅面板内，未启用全局组合键';status.className='shortcut-status is-warn';
       } else if (entry && !entry.ok) {
-        status.textContent = entry.error || '注册失败';
+        status.textContent = (entry.error || '注册失败')+'。点击输入框更换组合键'+(name==='longCapture'?'；仍可从随手面板点击长截图。':'。');
         status.className = 'shortcut-status is-error';
       } else if (entry?.fallback && entry?.ok) {
         status.textContent = '已生效（兼容按键监听）';

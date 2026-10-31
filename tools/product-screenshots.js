@@ -42,8 +42,8 @@ ipcMain.handle=(name,fn)=>handle(name,name==='app:info'?async(...args)=>{
  const command=JSON.parse(fs.readFileSync(${JSON.stringify(control)},'utf8'));
  fs.writeFileSync(${JSON.stringify(control)},'{}');
  const target=command.id ? BrowserWindow.fromId(command.id) : null;
- if(target){if(command.size)target.setSize(...command.size);if(command.maximize)target.maximize();if(command.restore)target.unmaximize();}
- return {...await fn(...args),surfaces:BrowserWindow.getAllWindows().filter(w=>w.__surfaceRadius).map(w=>({id:w.id,url:w.webContents.getURL(),bounds:w.getBounds(),material:w.__surfaceMaterial,maximized:w.isMaximized(),handle:w.getNativeWindowHandle().readBigUInt64LE().toString()}))};
+ if(target){if(command.size)target.setSize(...command.size);if(command.bounds)target.setBounds(command.bounds);if(command.focus){target.show();target.focus();}if(command.maximize)target.maximize();if(command.restore)target.unmaximize();}
+ const {screen}=require('electron');return {...await fn(...args),surfaces:BrowserWindow.getAllWindows().filter(w=>w.__surfaceRadius).map(w=>({id:w.id,url:w.webContents.getURL(),bounds:w.getBounds(),displayBounds:screen.getDisplayMatching(w.getBounds()).bounds,area:screen.getDisplayMatching(w.getBounds()).workArea,physicalArea:screen.dipToScreenRect(w,screen.getDisplayMatching(w.getBounds()).workArea),focused:w.isFocused(),material:w.__surfaceMaterial,maximized:w.isMaximized(),handle:w.getNativeWindowHandle().readBigUInt64LE().toString()}))};
 }:fn);
 require(${JSON.stringify(path.join(root, 'main.js'))});`);
     const exe = [process.env.SUIRA_ELECTRON, 'C:\\suira-electron\\electron.exe',
@@ -67,11 +67,13 @@ class RegionCheck {
  [DllImport("gdi32.dll")]static extern IntPtr CreateRectRgn(int l,int t,int r,int b);
  [DllImport("gdi32.dll")]static extern bool DeleteObject(IntPtr r);
  [DllImport("gdi32.dll")]static extern bool PtInRegion(IntPtr r,int x,int y);
+ [DllImport("gdi32.dll")]static extern int GetRgnBox(IntPtr r,out Rect rect);
  [DllImport("user32.dll")]static extern int GetWindowRgn(IntPtr w,IntPtr r);
  [DllImport("user32.dll")]static extern int GetWindowLong(IntPtr w,int index);
  [DllImport("user32.dll")]static extern bool GetWindowRect(IntPtr w,out Rect r);
+ [DllImport("user32.dll")]static extern bool SetProcessDpiAwarenessContext(IntPtr context);
  struct Rect{public int l,t,r,b;}
- static void Main(string[] args){var region=CreateRectRgn(0,0,0,0);try{Rect rect;var hwnd=new IntPtr(long.Parse(args[0]));if(!GetWindowRect(hwnd,out rect)||GetWindowRgn(hwnd,region)==0)throw new Exception("Missing native region");int w=rect.r-rect.l,h=rect.b-rect.t;bool ok=(GetWindowLong(hwnd,-16)&0x40000)==0&&!PtInRegion(region,0,0)&&!PtInRegion(region,w-1,0)&&!PtInRegion(region,0,h-1)&&!PtInRegion(region,w-1,h-1)&&PtInRegion(region,w/2,h/2);File.WriteAllText(args[1],ok?"true":"false");}finally{DeleteObject(region);}}
+ static void Main(string[] args){SetProcessDpiAwarenessContext(new IntPtr(-4));var region=CreateRectRgn(0,0,0,0);try{Rect rect;var hwnd=new IntPtr(long.Parse(args[0]));if(!GetWindowRect(hwnd,out rect)||GetWindowRgn(hwnd,region)==0)throw new Exception("Missing native region");int w=rect.r-rect.l,h=rect.b-rect.t;bool ok;if(args.Length>=6){int l=int.Parse(args[2])-rect.l,t=int.Parse(args[3])-rect.t,r=int.Parse(args[4])-rect.l,b=int.Parse(args[5])-rect.t;string edges=args.Length>6?args[6]:"ltrb";Rect box;GetRgnBox(region,out box);File.WriteAllText(args[1]+".debug","hwnd="+rect.l+","+rect.t+","+rect.r+","+rect.b+" region="+box.l+","+box.t+","+box.r+","+box.b+" area="+l+","+t+","+r+","+b);ok=PtInRegion(region,w/2,h/2)&&(!edges.Contains("l")||l<=0||!PtInRegion(region,l-1,h/2))&&(!edges.Contains("t")||t<=0||!PtInRegion(region,w/2,t-1))&&(!edges.Contains("r")||r>=w||!PtInRegion(region,r,h/2))&&(!edges.Contains("b")||b>=h||!PtInRegion(region,w/2,b));}else{ok=(GetWindowLong(hwnd,-16)&0x40000)==0&&!PtInRegion(region,0,0)&&!PtInRegion(region,w-1,0)&&!PtInRegion(region,0,h-1)&&!PtInRegion(region,w-1,h-1)&&PtInRegion(region,w/2,h/2);}File.WriteAllText(args[1],ok?"true":"false");}finally{DeleteObject(region);}}
 }`);
     const checker = await ensureNativeHost({ sourcePath: source, targetPath: path.join(tmp, 'region.exe'), onError: message => { throw Error(message); } });
     assert.ok(checker);
@@ -86,6 +88,15 @@ class RegionCheck {
       console.log('PASS native region: ' + suffix);
       return surface;
     };
+    const checkPlacement=async(client,suffix)=>{
+      const surface=(await info()).surfaces.find(s=>s.url.includes(suffix)),saved=surface.bounds;
+      fs.writeFileSync(control,JSON.stringify({id:surface.id,bounds:{...saved,y:surface.area.y+surface.area.height-70}}));await info();
+      await until(async()=>{const next=(await info()).surfaces.find(s=>s.id===surface.id);return next.bounds.y+next.bounds.height<=next.area.y+next.area.height;}).catch(async error=>{console.error('Placement state:',JSON.stringify((await info()).surfaces.find(s=>s.id===surface.id)));throw error;});
+      fs.writeFileSync(control,JSON.stringify({id:surface.id,bounds:saved,focus:true}));await info();
+      await until(()=>client.evaluate('document.documentElement.dataset.windowActive==="true"'));
+      assert.notEqual(await client.evaluate('getComputedStyle(document.querySelector(".app-shell"),"::after").borderTopStyle'),'none');
+      console.log('PASS taskbar-safe position and native focus style:',suffix);
+    };
     const shot = async (client, name, theme = 'light') => {
       if (!screenshots) return;
       await client.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: theme }] });
@@ -93,10 +104,17 @@ class RegionCheck {
       const png = await client.send('Page.captureScreenshot', { format: 'png' });
       const dir = path.join(root, 'docs/product'); fs.mkdirSync(dir, { recursive: true });
       const destination=path.join(dir,name+'.png'),temporary=destination+'.tmp';
-      try { fs.writeFileSync(temporary,Buffer.from(png.data,'base64'));fs.renameSync(temporary,destination); }
+      try {
+        fs.writeFileSync(temporary,Buffer.from(png.data,'base64'));
+        for(let attempt=0;;attempt++){
+          try{fs.renameSync(temporary,destination);break;}
+          catch(error){if(attempt>=8||!['EPERM','EBUSY','UNKNOWN'].includes(error.code))throw error;await wait(200);}
+        }
+      }
       finally { fs.rmSync(temporary,{force:true}); }
     };
     await check('/index.html');
+    await checkPlacement(main,'/index.html');
     await main.evaluate(`window.suira.tasks.create('整理灵感，开始下一步')`);
     await main.evaluate(`window.suira.quick.showMain('shelf')`);
     await shot(main, 'workbench');
@@ -117,15 +135,26 @@ class RegionCheck {
     await until(() => calendar.evaluate('document.querySelectorAll(".calendar-day").length===42'));
     await calendar.evaluate(`document.querySelector('[data-agenda="todo"]').click();true`);
     const calendarSurface = await check('tool=calendar'); await shot(calendar, 'calendar');
+    await checkPlacement(calendar,'tool=calendar');
+    assert.equal(await calendar.evaluate('document.querySelector(".tool-kind").getAttribute("aria-label")'),'日历');
     fs.writeFileSync(control, JSON.stringify({ id: calendarSurface.id, size: [1040, 760] })); await info(); await wait(150); await check('tool=calendar');
     await calendar.evaluate('window.suira.window.maximize()'); await wait(180);
     assert.equal((await info()).surfaces.find(s => s.id === calendarSurface.id).maximized, true);
+    const maximized=(await info()).surfaces.find(s=>s.id===calendarSurface.id);
+    const regionResult=path.join(tmp,'maximized-region.json'),area=maximized.physicalArea;
+    const a=maximized.area,b=maximized.displayBounds,edges=(a.x>b.x?'l':'')+(a.y>b.y?'t':'')+(a.x+a.width<b.x+b.width?'r':'')+(a.y+a.height<b.y+b.height?'b':'');
+    execFileSync(checker,[maximized.handle,regionResult,String(area.x),String(area.y),String(area.x+area.width),String(area.y+area.height),edges],{windowsHide:true,timeout:5000});
+    assert.equal(JSON.parse(fs.readFileSync(regionResult,'utf8')),true,'Native maximized region must exclude the taskbar, including hidden frame overhang');
+    console.log('PASS native maximized region excludes taskbar and frame overhang');
     await calendar.evaluate('window.suira.window.maximize()'); await wait(180); await check('tool=calendar');
     await main.evaluate(`window.suira.workspace.save('markdown',${JSON.stringify({ title: '让想法，顺着写下去', text: '# 让想法，顺着写下去\n\n从一张截图、一段文字，到一份清晰的计划。\n\n## 今天，专注三件事\n\n- [x] 收集零散的灵感\n- [ ] 把重要内容整理成文档\n- [ ] 为下一步留一个明确的入口\n\n> 顺手接住，让工作继续。\n\n## 一个轻盈的工作流\n\n| 收集 | 整理 | 继续 |\n| --- | --- | --- |\n| 截图与剪贴板 | 日历与 Markdown | 任务与速记 |\n\n把注意力留给正在做的事。' })})`);
     await main.evaluate(`window.suira.workspace.open('markdown')`);
     const markdown = await page(t => t.url.includes('tool=markdown'));
     await until(() => markdown.evaluate('Boolean(document.querySelector("#md-preview h1"))'));
     await check('tool=markdown'); await shot(markdown, 'markdown');
+    await checkPlacement(markdown,'tool=markdown');
+    assert.equal(await markdown.evaluate('document.querySelector(".tool-kind").getAttribute("aria-label")'),'Markdown 文档');
+    await until(()=>calendar.evaluate('document.documentElement.dataset.windowActive==="false"'));
     await main.evaluate('window.suira.notes.create()');
     await page(t => t.url.endsWith('/notes.html')); await check('/notes.html');
     await main.evaluate('window.suira.imageEditor.open()');

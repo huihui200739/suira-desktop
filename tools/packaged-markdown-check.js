@@ -2,6 +2,7 @@
 const fs=require('node:fs'),path=require('node:path'),os=require('node:os'),assert=require('node:assert/strict'),net=require('node:net'),{spawn,execFileSync}=require('node:child_process');
 const {SuiraStore}=require('../lib/store'),{KEY_ROWS}=require('../lib/keybindings'),{connect}=require('./runtime-client');
 const root=path.resolve(__dirname,'..'),tmp=fs.mkdtempSync(path.join(os.tmpdir(),'suira-workspace-')),appDir=path.join(tmp,'app'),profile=path.join(tmp,'profile');
+const version=require('../package.json').version;
 const wait=ms=>new Promise(r=>setTimeout(r,ms)),children=[],sockets=[];
 async function until(fn){let last;for(let n=0;n<160;n++){try{const value=await fn();if(value)return value;}catch(error){last=error;}await wait(100);}throw last||Error('Packaged Markdown timed out');}
 (async()=>{
@@ -13,10 +14,11 @@ async function until(fn){let last;for(let n=0;n<160;n++){try{const value=await f
   const launch=(file,debug=false)=>{const fd=fs.openSync(path.join(tmp,'app.log'),'a');const child=spawn(path.join(appDir,'随序.exe'),[file,'--user-data-dir='+profile,...(debug?['--remote-debugging-port='+port]:[])],{cwd:tmp,env,windowsHide:true,stdio:['ignore',fd,fd]});children.push(child);fs.closeSync(fd);return child;};
   launch(first,true);const md=await until(()=>connect(port,t=>t.url.includes('tool=markdown')));sockets.push(md.ws);
   await until(()=>md.evaluate(`document.getElementById('md-editor').value==='# Packaged first'`));assert.equal((await md.evaluate('window.suira.shortcuts.get()')).globalEnabled,false);
+  assert.equal((await md.evaluate('window.suira.app.info()')).version,version);
   await md.evaluate(`document.getElementById('md-editor').value='# Packaged saved';document.getElementById('md-editor').dispatchEvent(new Event('input'));window.WorkspaceUI.flush()`);
   const items=await md.evaluate(`window.suira.workspace.list('markdown')`);assert.equal((await md.evaluate(`window.suira.workspace.saveFile(${JSON.stringify(items[0].id)})`)).ok,true);assert.equal(fs.readFileSync(first,'utf8'),'# Packaged saved');
   const next=launch(second);await until(()=>next.exitCode!==null);await until(()=>md.evaluate(`document.getElementById('md-editor').value==='# Packaged second'`));
-  console.log('PASS actual packaged 0.2.4: default global mode off; Unicode/spaced file argv; explicit original save; second-instance file route');
+  console.log('PASS actual packaged '+version+': default global mode off; Unicode/spaced file argv; explicit original save; second-instance file route');
 })().catch(error=>{console.error(error);if(fs.existsSync(path.join(tmp,'app.log')))console.error(fs.readFileSync(path.join(tmp,'app.log'),'utf8').slice(-1800));process.exitCode=1;}).finally(async()=>{
   sockets.forEach(ws=>ws.close());children.forEach(c=>{if(c.exitCode===null)c.kill();});await wait(600);
   const absolute=path.resolve(tmp);if(path.dirname(absolute)!==path.resolve(os.tmpdir())||!path.basename(absolute).startsWith('suira-workspace-'))throw Error('Unsafe cleanup path');

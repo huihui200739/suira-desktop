@@ -1,6 +1,6 @@
 'use strict';
 const assert = require('node:assert/strict');
-const { resizeBounds } = require('../lib/window-resize');
+const { resizeBounds, fitWorkArea, clipToWorkAreas } = require('../lib/window-resize');
 const b = { x: -800, y: 40, width: 600, height: 400 };
 assert.deepEqual(resizeBounds(b, 'nw', 500, 500, 240, 200), { x: -440, y: 240, width: 240, height: 200 });
 assert.deepEqual(resizeBounds(b, 'se', 100, 50, 240, 200), { x: -800, y: 40, width: 700, height: 450 });
@@ -8,3 +8,14 @@ assert.deepEqual(resizeBounds(b, 'w', -100, 0, 240, 200), { x: -900, y: 40, widt
 assert.deepEqual(resizeBounds(b, 'invalid', 10, 10, 240, 200), b);
 assert.deepEqual(resizeBounds(b, 'e', Infinity, 0, 240, 200), b);
 console.log('PASS frameless resize: opposite edge anchored, minimum size, negative monitor coordinates, invalid input');
+const area={x:0,y:0,width:1920,height:1040};
+assert.deepEqual(fitWorkArea({x:200,y:500,width:1180,height:820},area),{x:200,y:220,width:1180,height:820});
+assert.deepEqual(fitWorkArea({x:-1200,y:400,width:900,height:700},{x:-1280,y:40,width:1280,height:960}),{x:-1200,y:300,width:900,height:700});
+assert.deepEqual(fitWorkArea({x:0,y:0,width:2000,height:1200},{x:48,y:30,width:1872,height:1050}),{x:48,y:30,width:1872,height:1050});
+assert.deepEqual(fitWorkArea({x:80,y:70,width:900,height:700},area),{x:80,y:70,width:900,height:700});
+assert.deepEqual(fitWorkArea({x:0,y:0,width:1920,height:1080},area,2),{x:2,y:2,width:1916,height:1036});
+console.log('PASS desktop windows stay inside work areas: taskbar edges, oversized bounds, negative secondary displays, unchanged valid position');
+assert.deepEqual(clipToWorkAreas([{x:0,y:0,width:1722,height:1034}],{x:-7,y:-7,width:1722,height:1034},[{x:0,y:0,width:1707,height:1019}]),[{x:7,y:7,width:1707,height:1019}]);
+assert.deepEqual(clipToWorkAreas([{x:0,y:0,width:200,height:100}],{x:-100,y:0,width:200,height:100},[{x:-1280,y:0,width:1280,height:720},{x:0,y:0,width:1920,height:1040}]),[{x:0,y:0,width:100,height:100},{x:100,y:0,width:100,height:100}]);
+assert.deepEqual(clipToWorkAreas([{x:0,y:0,width:100,height:100}],{x:0,y:1100,width:100,height:100},[area]),[{x:0,y:0,width:0,height:0}]);
+console.log('PASS native visible-region mask: maximized frame overhang, spanning monitors and empty shape does not reset clipping');

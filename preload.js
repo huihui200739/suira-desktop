@@ -169,6 +169,7 @@ contextBridge.exposeInMainWorld('suira', {
     commit: (payload) => ipcRenderer.invoke('return:commit', payload)
   },
   shortcuts: {
+    retry: () => ipcRenderer.invoke('shortcuts:retry'),
     check: () => ipcRenderer.invoke('shortcuts:check'),
     get: () => ipcRenderer.invoke('shortcuts:get'),
     set: (payload) => ipcRenderer.invoke('shortcuts:set', payload),
@@ -232,6 +233,11 @@ contextBridge.exposeInMainWorld('suira', {
 // Frameless Windows surfaces use page-owned resize hit areas. Keeping the system
 // thick frame would reintroduce its rectangular gray backdrop outside CSS corners.
 window.addEventListener('DOMContentLoaded', () => {
+  if(location.pathname.endsWith('/index.html')){
+    const update=state=>{document.documentElement.dataset.windowActive=String(Boolean(state.focused));document.documentElement.dataset.windowMaximized=String(Boolean(state.maximized));};
+    ipcRenderer.on('window:state',(_event,state)=>update(state));
+    ipcRenderer.invoke('window:state').then(update).catch(()=>{});
+  }
   if (process.platform !== 'win32') return;
   const page = location.pathname.split('/').pop();
   if (!['index.html', 'notes.html'].includes(page) && !(page === 'overlay.html' && new URLSearchParams(location.search).get('mode') === 'image-editor')) return;

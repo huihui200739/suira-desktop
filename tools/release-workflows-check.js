@@ -28,7 +28,7 @@ function launch(entry,args=[]){const log=fs.openSync(path.join(tmp,'app.log'),'a
   assert.equal((await main.evaluate('window.suira.settings.update({globalShortcutsEnabled:true})')).ok,true);
   status=await main.evaluate('window.suira.shortcuts.get()');assert.equal(status.status.quick.ok,false);assert.ok(!status.status.quick.fallback);
   fs.writeFileSync(stop,'');await until(()=>blockerChild.exitCode!==null);
-  await main.evaluate('window.suira.settings.update({globalShortcutsEnabled:false})');await main.evaluate('window.suira.settings.update({globalShortcutsEnabled:true})');
+  assert.equal((await main.evaluate('window.suira.shortcuts.retry()')).ok,true);
   assert.equal((await main.evaluate('window.suira.shortcuts.get()')).status.quick.ok,true);
   await main.evaluate('window.suira.settings.update({globalShortcutsEnabled:false})');
   assert.equal((await main.evaluate('window.suira.shortcuts.check()')).entries.find(e=>e.name==='quick').state,'available');

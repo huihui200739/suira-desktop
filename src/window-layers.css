@@ -1,0 +1,27 @@
+/* Distinct window edges and focus, without changing the shared glass palette. */
+:root { --window-marker:var(--blue-11); }
+:root[data-tool="markdown"] { --window-marker:var(--violet-11); }
+.app-shell { position:relative; isolation:isolate; }
+.app-shell::after {
+  content:""; position:absolute; inset:0; z-index:200; pointer-events:none;
+  border-radius:inherit; border:1px solid color-mix(in srgb,var(--slate-12) 24%,transparent);
+  box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--paper-raised) 65%,transparent);
+}
+:root[data-window-active="true"] .app-shell::after {
+  border-color:color-mix(in srgb,var(--window-marker) 38%,var(--line));
+  box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--paper-raised) 80%,transparent),inset 0 2px 8px color-mix(in srgb,var(--slate-12) 4%,transparent);
+}
+.tool-window .titlebar {
+  background:linear-gradient(100deg,color-mix(in srgb,var(--window-marker) 5%,var(--paper-raised)),color-mix(in srgb,var(--paper-raised) 80%,transparent));
+  border-bottom:1px solid color-mix(in srgb,var(--line) 75%,transparent);
+}
+.brand::after { content:"后台"; font-size:11px; color:var(--ink-faint); white-space:nowrap; }
+:root[data-window-active="true"] .brand::after { content:"当前"; color:var(--window-marker); }
+:root[data-window-active="false"] .titlebar .brand { opacity:.68; }
+.tool-window .brand .tool-kind { display:inline-flex; width:28px; height:28px; flex-shrink:0; align-items:center; justify-content:center; border-radius:8px; color:var(--window-marker); background:color-mix(in srgb,var(--window-marker) 8%,transparent); }
+.tool-kind svg { width:19px; height:19px; }
+.tool-window .brand { min-width:0; flex:0 1 auto; }
+.tool-window .brand>div { min-width:0; }
+.tool-window .brand b { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:clamp(96px,20vw,270px); }
+:root[data-window-maximized="true"] .app-shell { border-radius:0; }
+@media(max-width:1050px) { .tool-window .brand::after { display:none; } }

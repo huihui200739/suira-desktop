@@ -112,6 +112,9 @@
   document.querySelectorAll('[data-setting-tab]').forEach(button=>button.onclick=()=>settingTab(button.dataset.settingTab));settingTab('general');
   const tool=document.documentElement.dataset.tool;
   if(tool){
+    const mark=document.createElement('span');mark.className='tool-kind';mark.title=tool==='markdown'?'Markdown 文档':'日历';mark.setAttribute('aria-label',mark.title);
+    mark.innerHTML=tool==='markdown'?'<svg viewBox="0 0 24 24"><path d="M6 3h8l4 4v14H6z M14 3v5h4 M9 17v-5l3 3 3-3v5"/></svg>':'<svg viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="16" rx="3"/><path d="M8 3v4 M16 3v4 M4 10h16 M8 14h2 M14 14h2 M8 17h2"/></svg>';
+    document.querySelector('.brand').prepend(mark);
     const top=document.createElement('div');top.className='tool-top-actions';
     document.querySelector('.titlebar').insertBefore(top,document.querySelector('.window-actions'));
     const theme=document.createElement('button');theme.className='quiet-btn tool-icon';theme.title='切换明暗主题';theme.setAttribute('aria-label',theme.title);theme.innerHTML='<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M12 4a8 8 0 0 1 0 16z" fill="currentColor"/></svg>';theme.onclick=safe(()=>window.suira.settings.update({theme:matchMedia('(prefers-color-scheme: dark)').matches?'light':'dark'}));top.append(theme);

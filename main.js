@@ -69,7 +69,7 @@ const notesLib = require('./lib/notes');
 const imageEditor = require('./lib/image-editor');
 const {shortcutAdapter,shortcutReport}=require('./lib/shortcut-policy');
 const {markdownPaths,createMarkdownFiles}=require('./lib/markdown-files');
-const { EDGES: WINDOW_EDGES, resizeBounds } = require('./lib/window-resize');
+const { EDGES: WINDOW_EDGES, resizeBounds, fitWorkArea, clipToWorkAreas } = require('./lib/window-resize');
 const {LongCaptureSession,sameSource:sameLongCaptureSource}=require('./lib/long-capture-session');
 const {RegionCapture}=require('./lib/region-capture');
 const {longCaptureTarget,settledFirstFrame,sourceProbePoint}=require('./lib/long-capture-start');
@@ -887,8 +887,20 @@ function positionQuickPanel(win) {
 
 function clipFloatingSurface(win) {
   if (process.platform !== 'win32' || !win || win.isDestroyed()) return;
-  const { width, height } = win.getBounds();
-  try { win.setShape(roundedWindowShape(width, height, win.isMaximized() ? 0 : (win.__surfaceRadius || 24))); } catch {}
+  const bounds=win.getBounds(),{width,height}=bounds;
+  let shape=roundedWindowShape(width,height,win.isMaximized()?0:(win.__surfaceRadius||24));
+  if(win.__desktopWindow){
+    const areas=screen.getAllDisplays().map(display=>{
+      const a={...display.workArea},b=display.bounds;
+      // Keep one DIP clear at reserved shell edges after physical-pixel rounding.
+      if(a.x>b.x){a.x++;a.width--;}if(a.y>b.y){a.y++;a.height--;}
+      if(a.x+a.width<b.x+b.width)a.width--;
+      if(a.y+a.height<b.y+b.height)a.height--;
+      return a;
+    });
+    shape=clipToWorkAreas(shape,bounds,areas);
+  }
+  try { win.setShape(shape); } catch {}
 }
 
 function prepareFloatingSurface(win, radius = 24) {
@@ -905,6 +917,38 @@ function prepareFloatingSurface(win, radius = 24) {
       win.on(event, () => clipFloatingSurface(win));
     }
   }
+}
+
+// Keep document/workbench windows out of translucent taskbars. Wait until a
+// native drag ends so moving between monitors is not trapped at the first edge.
+function prepareDesktopWindow(win) {
+  win.__desktopWindow=true;
+  const minimum=win.getMinimumSize();let nativeMoving=false,adjusting=false,timer;
+  const state=()=>{if(!win.isDestroyed())win.webContents.send('window:state',{focused:win.isFocused(),maximized:win.isMaximized()});};
+  const fit=()=>{
+    if(win.isDestroyed()||adjusting||nativeMoving||win.isMinimized()||win.isFullScreen())return;
+    clipFloatingSurface(win);
+    const bounds=win.getBounds(),area=screen.getDisplayMatching(bounds).workArea;
+    if(win.isMaximized())return;
+    // Two DIP absorb Windows' outward rounding at fractional scale factors.
+    const next=fitWorkArea(bounds,area,2);
+    adjusting=true;
+    try {
+      const nextMinimum=[Math.min(minimum[0],area.width),Math.min(minimum[1],area.height)],currentMinimum=win.getMinimumSize();
+      if(nextMinimum.some((value,index)=>value!==currentMinimum[index]))win.setMinimumSize(...nextMinimum);
+      if(!sameBounds(bounds,next))win.setBounds(next);
+    } finally {adjusting=false;}
+  };
+  const schedule=()=>{clearTimeout(timer);timer=setTimeout(fit,60);};
+  win.on('will-move',()=>{nativeMoving=true;clearTimeout(timer);});
+  win.on('moved',()=>{nativeMoving=false;fit();});
+  for(const event of ['move','resize','restore','unmaximize'])win.on(event,schedule);
+  win.on('move',()=>clipFloatingSurface(win));
+  win.on('show',()=>{fit();state();});win.on('focus',state);win.on('blur',state);
+  win.on('maximize',state);win.on('unmaximize',state);win.webContents.on('did-finish-load',state);
+  screen.on('display-metrics-changed',schedule);screen.on('display-removed',schedule);
+  win.once('closed',()=>{clearTimeout(timer);screen.removeListener('display-metrics-changed',schedule);screen.removeListener('display-removed',schedule);});
+  fit();
 }
 
 function createQuickWindow() {
@@ -1705,6 +1749,7 @@ function showWorkspaceWindow(type) {
     title:type==='markdown'?'Markdown · 随序':'日历 · 随序',backgroundColor:'#00000000',backgroundMaterial:'none',hasShadow:false,roundedCorners:true,icon:assetPath('suira-icon.png'),
     webPreferences:{preload:path.join(__dirname,'preload.js'),contextIsolation:true,nodeIntegration:false,sandbox:false,spellcheck:false}});
   prepareFloatingSurface(win);
+  prepareDesktopWindow(win);
   workspaceWindows.set(type,win);win.__tool=type;
   win.webContents.setWindowOpenHandler(()=>({action:'deny'}));
   win.webContents.on('will-navigate',event=>event.preventDefault());
@@ -1751,6 +1796,7 @@ function createMainWindow() {
     }
   });
   prepareFloatingSurface(mainWindow);
+  prepareDesktopWindow(mainWindow);
   mainWindow.loadFile(path.join(__dirname, 'src', 'index.html'));
   // ready-to-show 是首选：等首帧画完再显示，避免白屏闪一下。
   // 但它在「桌面已锁定 / 合成器异常 / GPU 未就绪」时可能永远不触发，
@@ -3005,7 +3051,9 @@ function registerIpc() {
     const win = senderWindow(event), drag = win && resizingWindows.get(win);
     if (!drag || win.isDestroyed() || win.isMaximized()) return;
     const cursor = screen.getCursorScreenPoint(), minimum = win.getMinimumSize();
-    win.setBounds(resizeBounds(drag.bounds, drag.edge, cursor.x - drag.cursor.x, cursor.y - drag.cursor.y, minimum[0] || 240, minimum[1] || 200));
+    let bounds=resizeBounds(drag.bounds, drag.edge, cursor.x - drag.cursor.x, cursor.y - drag.cursor.y, minimum[0] || 240, minimum[1] || 200);
+    if(win===mainWindow||[...workspaceWindows.values()].includes(win))bounds=fitWorkArea(bounds,screen.getDisplayMatching(bounds).workArea,2);
+    win.setBounds(bounds);
   });
   ipcMain.on('window:resize-end', event => {
     const win = senderWindow(event); if (win) resizingWindows.delete(win);
@@ -3019,6 +3067,7 @@ function registerIpc() {
   ipcMain.handle('window:close', event => {const win=senderWindow(event);if(win===mainWindow)win.hide();else win?.close();});
   ipcMain.handle('window:pin', event => {const win=senderWindow(event);if(!win)return false;win.setAlwaysOnTop(!win.isAlwaysOnTop());return win.isAlwaysOnTop();});
   ipcMain.handle('window:is-maximized', event => Boolean(senderWindow(event)?.isMaximized()));
+  ipcMain.handle('window:state',event=>{const win=senderWindow(event);return {focused:Boolean(win?.isFocused()),maximized:Boolean(win?.isMaximized())};});
   ipcMain.handle('window:hide', event => senderWindow(event)?.hide());
   ipcMain.handle('workspace:open', (_event,type) => {if(!['calendar','markdown'].includes(type))return {ok:false};showWorkspaceWindow(type);return {ok:true};});
   ipcMain.handle('workspace:close-ready', event => {const win=senderWindow(event);if([...workspaceWindows.values()].includes(win)){win.__allowClose=true;win.close();}return {ok:true};});
@@ -3455,6 +3504,10 @@ function registerIpc() {
   });
 
   ipcMain.handle('shortcuts:check', () => ({ok:true,entries:shortcutReport(globalShortcut,{...shortcutManager?.bindings,momentary:momentaryAccelerator()}),note:'仅检测这些组合键当前能否注册为全局快捷键，不能检测其他应用内部快捷键；结果可能随其他软件启动而改变。'}));
+  ipcMain.handle('shortcuts:retry',()=>queuePanelConfiguration(async()=>{
+    if(!globalShortcutsEnabled())return {ok:false,error:'请先开启全局快捷键'};
+    registerShortcuts();await setupMomentaryProbe();return {ok:true};
+  }));
 
   ipcMain.handle('shortcuts:set', async (_event, payload) => {
     if (!shortcutManager) return { ok: false, error: '快捷键尚未初始化' };
