@@ -42,7 +42,7 @@ const { OcrService } = require('./lib/ocr');
 const translateLib = require('./lib/translate');
 const { createActionRegistry, mergeLines, cleanText } = require('./lib/actions');
 const { RECIPES, getRecipe, listRecipes, runRecipe } = require('./lib/recipes');
-const { searchCandidates, COMMANDS } = require('./lib/search');
+const { searchCandidates, searchAppCandidates, COMMANDS } = require('./lib/search');
 const { readWithRetry, shouldExcludeCapture, summarizeLargeText, sameBytes } = require('./lib/clipboard-guard');
 const { captureTarget, validateTarget, decideCommit, normalizeHwnd, ClipboardWriteLedger } = require('./lib/return-target');
 const { AppIndex } = require('./lib/app-index');
@@ -881,14 +881,25 @@ async function migrateLegacyHistory() {
 
 function positionQuickPanel(win) {
   const display = screen.getDisplayNearestPoint(screen.getCursorScreenPoint());
-  win.setBounds(quickPanelBounds(display.workArea));
+  const fullscreen=store?.getSettings().panelPresentation==='fullscreen';
+  win.__changingPresentation=true;
+  // Electron's thickFrame:false Windows path only changes bounds; its
+  // isFullScreen() remains false. Track this borderless launchpad explicitly.
+  win.__launchpadFullscreen=fullscreen;
+  win.setBounds(fullscreen?display.bounds:quickPanelBounds(display.workArea));
+  win.webContents.send('quick:presentation-changed',{mode:fullscreen?'fullscreen':'window'});
+  clearTimeout(win.__presentationTimer);
+  win.__presentationTimer=setTimeout(()=>{
+    if(win.isDestroyed())return;win.__changingPresentation=false;
+    if(win.isVisible()&&!win.isFocused()&&!panelBindingPickerOpen&&!win.webContents.isDevToolsOpened())hideQuickPanel();
+  },350);
   clipFloatingSurface(win);
 }
 
 function clipFloatingSurface(win) {
   if (process.platform !== 'win32' || !win || win.isDestroyed()) return;
   const bounds=win.getBounds(),{width,height}=bounds;
-  let shape=roundedWindowShape(width,height,win.isMaximized()?0:(win.__surfaceRadius||24));
+  let shape=roundedWindowShape(width,height,win.isMaximized()||win.isFullScreen()||win.__launchpadFullscreen?0:(win.__surfaceRadius||24));
   if(win.__desktopWindow){
     const areas=screen.getAllDisplays().map(display=>{
       const a={...display.workArea},b=display.bounds;
@@ -1008,7 +1019,7 @@ function createQuickWindow() {
     broadcast('content:changed');
   });
   quickWindow.on('blur', () => {
-    if (!quickWindow || quickWindow.isDestroyed() || panelBindingPickerOpen || quickWindow.webContents.isDevToolsOpened()) return;
+    if (!quickWindow || quickWindow.isDestroyed() || quickWindow.__changingPresentation || panelBindingPickerOpen || quickWindow.webContents.isDevToolsOpened()) return;
     hideQuickPanel();
   });
   quickWindow.on('show', () => {
@@ -1090,6 +1101,7 @@ function hideQuickPanel() {
   quickShowRevision++;
   if (quickWindow && !quickWindow.isDestroyed()) {
     quickWindow.hide();
+    quickWindow.__launchpadFullscreen=false;
     scheduleIdleTeardown(quickWindow, '动作面板', HOT_WINDOW_IDLE_MS);
   }
 }
@@ -3115,6 +3127,13 @@ function registerIpc() {
   ipcMain.handle('workspace:close-ready', event => {const win=senderWindow(event);if([...workspaceWindows.values()].includes(win)){win.__allowClose=true;win.close();}return {ok:true};});
 
   ipcMain.handle('quick:hide', () => hideQuickPanel());
+  ipcMain.handle('quick:presentation',()=>({mode:store.getSettings().panelPresentation==='fullscreen'?'fullscreen':'window'}));
+  ipcMain.handle('quick:presentation:set',async(event,mode)=>{
+    if(event.sender!==quickWindow?.webContents||!['window','fullscreen'].includes(mode))return {ok:false,error:'无效的显示模式'};
+    await store.updateSettings({panelPresentation:mode});
+    positionQuickPanel(quickWindow);
+    return {ok:true,mode};
+  });
   ipcMain.handle('quick:show', () => { showQuickPanel(); return { ok: true }; });
   ipcMain.handle('quick:toggle', () => { toggleQuickPanel(); return { ok: true }; });
   ipcMain.handle('quick:open-main', (_event, page) => { hideQuickPanel(); showMain(page || 'shelf'); return { ok: true }; });
@@ -3352,8 +3371,9 @@ function registerIpc() {
     return result;
   });
 
-  ipcMain.handle('search:query', async (_event, query) => {
+  ipcMain.handle('search:query', async (_event, query, options) => {
     const value = String(query || '').trim();
+    if(options?.scope==='apps')return searchAppCandidates(value,await appIndex.candidates(),{limit:40});
     const candidates = [];
     for (const command of COMMANDS) candidates.push(command);
     // 应用搜索：开始菜单快捷方式（开发方案 5.1，不做全盘索引）
@@ -3366,8 +3386,9 @@ function registerIpc() {
       candidates.push({
         id: item.id,
         kind: 'content',
+        contentKind: item.kind,
         title: item.title,
-        subtitle: item.text ? item.text.slice(0, 80) : (item.filePath || ''),
+        subtitle: item.kind==='image' ? `${item.source?.appName||'本机'} 图片` : item.text ? item.text.slice(0,80) : path.basename(item.filePath||''),
         keywords: item.source?.appName || '',
         itemId: item.id
       });
@@ -3518,6 +3539,11 @@ function registerIpc() {
   });
 
   /* ---- 应用面板：开始菜单应用目录 ---- */
+  ipcMain.handle('apps:search',async(_event,query,refresh)=>{
+    if(refresh===true)appIndex.invalidate();
+    return searchAppCandidates(String(query||'').trim().slice(0,200),await appIndex.candidates(),{limit:200})
+      .map(entry=>({name:entry.title,filePath:entry.appPath}));
+  });
   ipcMain.handle('apps:list', async () => {
     let shortcuts = [];
     try {

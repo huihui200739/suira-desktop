@@ -1,0 +1,17 @@
+{
+  "version": "0.2.7",
+  "artifact": "Suira-0.2.7-x64.exe",
+  "bytes": 155356781,
+  "sha256": "EC632C30A0E031B3227B3F3D34E27361ADB86189EEABA5C0E5C3EC6B72F8D0BD",
+  "platform": "win32",
+  "arch": "x64",
+  "electron": "45.0.0",
+  "checkedSourceFiles": 91,
+  "checks": [
+    "source-payload-byte-match",
+    "no-test-profile-or-obsolete-key-hook",
+    "installer-archive-crc"
+  ],
+  "signature": "unsigned",
+  "published": false
+}

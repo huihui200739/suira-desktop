@@ -21,6 +21,16 @@
 
 **按你的习惯摆放。** 38 个键位支持绑定工具、应用、网页、文件或文件夹；拖动换位，右键改绑。深浅主题共享一套界面，日历与 Markdown 可以作为独立窗口使用。
 
+**找到应用，直接打开。** 应用启动台可在窗口与全屏展示间切换；输入中文、拼音或首字母即可搜索。右键键位选择「应用」，直接从带图标的列表搜索绑定，无需逐层寻找安装目录。
+
+<table>
+  <tr>
+    <td width="50%"><img src="docs/product/apps.png" alt="无卡片外框的应用启动台，支持全屏与窗口切换"></td>
+    <td width="50%"><img src="docs/product/toolbox.png" alt="透明方块工具箱，每项具有独立图标"></td>
+  </tr>
+  <tr><td align="center"><b>应用，轻松找到</b></td><td align="center"><b>工具，一眼认出</b></td></tr>
+</table>
+
 <table>
   <tr>
     <td width="50%"><img src="docs/product/calendar.png" alt="当前版本日历：月视图、农历与当天待办"></td>
@@ -38,7 +48,7 @@
 
 ## 开始使用
 
-当前候选版本 **0.2.6**，面向 Windows 11。正式发布的安装包见 [Releases](https://github.com/huihui200739/suira-desktop/releases)；本轮修正与共同功能对照见 [改进记录](docs/SHARED-FEATURES-2026-10-31.md)，历史完整功能验收见 [检查报告](docs/RELEASE-CHECK-2026-10-31.md)。也可以从源码运行：
+当前候选版本 **0.2.7**，面向 Windows 11。正式发布的安装包见 [Releases](https://github.com/huihui200739/suira-desktop/releases)；本轮启动台与应用绑定见 [改进记录](docs/LAUNCHER-2026-10-31.md)，共同功能对照见 [对照报告](docs/SHARED-FEATURES-2026-10-31.md)。也可以从源码运行：
 
 ```powershell
 npm ci
@@ -69,6 +79,7 @@ npm test                 # 逻辑、界面与交互回归
 npm run test:surfaces    # Windows 原生窗口圆角与生命周期检查
 npm run verify:workspace # 真实 Electron 日历与 Markdown 工作流
 npm run verify:windows   # 连续移动、关闭重开与窗口尺寸稳定性
+npm run verify:launcher  # 应用搜索、原生图标、键位绑定与全屏展示
 npm run verify:release   # 系统热键冲突、本地文件打开与编辑保护
 npm run verify:installer # 独立测试产品的安装、覆盖升级与卸载
 npm run screenshots     # 从独立演示实例更新产品截图

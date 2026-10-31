@@ -35,6 +35,9 @@ contextBridge.exposeInMainWorld('suira', {
     isMaximized: () => ipcRenderer.invoke('window:is-maximized')
   },
   quick: {
+    presentation: () => ipcRenderer.invoke('quick:presentation'),
+    setPresentation: mode => ipcRenderer.invoke('quick:presentation:set', mode),
+    onPresentation: callback => subscribe('quick:presentation-changed', callback),
     hide: () => ipcRenderer.invoke('quick:hide'),
     show: () => ipcRenderer.invoke('quick:show'),
     toggle: () => ipcRenderer.invoke('quick:toggle'),
@@ -96,6 +99,7 @@ contextBridge.exposeInMainWorld('suira', {
   },
   // 应用面板：开始菜单应用目录（图标按需取，保证首帧快）
   apps: {
+    search: (query, refresh = false) => ipcRenderer.invoke('apps:search', query, refresh),
     list: () => ipcRenderer.invoke('apps:list'),
     icons: (filePaths) => ipcRenderer.invoke('apps:icons', filePaths)
   },
@@ -163,7 +167,7 @@ contextBridge.exposeInMainWorld('suira', {
     run: (payload) => ipcRenderer.invoke('recipes:run', payload)
   },
   search: {
-    query: (query) => ipcRenderer.invoke('search:query', query)
+    query: (query, options) => ipcRenderer.invoke('search:query', query, options)
   },
   returnTo: {
     target: () => ipcRenderer.invoke('return:target'),

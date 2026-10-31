@@ -170,7 +170,7 @@ async function checkBindings({ send, evaluate, capture }) {
   assert.deepEqual(await ev('window.__runs'),['binding:Q']);
   await open('A');await ev(`document.getElementById('binding-app').click(),true`);await wait(30);
   assert.equal(await ev(`document.getElementById('binding-editor').hidden`),false,'取消选文件后保持菜单');
-  await ev(`window.__picked={ok:true,path:'C:\\\\Demo\\\\Editor.exe'},document.getElementById('binding-app').click(),true`);await wait(80);
+  await ev(`window.__picked={ok:true,path:'C:\\\\Demo\\\\Editor.exe'},document.getElementById('binding-app-browse').click(),true`);await wait(80);
   assert.equal(await state('A'),'custom');
   await drop('A','E');
   assert.equal(await state('A'),'unbound');assert.equal(await state('E'),'custom');
@@ -199,6 +199,27 @@ async function checkBindings({ send, evaluate, capture }) {
     }
     console.log(`  PASS  菜单四角与工具子页完整可见 ${width}×${height} ${scheme}`);
   }
+  await send('Emulation.setDeviceMetricsOverride',{width:1160,height:620,deviceScaleFactor:2,mobile:false});
+  await shown();await open('=');await ev(`document.getElementById('binding-app').click(),true`);await wait(120);
+  assert.equal(await ev(`document.querySelectorAll('.binding-app-option').length`),14);
+  await ev(`(()=>{const input=document.getElementById('binding-app-search');input.value='wx';input.dispatchEvent(new Event('input',{bubbles:true}));return true;})()`);
+  assert.equal(await ev(`document.querySelectorAll('.binding-app-option').length`),0,'新查询等待期间不保留旧的可绑定结果');
+  await wait(200);assert.equal(await ev(`document.querySelectorAll('.binding-app-option').length`),1);
+  assert.equal(await ev(`document.querySelector('.binding-app-option').textContent.trim()`),'微信');
+  assert.equal(await ev(`Boolean(document.querySelector('.picker-app-icon img'))`),true);
+  await ev(`document.getElementById('binding-app-search').dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',isComposing:true,bubbles:true})),true`);
+  assert.equal(await ev(`document.getElementById('binding-editor').hidden`),false);
+  await ev(`document.getElementById('binding-app-search').dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true})),true`);await wait(100);
+  assert.equal(await state('='),'custom');assert.equal(await ev(`window.__bindings['='].name`),'微信');
+  await open('=');await ev(`document.getElementById('binding-clear').click(),true`);await wait(60);
+  await open('=');await ev(`window.__appSearchError='扫描失败';document.getElementById('binding-app').click();true`);await wait(80);
+  assert.equal(await ev(`document.getElementById('binding-app-status').textContent`),'扫描失败');
+  await ev(`window.__appSearchError='';document.getElementById('binding-app-refresh').click();true`);await wait(120);
+  assert.equal(await ev(`document.querySelectorAll('.binding-app-option').length`),14);
+  await close();await open('=');await ev(`window.__appSearchDelay=180;document.getElementById('binding-app').click();document.getElementById('binding-back').click();true`);await wait(250);
+  assert.equal(await ev(`document.getElementById('binding-apps-view').hidden`),true);
+  assert.equal(await ev(`document.getElementById('binding-categories').hidden`),false);await ev('window.__appSearchDelay=0;true');await close();
+  console.log('  PASS  搜索绑定带图标、拼音查询、候选输入不误绑、异步新查询清空旧结果、失败重试与迟到响应保护');
   assert.deepEqual(await ev('window.__errs'),[]);
 }
 

@@ -1,6 +1,6 @@
 {
   "name": "suira-desktop",
-  "version": "0.2.6",
+  "version": "0.2.7",
   "description": "随序 SUIRA — Windows 随手工作台。截图、剪贴板、日历与 Markdown，让零散内容自然接成工作流。",
   "main": "main.js",
   "author": "huihui200739",
@@ -65,6 +65,7 @@
     "verify:glass": "node tools/glass-performance-check.js",
     "verify:workspace": "node tools/electron-workspace-check.js",
     "verify:windows": "node tools/window-stability-check.js",
+    "verify:launcher": "node tools/launcher-workflows-check.js",
     "verify:release": "node tools/release-workflows-check.js",
     "verify:installer": "node tools/installer-lifecycle-check.js",
     "prepare:vendor": "node tools/prepare-vendor.js",

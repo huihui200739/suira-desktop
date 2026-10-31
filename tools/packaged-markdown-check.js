@@ -25,6 +25,19 @@ async function until(fn){let last;for(let n=0;n<160;n++){try{const value=await f
   const items=await md.evaluate(`window.suira.workspace.list('markdown')`);assert.equal((await md.evaluate(`window.suira.workspace.saveFile(${JSON.stringify(items[0].id)})`)).ok,true);assert.equal(fs.readFileSync(first,'utf8'),'# Packaged saved');
   const next=launch(second);await until(()=>next.exitCode!==null);await until(()=>md.evaluate(`document.getElementById('md-editor').value==='# Packaged second'`));
   console.log('PASS actual packaged '+version+': default global mode off; Unicode/spaced file argv; explicit original save; second-instance file route');
+  await workbench.evaluate('window.suira.quick.show()');
+  const panel=await until(()=>connect(port,t=>t.url.endsWith('/quickpanel.html')));sockets.push(panel.ws);
+  await until(()=>panel.evaluate('document.visibilityState==="visible"&&document.querySelectorAll(".key").length===38'));await wait(200);
+  assert.equal((await panel.evaluate(`window.suira.quick.setPresentation('fullscreen')`)).ok,true);
+  await until(()=>panel.evaluate('document.getElementById("panel").dataset.presentation==="fullscreen"&&outerWidth>=screen.width&&outerHeight>=screen.height'));
+  await panel.evaluate(`document.getElementById('mode-apps').click();true`);
+  assert.equal((await panel.evaluate(`window.suira.search.query('Edge',{scope:'apps'})`)).every(item=>item.kind==='app'),true);
+  await panel.send('Input.dispatchKeyEvent',{type:'keyDown',key:'Escape',code:'Escape',windowsVirtualKeyCode:27});
+  await until(()=>panel.evaluate('document.getElementById("panel").dataset.presentation==="window"&&outerHeight<=screen.availHeight+1'));
+  await panel.evaluate(`document.getElementById('mode-actions').click();document.querySelector('.key[data-key="Q"]').click();document.getElementById('binding-app').click();true`);
+  await until(()=>panel.evaluate('document.getElementById("binding-app-status").textContent!=="正在查找本机应用…"'));
+  assert.equal(await panel.evaluate('!document.getElementById("binding-apps-view").hidden&&document.getElementById("binding-app-search").getAttribute("placeholder").includes("拼音")'),true);
+  console.log('PASS actual packaged launchpad: full-display geometry, Escape returns window, apps-only search and searchable binding picker');
 })().catch(error=>{console.error(error);if(fs.existsSync(path.join(tmp,'app.log')))console.error(fs.readFileSync(path.join(tmp,'app.log'),'utf8').slice(-1800));process.exitCode=1;}).finally(async()=>{
   sockets.forEach(ws=>ws.close());children.forEach(c=>{if(c.exitCode===null)c.kill();});await wait(600);
   const absolute=path.resolve(tmp);if(path.dirname(absolute)!==path.resolve(os.tmpdir())||!path.basename(absolute).startsWith('suira-workspace-'))throw Error('Unsafe cleanup path');

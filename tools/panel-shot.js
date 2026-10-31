@@ -87,7 +87,8 @@ window.suira = {
       { name:'哔哩哔哩', filePath:'C:\\\\Demo\\\\bili.lnk' },
       { name:'Obsidian', filePath:'C:\\\\Demo\\\\obsidian.lnk' }
     ]),
-    icons: async () => ({})
+    search: async q => {window.__appQueries=(window.__appQueries||[]).concat(q);if(window.__appSearchError)throw Error(window.__appSearchError);if(window.__appSearchDelay)await new Promise(r=>setTimeout(r,window.__appSearchDelay));return (await window.suira.apps.list()).filter(app=>!q||app.name.toLowerCase().includes(q.toLowerCase())||(app.name==='微信'&&['wx','weixin'].includes(q.toLowerCase())));},
+    icons: async paths => Object.fromEntries(paths.map(p=>[p,'data:image/svg+xml;base64,${Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64"><rect width="64" height="64" rx="14" fill="#2388ee"/><path d="M16 32h32M32 16v32" stroke="white" stroke-width="6"/></svg>').toString('base64')}']))
   },
   search:{ query: async (q) => q ? [
     { id:'cmd.capture', kind:'command', title:'区域截图', subtitle:'框选屏幕区域并标注', action:'capture' },

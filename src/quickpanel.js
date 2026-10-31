@@ -25,7 +25,11 @@ const GLYPHS = {
   translate: '<svg viewBox="0 0 24 24"><path d="M3.5 5.5h8"/><path d="M7.5 3.5v2c0 3.6-1.8 6.3-4.5 7.9"/><path d="M5 11.3c1.3 1.9 3.1 3.3 5.4 4"/><path d="m12.5 20.5 4.4-11h.2l4.4 11"/><path d="M14.2 16.5h5.6"/></svg>',
   pin: '<svg viewBox="0 0 24 24"><path d="M9.4 3.5h5.2l-.6 5 3 3c.4.4.1 1-.5 1H7.5c-.6 0-.9-.6-.5-1l3-3z"/><path d="M12 12.5v8"/></svg>',
   clipboard: '<svg viewBox="0 0 24 24"><rect x="5" y="4.8" width="14" height="16.4" rx="2.6"/><path d="M9 4.8V4a1.6 1.6 0 0 1 1.6-1.6h2.8A1.6 1.6 0 0 1 15 4v.8"/><path d="M9 10.5h6"/><path d="M9 14h4.5"/></svg>',
-  'text-clean': '<span class="glyph-text">Aa</span>',
+  'text-clean': '<svg viewBox="0 0 24 24"><path d="M4 6h16M4 11h11M4 16h8m3-2 5 5m0-5-5 5"/></svg>',
+  island: '<svg viewBox="0 0 24 24"><path d="M4 15h16l1 5H3zM12 3v10m-4-4 4 4 4-4"/></svg>',
+  shelf: '<svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="15" rx="3"/><path d="M3 13h5l2 3h4l2-3h5M8 5V3h8v2"/></svg>',
+  library: '<svg viewBox="0 0 24 24"><rect x="3" y="4" width="5" height="16" rx="1"/><rect x="10" y="4" width="5" height="16" rx="1"/><path d="m17 5 4 14M4 8h3m4 0h3"/></svg>',
+  settings: '<svg viewBox="0 0 24 24"><path d="m9 3-1 3-3 1 1 3-2 2 2 2-1 3 3 1 1 3h6l1-3 3-1-1-3 2-2-2-2 1-3-3-1-1-3z"/><circle cx="12" cy="12" r="3"/></svg>',
   desktop: '<svg viewBox="0 0 24 24"><rect x="3.5" y="4.5" width="17" height="12" rx="2.2"/><path d="M9.5 20.5h5"/><path d="M12 16.5v4"/></svg>',
   lock: '<svg viewBox="0 0 24 24"><rect x="5" y="10.5" width="14" height="9.5" rx="2.8"/><path d="M8.5 10.5V7.8a3.5 3.5 0 0 1 7 0v2.7"/><path d="M12 14.2v2"/></svg>',
   note: '<svg viewBox="0 0 24 24"><path d="M5 5.8A1.8 1.8 0 0 1 6.8 4h10.4A1.8 1.8 0 0 1 19 5.8v7.2L13.2 19H6.8A1.8 1.8 0 0 1 5 17.2z"/><path d="M18.8 13.4h-3.9a1.7 1.7 0 0 0-1.7 1.7v3.7"/><path d="M8.6 9h6.8"/></svg>'
@@ -157,6 +161,7 @@ function renderKeys() {
       openBindingEditor(button.dataset.key);
     });
   });
+  loadAppIcons();
 }
 
 function keyMarkup(key) {
@@ -169,7 +174,7 @@ function keyMarkup(key) {
   // 绑定键：图标块 + 功能名 + 键位角标，功能不用靠悬停提示猜；
   // 未实现键也标出名字（淡色），让整个面板可扫读。
   const inner = bound || custom
-    ? `<span class="key-glyph">${glyph}<i class="key-badge">${escapeHtml(key.key)}</i></span><span class="key-name">${escapeHtml(key.label)}</span>`
+    ? `<span class="key-glyph">${key.appPath?`<span class="key-app-icon" data-icon-path="${escapeHtml(key.appPath)}">${appIconMarkup(key.appPath)}</span>`:glyph}<i class="key-badge">${escapeHtml(key.key)}</i></span><span class="key-name">${escapeHtml(key.label)}</span>`
     : key.state === 'unimplemented'
       ? `<span class="key-letter">${escapeHtml(key.key)}</span><span class="key-name">${escapeHtml(key.label)}</span>`
       : `<span class="key-letter">${escapeHtml(key.key)}</span>`;
@@ -243,6 +248,7 @@ function closeBindingEditor(restore = true) {
   $('#binding-editor')._dialogCleanup?.(false);
   $('#binding-editor').hidden = true;
   bindingState.key = '';
+  bindingAppRevision++;clearTimeout(bindingAppTimer);
   if (restore) $$('.key').find(button => button.dataset.key === key)?.focus({ preventScroll: true });
 }
 
@@ -267,13 +273,35 @@ function showBindingView(view) {
   $('#binding-categories').hidden = view !== 'categories';
   $('#binding-tools-view').hidden = view !== 'tools';
   $('#binding-url-row').hidden = view !== 'url';
+  $('#binding-apps-view').hidden = view !== 'apps';
+  $('.binding-card').classList.toggle('is-app-picker',view==='apps');
   $('#binding-back').hidden = view === 'categories';
-  $('#binding-title').textContent = { categories: '绑定', tools: '内置工具', url: '绑定网页' }[view];
+  $('#binding-title').textContent = { categories: '绑定', tools: '内置工具', url: '绑定网页', apps:'绑定应用' }[view];
   positionBindingEditor();
-  const focus = view === 'url' ? $('#binding-url-input') : view === 'tools'
+  const focus = view === 'apps' ? $('#binding-app-search') : view === 'url' ? $('#binding-url-input') : view === 'tools'
     ? $('#binding-action-list button:not(:disabled)') : $('#binding-app');
   focus?.focus({ preventScroll: true });
+  if(view==='apps')refreshBindingApps();else{bindingAppRevision++;clearTimeout(bindingAppTimer);}
 }
+
+let bindingAppRevision=0,bindingAppTimer,bindingApps=[],bindingAppIndex=0;
+async function refreshBindingApps(refresh=false){
+  const revision=++bindingAppRevision,query=$('#binding-app-search').value;
+  $('#binding-app-status').textContent='正在查找本机应用…';
+  try{
+    const apps=await window.suira.apps.search(query,refresh);
+    if(revision!==bindingAppRevision||!bindingEditorOpen()||bindingState.view!=='apps')return;
+    bindingApps=Array.isArray(apps)?apps:[];bindingAppIndex=0;renderBindingApps();
+    $('#binding-app-status').textContent=bindingApps.length?`${bindingApps.length} 个匹配应用`:'没有匹配的应用，可重新扫描或从文件选择';
+  }catch(error){if(revision!==bindingAppRevision)return;bindingApps=[];renderBindingApps();$('#binding-app-status').textContent=error?.message||'读取失败，请重新扫描';}
+  positionBindingEditor();
+}
+function renderBindingApps(){
+  $('#binding-app-list').innerHTML=bindingApps.map((app,index)=>`<button type="button" class="binding-app-option ${index===bindingAppIndex?'is-selected':''}" role="option" aria-selected="${index===bindingAppIndex}" data-app-index="${index}" title="${escapeHtml(app.name)}"><span class="picker-app-icon" data-icon-path="${escapeHtml(app.filePath)}">${appIconMarkup(app.filePath)}</span><span>${escapeHtml(app.name)}</span></button>`).join('');
+  $$('#binding-app-list button').forEach(button=>listen(button,'click',()=>bindIndexedApp(Number(button.dataset.appIndex))));
+  loadAppIcons();
+}
+async function bindIndexedApp(index){const app=bindingApps[index];if(!app)return;await setKeyBinding({type:'app',target:app.filePath,name:app.name});}
 
 function setBindingBusy(busy) {
   bindingState.busy = busy;
@@ -464,7 +492,12 @@ async function loadApps() {
 
 /** 当前页图标按需补齐：先出名称，再补图标，避免整页等待。 */
 const iconJobs=new Map();
+const appIconCache=new Map();
 let iconWorkers=0, iconPumpTimer=0;
+function appIconMarkup(filePath,icon=''){
+  const image=appIconCache.get(filePath)||icon;
+  return image?`<img src="${escapeHtml(image)}" alt="" decoding="async">`:BINDING_GLYPHS.app;
+}
 function pumpIcons() {
   while(iconWorkers<2&&iconJobs.size) {
     const start=state.appPage*APP_PAGE_SIZE,apps=filteredApps();
@@ -475,10 +508,11 @@ function pumpIcons() {
     window.suira.apps.icons(queued.map(([p])=>p)).then(icons=>{
       for(const [p] of queued) {
         if(!icons?.[p])continue;
+        appIconCache.set(p,icons[p]);
         const app=state.apps.find(a=>a.filePath===p);if(app)app.icon=icons[p];
         // 原地补图标，不重建整页或抢走键盘焦点。
-        for(const button of $$('.app-item'))if(button.dataset.path===p){
-          const slot=button.querySelector('.app-icon');const image=new Image();image.src=icons[p];image.alt='';image.decoding='async';slot.replaceChildren(image);
+        for(const slot of $$('[data-icon-path]'))if(slot.dataset.iconPath===p){
+          const image=new Image();image.src=icons[p];image.alt='';image.decoding='async';slot.replaceChildren(image);
         }
       }
     }).catch(()=>{}).finally(()=>{
@@ -487,13 +521,13 @@ function pumpIcons() {
   }
 }
 async function loadAppIcons() {
-  if(state.mode!=='apps')return;
   const apps=filteredApps(),start=state.appPage*APP_PAGE_SIZE;
   // 当前页优先；前后一页在后台预取，用户翻页时可直接使用。
-  const nearby=apps.slice(Math.max(0,start-APP_PAGE_SIZE),start+APP_PAGE_SIZE*2);
+  const nearby=state.mode==='apps'&&!state.query?apps.slice(Math.max(0,start-APP_PAGE_SIZE),start+APP_PAGE_SIZE*2):[];
+  for(const slot of $$('[data-icon-path]'))if(slot.getClientRects().length)nearby.push({filePath:slot.dataset.iconPath});
   const wanted=new Set(nearby.map(a=>a.filePath));
   for(const [p,job] of iconJobs)if(!job.running&&!wanted.has(p))iconJobs.delete(p);
-  for(const app of nearby)if(!app.icon&&!iconJobs.has(app.filePath))iconJobs.set(app.filePath,{running:false});
+  for(const app of nearby)if(!app.icon&&!appIconCache.has(app.filePath)&&!iconJobs.has(app.filePath))iconJobs.set(app.filePath,{running:false});
   clearTimeout(iconPumpTimer);iconPumpTimer=setTimeout(pumpIcons,0);
 }
 
@@ -518,9 +552,9 @@ function renderApps() {
   $('#apps-retry').hidden = state.appsLoading;
 
   grid.innerHTML = pageApps.map((app) => {
-    const icon = app.icon ? `<img src="${escapeHtml(app.icon)}" alt="">` : escapeHtml(String(app.name || '?').slice(0, 1));
+    const icon = appIconMarkup(app.filePath,app.icon);
     return `<button class="app-item" type="button" data-path="${escapeHtml(app.filePath || '')}" title="${escapeHtml(app.name || '')}">
-      <span class="app-icon">${icon}</span>
+      <span class="app-icon" data-icon-path="${escapeHtml(app.filePath)}">${icon}</span>
       <span class="app-name">${escapeHtml(app.name || '')}</span>
     </button>`;
   }).join('');
@@ -549,7 +583,7 @@ async function openApp(filePath) {
 function renderTools() {
   $('#tool-grid').innerHTML = state.tools.map((tool) => `
     <button class="tool-item ${tool.implemented ? '' : 'is-todo'}" type="button" data-id="${escapeHtml(tool.id)}" ${tool.implemented ? '' : 'aria-disabled="true"'}>
-      <span class="tool-mark">${escapeHtml(tool.label.slice(0, 1))}</span>
+      <span class="tool-mark" data-tool="${escapeHtml(tool.id)}">${GLYPHS[tool.id]||BINDING_GLYPHS.app}</span>
       <span class="tool-copy"><b>${escapeHtml(tool.label)}</b><small>${escapeHtml(tool.implemented ? tool.hint : '尚未实现')}</small></span>
     </button>
   `).join('');
@@ -621,7 +655,7 @@ async function refreshCommands() {
   const query = state.query;
   if (!query) return;
   try {
-    const results = await window.suira.search.query(query);
+    const results = await window.suira.search.query(query,{scope:state.mode==='apps'?'apps':'all'});
     if (revision !== commandRevision) return;
     state.commandResults = Array.isArray(results) ? results.slice(0, 12) : [];
   } catch (error) {
@@ -636,20 +670,26 @@ async function refreshCommands() {
 function renderCommands() {
   const list = $('#command-list');
   const results = state.commandResults;
+  $('#command-heading').textContent=state.mode==='apps'?'搜索应用':'搜索结果';
   if (!results.length) {
     list.innerHTML = `<div class="command-empty" role="status">${state.commandLoading ? '正在搜索…' : state.commandError ? `搜索失败：${escapeHtml(state.commandError)}` : '没有匹配的命令、应用或内容'}</div>`;
     return;
   }
   list.innerHTML = results.slice(0, 12).map((entry, index) => {
-    const glyph = entry.kind === 'command' ? '⌘' : entry.kind === 'app' ? '应' : entry.kind === 'task' ? '▤' : '字';
-    return `<button class="command-item ${index === state.commandIndex ? 'is-selected' : ''}" type="button" data-index="${index}" data-kind="${escapeHtml(entry.kind)}" data-id="${escapeHtml(entry.id)}">
-      <span class="command-icon">${glyph}</span>
+    const appPath=entry.kind==='app'?(entry.appPath||String(entry.id).replace(/^app:/,'')):'';
+    const action=String(entry.action||'').replace('navigate:','');
+    const glyph=appPath?appIconMarkup(appPath):GLYPHS[action]||GLYPHS[entry.kind==='task'?'shelf':entry.contentKind==='image'?'edit-image':'note']||BINDING_GLYPHS.file;
+    return `<button class="command-item ${index === state.commandIndex ? 'is-selected' : ''}" type="button" role="option" aria-selected="${index===state.commandIndex}" data-index="${index}" data-kind="${escapeHtml(entry.kind)}" data-id="${escapeHtml(entry.id)}">
+      <span class="command-icon" ${appPath?`data-icon-path="${escapeHtml(appPath)}"`:''}>${glyph}</span>
       <span class="command-copy"><b>${escapeHtml(entry.title)}</b><small>${escapeHtml(entry.subtitle || '')}</small></span>
+      <span class="command-type">${({app:'应用',command:'工具',task:'任务',content:'内容'})[entry.kind]||'内容'}</span><kbd class="command-enter">↵</kbd>
     </button>`;
   }).join('');
   $$('.command-item', list).forEach((button) => {
     listen(button, 'click', () => runCommand(Number(button.dataset.index)));
   });
+  $('.command-item.is-selected',list)?.scrollIntoView({block:'nearest'});
+  loadAppIcons();
 }
 
 async function runCommand(index) {
@@ -848,6 +888,19 @@ async function syncShortcutChip() {
 }
 
 let searchPointerNear = false;
+let presentation='window';
+function syncPresentation(value){
+  presentation=value?.mode==='fullscreen'?'fullscreen':'window';
+  const full=presentation==='fullscreen',button=$('#presentation-toggle');
+  $('#panel').dataset.presentation=presentation;button.setAttribute('aria-pressed',String(full));
+  button.setAttribute('aria-label',full?'切换到窗口启动台':'切换到全屏启动台');
+  button.title=full?'窗口模式 (F11 / Esc)':'全屏启动台 (F11)';button.querySelector('span').textContent=full?'窗口':'全屏';
+}
+async function changePresentation(mode=presentation==='fullscreen'?'window':'fullscreen'){
+  const button=$('#presentation-toggle');if(button.disabled)return;button.disabled=true;
+  try{const result=await window.suira.quick.setPresentation(mode);if(!result?.ok)throw Error(result?.error||'切换显示模式失败');syncPresentation(result);positionBindingEditor();}
+  catch(error){toast(error.message,'error');}finally{button.disabled=false;}
+}
 function setSearchExpanded(expanded) {
   if (!expanded && state.composing) return;
   const field = document.querySelector('.search-field'), input = $('#search');
@@ -905,6 +958,7 @@ function installEvents() {
       event.preventDefault();
       event.stopPropagation();
       if (state.query) clearSearch();
+      else if(presentation==='fullscreen')changePresentation('window');
       else if (state.mode !== 'actions') setMode('actions');
       else window.suira.quick.hide();
       return;
@@ -940,6 +994,7 @@ function installEvents() {
 
   document.addEventListener('keydown', (event) => {
     if (event.defaultPrevented || event.isComposing || state.composing) return;
+    if(event.key==='F11'){event.preventDefault();changePresentation();return;}
     if (dragState.source) {
       if (event.key === 'Escape') { event.preventDefault(); cancelKeyDrag(); }
       return;
@@ -963,6 +1018,7 @@ function installEvents() {
     if (event.key === 'Escape') {
       event.preventDefault();
       if (state.query) clearSearch();
+      else if(presentation==='fullscreen')changePresentation('window');
       else if (state.mode !== 'actions') { clearSearch(); setMode('actions'); }
       else window.suira.quick.hide();
       return;
@@ -1047,7 +1103,25 @@ function installEvents() {
   $('#binding-editor').addEventListener('click', (event) => {
     if (event.target === $('#binding-editor')) closeBindingEditor();
   });
-  $('#binding-app').addEventListener('click', () => pickAndBind('app'));
+  $('#presentation-toggle').addEventListener('click',()=>changePresentation());
+  window.suira.quick.onPresentation?.(syncPresentation);
+  window.suira.quick.presentation?.().then(syncPresentation).catch(()=>{});
+  $('#binding-app').addEventListener('click', () => {$('#binding-app-search').value='';showBindingView('apps');});
+  $('#binding-app-browse').addEventListener('click',()=>pickAndBind('app'));
+  $('#binding-app-refresh').addEventListener('click',()=>refreshBindingApps(true));
+  $('#binding-app-search').addEventListener('input',()=>{
+    bindingAppRevision++;clearTimeout(bindingAppTimer);bindingApps=[];renderBindingApps();
+    bindingAppTimer=setTimeout(()=>refreshBindingApps(),90);
+  });
+  $('#binding-app-search').addEventListener('keydown',event=>{
+    if(event.isComposing||event.keyCode===229)return;
+    if(event.key==='ArrowDown'||event.key==='ArrowUp'){
+      event.preventDefault();if(!bindingApps.length)return;
+      bindingAppIndex=Math.max(0,Math.min(bindingApps.length-1,bindingAppIndex+(event.key==='ArrowDown'?1:-1)));
+      $$('#binding-app-list button').forEach((button,index)=>{button.classList.toggle('is-selected',index===bindingAppIndex);button.setAttribute('aria-selected',String(index===bindingAppIndex));});
+      $('#binding-app-list button.is-selected')?.scrollIntoView({block:'nearest'});
+    }else if(event.key==='Enter'){event.preventDefault();bindIndexedApp(bindingAppIndex);}
+  });
   $('#binding-folder').addEventListener('click', () => pickAndBind('folder'));
   $('#binding-file').addEventListener('click', () => pickAndBind('file'));
   $$('#binding-categories [data-binding-kind]').forEach(button => {
@@ -1165,6 +1239,7 @@ function installEvents() {
     setMode(mode);
   });
   window.suira.quick.onShown(async () => {
+    window.suira.quick.presentation?.().then(syncPresentation).catch(()=>{});
     cancelKeyDrag();
     closeBindingEditor(false);
     clearTimeout(state.toastTimer);
