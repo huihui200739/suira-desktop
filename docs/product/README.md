@@ -7,6 +7,7 @@
 | 随手面板 | [浅色](panel.png) · [深色](panel-dark.png) |
 | 应用启动台 | [窗口](apps.png) · [全屏展示](apps-fullscreen.png) |
 | 应用搜索与绑定 | [搜索结果](app-search.png) · [键位应用选择](app-binding.png) |
+| 全屏搜索 | [高对比文字与深色结果面板](app-search-fullscreen.png) |
 | 工具箱 | [图标方块](toolbox.png) |
 | 日历 | [月视图与待办](calendar.png) |
 | Markdown | [编辑与实时预览](markdown.png) |

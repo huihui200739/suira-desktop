@@ -86,18 +86,31 @@ require(${JSON.stringify(path.join(root,'main.js'))});`);
   assert.equal(await panel.evaluate('document.querySelectorAll(".app-item").length'),1);
   await panel.evaluate(`state.apps=window.__originalApps;state.appPage=0;renderApps();true`);
   const background=await panel.evaluate('window.suira.quick.background()');assert.ok(background.source==='gradient'||background.dataUrl.startsWith('data:image/jpeg;base64,'));
+  for(const scheme of ['light','dark']){
+    await panel.send('Emulation.setEmulatedMedia',{features:[{name:'prefers-color-scheme',value:scheme}]});
+    await panel.evaluate(`(()=>{const input=document.getElementById('search');input.value='wx';input.dispatchEvent(new Event('input',{bubbles:true}));return true;})()`);
+    await until(()=>panel.evaluate('document.querySelectorAll(".command-item").length===2'));
+    const colors=await panel.evaluate(`({title:getComputedStyle(document.querySelector('.command-copy b')).color,input:getComputedStyle(document.getElementById('search')).color,background:getComputedStyle(document.querySelector('.command-section')).backgroundColor})`);
+    assert.equal(colors.title,'rgb(246, 251, 255)');assert.equal(colors.input,'rgb(246, 251, 255)');assert.ok(colors.background.startsWith('rgba(20, 34, 49, 0.98'));
+    await panel.evaluate(`document.getElementById('mode-apps').click();true`);
+  }
+  await panel.evaluate('window.suira.quick.toggle()');
+  await until(async()=>!(await info()).full&&(await info()).visible);
+  await until(()=>panel.evaluate('document.getElementById("panel").dataset.mode==="actions"'));
+  await panel.evaluate(`window.suira.quick.setPresentation('fullscreen')`);await until(async()=>(await info()).full);
+  console.log('PASS light/dark search foreground and near-opaque results; shortcut toggle returns fullscreen to the small action panel');
   console.log('PASS five-row / 35-app pages, interactive page dots and bounded static-wallpaper background');
   await main.evaluate('window.suira.quick.hide()');await until(async()=>!(await info()).full&&!(await info()).visible);
-  await main.evaluate('window.suira.quick.show()');await until(async()=>(await info()).full&&(await info()).visible);
-  assert.equal((await main.evaluate('window.suira.settings.get()')).panelPresentation,'fullscreen');
-  console.log('PASS hide restores desktop fullscreen state; reopening preserves chosen presentation');
+  await main.evaluate('window.suira.quick.show()');await until(async()=>!(await info()).full&&(await info()).visible);
+  assert.equal((await main.evaluate('window.suira.quick.presentation()')).mode,'window');
+  console.log('PASS hide restores desktop fullscreen state; reopening returns to the small panel');
   main.ws.close();panel.ws.close();const stopped=new Promise(resolve=>child.once('exit',resolve));child.kill();await stopped;await wait(200);
   const nextLog=fs.openSync(path.join(tmp,'app.log'),'a');child=spawn(electron,[entry,'--remote-debugging-port='+port],{cwd:root,env,windowsHide:true,stdio:['ignore',nextLog,nextLog]});fs.closeSync(nextLog);
   const resumed=await until(()=>connect(port,t=>t.url.endsWith('/index.html')));sockets.push(resumed.ws);await until(()=>resumed.evaluate('Boolean(window.suira?.quick)'));
-  assert.equal((await resumed.evaluate('window.suira.quick.presentation()')).mode,'fullscreen');
+  assert.equal((await resumed.evaluate('window.suira.quick.presentation()')).mode,'window');
   await resumed.evaluate('window.suira.quick.show()');
-  await until(async()=>(await resumed.evaluate('window.suira.app.info()')).windows.some(w=>w.url.endsWith('/quickpanel.html')&&w.full&&w.visible));
-  console.log('PASS restart reads persisted presentation and reopens the full-display launchpad');
+  await until(async()=>(await resumed.evaluate('window.suira.app.info()')).windows.some(w=>w.url.endsWith('/quickpanel.html')&&!w.full&&w.visible));
+  console.log('PASS restart reopens the small panel even after previous fullscreen use');
 })().catch(error=>{console.error(error);if(fs.existsSync(path.join(tmp,'app.log')))console.error(fs.readFileSync(path.join(tmp,'app.log'),'utf8').slice(-1700));process.exitCode=1;}).finally(async()=>{
   sockets.forEach(ws=>ws.close());if(child&&child.exitCode===null)child.kill();await wait(500);
   const absolute=path.resolve(tmp);if(path.dirname(absolute)!==path.resolve(os.tmpdir())||!path.basename(absolute).startsWith('suira-workspace-'))throw Error('Unsafe cleanup path');fs.rmSync(absolute,{recursive:true,force:true,maxRetries:4,retryDelay:300});

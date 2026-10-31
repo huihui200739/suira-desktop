@@ -48,7 +48,7 @@
 
 ## 开始使用
 
-当前候选版本 **0.2.8**，面向 Windows 11。正式发布的安装包见 [Releases](https://github.com/huihui200739/suira-desktop/releases)；本轮启动台与应用绑定见 [改进记录](docs/LAUNCHER-2026-10-31.md)，共同功能对照见 [对照报告](docs/SHARED-FEATURES-2026-10-31.md)。也可以从源码运行：
+当前候选版本 **0.2.9**，面向 Windows 11。正式发布的安装包见 [Releases](https://github.com/huihui200739/suira-desktop/releases)；本轮启动台与应用绑定见 [改进记录](docs/LAUNCHER-2026-10-31.md)，共同功能对照见 [对照报告](docs/SHARED-FEATURES-2026-10-31.md)。也可以从源码运行：
 
 ```powershell
 npm ci

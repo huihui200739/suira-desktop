@@ -880,9 +880,9 @@ async function migrateLegacyHistory() {
   } catch {}
 }
 
-function positionQuickPanel(win) {
+function positionQuickPanel(win,mode='window') {
   const display = screen.getDisplayNearestPoint(screen.getCursorScreenPoint());
-  const fullscreen=store?.getSettings().panelPresentation==='fullscreen';
+  const fullscreen=mode==='fullscreen';
   win.__changingPresentation=true;
   // Electron's thickFrame:false Windows path only changes bounds; its
   // isFullScreen() remains false. Track this borderless launchpad explicitly.
@@ -1108,6 +1108,7 @@ function hideQuickPanel() {
 }
 
 function toggleQuickPanel() {
+  if(quickWindow?.__launchpadFullscreen)return showQuickPanel();
   if (quickWindow && quickWindow.isVisible() && quickWindow.isFocused()) hideQuickPanel();
   else showQuickPanel();
 }
@@ -3128,12 +3129,11 @@ function registerIpc() {
   ipcMain.handle('workspace:close-ready', event => {const win=senderWindow(event);if([...workspaceWindows.values()].includes(win)){win.__allowClose=true;win.close();}return {ok:true};});
 
   ipcMain.handle('quick:hide', () => hideQuickPanel());
-  ipcMain.handle('quick:presentation',()=>({mode:store.getSettings().panelPresentation==='fullscreen'?'fullscreen':'window'}));
+  ipcMain.handle('quick:presentation',()=>({mode:quickWindow?.__launchpadFullscreen?'fullscreen':'window'}));
   ipcMain.handle('quick:background',event=>event.sender===quickWindow?.webContents?readLaunchpadBackground(nativeImage):{dataUrl:'',source:'gradient'});
   ipcMain.handle('quick:presentation:set',async(event,mode)=>{
     if(event.sender!==quickWindow?.webContents||!['window','fullscreen'].includes(mode))return {ok:false,error:'无效的显示模式'};
-    await store.updateSettings({panelPresentation:mode});
-    positionQuickPanel(quickWindow);
+    positionQuickPanel(quickWindow,mode);
     return {ok:true,mode};
   });
   ipcMain.handle('quick:show', () => { showQuickPanel(); return { ok: true }; });

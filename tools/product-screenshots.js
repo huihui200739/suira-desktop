@@ -154,6 +154,9 @@ class RegionCheck {
     await until(()=>panel.evaluate('document.getElementById("panel").dataset.presentation==="fullscreen"'));
     await until(()=>panel.evaluate('[...document.querySelectorAll(".app-icon img")].filter(image=>image.naturalWidth>0).length>=Math.min(32,document.querySelectorAll(".app-item").length)'));
     await shot(panel,'apps-fullscreen');
+    await panel.evaluate(`(()=>{const input=document.getElementById('search');input.focus();input.value='wei';input.dispatchEvent(new Event('input',{bubbles:true}));return true;})()`);
+    await until(()=>panel.evaluate('document.querySelectorAll(".command-item").length>0'));
+    await shot(panel,'app-search-fullscreen');
     await panel.evaluate(`window.suira.quick.setPresentation('window')`);
     await main.evaluate('window.suira.quick.hide()');
     await main.evaluate('window.suira.clipboardBar.show()');

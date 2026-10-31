@@ -648,3 +648,17 @@ kbd { font-family: var(--font-ui); font-size: var(--text-1); font-weight: 600; }
 .apps-dots button{width:6px;height:6px;padding:0;border-radius:50%;background:#ffffff55;border:0}.apps-dots button[aria-current="page"]{background:#fff}.apps-dots button:focus-visible{outline:2px solid white;outline-offset:4px}
 @media(max-width:760px){.tool-grid{grid-template-columns:repeat(5,minmax(0,88px));gap:10px}}
 @media(max-width:540px){.tool-grid{grid-template-columns:repeat(4,minmax(0,80px))}.panel[data-presentation="fullscreen"] .toolbox-btn span{display:none}}
+
+/* Resolve foreground color on the panel, rather than inheriting the body's
+   light-theme button color over the immersive dark surface. */
+.panel[data-presentation="fullscreen"]{color:#f6fbff}
+.panel[data-presentation="fullscreen"] input,.panel[data-presentation="fullscreen"] button{color:inherit}
+.panel[data-presentation="fullscreen"] .command-section{background:#142231fa;border-color:#ffffff32;backdrop-filter:blur(20px);box-shadow:0 16px 48px #0005;width:min(700px,100%);max-height:min(680px,100%)}
+.panel[data-presentation="fullscreen"] .command-copy b{color:#f6fbff;font-weight:600}
+.panel[data-presentation="fullscreen"] .command-copy small,.panel[data-presentation="fullscreen"] .command-type{color:#c8d8e6}
+.panel[data-presentation="fullscreen"] .command-item{min-height:52px;color:#f6fbff}
+.panel[data-presentation="fullscreen"] .command-item.is-selected{background:#285679;border-color:#6db8ef80}
+.panel[data-presentation="fullscreen"] .command-item:hover{background:#24445e}
+.panel[data-presentation="fullscreen"] .search-field,.panel[data-presentation="fullscreen"] .search-field.is-expanded{background:#142231f2;border-color:#b8d9ee70}
+.panel[data-presentation="fullscreen"] .search-field input{color:#f6fbff;caret-color:#fff;font-size:13px}
+.panel[data-presentation="fullscreen"] .search-field input::placeholder{color:#c6d7e3}
