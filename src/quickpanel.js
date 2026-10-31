@@ -45,7 +45,7 @@ const BINDING_GLYPHS = {
 
 const PLANNED_GLYPH = '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="7.5" stroke-dasharray="3 3"/><path d="M12 8.5v4M12 15.2v.6"/></svg>';
 
-const APP_PAGE_SIZE = 28;
+const appPageSize = () => document.getElementById('panel').dataset.presentation==='fullscreen'?35:28;
 
 const state = {
   mode: 'actions',
@@ -500,8 +500,8 @@ function appIconMarkup(filePath,icon=''){
 }
 function pumpIcons() {
   while(iconWorkers<2&&iconJobs.size) {
-    const start=state.appPage*APP_PAGE_SIZE,apps=filteredApps();
-    const visible=new Set(apps.slice(start,start+APP_PAGE_SIZE).map(a=>a.filePath));
+    const start=state.appPage*appPageSize(),apps=filteredApps();
+    const visible=new Set(apps.slice(start,start+appPageSize()).map(a=>a.filePath));
     const queued=Array.from(iconJobs).filter(([,job])=>!job.running).sort((a,b)=>Number(visible.has(b[0]))-Number(visible.has(a[0]))).slice(0,6);
     if(!queued.length)return;
     queued.forEach(([,job])=>job.running=true);iconWorkers++;
@@ -521,9 +521,9 @@ function pumpIcons() {
   }
 }
 async function loadAppIcons() {
-  const apps=filteredApps(),start=state.appPage*APP_PAGE_SIZE;
+  const apps=filteredApps(),start=state.appPage*appPageSize();
   // 当前页优先；前后一页在后台预取，用户翻页时可直接使用。
-  const nearby=state.mode==='apps'&&!state.query?apps.slice(Math.max(0,start-APP_PAGE_SIZE),start+APP_PAGE_SIZE*2):[];
+  const nearby=state.mode==='apps'&&!state.query?apps.slice(Math.max(0,start-appPageSize()),start+appPageSize()*2):[];
   for(const slot of $$('[data-icon-path]'))if(slot.getClientRects().length)nearby.push({filePath:slot.dataset.iconPath});
   const wanted=new Set(nearby.map(a=>a.filePath));
   for(const [p,job] of iconJobs)if(!job.running&&!wanted.has(p))iconJobs.delete(p);
@@ -540,10 +540,10 @@ function filteredApps() {
 function renderApps() {
   const grid = $('#apps-grid');
   const apps = filteredApps();
-  const pageCount = Math.max(1, Math.ceil(apps.length / APP_PAGE_SIZE));
+  const pageCount = Math.max(1, Math.ceil(apps.length / appPageSize()));
   if (state.appPage > pageCount - 1) state.appPage = 0;
-  const start = state.appPage * APP_PAGE_SIZE;
-  const pageApps = apps.slice(start, start + APP_PAGE_SIZE);
+  const start = state.appPage * appPageSize();
+  const pageApps = apps.slice(start, start + appPageSize());
 
   const visible = state.mode === 'apps' && !state.query;
   $('#empty-state').hidden = !visible || Boolean(apps.length);
@@ -551,10 +551,10 @@ function renderApps() {
   $('#empty-description').textContent = state.appsLoading ? '首次启动会扫描开始菜单，请稍候。' : state.appsError || '开始菜单中暂时没有应用，可以重新扫描。';
   $('#apps-retry').hidden = state.appsLoading;
 
-  grid.innerHTML = pageApps.map((app) => {
+  grid.innerHTML = pageApps.map((app,index) => {
     const icon = appIconMarkup(app.filePath,app.icon);
     return `<button class="app-item" type="button" data-path="${escapeHtml(app.filePath || '')}" title="${escapeHtml(app.name || '')}">
-      <span class="app-icon" data-icon-path="${escapeHtml(app.filePath)}">${icon}</span>
+      <span class="app-launch-number">${index<7?index+1:''}</span><span class="app-icon" data-icon-path="${escapeHtml(app.filePath)}">${icon}</span>
       <span class="app-name">${escapeHtml(app.name || '')}</span>
     </button>`;
   }).join('');
@@ -562,6 +562,8 @@ function renderApps() {
   $$('.app-item', grid).forEach((button) => {
     button.addEventListener('click', () => openApp(button.dataset.path));
   });
+  $('#apps-dots').innerHTML=Array.from({length:pageCount},(_,index)=>`<button type="button" aria-label="第 ${index+1} 页" ${index===state.appPage?'aria-current="page"':''} data-page="${index}"></button>`).join('');
+  $$('#apps-dots button').forEach(button=>button.onclick=()=>{state.appPage=Number(button.dataset.page);renderApps();loadAppIcons();});
   $('#apps-pager').textContent = `第 ${state.appPage + 1} / ${pageCount} 页`;
   $('#apps-prev').disabled = state.appPage <= 0;
   $('#apps-next').disabled = state.appPage >= pageCount - 1;
@@ -890,10 +892,14 @@ async function syncShortcutChip() {
 let searchPointerNear = false;
 let presentation='window';
 function syncPresentation(value){
+  const previous=presentation;
   presentation=value?.mode==='fullscreen'?'fullscreen':'window';
   const full=presentation==='fullscreen',button=$('#presentation-toggle');
   $('#panel').dataset.presentation=presentation;button.setAttribute('aria-pressed',String(full));
   button.setAttribute('aria-label',full?'切换到窗口启动台':'切换到全屏启动台');
+  if(full&&previous!==presentation){state.appPage=0;clearSearch();setMode('apps');loadImmersiveBackground();}
+  if(!full&&previous!==presentation){$('#launchpad-backdrop').style.backgroundImage='';renderApps();}
+  if(full){setSearchExpanded(true);$('#search').placeholder='直接按首字母搜索';renderApps();loadAppIcons();}
   button.title=full?'窗口模式 (F11 / Esc)':'全屏启动台 (F11)';button.querySelector('span').textContent=full?'窗口':'全屏';
 }
 async function changePresentation(mode=presentation==='fullscreen'?'window':'fullscreen'){
@@ -901,7 +907,11 @@ async function changePresentation(mode=presentation==='fullscreen'?'window':'ful
   try{const result=await window.suira.quick.setPresentation(mode);if(!result?.ok)throw Error(result?.error||'切换显示模式失败');syncPresentation(result);positionBindingEditor();}
   catch(error){toast(error.message,'error');}finally{button.disabled=false;}
 }
+async function loadImmersiveBackground(){
+  try{const result=await window.suira.quick.background?.();if(presentation!=='fullscreen')return;const data=result?.dataUrl||'';if(data.startsWith('data:image/'))$('#launchpad-backdrop').style.backgroundImage=`url("${data}")`;$('#panel').dataset.backdrop=result?.source||'gradient';}catch{}
+}
 function setSearchExpanded(expanded) {
+  if(presentation==='fullscreen')expanded=true;
   if (!expanded && state.composing) return;
   const field = document.querySelector('.search-field'), input = $('#search');
   field.classList.toggle('is-expanded', expanded);
@@ -954,6 +964,7 @@ function installEvents() {
   input.addEventListener('compositionend', () => { state.composing = false; });
   input.addEventListener('keydown', (event) => {
     if (event.isComposing || state.composing) return;
+    if(presentation==='fullscreen'&&state.mode==='apps'&&!state.query&&!event.ctrlKey&&!event.altKey&&!event.metaKey&&/^[1-7]$/.test(event.key)){event.preventDefault();const app=filteredApps()[state.appPage*appPageSize()+Number(event.key)-1];if(app)openApp(app.filePath);return;}
     if (event.key === 'Escape') {
       event.preventDefault();
       event.stopPropagation();
@@ -963,6 +974,7 @@ function installEvents() {
       else window.suira.quick.hide();
       return;
     }
+    if(presentation==='fullscreen'&&state.mode==='apps'&&!state.query&&['ArrowLeft','ArrowRight'].includes(event.key)){event.preventDefault();const button=event.key==='ArrowLeft'?$('#apps-prev'):$('#apps-next');if(!button.disabled)button.click();return;}
     if (event.key === ' ' && !state.query && !event.ctrlKey && !event.altKey && !event.metaKey) {
       // 搜索条为空时空格是面板切换键，不写入内容。
       // 带修饰键的空格要放过去：那是「按住型唤起」的键位，不能被面板吃掉。
@@ -1103,6 +1115,8 @@ function installEvents() {
   $('#binding-editor').addEventListener('click', (event) => {
     if (event.target === $('#binding-editor')) closeBindingEditor();
   });
+  $('#immersive-back').addEventListener('click',()=>{clearSearch();setMode(state.mode==='apps'?'actions':'apps');});
+  $('#apps-grid').addEventListener('wheel',event=>{if(presentation!=='fullscreen'||state.query||event.ctrlKey||event.metaKey)return;event.preventDefault();const now=Date.now();if(now-(state.lastPageWheel||0)<300)return;state.lastPageWheel=now;const next=state.appPage+Math.sign(event.deltaY||event.deltaX);state.appPage=Math.max(0,Math.min(Math.ceil(filteredApps().length/appPageSize())-1,next));renderApps();loadAppIcons();},{passive:false});
   $('#presentation-toggle').addEventListener('click',()=>changePresentation());
   window.suira.quick.onPresentation?.(syncPresentation);
   window.suira.quick.presentation?.().then(syncPresentation).catch(()=>{});
@@ -1245,7 +1259,8 @@ function installEvents() {
     clearTimeout(state.toastTimer);
     $('#toast').className = 'toast';
     clearSearch();
-    setMode('actions');
+    setMode(presentation==='fullscreen'?'apps':'actions');
+    if(presentation==='fullscreen')loadImmersiveBackground();
     searchPointerNear = false; setSearchExpanded(false);
     closeOcr();
     closeTranslate();

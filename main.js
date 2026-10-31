@@ -36,6 +36,7 @@ const fs = require('node:fs');
 const fsp = require('node:fs/promises');
 const os = require('node:os');
 const crypto = require('node:crypto');
+const {readLaunchpadBackground}=require('./lib/launchpad-background');
 const { pathToFileURL, fileURLToPath } = require('node:url');
 const { SuiraStore, makeId } = require('./lib/store');
 const { OcrService } = require('./lib/ocr');
@@ -3128,6 +3129,7 @@ function registerIpc() {
 
   ipcMain.handle('quick:hide', () => hideQuickPanel());
   ipcMain.handle('quick:presentation',()=>({mode:store.getSettings().panelPresentation==='fullscreen'?'fullscreen':'window'}));
+  ipcMain.handle('quick:background',event=>event.sender===quickWindow?.webContents?readLaunchpadBackground(nativeImage):{dataUrl:'',source:'gradient'});
   ipcMain.handle('quick:presentation:set',async(event,mode)=>{
     if(event.sender!==quickWindow?.webContents||!['window','fullscreen'].includes(mode))return {ok:false,error:'无效的显示模式'};
     await store.updateSettings({panelPresentation:mode});

@@ -35,6 +35,7 @@ contextBridge.exposeInMainWorld('suira', {
     isMaximized: () => ipcRenderer.invoke('window:is-maximized')
   },
   quick: {
+    background: () => ipcRenderer.invoke('quick:background'),
     presentation: () => ipcRenderer.invoke('quick:presentation'),
     setPresentation: mode => ipcRenderer.invoke('quick:presentation:set', mode),
     onPresentation: callback => subscribe('quick:presentation-changed', callback),

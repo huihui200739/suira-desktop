@@ -35,6 +35,7 @@ async function run({ screenshots = false } = {}) {
 const {app,BrowserWindow,ipcMain,clipboard,globalShortcut}=require('electron');
 app.setPath('userData',${JSON.stringify(path.join(tmp, 'profile'))});
 app.getVersion=()=>${JSON.stringify(require('../package.json').version)};
+require(${JSON.stringify(path.join(root,'lib','launchpad-background.js'))}).readLaunchpadBackground=async()=>({dataUrl:'',source:'demo-gradient'});
 clipboard.read=async()=>[];clipboard.readText=async()=>'';
 globalShortcut.register=()=>true;globalShortcut.unregister=()=>{};globalShortcut.unregisterAll=()=>{};
 const handle=ipcMain.handle.bind(ipcMain);
@@ -151,6 +152,7 @@ class RegionCheck {
     await shot(panel,'app-binding');
     await panel.evaluate(`document.getElementById('binding-close').click();document.getElementById('mode-apps').click();window.suira.quick.setPresentation('fullscreen')`);
     await until(()=>panel.evaluate('document.getElementById("panel").dataset.presentation==="fullscreen"'));
+    await until(()=>panel.evaluate('[...document.querySelectorAll(".app-icon img")].filter(image=>image.naturalWidth>0).length>=Math.min(32,document.querySelectorAll(".app-item").length)'));
     await shot(panel,'apps-fullscreen');
     await panel.evaluate(`window.suira.quick.setPresentation('window')`);
     await main.evaluate('window.suira.quick.hide()');
