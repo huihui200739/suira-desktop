@@ -50,6 +50,7 @@
     error: '',
     offline: false,
     committing: false,
+    previewItem: null,
     noticeTimer: 0,
     visible: true,
     hasOnShown: false,
@@ -310,6 +311,8 @@
       pin.setAttribute('aria-pressed', String(Boolean(item?.pinned)));
     }
     if (submit) submit.disabled = !item || state.loading || state.committing || !state.returnApi;
+    if($('#bar-preview-toggle'))$('#bar-preview-toggle').disabled=!item||state.loading;
+    if($('#bar-copy'))$('#bar-copy').disabled=!item||state.loading||state.committing||!state.returnApi;
     const edit = $('#bar-edit');
     if(edit) {edit.hidden=item?.kind!=='image'||!window.suira?.imageEditor;edit.disabled=state.loading||state.committing||state.editing;}
   }
@@ -594,10 +597,39 @@
 
   /* ---------- 用户操作 ---------- */
 
+  let previewRevision=0;
+  function closePreview(focus=true){previewRevision++;state.previewItem=null;$('#bar-preview').hidden=true;if(focus)$('#bar-preview-toggle').focus();}
+  async function previewSelected(){
+    const selected=state.items[state.selected];if(!selected)return;
+    const revision=++previewRevision;
+    try{
+      const raw=typeof state.contentApi?.get==='function'?await state.contentApi.get(selected.id):selected;
+      if(revision!==previewRevision)return;
+      const item=normalizeItem(raw,0);if(!item)throw Error('这条记录已不存在');
+      state.previewItem=item;$('#bar-preview-title').textContent=selectionTitle(item);
+      const body=$('#bar-preview-content');body.replaceChildren();
+      if(item.kind==='image'&&item.thumbnail){const image=document.createElement('img');image.src=item.thumbnail;image.alt=item.title||'图片预览';body.append(image);}
+      else{const text=document.createElement('pre');text.textContent=item.text||item.filePath||item.title;body.append(text);}
+      $('#bar-preview').hidden=false;body.focus();
+    }catch(error){showNotice(errorText(error,'预览失败'),true);}
+  }
+  async function copySelected(){
+    const item=state.previewItem||state.items[state.selected];if(!item||state.committing||!state.returnApi)return;
+    state.committing=true;syncSelection();
+    try{const result=await state.returnApi.commit({itemId:item.id,intent:'copy-only'});if(!result?.ok||!result.copied)throw Error(result?.error||'复制失败');showNotice('已复制，可继续浏览或按 Ctrl+V 粘贴',false);}
+    catch(error){showNotice(errorText(error,'复制失败'),true);}finally{state.committing=false;syncSelection();}
+  }
+
   function onKeyDown(event) {
     if (event.defaultPrevented) return;
     if (event.isComposing || event.keyCode === 229) return;
     const key = event.key;
+    if(state.previewItem){
+      if(key==='Escape'){event.preventDefault();closePreview();}
+      else if((event.ctrlKey||event.metaKey)&&key.toLowerCase()==='a'){event.preventDefault();const range=document.createRange();range.selectNodeContents($('#bar-preview-content'));const selection=window.getSelection();selection.removeAllRanges();selection.addRange(range);}
+      else if((event.ctrlKey||event.metaKey)&&key.toLowerCase()==='c'&&!window.getSelection()?.toString()){event.preventDefault();copySelected();}
+      return;
+    }
     // 按钮的 Enter / Space 交给原生点击，不能被全局 Enter 抢走去粘贴。
     if (event.target.closest?.('button') && (key === 'Enter' || key === ' ')) return;
     const search = $('#bar-search');
@@ -614,6 +646,8 @@
       }
       if (key !== 'Enter') return;
     }
+    if((event.ctrlKey||event.metaKey)&&key.toLowerCase()==='c'&&!window.getSelection()?.toString()){event.preventDefault();copySelected();return;}
+    if(key===' '){event.preventDefault();previewSelected();return;}
     if (key === 'ArrowLeft' || key === 'ArrowRight' || key === 'Home' || key === 'End') {
       event.preventDefault();
       const total = state.items.length;
@@ -684,6 +718,7 @@
     if (barApi && typeof barApi.onShown === 'function') {
       try {
         const off = barApi.onShown(() => {
+          closePreview(false);
           state.hasOnShown = true;
           state.visible = true;
           clearNotice();
@@ -729,6 +764,10 @@
     $('#bar-submit')?.addEventListener('click', submitSelected);
     $('#bar-pin')?.addEventListener('click', toggleSelectedPin);
     $('#bar-edit')?.addEventListener('click', editSelectedImage);
+    $('#bar-preview-toggle')?.addEventListener('click',previewSelected);
+    $('#bar-preview-close')?.addEventListener('click',()=>closePreview());
+    $('#bar-copy')?.addEventListener('click',copySelected);
+    track?.addEventListener('contextmenu',event=>{const card=closestFrom(event.target,'.bar-card');if(!card)return;event.preventDefault();selectIndex(Number(card.dataset.index));previewSelected();});
     $('#bar-refresh-retry')?.addEventListener('click', () => load({ keepItemId: currentSelectedId() }));
     $('#bar-library')?.addEventListener('click', async () => {
       try {

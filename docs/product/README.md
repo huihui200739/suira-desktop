@@ -8,6 +8,7 @@
 | 日历 | [月视图与待办](calendar.png) |
 | Markdown | [编辑与实时预览](markdown.png) |
 | 工作台 | [任务匣](workbench.png) |
+| 剪贴板 | [柔光渐变与内容操作](clipboard.png) |
 
 截图是渲染内容，不包含 Windows 桌面合成层。原生四角另外通过 `npm run test:surfaces` 验证：读取实际 HWND 的窗口区域，检查四角被排除、中心仍可见，并覆盖窗口缩放及最大化恢复。
 

@@ -32,11 +32,13 @@
   </tr>
 </table>
 
+<img src="docs/product/clipboard.png" alt="当前剪贴板：柔光渐变、类型卡片，以及预览、复制和粘贴入口" width="100%">
+
 > 展示图由当前版本的真实 Electron 界面生成，使用独立演示数据。[更多当前界面与截图说明](docs/product/README.md)
 
 ## 开始使用
 
-当前候选版本 **0.2.5**，面向 Windows 11。正式发布的安装包见 [Releases](https://github.com/huihui200739/suira-desktop/releases)；近期修正见 [窗口与任务栏检查](docs/WINDOW-LAYERS-2026-10-31.md)，完整功能验收见 [检查报告](docs/RELEASE-CHECK-2026-10-31.md)。也可以从源码运行：
+当前候选版本 **0.2.6**，面向 Windows 11。正式发布的安装包见 [Releases](https://github.com/huihui200739/suira-desktop/releases)；本轮修正与共同功能对照见 [改进记录](docs/SHARED-FEATURES-2026-10-31.md)，历史完整功能验收见 [检查报告](docs/RELEASE-CHECK-2026-10-31.md)。也可以从源码运行：
 
 ```powershell
 npm ci
@@ -66,6 +68,7 @@ npm start
 npm test                 # 逻辑、界面与交互回归
 npm run test:surfaces    # Windows 原生窗口圆角与生命周期检查
 npm run verify:workspace # 真实 Electron 日历与 Markdown 工作流
+npm run verify:windows   # 连续移动、关闭重开与窗口尺寸稳定性
 npm run verify:release   # 系统热键冲突、本地文件打开与编辑保护
 npm run verify:installer # 独立测试产品的安装、覆盖升级与卸载
 npm run screenshots     # 从独立演示实例更新产品截图

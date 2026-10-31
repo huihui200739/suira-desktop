@@ -652,6 +652,27 @@ async function runChecks(send) {
     return {shown,opened,error,textHidden,direct};
   })()`);
   check('历史图片编辑入口传递选中图片，文字隐藏入口，原图失败显示原因',Object.values(editHistory).every(Boolean),JSON.stringify(editHistory));
+  const inspectClipboard=await evaluate(send,`(async()=>{
+    const wait=()=>new Promise(r=>setTimeout(r,80)),result={};window.__fireShown();await wait();
+    document.querySelector('[data-filter="text"]').click();await wait();
+    const before=window.__calls.commit.length,hidden=window.__calls.hide;
+    document.querySelector('[data-id="text-2"]').dispatchEvent(new MouseEvent('contextmenu',{bubbles:true,cancelable:true}));await wait();
+    result.fullText=document.getElementById('bar-preview-content').textContent===${JSON.stringify(LONG_TEXT)};
+    result.previewDoesNotPaste=window.__calls.commit.length===before;
+    document.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true,cancelable:true}));result.enterDoesNotPaste=window.__calls.commit.length===before;
+    document.dispatchEvent(new KeyboardEvent('keydown',{key:'a',ctrlKey:true,bubbles:true,cancelable:true}));result.selectOnlyPreview=getSelection().toString()===${JSON.stringify(LONG_TEXT)};getSelection().removeAllRanges();
+    document.getElementById('bar-copy').click();await wait();result.copyOnly=window.__calls.commit.at(-1).intent==='copy-only'&&window.__calls.hide===hidden;
+    document.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true,cancelable:true}));result.escapeReturns=document.getElementById('bar-preview').hidden&&window.__calls.hide===hidden;
+    document.getElementById('bar-preview-toggle').blur();document.dispatchEvent(new KeyboardEvent('keydown',{key:' ',bubbles:true,cancelable:true}));await wait();result.spacePreview=!document.getElementById('bar-preview').hidden;
+    document.getElementById('bar-preview-close').click();
+    const original=window.suira.content.get,payload='<img src=x onerror="window.__injected=true">';
+    window.suira.content.get=async()=>({id:'test-preview',kind:'text',text:payload});document.getElementById('bar-preview-toggle').click();await wait();
+    result.safeText=document.getElementById('bar-preview-content').textContent===payload&&!document.querySelector('#bar-preview-content img')&&!window.__injected;
+    document.getElementById('bar-preview-close').click();window.suira.content.get=()=>new Promise(r=>setTimeout(()=>r({id:'stale',kind:'text',text:'late'}),150));
+    document.getElementById('bar-preview-toggle').click();window.__fireShown();await new Promise(r=>setTimeout(r,240));result.noLatePopup=document.getElementById('bar-preview').hidden;
+    window.suira.content.get=original;window.__commitResult={ok:true,copied:true,pasted:true};return result;
+  })()`);
+  for(const [name,ok] of Object.entries(inspectClipboard))check('内容预览与独立复制：'+name,ok,JSON.stringify(inspectClipboard));
   const wheelSpeed = await evaluate(send, `(()=>{
     const track=document.getElementById('bar-track');
     track.scrollTo({left:0,behavior:'instant'});

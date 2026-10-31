@@ -127,6 +127,20 @@ if ($IncludeObsoletePackages -or $InstalledOnly) {
   foreach ($name in @('Suira-0.2.0-portable.exe','Suira-0.2.1-Setup.exe')) {
     if ($name -ne (Split-Path -Leaf $latest)) { Add-Target (Join-Path $desktop $name) $desktop 'obsolete-desktop-packages' }
   }
+  # Retire the confirmed 0.2.5 size-drift candidate only when it is the exact
+  # installer produced by this repository, after the new installer was verified.
+  $obsolete = Join-Path $desktop 'Suira-0.2.5-Setup.exe'
+  $obsoleteManifest = Join-Path $repoRoot 'docs\release-0.2.5.json'
+  if ($version -ne '0.2.5' -and (Test-Path -LiteralPath $obsolete) -and (Test-Path -LiteralPath $obsoleteManifest)) {
+    $old = Get-Content -LiteralPath $obsoleteManifest -Raw -Encoding UTF8 | ConvertFrom-Json
+    $oldStream = [IO.File]::OpenRead($obsolete)
+    $oldSha256 = [Security.Cryptography.SHA256]::Create()
+    try { $oldHash = ([BitConverter]::ToString($oldSha256.ComputeHash($oldStream))).Replace('-', '') }
+    finally { $oldStream.Dispose(); $oldSha256.Dispose() }
+    if ((Get-Item -LiteralPath $obsolete).Length -eq $old.bytes -and $oldHash -eq $old.sha256) {
+      Add-Target $obsolete $desktop 'obsolete-size-drift-installer'
+    } else { $skipped.Add("Changed installer, preserved: $obsolete") }
+  }
   Add-Target (Join-Path $repoRoot 'dist') $repoRoot 'redundant-build-output'
 }
 if ($Preview) {

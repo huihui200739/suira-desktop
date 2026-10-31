@@ -5,7 +5,7 @@ const payload=path.join(root,'dist','win-unpacked','resources','app.asar'),insta
 const files=asar.listPackage(payload).map(file=>file.replace(/\\/g,'/').replace(/^\//,''));
 assert.ok(!files.some(file=>/(^|\/)(?:__fx_[^/]*|suira-data\.(?:json|key)|\.workbuddy|\.git|shortcut-fallback[^/]*)(?:\/|$)/.test(file)),'Development files or obsolete fallback leaked into payload');
 let checked=0;
-for(const file of files.filter(file=>/^(main\.js|preload\.js|pin-preload\.js|lib\/|src\/)/.test(file))){
+for(const file of files.filter(file=>/^(main\.js|preload\.js|pin-preload\.js|lib\/|src\/|assets\/foreground-(host\.cs|helper\.ps1))/.test(file))){
   const native=path.normalize(file),stat=asar.statFile(payload,native);if(stat.files)continue;
   assert.deepEqual(asar.extractFile(payload,native),fs.readFileSync(path.join(root,file)),'Payload differs: '+file);checked++;
 }

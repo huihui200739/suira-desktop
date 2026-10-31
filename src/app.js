@@ -638,6 +638,7 @@ async function refreshSettings() {
 }
 
 function bindSettings() {
+  $('#reset-window-size')?.addEventListener('click',async()=>{try{const result=await window.suira.window.reset();if(!result.ok)throw Error('无法调整当前窗口');}catch(error){showGlobalToast(error.message,'error');}});
   $('#setting-record').addEventListener('change', (event) => window.suira.settings.update({ recordClipboard: event.target.checked }));
   $('#setting-sensitive').addEventListener('change', (event) => window.suira.settings.update({ pauseSensitive: event.target.checked }));
   $('#setting-paste').addEventListener('change', (event) => window.suira.settings.update({ pasteAfterCopy: event.target.checked }));

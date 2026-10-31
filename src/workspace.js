@@ -15,6 +15,7 @@
   const safe=fn=>(...args)=>Promise.resolve().then(()=>fn(...args)).catch(error=>notify(error.message));
   function calendar() {
     $('calendar-month').textContent=`${month.getFullYear()} 年 ${month.getMonth()+1} 月`;
+    if($('calendar-jump'))$('calendar-jump').value=dateKey(month).slice(0,7);
     const search=$('calendar-search').value.trim().toLowerCase(), category=$('calendar-category').value;
     const visible=events.filter(e=>(!search||(e.title+' '+e.text+' '+(e.meta.location||'')).toLowerCase().includes(search))&&(!category||(e.meta.category||'work')===category)&&(!$('calendar-hide-done').checked||!e.meta.done));
     const monthPrefix=dateKey(month).slice(0,7),today=dateKey(new Date()),weekEnd=new Date();weekEnd.setDate(weekEnd.getDate()+7);
@@ -29,7 +30,7 @@
     $('calendar-grid').innerHTML=Array.from({length:calendarView==='week'?7:42},(_,i)=>{
       const day=calendarView==='week'?new Date(first.getFullYear(),first.getMonth(),first.getDate()+i):new Date(month.getFullYear(),month.getMonth(),i-offset+1), key=dateKey(day), items=byDate.get(key)||[], info=window.CalendarData.day(day);
       const badge=info.term||info.festival;
-      return `<button class="calendar-day ${day.getMonth()!==month.getMonth()?'outside':''} ${key===dateKey(new Date())?'today':''} ${key===selected?'selected':''}" data-date="${key}" aria-pressed="${key===selected}"><span class="day-number">${day.getDate()}${info.work!==null?`<i class="work-badge ${info.work?'work':'rest'}">${info.work?'班':'休'}</i>`:''}</span><label class="lunar-day">${badge?`<span class="date-badge ${info.term?'term':'holiday'}">${esc(badge)}</span>`:info.lunar}</label>${items.slice(0,calendarView==='week'?8:2).map(e=>`<small class="category-${e.meta.category||'work'} ${e.meta.done?'done':''}">${e.meta.priority==='high'?'! ':''}${esc(e.title)}</small>`).join('')}${items.length>2?`<em>还有 ${items.length-2} 项</em>`:''}</button>`;
+      return `<button class="calendar-day ${i%7>=5?'weekend':''} ${day.getMonth()!==month.getMonth()?'outside':''} ${key===dateKey(new Date())?'today':''} ${key===selected?'selected':''}" data-date="${key}" aria-pressed="${key===selected}"><span class="day-number">${day.getDate()}${info.work!==null?`<i class="work-badge ${info.work?'work':'rest'}">${info.work?'班':'休'}</i>`:''}</span><label class="lunar-day">${badge?`<span class="date-badge ${info.term?'term':'holiday'}">${esc(badge)}</span>`:info.lunar}</label>${items.slice(0,calendarView==='week'?8:2).map(e=>`<small class="category-${e.meta.category||'work'} ${e.meta.done?'done':''}">${e.meta.priority==='high'?'! ':''}${esc(e.title)}</small>`).join('')}${items.length>2?`<em>还有 ${items.length-2} 项</em>`:''}</button>`;
     }).join('');
     $('calendar-grid').querySelectorAll('[data-date]').forEach(button=>button.onclick=()=>{selected=button.dataset.date;$('event-form').hidden=true;calendar();});
     if($('calendar-week-numbers')){const start=calendarView==='week'?first:new Date(month.getFullYear(),month.getMonth(),1-offset);$('calendar-week-numbers').innerHTML=Array.from({length:calendarView==='week'?1:6},(_,i)=>`<span>${window.CalendarData.week(new Date(start.getFullYear(),start.getMonth(),start.getDate()+i*7))}</span>`).join('');}
@@ -54,6 +55,18 @@
   }
   async function loadCalendar(){await window.CalendarData.ready();events=await api.list('calendar');upcomingDays=window.CalendarData.upcoming(new Date());calendar();}
   function editEvent(item){editing=item?.id||'';$('event-form').hidden=false;$('event-title').value=item?.title||'';$('event-notes').value=item?.text||'';$('event-date').value=item?.meta.date||selected;$('event-time').value=item?.meta.time||'';$('event-category').value=item?.meta.category||'work';$('event-priority').value=item?.meta.priority||'normal';$('event-location').value=item?.meta.location||'';$('event-title').focus();}
+  const monthPicker=document.createElement('label');monthPicker.className='calendar-month-picker';monthPicker.title='选择年份和月份';
+  $('calendar-month').before(monthPicker);monthPicker.append($('calendar-month'));
+  const monthInput=document.createElement('input');monthInput.type='month';monthInput.id='calendar-jump';monthInput.min='1900-01';monthInput.max='2200-12';monthInput.setAttribute('aria-label','跳转到指定月份');monthPicker.append(monthInput);
+  monthInput.onchange=()=>{if(!/^\d{4}-(0[1-9]|1[0-2])$/.test(monthInput.value))return;const [year,value]=monthInput.value.split('-').map(Number);if(year<1900||year>2200)return;month=new Date(year,value-1,1);selected=dateKey(month);calendar();};
+  let wheelLast=0,wheelTotal=0,wheelLocked=false;
+  $('calendar-grid').addEventListener('wheel',event=>{
+    if(calendarView!=='month'||event.ctrlKey||event.metaKey)return;
+    const delta=Math.abs(event.deltaX)>Math.abs(event.deltaY)?event.deltaX:event.deltaY;if(!delta)return;
+    event.preventDefault();const now=performance.now();if(now-wheelLast>200){wheelLocked=false;wheelTotal=0;}wheelLast=now;
+    if(wheelLocked)return;wheelTotal+=delta*(event.deltaMode===1?32:event.deltaMode===2?300:1);
+    if(Math.abs(wheelTotal)<40)return;wheelLocked=true;month=new Date(month.getFullYear(),month.getMonth()+Math.sign(wheelTotal),1);calendar();
+  },{passive:false});
   $('calendar-prev').onclick=()=>{if(calendarView==='week'){const day=new Date(selected+'T12:00:00');day.setDate(day.getDate()-7);selected=dateKey(day);month=day;calendar();return;}month=new Date(month.getFullYear(),month.getMonth()-1,1);calendar();};
   $('calendar-next').onclick=()=>{if(calendarView==='week'){const day=new Date(selected+'T12:00:00');day.setDate(day.getDate()+7);selected=dateKey(day);month=day;calendar();return;}month=new Date(month.getFullYear(),month.getMonth()+1,1);calendar();};
   $('calendar-today').onclick=()=>{month=new Date();selected=dateKey(month);calendar();};
@@ -82,7 +95,7 @@
     // Callers can await rejection, while the background save also has an observer.
     chain.catch(()=>{});return chain;
   }
-  async function selectDoc(id){clearTimeout(previewTimer);await flush();current=id;revision=savedRevision=0;const item=docs.find(d=>d.id===id);$('md-body').hidden=!item;$('md-empty').hidden=Boolean(item);if(item){$('md-title').value=item.title;$('md-editor').value=item.text;$('md-status').textContent=item.meta?.externalPath?'本地文件；Ctrl+S 保存到原位置':'已保存';preview();}document.documentElement.classList.toggle('md-home',!item);if(document.documentElement.dataset.tool==='markdown')document.querySelector('.brand b').textContent=item?item.title+'.md':'未打开 Markdown';for(const id of ['md-save','md-export','md-export-format','md-delete'])$(id).disabled=!item;docList();}
+  async function selectDoc(id){clearTimeout(previewTimer);await flush();closeDocumentFind(false);current=id;revision=savedRevision=0;const item=docs.find(d=>d.id===id);$('md-body').hidden=!item;$('md-empty').hidden=Boolean(item);if(item){$('md-title').value=item.title;$('md-editor').value=item.text;$('md-status').textContent=item.meta?.externalPath?'本地文件；Ctrl+S 保存到原位置':'已保存';preview();}document.documentElement.classList.toggle('md-home',!item);if(document.documentElement.dataset.tool==='markdown')document.querySelector('.brand b').textContent=item?item.title+'.md':'未打开 Markdown';for(const id of ['md-save','md-export','md-export-format','md-delete'])$(id).disabled=!item;docList();}
   async function loadDocs(){docs=await api.list('markdown');const opened=await api.openedFile?.();await selectDoc(opened|| (docs.some(d=>d.id===current)?current:docs[0]?.id||''));}
   function dirty(){revision++;$('md-status').textContent='未保存';clearTimeout(previewTimer);previewTimer=setTimeout(preview,120);clearTimeout(timer);timer=setTimeout(()=>flush().catch(error=>notify(error.message)),400);}
   $('md-editor').oninput=dirty;$('md-title').oninput=dirty;$('md-search').oninput=docList;
@@ -92,6 +105,41 @@
   $('md-delete').onclick=safe(async()=>{if(!confirm('删除这篇文档？'))return;await flush();await checked(api.remove('markdown',current));current='';revision=savedRevision=0;await loadDocs();});
   function setDocumentView(view){$('md-split').dataset.view=view;document.querySelectorAll('[data-md-view]').forEach(b=>{b.classList.toggle('is-active',b.dataset.mdView===view);b.setAttribute('aria-pressed',String(b.dataset.mdView===view));});}
   document.querySelectorAll('[data-md-view]').forEach(b=>b.onclick=()=>setDocumentView(b.dataset.mdView));
+  const findBar=document.createElement('div');findBar.id='md-find';findBar.hidden=true;
+  findBar.innerHTML='<input id="md-find-query" type="search" maxlength="200" placeholder="查找正文" aria-label="查找当前 Markdown 正文"><span id="md-find-count" role="status" aria-live="polite">0 / 0</span><button id="md-find-prev" title="上一个 · Shift+Enter" aria-label="上一个匹配">↑</button><button id="md-find-next" title="下一个 · Enter" aria-label="下一个匹配">↓</button><button id="md-find-close" title="关闭查找 · Esc" aria-label="关闭文内查找">×</button>';
+  $('md-outline').before(findBar);
+  const findToggle=document.createElement('button');findToggle.id='md-find-toggle';findToggle.className='quiet-btn';findToggle.textContent='查找';findToggle.title='查找正文 · Ctrl+F';document.querySelector('.markdown-toolbar .view-switch').before(findToggle);
+  let findMatches=[],findIndex=0,findTimer,lastFindQuery='',lastFindText='';
+  function closeDocumentFind(focus=true){clearTimeout(findTimer);findBar.hidden=true;findMatches=[];findIndex=0;if(focus)$('md-editor').focus();}
+  function revealFindMatch(){
+    const match=findMatches[findIndex];if(!match)return;
+    if($('md-split').dataset.view==='preview')setDocumentView('edit');
+    const editor=$('md-editor');editor.setSelectionRange(match.start,match.end);
+    const style=getComputedStyle(editor),mirror=document.createElement('div'),marker=document.createElement('span');
+    Object.assign(mirror.style,{position:'fixed',left:'-10000px',top:'0',visibility:'hidden',whiteSpace:'pre-wrap',overflowWrap:'break-word',width:editor.clientWidth+'px',boxSizing:'border-box',font:style.font,padding:style.padding,tabSize:style.tabSize,letterSpacing:style.letterSpacing});
+    mirror.textContent=editor.value.slice(0,match.start);marker.textContent=editor.value.slice(match.start,match.end)||' ';mirror.append(marker);document.body.append(mirror);editor.scrollTop=Math.max(0,marker.offsetTop-editor.clientHeight/3);mirror.remove();
+  }
+  function refreshDocumentFind(reveal=true){
+    clearTimeout(findTimer);if(findBar.hidden)return;findMatches=[];findIndex=0;
+    const query=$('md-find-query').value,slash=String.fromCharCode(92);
+    lastFindQuery=query;lastFindText=$('md-editor').value;
+    if(query){const pattern=[...query].map(char=>(slash+'^$.*+?()[]{}|').includes(char)?slash+char:char).join('');
+      for(const match of $('md-editor').value.matchAll(new RegExp(pattern,'giu'))){findMatches.push({start:match.index,end:match.index+match[0].length});if(findMatches.length===10000)break;}}
+    $('md-find-count').textContent=(findMatches.length?1:0)+' / '+findMatches.length+(findMatches.length===10000?'+':'');
+    $('md-find-prev').disabled=$('md-find-next').disabled=!findMatches.length;if(reveal)revealFindMatch();
+  }
+  function nextFindMatch(step){if(lastFindQuery!==$('md-find-query').value||lastFindText!==$('md-editor').value){refreshDocumentFind();return;}if(!findMatches.length)return;findIndex=(findIndex+step+findMatches.length)%findMatches.length;$('md-find-count').textContent=(findIndex+1)+' / '+findMatches.length;revealFindMatch();}
+  function openDocumentFind(){if(!current)return;findBar.hidden=false;refreshDocumentFind();$('md-find-query').focus();$('md-find-query').select();}
+  findToggle.onclick=openDocumentFind;$('md-find-close').onclick=()=>closeDocumentFind();$('md-find-prev').onclick=()=>nextFindMatch(-1);$('md-find-next').onclick=()=>nextFindMatch(1);
+  $('md-find-query').oninput=()=>{clearTimeout(findTimer);findTimer=setTimeout(refreshDocumentFind,100);};
+  const updateFindAfterEditing=event=>{if(!findBar.hidden){clearTimeout(findTimer);if(!event.isComposing)findTimer=setTimeout(()=>refreshDocumentFind(false),150);}};
+  $('md-editor').addEventListener('input',updateFindAfterEditing);$('md-editor').addEventListener('compositionend',updateFindAfterEditing);
+  document.addEventListener('keydown',event=>{
+    if(event.isComposing||!document.querySelector('#page-markdown.is-active'))return;
+    if((event.ctrlKey||event.metaKey)&&event.key.toLowerCase()==='f'&&current){event.preventDefault();openDocumentFind();}
+    else if(!findBar.hidden&&event.key==='Escape'){event.preventDefault();closeDocumentFind();}
+    else if(event.target===$('md-find-query')&&event.key==='Enter'){event.preventDefault();clearTimeout(findTimer);nextFindMatch(event.shiftKey?-1:1);}
+  });
   const savedLabel=item=>item?.meta?.externalPath?'草稿已保存到随序；Ctrl+S 写回原文件':'已保存';
   async function saveCurrentFile(){await flush();const item=docs.find(d=>d.id===current);if(item?.meta?.externalPath){const result=await checked(api.saveFile(current));docs[docs.findIndex(d=>d.id===current)]=result.item;$('md-status').textContent='已写回原文件';notify('已保存到 '+result.item.meta.externalPath);}else notify('已保存在随序');}
   $('md-save').onclick=safe(saveCurrentFile);

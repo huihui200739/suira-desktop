@@ -35,6 +35,14 @@ async function until(fn){let error;for(let n=0;n<140;n++){try{const value=await 
   assert.equal(await main.evaluate('document.querySelectorAll(".calendar-agenda-row").length'),0);
   await main.evaluate(`document.getElementById('calendar-search').value='';document.getElementById('calendar-search').dispatchEvent(new Event('input'));document.querySelector('[data-calendar-view="month"]').click();true`);
   const calendarClient=main;
+  await main.evaluate(`document.getElementById('calendar-jump').value='2027-01';document.getElementById('calendar-jump').dispatchEvent(new Event('change'));true`);
+  assert.equal(await main.evaluate(`document.getElementById('calendar-month').textContent`),'2027 年 1 月');
+  assert.equal(await main.evaluate(`document.querySelectorAll('.calendar-day.weekend').length`),12);
+  await main.evaluate(`for(let i=0;i<8;i++)document.getElementById('calendar-grid').dispatchEvent(new WheelEvent('wheel',{deltaY:100,bubbles:true,cancelable:true}));true`);
+  assert.equal(await main.evaluate(`document.getElementById('calendar-month').textContent`),'2027 年 2 月','One wheel gesture advances only one month');
+  await main.evaluate(`document.getElementById('calendar-grid').dispatchEvent(new WheelEvent('wheel',{deltaY:100,ctrlKey:true,bubbles:true,cancelable:true}));true`);
+  assert.equal(await main.evaluate(`document.getElementById('calendar-month').textContent`),'2027 年 2 月');
+  await main.evaluate(`document.getElementById('calendar-today').click();true`);
   assert.equal(await main.evaluate(`Array.from(document.querySelectorAll('.lunar-day:not(:has(.date-badge))')).every(el=>/^(初|十|廿|二|三)/.test(el.textContent))`),true);
   await main.evaluate(`document.querySelector('[data-agenda="countdown"]').click();document.querySelector('[data-countdown="custom"]').click();true`);
   assert.equal(await main.evaluate(`document.querySelectorAll('.countdown-row').length`),0,'Completed events excluded from countdown');
@@ -65,6 +73,18 @@ async function until(fn){let error;for(let n=0;n<140;n++){try{const value=await 
     assert.equal(await main.evaluate('document.getElementById("md-split").dataset.view'),view);
   }
   assert.equal(await main.evaluate('getComputedStyle(document.querySelector(".sidebar")).display'),'none');
+  const beforeFind=await main.evaluate(`document.getElementById('md-editor').value`);
+  await main.evaluate(`document.dispatchEvent(new KeyboardEvent('keydown',{key:'f',ctrlKey:true,bubbles:true,cancelable:true}));document.getElementById('md-find-query').value='| --- | --- |';document.getElementById('md-find-query').dispatchEvent(new Event('input'));true`);
+  await until(()=>main.evaluate(`document.getElementById('md-find-count').textContent==='1 / 1'`));
+  assert.equal(await main.evaluate(`document.getElementById('md-editor').value.slice(document.getElementById('md-editor').selectionStart,document.getElementById('md-editor').selectionEnd)`),'| --- | --- |');
+  await main.evaluate(`document.getElementById('md-find-query').value='KEEP GOING';document.getElementById('md-find-query').dispatchEvent(new Event('input'));document.getElementById('md-find-query').dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true,cancelable:true}));true`);
+  assert.equal(await main.evaluate(`document.getElementById('md-find-count').textContent`),'1 / 1');
+  assert.equal(await main.evaluate(`document.getElementById('md-editor').value.slice(document.getElementById('md-editor').selectionStart,document.getElementById('md-editor').selectionEnd)`),'keep going');
+  assert.equal(await main.evaluate(`document.getElementById('md-editor').value`),beforeFind,'Find must not edit the source');
+  await main.evaluate(`const editor=document.getElementById('md-editor');editor.value+=String.fromCharCode(10)+'keep going';editor.focus();editor.setSelectionRange(editor.value.length,editor.value.length);editor.dispatchEvent(new InputEvent('input',{bubbles:true}));true`);await wait(240);
+  assert.equal(await main.evaluate(`document.getElementById('md-editor').selectionStart===document.getElementById('md-editor').value.length`),true,'Updating find counts while editing must not move the caret');
+  await main.evaluate(`document.getElementById('md-editor').value=${JSON.stringify(beforeFind)};document.getElementById('md-editor').dispatchEvent(new Event('input'));window.WorkspaceUI.flush()`);
+  await main.evaluate(`document.getElementById('md-find-close').click();true`);
   await shot('40-markdown-window.png');
   await main.evaluate(`document.getElementById('md-editor').value=${JSON.stringify(markdown)};document.getElementById('md-editor').dispatchEvent(new Event('input'));window.WorkspaceUI.flush()`);
   await main.send('Page.enable');

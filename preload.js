@@ -26,6 +26,7 @@ function pathForFile(file) {
 
 contextBridge.exposeInMainWorld('suira', {
   window: {
+    reset: () => ipcRenderer.invoke('window:reset'),
     pin: () => ipcRenderer.invoke('window:pin'),
     minimize: () => ipcRenderer.invoke('window:minimize'),
     maximize: () => ipcRenderer.invoke('window:maximize'),

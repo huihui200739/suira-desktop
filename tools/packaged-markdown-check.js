@@ -8,6 +8,7 @@ async function until(fn){let last;for(let n=0;n<160;n++){try{const value=await f
 (async()=>{
   try{execFileSync('robocopy.exe',[path.join(root,'dist','win-unpacked'),appDir,'/E','/R:1','/W:1','/NFL','/NDL','/NJH','/NJS','/NP'],{stdio:'ignore',windowsHide:true});}catch(e){if(e.status===null||e.status>=8)throw e;}
   const store=new SuiraStore(path.join(profile,'suira-data.json'));await store.updateSettings({recordClipboard:false,shortcutQuick:'',shortcutCapture:'',shortcutLongCapture:'',shortcutPanelCycle:'',shortcutPinnedToggle:'',shortcutClipboardBar:'',shortcutMomentary:''});await store.setPanelBindings(Object.fromEntries(KEY_ROWS.flat().map(key=>[key,{type:'none'}])));
+  store.setWindowState({x:20,y:900,width:3000,height:1800,maximized:false});await store.save();
   const env={...process.env,APPDATA:path.join(tmp,'roaming'),LOCALAPPDATA:path.join(tmp,'local')};delete env.ELECTRON_RUN_AS_NODE;fs.mkdirSync(env.APPDATA);fs.mkdirSync(env.LOCALAPPDATA);
   const server=net.createServer();await new Promise(r=>server.listen(0,'127.0.0.1',r));const port=server.address().port;await new Promise(r=>server.close(r));
   const first=path.join(tmp,'中文 packaged.md'),second=path.join(tmp,'第二份 packaged.markdown');fs.writeFileSync(first,'# Packaged first');fs.writeFileSync(second,'# Packaged second');
@@ -15,6 +16,11 @@ async function until(fn){let last;for(let n=0;n<160;n++){try{const value=await f
   launch(first,true);const md=await until(()=>connect(port,t=>t.url.includes('tool=markdown')));sockets.push(md.ws);
   await until(()=>md.evaluate(`document.getElementById('md-editor').value==='# Packaged first'`));assert.equal((await md.evaluate('window.suira.shortcuts.get()')).globalEnabled,false);
   assert.equal((await md.evaluate('window.suira.app.info()')).version,version);
+  const workbench=await until(()=>connect(port,t=>t.url.endsWith('/index.html')));sockets.push(workbench.ws);
+  await until(()=>workbench.evaluate('screenY+outerHeight<=screen.availTop+screen.availHeight+2'));
+  const stableSize=await workbench.evaluate('({width:outerWidth,height:outerHeight})');
+  for(let n=0;n<12;n++){await wait(120);assert.deepEqual(await workbench.evaluate('({width:outerWidth,height:outerHeight})'),stableSize,'Packaged window must not keep growing');}
+  console.log('PASS packaged oversize/bottom-edge recovery settles without size growth');
   await md.evaluate(`document.getElementById('md-editor').value='# Packaged saved';document.getElementById('md-editor').dispatchEvent(new Event('input'));window.WorkspaceUI.flush()`);
   const items=await md.evaluate(`window.suira.workspace.list('markdown')`);assert.equal((await md.evaluate(`window.suira.workspace.saveFile(${JSON.stringify(items[0].id)})`)).ok,true);assert.equal(fs.readFileSync(first,'utf8'),'# Packaged saved');
   const next=launch(second);await until(()=>next.exitCode!==null);await until(()=>md.evaluate(`document.getElementById('md-editor').value==='# Packaged second'`));

@@ -115,7 +115,19 @@ class RegionCheck {
     };
     await check('/index.html');
     await checkPlacement(main,'/index.html');
-    await main.evaluate(`window.suira.tasks.create('整理灵感，开始下一步')`);
+    const demoTask=await main.evaluate(`window.suira.tasks.create('整理灵感，开始下一步')`);
+    const demoTexts=[
+      {title:'今天，专注三件事',text:'收集灵感，整理成文档，再为下一步留一个明确的入口。'},
+      {title:'产品体验评审',text:'周五 14:30，带上本周收集的截图与反馈，讨论下一版体验。'},
+      {title:'项目资料',text:'https://example.com/project'},
+      {title:'界面细节',text:'让层次清楚一点，让常用操作顺手一点。'},
+      {title:'待办清单',text:'✓ 检查窗口稳定性\n□ 整理文档与资料\n□ 准备下周计划'},
+      {title:'写给自己的提醒',text:'重要内容先接住，不必现在就整理完。'}
+    ];
+    for(const [index,payload] of demoTexts.entries()){
+      const added=await main.evaluate(`window.suira.content.addText(${JSON.stringify(payload)})`);
+      if(index<2)await main.evaluate(`window.suira.tasks.addItem(${JSON.stringify({taskId:demoTask.task.id,itemId:added.item.id})})`);
+    }
     await main.evaluate(`window.suira.quick.showMain('shelf')`);
     await shot(main, 'workbench');
     await main.evaluate(`window.suira.quick.show()`);
@@ -124,7 +136,8 @@ class RegionCheck {
     await check('/quickpanel.html'); await shot(panel, 'panel'); await shot(panel, 'panel-dark', 'dark');
     await main.evaluate('window.suira.quick.hide()');
     await main.evaluate('window.suira.clipboardBar.show()');
-    await page(t => t.url.endsWith('/clipboardbar.html')); await check('/clipboardbar.html');
+    const clipboard=await page(t => t.url.endsWith('/clipboardbar.html')); await check('/clipboardbar.html');
+    await until(()=>clipboard.evaluate('document.querySelectorAll(".bar-card").length>=6'));await shot(clipboard,'clipboard');
     await main.evaluate('window.suira.clipboardBar.hide()');
     const date = new Date().toLocaleDateString('en-CA');
     for (const event of [{ title: '产品体验评审', time: '10:00', location: '设计工作室', category: 'work' }, { title: '阅读与灵感整理', time: '16:30', category: 'study' }]) {

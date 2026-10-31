@@ -925,7 +925,7 @@ function prepareDesktopWindow(win) {
   win.__desktopWindow=true;
   const minimum=win.getMinimumSize();let nativeMoving=false,adjusting=false,timer;
   const state=()=>{if(!win.isDestroyed())win.webContents.send('window:state',{focused:win.isFocused(),maximized:win.isMaximized()});};
-  const fit=()=>{
+  const fit=async()=>{
     if(win.isDestroyed()||adjusting||nativeMoving||win.isMinimized()||win.isFullScreen())return;
     clipFloatingSurface(win);
     const bounds=win.getBounds(),area=screen.getDisplayMatching(bounds).workArea;
@@ -936,19 +936,38 @@ function prepareDesktopWindow(win) {
     try {
       const nextMinimum=[Math.min(minimum[0],area.width),Math.min(minimum[1],area.height)],currentMinimum=win.getMinimumSize();
       if(nextMinimum.some((value,index)=>value!==currentMinimum[index]))win.setMinimumSize(...nextMinimum);
-      if(!sameBounds(bounds,next))win.setBounds(next);
+      if(win.__restorePhysicalSize||bounds.width-next.width>1||bounds.height-next.height>1||Math.abs(next.x-bounds.x)>1||Math.abs(next.y-bounds.y)>1){
+        // Electron 45 setBounds/setPosition both drift at fractional DPI. A
+        // position-only Win32 move keeps the existing physical size untouched.
+        if(process.platform==='win32'){
+          if(!foregroundProbe.nativeHostReady&&!foregroundProbe.isReady()){schedule();return;}
+          if(!foregroundProbe.isReady()&&!await foregroundProbe.start())return;
+          if(win.isDestroyed()||nativeMoving)return;
+          const latest=win.getBounds(),target=fitWorkArea(latest,screen.getDisplayMatching(latest).workArea,2);
+          const physical=screen.dipToScreenRect(win,target);let resize=latest.width-target.width>1||latest.height-target.height>1;
+          const savedSize=win.__restorePhysicalSize;
+          if(savedSize){
+            const display=screen.getDisplayMatching(latest),scale=display.scaleFactor||1,limit=screen.dipToScreenRect(win,display.workArea);
+            physical.width=Math.max(1,Math.min(Math.round(savedSize.width*scale/savedSize.scale),limit.width-Math.ceil(4*scale)));
+            physical.height=Math.max(1,Math.min(Math.round(savedSize.height*scale/savedSize.scale),limit.height-Math.ceil(4*scale)));
+            resize=true;
+          }
+          await foregroundProbe.placeOwnWindow(win.getNativeWindowHandle().readBigUInt64LE().toString(),physical,resize);
+          if(savedSize)win.__restorePhysicalSize=null;
+        }else win.setBounds(next);
+      }
     } finally {adjusting=false;}
   };
-  const schedule=()=>{clearTimeout(timer);timer=setTimeout(fit,60);};
+  const schedule=()=>{clearTimeout(timer);timer=setTimeout(()=>fit().catch(error=>console.warn('窗口位置调整失败:',error.message)),60);};
   win.on('will-move',()=>{nativeMoving=true;clearTimeout(timer);});
-  win.on('moved',()=>{nativeMoving=false;fit();});
+  win.on('moved',()=>{nativeMoving=false;schedule();});
   for(const event of ['move','resize','restore','unmaximize'])win.on(event,schedule);
   win.on('move',()=>clipFloatingSurface(win));
-  win.on('show',()=>{fit();state();});win.on('focus',state);win.on('blur',state);
+  win.on('show',()=>{schedule();state();});win.on('focus',state);win.on('blur',state);
   win.on('maximize',state);win.on('unmaximize',state);win.webContents.on('did-finish-load',state);
   screen.on('display-metrics-changed',schedule);screen.on('display-removed',schedule);
   win.once('closed',()=>{clearTimeout(timer);screen.removeListener('display-metrics-changed',schedule);screen.removeListener('display-removed',schedule);});
-  fit();
+  schedule();
 }
 
 function createQuickWindow() {
@@ -1796,6 +1815,7 @@ function createMainWindow() {
     }
   });
   prepareFloatingSurface(mainWindow);
+  if(saved?.physicalWidth&&saved?.physicalHeight)mainWindow.__restorePhysicalSize={width:saved.physicalWidth,height:saved.physicalHeight,scale:saved.scaleFactor};
   prepareDesktopWindow(mainWindow);
   mainWindow.loadFile(path.join(__dirname, 'src', 'index.html'));
   // ready-to-show 是首选：等首帧画完再显示，避免白屏闪一下。
@@ -1857,12 +1877,26 @@ function createMainWindow() {
 }
 
 /** 把主窗口当前位置/尺寸/最大化状态写进 store。 */
-function rememberMainWindowState() {
+async function rememberMainWindowState() {
   if (!store || !mainWindow || mainWindow.isDestroyed()) return;
   try {
-    const maximized = mainWindow.isMaximized();
-    const bounds = maximized ? mainWindow.getNormalBounds() : mainWindow.getBounds();
-    store.setWindowState({ ...bounds, maximized });
+    const win=mainWindow,maximized=win.isMaximized();if(win.__restorePhysicalSize)return;
+    const bounds=maximized?win.getNormalBounds():win.getBounds();
+    let size=win.__stableNormalSize;
+    let physical=win.__stableNormalPhysical;
+    if(foregroundProbe.isReady()){
+      const own=await foregroundProbe.query(win.getNativeWindowHandle().readBigUInt64LE().toString());
+      if(own?.pid===process.pid&&own.bounds){
+        const scale=screen.getDisplayMatching(bounds).scaleFactor||1;
+        const nativeSize=maximized&&own.normalSize?.width>0?own.normalSize:own.bounds;
+        physical={physicalWidth:nativeSize.width,physicalHeight:nativeSize.height,scaleFactor:scale};
+        size=[Math.floor(nativeSize.width/scale+1e-6),Math.floor(nativeSize.height/scale+1e-6)];
+        win.__stableNormalSize=size;
+        win.__stableNormalPhysical=physical;
+      }
+    }
+    if(win!==mainWindow)return;
+    store.setWindowState({ ...bounds,...(size?{width:size[0],height:size[1]}:{}),...physical,maximized });
   } catch {
     // 窗口正在销毁时取 bounds 可能抛错，忽略即可
   }
@@ -3067,6 +3101,14 @@ function registerIpc() {
   ipcMain.handle('window:close', event => {const win=senderWindow(event);if(win===mainWindow)win.hide();else win?.close();});
   ipcMain.handle('window:pin', event => {const win=senderWindow(event);if(!win)return false;win.setAlwaysOnTop(!win.isAlwaysOnTop());return win.isAlwaysOnTop();});
   ipcMain.handle('window:is-maximized', event => Boolean(senderWindow(event)?.isMaximized()));
+  ipcMain.handle('window:reset',event=>{
+    const win=senderWindow(event);if(!win?.__desktopWindow)return {ok:false};
+    const area=screen.getDisplayMatching(win.getBounds()).workArea;
+    const width=Math.min(win.__tool==='markdown'?1300:1180,area.width-48),height=Math.min(win.__tool?860:820,area.height-48);
+    if(win.isMaximized())win.unmaximize();
+    win.setBounds({x:Math.round(area.x+(area.width-width)/2),y:Math.round(area.y+(area.height-height)/2),width,height});
+    return {ok:true};
+  });
   ipcMain.handle('window:state',event=>{const win=senderWindow(event);return {focused:Boolean(win?.isFocused()),maximized:Boolean(win?.isMaximized())};});
   ipcMain.handle('window:hide', event => senderWindow(event)?.hide());
   ipcMain.handle('workspace:open', (_event,type) => {if(!['calendar','markdown'].includes(type))return {ok:false};showWorkspaceWindow(type);return {ok:true};});
@@ -4023,7 +4065,7 @@ async function initialize() {
     });
   }
   captureHost = prepareCaptureHost();
-  foregroundProbe.nativeHostReady = ensureNativeHost({ sourcePath: assetPath('foreground-host.cs'), targetPath: path.join(userRoot(), 'foreground-host-v3.exe'), references: ['System.Web.Extensions.dll'] });
+  foregroundProbe.nativeHostReady = ensureNativeHost({ sourcePath: assetPath('foreground-host.cs'), targetPath: path.join(userRoot(), 'foreground-host-v4.exe'), references: ['System.Web.Extensions.dll'] });
   foregroundProbe.start().catch(error => console.warn('前台助手预热失败:', error.message));
   armIsland();
   islandWakeReady = setupIslandPointer().catch(error => { islandWakeError = error.message; });

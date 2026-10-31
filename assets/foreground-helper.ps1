@@ -19,10 +19,13 @@ using System.Runtime.InteropServices;
 public class SuiraWin32 {
   [StructLayout(LayoutKind.Sequential)] public struct Point {public int X,Y;public Point(int x,int y){X=x;Y=y;}}
   [StructLayout(LayoutKind.Sequential)] public struct Rect {public int Left,Top,Right,Bottom;}
+  [StructLayout(LayoutKind.Sequential)] public struct Placement {public int length,flags,show;public Point min,max;public Rect normal;}
+  [DllImport("user32.dll")] public static extern bool GetWindowPlacement(IntPtr hWnd, ref Placement placement);
   [DllImport("user32.dll")] public static extern bool SetProcessDpiAwarenessContext(IntPtr value);
   [DllImport("user32.dll")] public static extern IntPtr WindowFromPoint(Point point);
   [DllImport("user32.dll")] public static extern IntPtr GetAncestor(IntPtr hWnd, uint flags);
   [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr hWnd, out Rect rect);
+  [DllImport("user32.dll")] public static extern bool SetWindowPos(IntPtr hWnd, IntPtr after, int x, int y, int width, int height, uint flags);
   [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
   [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint pid);
   [DllImport("user32.dll")] public static extern int GetWindowTextLength(IntPtr hWnd);
@@ -86,6 +89,9 @@ function Get-Snapshot([string]$handle = '') {
   if ([SuiraWin32]::GetWindowRect($hwnd, [ref]$rect)) {
     $obj.bounds = @{x=$rect.Left;y=$rect.Top;width=$rect.Right-$rect.Left;height=$rect.Bottom-$rect.Top}
   }
+  $placement=New-Object SuiraWin32+Placement
+  $placement.length=[Runtime.InteropServices.Marshal]::SizeOf($placement)
+  if([SuiraWin32]::GetWindowPlacement($hwnd,[ref]$placement)){$obj.normalSize=@{width=$placement.normal.Right-$placement.normal.Left;height=$placement.normal.Bottom-$placement.normal.Top}}
   return ($obj | ConvertTo-Json -Compress)
 }
 
@@ -107,6 +113,16 @@ while ($true) {
       $target = [SuiraWin32]::GetAncestor([SuiraWin32]::WindowFromPoint($point), 2)
       [Console]::Out.WriteLine((Get-Snapshot ($target.ToInt64().ToString())))
     } catch { [Console]::Out.WriteLine('{"ok":false,"error":"window-unavailable"}') }
+    [Console]::Out.Flush()
+  } elseif ($cmd -match '^place ([0-9]+) (-?[0-9]+) (-?[0-9]+) (-?[0-9]+) (-?[0-9]+)$') {
+    try {
+      $handle=[IntPtr]::new([long]$Matches[1]);$owner=0
+      [void][SuiraWin32]::GetWindowThreadProcessId($handle,[ref]$owner)
+      if ($ParentPid -le 0 -or $owner -ne $ParentPid) { throw 'not-owned' }
+      $flags=20;if([int]$Matches[4] -lt 0 -or [int]$Matches[5] -lt 0){$flags=$flags -bor 1}
+      $ok=[SuiraWin32]::SetWindowPos($handle,[IntPtr]::Zero,[int]$Matches[2],[int]$Matches[3],[int]$Matches[4],[int]$Matches[5],$flags)
+      [Console]::Out.WriteLine((@{ok=$ok}|ConvertTo-Json -Compress))
+    } catch { [Console]::Out.WriteLine('{"ok":false,"error":"placement-failed"}') }
     [Console]::Out.Flush()
   } elseif ($cmd -eq 'ping') {
     [Console]::Out.WriteLine('{"ok":true,"pong":true}')

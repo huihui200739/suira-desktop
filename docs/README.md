@@ -9,6 +9,7 @@
 | 版本变更 | [更新记录](../CHANGELOG.md) |
 | 本次发布验收 | [0.2.4 检查报告](RELEASE-CHECK-2026-10-31.md) |
 | 窗口与任务栏修正 | [0.2.5 检查与行为说明](WINDOW-LAYERS-2026-10-31.md) |
+| 稳定性与共同功能改进 | [0.2.6 修复、对照与验证](SHARED-FEATURES-2026-10-31.md) |
 | 快捷键与本地 Markdown | [响应规则、冲突处理与默认打开方式](SHORTCUTS-AND-MARKDOWN.md) |
 | 使用限制与故障排查 | [已知问题](KNOWN-ISSUES.md) |
 | 手工验收 | [实机检查清单](REAL-MACHINE-CHECKLIST.md) |
