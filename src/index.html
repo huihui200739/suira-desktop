@@ -56,7 +56,7 @@
           </button>
         </nav>
 
-        <div class="sidebar-foot"><span class="live-dot"></span><span>本地数据</span><b id="side-version">—</b></div>
+        <div class="sidebar-foot"><span class="live-dot"></span><button class="quiet-btn" id="setup-shortcuts" type="button">检查与配置快捷键</button><span>本地数据</span><b id="side-version">—</b></div>
       </aside>
 
       <main class="main-scroll" id="main-scroll">
@@ -246,6 +246,13 @@
                 <button class="quiet-btn" data-shortcut-clear="clipboardBar" type="button" title="解除绑定后不再响应该快捷键">清除绑定</button>
                 <button class="quiet-btn" id="shortcut-restore" type="button" title="把全部快捷键改回出厂默认">恢复默认</button>
               </div>
+              <div class="setting-title"><b>快捷键响应范围</b><span>面板内输入框与输入法优先；Ctrl+A/C/V 等编辑按键不注册为全局快捷键。</span></div>
+              <label class="setting-row"><span><b>启用全局快捷键</b><small>默认关闭。关闭时，从托盘或工作台打开面板，再按字母或点击工具；不占用其他应用的按键。开启后，Alt+字母可能覆盖其他应用的菜单快捷键。</small></span><input type="checkbox" id="setting-global-shortcuts"></label>
+              <p id="shortcut-policy-status" class="setting-hint"></p>
+              <button class="quiet-btn" id="shortcut-check" type="button">检查本软件的快捷键</button>
+              <div id="shortcut-check-result" class="shortcut-matrix" aria-live="polite"></div>
+              <p class="setting-hint">面板内：输入框与输入法优先，其次是面板按键。全局：面板唤起等专用组合键优先，派生的 Alt+字母遇到重复就停用，不会偷偷更换唤起键。仅能检查运行中全局热键的注册占用，不能扫描所有软件的内部快捷键；没有统一的“最高优先级”。冲突时不会强制抢占，请换键或在另一软件中手动取消绑定。</p>
+              <div class="setting-title"><b>Markdown 文件打开方式</b><span>安装版支持 .md 与 .markdown。右键文件 → 打开方式 → 选择随序，并按需设为默认应用。便携版可通过“选择电脑上的应用”选择随序.exe。</span></div>
               <div class="setting-title"><b>面板全局直达</b><span>按面板上的键位同步。未生效时可右键键帽更换键位。</span></div><div id="all-shortcut-status" class="shortcut-matrix"></div>
             </section>
             <section class="setting-card about-card">

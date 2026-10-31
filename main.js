@@ -67,6 +67,8 @@ const islandModel = require('./lib/island-model');
 // 第三批第 4 项：速记的纯模型（标题推导 / 容量 / 位置校验）
 const notesLib = require('./lib/notes');
 const imageEditor = require('./lib/image-editor');
+const {shortcutAdapter,shortcutReport}=require('./lib/shortcut-policy');
+const {markdownPaths,createMarkdownFiles}=require('./lib/markdown-files');
 const { EDGES: WINDOW_EDGES, resizeBounds } = require('./lib/window-resize');
 const {LongCaptureSession,sameSource:sameLongCaptureSource}=require('./lib/long-capture-session');
 const {RegionCapture}=require('./lib/region-capture');
@@ -321,12 +323,10 @@ async function commitPanelConfiguration(bindings, requested = {}, options = {}) 
   catch (error) {
     shortcutManager.restoreSnapshot(snapshot, { notify: false });
     broadcast('shortcuts:changed', shortcutManager.snapshot().status);
-    scheduleShortcutFallback();
     return { ok: false, error: error.message || '键位保存失败，已保留原绑定' };
   }
   broadcast('panel:changed');
   broadcast('shortcuts:changed', shortcutManager.snapshot().status);
-  scheduleShortcutFallback();
   return { ok: true, status: shortcutManager.snapshot().status };
 }
 
@@ -1495,9 +1495,11 @@ function togglePinnedVisibility() {
 }
 
 /** 按住型唤起的下发给设置页的状态。 */
+let momentaryReserved='';
 function momentaryStatus() {
   const accelerator = momentaryAccelerator();
   if (!accelerator) return { ok: true, accelerator: '', error: '', watching: false, cleared: true };
+  if(!globalShortcutsEnabled() && accelerator) return {ok:true,accelerator,watching:false,localOnly:true,error:''};
   const watching = Boolean(momentaryProbe && momentaryProbe.status === 'watching');
   return {
     ok: watching,
@@ -1513,16 +1515,21 @@ function momentaryStatus() {
  * 键位为空（用户清除绑定）时只停掉侦测，不报错。
  */
 async function setupMomentaryProbe() {
+  if(momentaryReserved){globalShortcut.unregister(momentaryReserved);momentaryReserved='';}
   const accelerator = momentaryAccelerator();
   if (momentaryProbe) {
     try { await momentaryProbe.stop(); } catch {}
     momentaryProbe = null;
   }
-  if (!accelerator) {
+  if (!accelerator || !globalShortcutsEnabled()) {
     momentaryOpened = false;
     momentaryError = '';
     return { ok: true, watching: false };
   }
+  const validation=validateMomentaryAccelerator(accelerator);
+  if(!validation.ok){momentaryError=validation.error;return {ok:false,error:momentaryError};}
+  try { if(!globalShortcut.register(accelerator,()=>{})) throw Error('组合键已被其他程序占用，请更换'); momentaryReserved=accelerator; }
+  catch(error){momentaryError=error.message;return {ok:false,error:momentaryError};}
   // 宿主选择：优先用系统自带 csc.exe 编译一次的 5KB 原生小程序
   // （常驻约 9MB、无 conhost、READY 19ms），编译不可用才回退 PowerShell
   // （约 73MB 私有 + 7.7MB conhost、READY 2.5s）。功能与协议完全一致。
@@ -1552,6 +1559,7 @@ async function setupMomentaryProbe() {
   if (ok) {
     momentaryError = '';
   } else {
+    if(momentaryReserved){globalShortcut.unregister(momentaryReserved);momentaryReserved='';}
     momentaryError = (result && result.error) || '按键侦测助手没有启动';
     console.warn('按住型侦测启动失败:', momentaryError);
   }
@@ -1668,6 +1676,25 @@ $ok = [SuiraFocus]::Focus([long]${hwnd})
   }
 }
 
+let markdownFiles;
+const pendingMarkdownFiles=markdownPaths(process.argv.slice(app.isPackaged?1:2));
+let markdownOpenChain=Promise.resolve();
+function queueMarkdownFiles(files) {
+  pendingMarkdownFiles.push(...files.slice(0,32));
+  if(!markdownFiles)return;
+  markdownOpenChain=markdownOpenChain.then(async()=>{
+    while(pendingMarkdownFiles.length){
+      const file=pendingMarkdownFiles.shift();
+      try {
+        const result=await markdownFiles.open(file);
+        const win=showWorkspaceWindow('markdown');win.__openedDoc=result.item.id;
+        if(!win.webContents.isLoadingMainFrame())win.webContents.send('workspace:file-opened',{id:result.item.id,recovered:result.recovered});
+        broadcast('content:changed');
+      } catch(error){dialog.showErrorBox('无法打开 Markdown',error.message);}
+    }
+  });
+}
+app.on('open-file',(event,file)=>{event.preventDefault();queueMarkdownFiles([file]);});
 const workspaceWindows=new Map();
 let workspaceQuitRequested=false;
 function showWorkspaceWindow(type) {
@@ -1679,6 +1706,8 @@ function showWorkspaceWindow(type) {
     webPreferences:{preload:path.join(__dirname,'preload.js'),contextIsolation:true,nodeIntegration:false,sandbox:false,spellcheck:false}});
   prepareFloatingSurface(win);
   workspaceWindows.set(type,win);win.__tool=type;
+  win.webContents.setWindowOpenHandler(()=>({action:'deny'}));
+  win.webContents.on('will-navigate',event=>event.preventDefault());
   win.loadFile(path.join(__dirname,'src/index.html'),{query:{tool:type}});
   win.once('ready-to-show',()=>{win.show();win.focus();});
   win.on('close',event=>{if(!isQuitting&&!win.__allowClose){event.preventDefault();win.webContents.send('workspace:closing');}});
@@ -3419,16 +3448,20 @@ function registerIpc() {
     const momentary = momentaryStatus();
     return {
       bindings: { ...snapshot.bindings, momentary: momentary.accelerator },
-      status: { ...snapshot.status, momentary }
+      globalEnabled: globalShortcutsEnabled(),
+      startupCheck:shortcutStartupReport,
+      status: { ...shortcutStatus(snapshot.status), momentary }
     };
   });
+
+  ipcMain.handle('shortcuts:check', () => ({ok:true,entries:shortcutReport(globalShortcut,{...shortcutManager?.bindings,momentary:momentaryAccelerator()}),note:'仅检测这些组合键当前能否注册为全局快捷键，不能检测其他应用内部快捷键；结果可能随其他软件启动而改变。'}));
 
   ipcMain.handle('shortcuts:set', async (_event, payload) => {
     if (!shortcutManager) return { ok: false, error: '快捷键尚未初始化' };
     const name = String(payload?.name || '');
     const accelerator = String(payload?.accelerator || '').trim();
 
-    // 按住型唤起不走 globalShortcut：它由常驻 PowerShell 助手侦测按下/松开
+    // 按住型先保留全局组合键，再由助手侦测松开；注册失败不启动侦测。
     if (name === 'momentary') {
       const validation = validateMomentaryAccelerator(accelerator);
       if (!validation.ok) return { ok: false, error: validation.error };
@@ -3529,6 +3562,17 @@ function registerIpc() {
   });
 
   const workspace = require('./lib/workspace').createWorkspace(store);
+  markdownFiles=createMarkdownFiles(store,workspace);
+  ipcMain.handle('workspace:confirm-close',async(event,id)=>{
+    const item=store.getItem(String(id));
+    if(item?.meta?.workspace!=='markdown'||!item.meta.externalPath||crypto.createHash('sha256').update(item.text).digest('hex')===item.meta.externalTextHash)return {ok:true};
+    const result=await dialog.showMessageBox(BrowserWindow.fromWebContents(event.sender),{type:'question',buttons:['保存到原文件','保留草稿并关闭','取消'],defaultId:0,cancelId:2,noLink:true,message:'此文件有尚未写回原位置的修改',detail:item.meta.externalPath});
+    if(result.response===2){workspaceQuitRequested=false;return {ok:false,canceled:true};}
+    if(result.response===0){try{await markdownFiles.save(item.id);}catch(error){workspaceQuitRequested=false;return {ok:false,error:error.message};}}
+    return {ok:true};
+  });
+  ipcMain.handle('workspace:opened-file',event=>{const win=BrowserWindow.fromWebContents(event.sender);const id=win?.__openedDoc||'';if(win)win.__openedDoc='';return id;});
+  ipcMain.handle('workspace:save-file',async(_event,id)=>{try{return {ok:true,...await markdownFiles.save(String(id))};}catch(error){return {ok:false,error:error.message};}});
   ipcMain.handle('workspace:open-link', async (_event,url) => {
     if(!isSafeHttpUrl(url))return {ok:false,error:'只能打开 http(s) 链接'};
     await shell.openExternal(url);return {ok:true};
@@ -3547,8 +3591,12 @@ function registerIpc() {
     const result=await dialog.showOpenDialog(BrowserWindow.fromWebContents(event.sender),{title:'打开 Markdown',filters:[{name:'Markdown',extensions:['md','markdown','txt']}],properties:['openFile']});
     if(result.canceled)return {ok:false,canceled:true};
     try {
-      const file=result.filePaths[0]; if((await fsp.stat(file)).size>800000)throw Error('文件过大，请选择 800 KB 以内的文档');
-      const text=await fsp.readFile(file,'utf8'); const item=workspace.save('markdown',{title:path.basename(file,path.extname(file)),text});
+      const file=result.filePaths[0];
+      if(/\.(md|markdown)$/i.test(file)) {
+        const opened=await markdownFiles.open(file);broadcast('content:changed');return {ok:true,...opened};
+      }
+      if((await fsp.stat(file)).size>800000)throw Error('文件过大，请选择 800 KB 以内的文档');
+      const text=new TextDecoder('utf-8',{fatal:true}).decode(await fsp.readFile(file)); const item=workspace.save('markdown',{title:path.basename(file,path.extname(file)),text});
       await store.save(); broadcast('content:changed'); return {ok:true,item};
     }catch(error){return {ok:false,error:error.message};}
   });
@@ -3665,6 +3713,10 @@ function registerIpc() {
     if ([...Object.values(SHORTCUT_SETTING_KEYS), 'shortcutMomentary'].some(key => Object.hasOwn(incoming, key))) {
       return { ok: false, error: '请通过快捷键设置修改组合键，以便同步面板键位' };
     }
+    if(Object.hasOwn(incoming,'globalShortcutsEnabled')) {
+      if(typeof incoming.globalShortcutsEnabled!=='boolean'||Object.keys(incoming).length!==1)return {ok:false,error:'请单独设置快捷键响应范围'};
+      return queuePanelConfiguration(async()=>{await store.updateSettings(incoming);registerShortcuts();await setupMomentaryProbe();const settings=publicSettings();broadcast('settings:changed',settings);return {ok:true,settings};});
+    }
     // 翻译密钥：界面传明文，主进程加密后落盘；空串表示"不改动"，null 才是清除
     let keyTouched = false;
     if (Object.prototype.hasOwnProperty.call(incoming, 'translateApiKey')) {
@@ -3761,30 +3813,17 @@ function createTray() {
   tray.on('double-click', showQuickPanel);
 }
 
-let shortcutFallback=null,shortcutFallbackHost=null,shortcutFallbackGeneration=0,shortcutFallbackTimer;
-function scheduleShortcutFallback() {
-  clearTimeout(shortcutFallbackTimer);
-  shortcutFallbackTimer=setTimeout(()=>reconcileShortcutFallback().catch(error=>console.warn('兼容快捷键:',error.message)),0);
-}
-async function reconcileShortcutFallback() {
-  if(process.platform!=='win32'||!shortcutManager)return;
-  const generation=++shortcutFallbackGeneration;
-  const {fallbackBindings,ShortcutFallback}=require('./lib/shortcut-fallback');
-  const entries=fallbackBindings(shortcutManager.bindings,shortcutManager.status);
-  if(!entries.length){shortcutFallback?.stop();return;}
-  if(!shortcutFallbackHost)shortcutFallbackHost=ensureNativeHost({sourcePath:assetPath('shortcut-fallback-host.cs'),targetPath:path.join(userRoot(),'shortcut-fallback-v1.exe'),references:['System.Web.Extensions.dll']});
-  const executable=await shortcutFallbackHost;if(!executable||generation!==shortcutFallbackGeneration)return;
-  if(!shortcutFallback)shortcutFallback=new ShortcutFallback({executable,
-    onKey:name=>{const entry=shortcutManager?.status[name];if(entry?.fallback&&entry.ok)Promise.resolve(shortcutManager.handlers[name]?.()).catch(error=>console.warn(error.message));},
-    onExit:()=>{if(!shortcutManager)return;for(const entry of Object.values(shortcutManager.status))if(entry.fallback){entry.ok=false;entry.error='兼容按键助手已退出，请重启应用或更换快捷键';}broadcast('shortcuts:changed',shortcutManager.status);}
-  });
-  await shortcutFallback.update(entries);if(generation!==shortcutFallbackGeneration)return;
-  for(const {name} of entries)shortcutManager.status[name]={...shortcutManager.status[name],ok:true,fallback:true,error:''};
-  broadcast('shortcuts:changed',shortcutManager.status);
+let shortcutStartupReport=[];
+function globalShortcutsEnabled() { return store?.getSettings().globalShortcutsEnabled === true; }
+function shortcutStatus(status) {
+  return Object.fromEntries(Object.entries(status).map(([name,entry])=>[name,(!globalShortcutsEnabled() && entry.accelerator)?{...entry,localOnly:true}:entry]));
 }
 function registerShortcuts() {
+  shortcutManager?.dispose();
+  const enabled=globalShortcutsEnabled();
   shortcutManager = new ShortcutManager({
-    globalShortcut,
+    globalShortcut:shortcutAdapter(globalShortcut,enabled),
+    legacyBindings:false,
     handlers: {
       ...Object.fromEntries(KEY_ROWS.flat().map(key=>[panelShortcutName(key),()=>runGlobalPanelKey(key)])),
       quick: toggleQuickPanel,
@@ -3798,9 +3837,8 @@ function registerShortcuts() {
     bindings: panelGlobalBindings(store.getPanelBindings(),shortcutBindings()),
     onChange: (status) => {
       // 把注册结果同步给设置页，让用户看到哪个键被占用
-      broadcast('shortcuts:changed', status);
-      scheduleShortcutFallback();
-    }
+      broadcast('shortcuts:changed', shortcutStatus(status));
+      }
   });
   const status = shortcutManager.registerAll();
   for (const [name, entry] of Object.entries(status)) {
@@ -3816,6 +3854,7 @@ function registerShortcuts() {
       shortcutManager.status[name] = { ok: true, accelerator: '', error: '', cleared: true };
     }
   }
+  shortcutStartupReport=shortcutReport(globalShortcut,{...shortcutManager.bindings,momentary:momentaryAccelerator()});
   return shortcutManager.status;
 }
 
@@ -3978,6 +4017,7 @@ function waitWithTimeout(promise, timeout = 8000) {
 }
 
 app.whenReady().then(initialize).then(async () => {
+  queueMarkdownFiles([]); await markdownOpenChain;
   // --diag：启动自检。把环境、窗口、快捷键、能力可用性写成一份报告，
   // 便于在没有开发者工具的情况下定位真机问题。见 docs/REAL-MACHINE-CHECKLIST.md
   if (process.argv.includes('--diag')) {
@@ -4059,10 +4099,11 @@ async function collectDiagnostics() {
   }
 
   section('快捷键');
+  add('响应范围',globalShortcutsEnabled()?'全局（仅成功注册的组合键）':'面板内（全局快捷键未启用）');
   const snap = shortcutManager ? shortcutManager.snapshot() : { bindings: {}, status: {} };
   for (const [name, accelerator] of Object.entries(snap.bindings)) {
     const entry = snap.status[name] || {};
-    const state = !accelerator ? '未绑定' : (entry.ok ? '已注册' : '注册失败：' + (entry.error || '未知'));
+    const state = !accelerator ? '未绑定' : (!globalShortcutsEnabled()?'仅保留配置，未注册':entry.ok ? '已注册' : '注册失败：' + (entry.error || '未知'));
     add(name, `${accelerator || '—'} ${state}`);
   }
   if (!shortcutManager) add('管理器', '未初始化');
@@ -4160,7 +4201,6 @@ app.on('will-quit', () => {
   if (foregroundIdleTimer) { clearTimeout(foregroundIdleTimer); foregroundIdleTimer = null; }
   shortcutManager?.dispose();
   // 第二个实例会在 ready 前退出，此时 Electron 不允许访问全局快捷键。
-  clearTimeout(shortcutFallbackTimer);shortcutFallbackGeneration++;shortcutFallback?.stop();
   if (app.isReady()) globalShortcut.unregisterAll();
   ocr?.terminate().catch(() => {});
   foregroundProbe.dispose();
@@ -4171,7 +4211,9 @@ app.on('window-all-closed', () => { if (process.platform !== 'darwin' && isQuitt
 const gotLock = app.requestSingleInstanceLock();
 if (!gotLock) app.quit();
 else {
-  app.on('second-instance', () => {
+  app.on('second-instance', (_event,args,cwd) => {
+    const files=markdownPaths(args.slice(app.isPackaged?1:2),cwd);
+    if(files.length){queueMarkdownFiles(files);return;}
     if (!app.isReady()) return;
     cancelIdleTeardown(mainWindow);
     if (!mainWindow || mainWindow.isDestroyed()) {

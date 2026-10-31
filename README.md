@@ -11,7 +11,7 @@
 
 ## 少一些切换，多一点连贯
 
-随序把高频桌面操作放进一张可自定义的键盘面板。按下 `Alt+S`，点击工具或按字母即可继续；也可以用 `Alt+对应字母` 直接打开已绑定的功能。
+随序把高频桌面操作放进一张可自定义的键盘面板。从托盘双击打开，点击工具或按字母即可继续；在设置中主动开启全局快捷键后，可以用 `Alt+S` 唤起，或用已注册的 `Alt+对应字母` 直达工具。
 
 | 收集 | 整理 | 继续 |
 | --- | --- | --- |
@@ -36,14 +36,14 @@
 
 ## 开始使用
 
-当前版本 **0.2.3**，面向 Windows 11。发布安装包请查看 [Releases](https://github.com/huihui200739/suira-desktop/releases)；也可以从源码运行：
+当前候选版本 **0.2.4**，面向 Windows 11。正式发布的安装包见 [Releases](https://github.com/huihui200739/suira-desktop/releases)；发布前的检查记录见 [验收报告](docs/RELEASE-CHECK-2026-10-31.md)。也可以从源码运行：
 
 ```powershell
 npm ci
 npm start
 ```
 
-| 默认快捷键 | 功能 |
+| 开启全局模式后的预设快捷键 | 功能 |
 | --- | --- |
 | `Alt+S` | 随手面板 |
 | `Alt+C` | 区域截图 |
@@ -52,7 +52,11 @@ npm start
 | `Alt+F` / `Alt+M` | 日历 / Markdown |
 | `Alt+N` | 速记 |
 
-在设置中可以修改快捷键；绑定冲突时会提示。长截图需要手动滚动目标窗口，画面停稳后自动拼接。
+**先按自己的习惯使用。** 全局快捷键默认关闭，升级时保留原有配置，首次使用新策略需主动开启。点击侧栏「检查与配置快捷键」可查看本软件组合键的当前占用；冲突时换键，不强制抢占。Windows 无法统一扫描其他软件内部的快捷键，开启全局模式后 Alt+字母可能覆盖其菜单操作。[快捷键规则与文件打开方式](docs/SHORTCUTS-AND-MARKDOWN.md)
+
+**让 Markdown 顺手打开。** 安装版会加入 `.md` / `.markdown` 的「打开方式」候选。右键文档选择随序，可按需设为默认应用。编辑自动保存为随序草稿；`Ctrl+S` 写回原文件，发现其他程序修改时会拒绝覆盖。
+
+长截图需要手动滚动目标窗口，画面停稳后自动拼接。
 
 **内容保存在本机。** 内容记录采用本地加密存储，截图与附件保存在本地目录。离线 OCR 不需要云端识别；翻译功能需要自行配置服务，提交翻译时会将选定内容发送给对应服务。[存储与使用边界](docs/KNOWN-ISSUES.md)
 
@@ -62,6 +66,8 @@ npm start
 npm test                 # 逻辑、界面与交互回归
 npm run test:surfaces    # Windows 原生窗口圆角与生命周期检查
 npm run verify:workspace # 真实 Electron 日历与 Markdown 工作流
+npm run verify:release   # 系统热键冲突、本地文件打开与编辑保护
+npm run verify:installer # 独立测试产品的安装、覆盖升级与卸载
 npm run screenshots     # 从独立演示实例更新产品截图
 npm run dist            # 构建 Windows 安装包
 npm run clean           # 清理闲置测试产物

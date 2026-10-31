@@ -1,6 +1,6 @@
 {
   "name": "suira-desktop",
-  "version": "0.2.3",
+  "version": "0.2.4",
   "description": "随序 SUIRA — Windows 随手工作台。截图、剪贴板、日历与 Markdown，让零散内容自然接成工作流。",
   "main": "main.js",
   "author": "huihui200739",
@@ -9,7 +9,7 @@
     "start": "node tools/dev-start.js",
     "dev": "node tools/dev-start.js --dev",
     "clean": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File tools/clean-dev-artifacts.ps1",
-    "test": "node tests/test-window-resize.js && node tests/test-shortcut-fallback.js && node tests/test-workspace.js && node tests/test-core.js && node tests/test-clipboard-session.js && node tests/test-long-start.js && node tests/test-long-capture.js && node tests/test-long-session.js && node tests/test-region-capture.js && node tests/test-image-editor.js && node tests/test-app-icons.js && node tests/test-icon-disk-cache.js && node tests/test-native-capture.js && node tests/test-clipboard.js && node tests/test-ocr.js && node tests/test-translate.js && node tests/test-notes.js && node tests/test-island-store.js && node tests/test-island.js && node tests/test-island-wake.js && node tests/test-actions.js && node tests/test-capabilities.js && node tests/test-keybindings.js && node tests/test-panel-bindings.js && node tests/test-panel-shortcuts.js && node tests/test-panel-flows.js && node tests/test-return.js && node tests/test-foreground.js && node tests/test-security.js && node tests/test-key-watch.js && node tests/test-display.js && node tests/test-inject.js && node tests/test-diagnostics.js && node tests/test-ui.js && node tests/test-render.js && node tools/panel-shot.js --check && node tools/island-check.js && node tools/notes-check.js && node tools/clipboardbar-check.js && node tools/confirm-check.js && node tools/overlay-check.js && node tools/shortcut-check.js",
+    "test": "node tests/test-shortcut-policy.js && node tests/test-markdown-files.js && node tests/test-window-resize.js && node tests/test-workspace.js && node tests/test-core.js && node tests/test-clipboard-session.js && node tests/test-long-start.js && node tests/test-long-capture.js && node tests/test-long-session.js && node tests/test-region-capture.js && node tests/test-image-editor.js && node tests/test-app-icons.js && node tests/test-icon-disk-cache.js && node tests/test-native-capture.js && node tests/test-clipboard.js && node tests/test-ocr.js && node tests/test-translate.js && node tests/test-notes.js && node tests/test-island-store.js && node tests/test-island.js && node tests/test-island-wake.js && node tests/test-actions.js && node tests/test-capabilities.js && node tests/test-keybindings.js && node tests/test-panel-bindings.js && node tests/test-panel-shortcuts.js && node tests/test-panel-flows.js && node tests/test-return.js && node tests/test-foreground.js && node tests/test-security.js && node tests/test-key-watch.js && node tests/test-display.js && node tests/test-inject.js && node tests/test-diagnostics.js && node tests/test-ui.js && node tests/test-render.js && node tools/panel-shot.js --check && node tools/island-check.js && node tools/notes-check.js && node tools/clipboardbar-check.js && node tools/confirm-check.js && node tools/overlay-check.js && node tools/shortcut-check.js",
     "test:core": "node tests/test-core.js",
     "test:clipboard": "node tests/test-clipboard.js",
     "test:ocr": "node tests/test-ocr.js",
@@ -64,6 +64,8 @@
     "test:long-columns": "node tools/long-capture-columns-check.js",
     "verify:glass": "node tools/glass-performance-check.js",
     "verify:workspace": "node tools/electron-workspace-check.js",
+    "verify:release": "node tools/release-workflows-check.js",
+    "verify:installer": "node tools/installer-lifecycle-check.js",
     "prepare:vendor": "node tools/prepare-vendor.js",
     "postinstall": "node tools/prepare-vendor.js",
     "predist:portable": "node tools/prepare-vendor.js",
@@ -89,7 +91,9 @@
       "preload.js",
       "pin-preload.js",
       "lib/**/*",
+      "!lib/shortcut-fallback.js",
       "src/**/*",
+      "!src/__fx_*",
       "assets/suira-icon.png",
       "assets/icon.ico",
       "assets/foreground-helper.ps1",
@@ -100,8 +104,7 @@
       "assets/app-icon-host.cs",
       "assets/capture-host.cs",
       "assets/tessdata/**/*",
-      "package.json",
-      "assets/shortcut-fallback-host.cs"
+      "package.json"
     ],
     "asarUnpack": [
       "assets/tessdata/**/*",
@@ -111,8 +114,7 @@
       "assets/key-watch-host.cs",
       "assets/island-pointer-host.cs",
       "assets/app-icon-host.cs",
-      "assets/capture-host.cs",
-      "assets/shortcut-fallback-host.cs"
+      "assets/capture-host.cs"
     ],
     "win": {
       "icon": "assets/icon.ico",
@@ -136,7 +138,18 @@
       "shortcutName": "随序",
       "include": "build/installer.nsh",
       "runAfterFinish": false
-    }
+    },
+    "fileAssociations": [
+      {
+        "ext": [
+          "md",
+          "markdown"
+        ],
+        "name": "SuiraMarkdown",
+        "description": "Markdown 文档",
+        "role": "Editor"
+      }
+    ]
   },
   "dependencies": {
     "dompurify": "^3.4.17",

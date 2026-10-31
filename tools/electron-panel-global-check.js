@@ -18,7 +18,7 @@ const pa=require(${JSON.stringify(path.join(root,'lib/panel-actions'))});pa.crea
 let seen=0;setInterval(async()=>{const c=config();if(c.seq===seen)return;seen=c.seq;try{await keys.get(c.key)?.();log('invoked',{seq:c.seq,key:c.key,registered:keys.has(c.key)});}catch(e){log('error',{message:e.message});}},30);
 require(${JSON.stringify(path.join(root,'main.js'))});`);
   const env={...process.env};delete env.ELECTRON_RUN_AS_NODE;const fd=fs.openSync(path.join(tmp,'app.log'),'w');child=spawn('C:\\suira-electron\\electron.exe',[entry,'--remote-debugging-port='+port],{cwd:root,env,windowsHide:true,stdio:['ignore',fd,fd]});fs.closeSync(fd);
-  const main=await until(()=>connect(port,t=>t.url.endsWith('/index.html')));ws=main.ws;await until(()=>main.evaluate('Boolean(window.suira?.panel)'));await wait(500);
+  const main=await until(()=>connect(port,t=>t.url.endsWith('/index.html')));ws=main.ws;await until(()=>main.evaluate('Boolean(window.suira?.panel)'));await main.evaluate('window.suira.settings.update({globalShortcutsEnabled:true})');await wait(500);
   async function press(key){const current=++seq;update({seq:current,key});await until(()=>records().find(r=>r.type==='invoked'&&r.seq===current));}
   const snapshot=await main.evaluate('window.suira.shortcuts.get()');
   for(const [action,meta] of Object.entries(PANEL_ACTIONS).filter(([,m])=>m.implemented)) {
@@ -35,10 +35,10 @@ require(${JSON.stringify(path.join(root,'main.js'))});`);
   assert.equal((await main.evaluate(`window.suira.panel.setBinding({key:'F',binding:{type:'url',target:'https://example.com',name:'fixture'}})`)).ok,true);
   await press('Alt+F');assert.equal(records().filter(r=>r.type==='open').at(-1).target,'https://example.com');
   assert.equal((await main.evaluate(`window.suira.panel.setBinding({key:'S',binding:{type:'folder',target:${JSON.stringify(tmp)},name:'fixture'}})`)).ok,true);
-  await press('Alt+S');assert.equal(records().filter(r=>r.type==='open').at(-1).target,tmp);assert.equal((await main.evaluate('window.suira.shortcuts.get()')).bindings.quick,'Alt+F1');
+  await press('Alt+S');assert.notEqual(records().filter(r=>r.type==='open').at(-1)?.target,tmp);assert.equal((await main.evaluate('window.suira.shortcuts.get()')).bindings.quick,'Alt+S');
   update({blocked:'Alt+J'});const rejected=await main.evaluate(`window.suira.panel.moveBinding({fromKey:'Q',toKey:'J'})`);assert.equal(rejected.ok,false);
   await press('Alt+Q');assert.equal(records().filter(r=>r.type==='action').at(-1).action,'long-capture');
   const layout=await main.evaluate('window.suira.panel.state()');assert.equal(layout.keys.find(k=>k.key==='Q').actionId,'long-capture');
   console.log('PASS 全部内置功能注册 Alt 字母并直达执行；长截图换位即解绑旧键/启用新键');
-  console.log('PASS 自定义网页/文件夹直达、F 兼容键让位、S 唤起键自动移至 F1、新组合键被占用整批回滚');
+  console.log('PASS 自定义网页直达、S 唤起键保持优先、新组合键被占用整批回滚');
 })().catch(error=>{console.error(error);if(fs.existsSync(path.join(tmp,'app.log')))console.error(fs.readFileSync(path.join(tmp,'app.log'),'utf8').slice(-1500));process.exitCode=1;}).finally(async()=>{ws?.close();for(const socket of sockets)socket.close();if(child&&child.exitCode===null)child.kill();await wait(600);try{fs.rmSync(tmp,{recursive:true,force:true});}catch{}});

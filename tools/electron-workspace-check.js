@@ -13,6 +13,7 @@ async function until(fn){let error;for(let n=0;n<140;n++){try{const value=await 
   const env={...process.env};delete env.ELECTRON_RUN_AS_NODE;const log=fs.openSync(path.join(tmp,'app.log'),'w');child=spawn('C:\\suira-electron\\electron.exe',[entry,'--remote-debugging-port='+port],{cwd:root,env,windowsHide:true,stdio:['ignore',log,log]});fs.closeSync(log);
   main=await until(()=>connect(port,t=>t.url.endsWith('/index.html')));sockets.push(main.ws);
   await until(()=>main.evaluate('Boolean(window.WorkspaceUI && window.suira?.workspace && document.querySelector(".task-list-empty"))'));
+  await main.evaluate('window.suira.settings.update({globalShortcutsEnabled:true})');
   const errors=[];main.ws.addEventListener('message',event=>{const data=JSON.parse(event.data);if(data.method==='Runtime.exceptionThrown')errors.push(data.params.exceptionDetails.text);});await main.send('Runtime.enable');
   await main.send('Emulation.setDeviceMetricsOverride',{width:1360,height:900,deviceScaleFactor:1,mobile:false});
   const workbench=main;
@@ -122,6 +123,7 @@ async function until(fn){let error;for(let n=0;n<140;n++){try{const value=await 
   assert.ok(await panel.evaluate(`document.querySelector('.search-field').getBoundingClientRect().width>200`));
   assert.equal(await panel.evaluate(`document.getElementById('search').value`),'日历');
   await panel.send('Input.dispatchMouseEvent',{type:'mouseMoved',x:20,y:400});await wait(350);
+  await panel.send('Page.bringToFront');
   await panel.send('Input.dispatchKeyEvent',{type:'keyDown',key:'F3',windowsVirtualKeyCode:114});
   await panel.send('Input.dispatchKeyEvent',{type:'keyUp',key:'F3',windowsVirtualKeyCode:114});await wait(350);
   assert.equal(await panel.evaluate(`document.activeElement===document.getElementById('search')`),true);

@@ -56,11 +56,11 @@ check('所有已实现键位与自定义内容都派生 Alt 直达，未绑定�
   assert.equal(panelGlobalBindings(equals,{...DEFAULT_BINDINGS,capture:'Alt+='})['panelKey:='],'');
   assert.equal(acceleratorKey('Alt+Plus'),'=');
 });
-check('移动长截图后 Alt+旧键释放，Alt+新键生效；S/E/H 辅助入口自动让位',()=>{
+check('移动长截图后 Alt+旧键释放，Alt+新键生效；专用唤起键优先且不静默改键',()=>{
   const moved=movePanelBinding({},'G','Q').bindings;
   const bindings=panelGlobalBindings({...moved,S:{type:'file',target:'C:\\demo.txt'},E:{type:'url',target:'https://example.com'},H:{type:'folder',target:'C:\\Demo'}},DEFAULT_BINDINGS);
   assert.equal(bindings['panelKey:G'],'');assert.equal(bindings['panelKey:Q'],'Alt+Q');
-  assert.equal(bindings.quick,'Alt+F1');assert.equal(bindings.panelCycle,'Alt+F2');assert.equal(bindings.pinnedToggle,'Alt+F3');
+  assert.equal(bindings.quick,'Alt+S');assert.equal(bindings.panelCycle,'Alt+E');assert.equal(bindings.pinnedToggle,'Alt+H');assert.equal(bindings['panelKey:S'],'');
 });
 check('全局键回调执行当前绑定；新键被抢占/磁盘失败时恢复全部原注册',()=>{
   const callbacks=Object.fromEntries([...Object.keys(DEFAULT_BINDINGS),'legacy',...KEY_ROWS.flat().map(panelShortcutName)].map(name=>[name,()=>name]));

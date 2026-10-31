@@ -1,6 +1,7 @@
 ; Avoid synchronous PowerShell/CIM launches in the installer UI thread.
 ; Prompt for a normal tray exit so document close/save handlers can finish.
 !macro customCheckAppRunning
+  Push $R0
   suira_check_running:
     nsProcess::_FindProcess "${APP_EXECUTABLE_FILENAME}"
     Pop $R0
@@ -9,4 +10,10 @@
       Quit
     ${EndIf}
     nsProcess::_Unload
+  Pop $R0
+  ClearErrors
+!macroend
+
+!macro customHeader
+  !include "${BUILD_RESOURCES_DIR}\markdown-associations.nsh"
 !macroend

@@ -1,0 +1,67 @@
+'use strict';
+// Real Electron, isolated profile and files. Only one temporary OS hotkey is used.
+const fs=require('node:fs'),path=require('node:path'),os=require('node:os'),net=require('node:net'),assert=require('node:assert/strict'),{spawn}=require('node:child_process');
+const {SuiraStore}=require('../lib/store'),{KEY_ROWS}=require('../lib/keybindings'),{connect}=require('./runtime-client');
+const root=path.resolve(__dirname,'..'),tmp=fs.mkdtempSync(path.join(os.tmpdir(),'suira-workspace-'));
+const exe=process.env.SUIRA_ELECTRON||'C:\\suira-electron\\electron.exe',env={...process.env};delete env.ELECTRON_RUN_AS_NODE;
+const children=[],sockets=[],wait=ms=>new Promise(r=>setTimeout(r,ms));
+async function until(fn){let last;for(let n=0;n<180;n++){try{const v=await fn();if(v)return v;}catch(e){last=e;}await wait(80);}throw last||Error('Release workflow timed out');}
+function launch(entry,args=[]){const log=fs.openSync(path.join(tmp,'app.log'),'a');const child=spawn(exe,[entry,...args],{cwd:root,env,windowsHide:true,stdio:['ignore',log,log]});fs.closeSync(log);children.push(child);return child;}
+(async()=>{
+  const ready=path.join(tmp,'ready.json'),stop=path.join(tmp,'stop'),blocker=path.join(tmp,'blocker.js');
+  fs.writeFileSync(blocker,`const fs=require('node:fs'),{app,globalShortcut}=require('electron');app.setPath('userData',${JSON.stringify(path.join(tmp,'blocker-profile'))});app.whenReady().then(()=>{const key=['Alt+F9','Alt+F10','Alt+F11'].find(k=>globalShortcut.register(k,()=>{}));fs.writeFileSync(${JSON.stringify(ready)},JSON.stringify({key}));setInterval(()=>{if(fs.existsSync(${JSON.stringify(stop)})){globalShortcut.unregisterAll();app.quit();}},40);});`);
+  const blockerChild=launch(blocker);const key=(await until(()=>fs.existsSync(ready)&&JSON.parse(fs.readFileSync(ready)))).key;assert.ok(key,'No free test hotkey');
+  const profile=path.join(tmp,'profile'),store=new SuiraStore(path.join(profile,'suira-data.json'));
+  await store.updateSettings({shortcutQuick:key,shortcutCapture:'',shortcutLongCapture:'',shortcutPanelCycle:'',shortcutPinnedToggle:'',shortcutClipboardBar:'',shortcutMomentary:'',recordClipboard:false});
+  await store.setPanelBindings(Object.fromEntries(KEY_ROWS.flat().map(k=>[k,k==='A'?{type:'url',target:'https://example.com',name:'fixture'}:{type:'none'}])));
+  const first=path.join(tmp,'中文 first.md'),second=path.join(tmp,'第二个 file.markdown'),trace=path.join(tmp,'trace'),control=path.join(tmp,'control');
+  fs.writeFileSync(first,'# First');fs.writeFileSync(second,'# Second');fs.writeFileSync(control,'2');
+  const server=net.createServer();await new Promise(r=>server.listen(0,'127.0.0.1',r));const port=server.address().port;await new Promise(r=>server.close(r));
+  const entry=path.join(tmp,'app.js');fs.writeFileSync(entry,`const fs=require('node:fs'),{app,clipboard,globalShortcut,dialog,shell}=require('electron');app.setPath('userData',${JSON.stringify(profile)});clipboard.read=async()=>[];clipboard.readText=async()=>'';const register=globalShortcut.register.bind(globalShortcut);globalShortcut.register=(key,fn)=>key===${JSON.stringify(key)}?register(key,fn):false;dialog.showMessageBox=async()=>({response:Number(fs.readFileSync(${JSON.stringify(control)},'utf8'))});dialog.showErrorBox=(title,message)=>fs.appendFileSync(${JSON.stringify(trace)},title+':'+message+'\\n');shell.openExternal=async url=>fs.appendFileSync(${JSON.stringify(trace)},url+'\\n');require(${JSON.stringify(path.join(root,'main.js'))});`);
+  launch(entry,[first,'--remote-debugging-port='+port]);
+  const main=await until(()=>connect(port,t=>t.url.endsWith('/index.html')));sockets.push(main.ws);
+  await until(()=>main.evaluate('Boolean(window.suira?.shortcuts && window.WorkspaceUI)'));
+  const md=await until(()=>connect(port,t=>t.url.includes('tool=markdown')));sockets.push(md.ws);
+  await until(()=>md.evaluate(`document.getElementById('md-editor').value==='# First'`));
+  let status=await main.evaluate('window.suira.shortcuts.get()');assert.equal(status.globalEnabled,false);assert.equal(status.status.quick.localOnly,true);
+  assert.equal((await main.evaluate('window.suira.shortcuts.check()')).entries.find(e=>e.name==='quick').state,'conflict');
+  assert.equal((await main.evaluate('window.suira.settings.update({globalShortcutsEnabled:true})')).ok,true);
+  status=await main.evaluate('window.suira.shortcuts.get()');assert.equal(status.status.quick.ok,false);assert.ok(!status.status.quick.fallback);
+  fs.writeFileSync(stop,'');await until(()=>blockerChild.exitCode!==null);
+  await main.evaluate('window.suira.settings.update({globalShortcutsEnabled:false})');await main.evaluate('window.suira.settings.update({globalShortcutsEnabled:true})');
+  assert.equal((await main.evaluate('window.suira.shortcuts.get()')).status.quick.ok,true);
+  await main.evaluate('window.suira.settings.update({globalShortcutsEnabled:false})');
+  assert.equal((await main.evaluate('window.suira.shortcuts.check()')).entries.find(e=>e.name==='quick').state,'available');
+  assert.equal((await main.evaluate(`window.suira.shortcuts.set({name:'quick',accelerator:'Control+A'})`)).ok,false);
+  console.log('PASS native OS collision, no fallback, consent enable/disable, release/reacquire and Ctrl+A protection');
+  await md.evaluate(`document.getElementById('md-editor').value='# Edited';document.getElementById('md-editor').dispatchEvent(new Event('input'));window.WorkspaceUI.flush()`);
+  assert.equal(fs.readFileSync(first,'utf8'),'# First','Autosave must preserve original');
+  await md.send('Input.dispatchKeyEvent',{type:'keyDown',key:'s',code:'KeyS',windowsVirtualKeyCode:83,modifiers:2});await md.send('Input.dispatchKeyEvent',{type:'keyUp',key:'s',code:'KeyS',windowsVirtualKeyCode:83,modifiers:2});
+  await until(()=>fs.readFileSync(first,'utf8')==='# Edited');
+  const secondChild=launch(entry,[second]);await until(()=>secondChild.exitCode!==null);
+  await until(()=>md.evaluate(`document.getElementById('md-editor').value==='# Second'`));
+  await md.evaluate(`document.getElementById('md-editor').value='# Draft';document.getElementById('md-editor').dispatchEvent(new Event('input'));window.WorkspaceUI.flush()`);
+  const reopen=launch(entry,[second]);await until(()=>reopen.exitCode!==null);await wait(300);
+  assert.equal(await md.evaluate(`document.getElementById('md-editor').value`),'# Draft');
+  const items=await md.evaluate(`window.suira.workspace.list('markdown')`),item=items.find(i=>i.meta.externalPath===second);assert.ok(item);
+  fs.writeFileSync(second,'# Other app');assert.equal((await md.evaluate(`window.suira.workspace.saveFile(${JSON.stringify(item.id)})`)).ok,false);assert.equal(fs.readFileSync(second,'utf8'),'# Other app');
+  assert.equal((await md.evaluate(`window.suira.workspace.confirmClose(${JSON.stringify(item.id)})`)).canceled,true);
+  fs.writeFileSync(control,'1');assert.equal((await md.evaluate(`window.suira.workspace.confirmClose(${JSON.stringify(item.id)})`)).ok,true);
+  console.log('PASS Unicode/spaced path cold launch, Ctrl+S original save, second-instance routing, draft recovery, external edit rejection and close choices');
+  await main.evaluate('window.suira.quick.show()');const panel=await until(()=>connect(port,t=>t.url.endsWith('/quickpanel.html')));sockets.push(panel.ws);
+  await until(()=>panel.evaluate('document.querySelectorAll(".key").length===38'));
+  await until(()=>panel.evaluate('document.visibilityState==="visible"'));await wait(400);
+  await panel.send('Page.bringToFront');
+  await panel.send('Input.dispatchKeyEvent',{type:'keyDown',key:'F3',windowsVirtualKeyCode:114});await panel.send('Input.dispatchKeyEvent',{type:'keyUp',key:'F3',windowsVirtualKeyCode:114});await wait(300);
+  await panel.evaluate(`const input=document.getElementById('search');input.value='select this text';input.focus();input.setSelectionRange(3,3);true`);
+  assert.equal(await panel.evaluate(`document.activeElement===document.getElementById('search')`),true);
+  await panel.send('Input.dispatchKeyEvent',{type:'rawKeyDown',key:'a',code:'KeyA',windowsVirtualKeyCode:65,modifiers:2});await panel.send('Input.dispatchKeyEvent',{type:'keyUp',key:'a',code:'KeyA',windowsVirtualKeyCode:65,modifiers:2});
+  assert.equal(await panel.evaluate(`document.getElementById('search').selectionEnd-document.getElementById('search').selectionStart`),16);
+  await panel.evaluate(`document.getElementById('search').blur();document.dispatchEvent(new KeyboardEvent('keydown',{key:'a',altKey:true,bubbles:true}));true`);
+  await until(()=>fs.existsSync(trace)&&fs.readFileSync(trace,'utf8').includes('https://example.com'));
+  console.log('PASS Ctrl+A remains input select-all; Alt+A runs the bound panel action outside inputs');
+})().catch(error=>{console.error(error);console.error(fs.readFileSync(path.join(tmp,'app.log'),'utf8').slice(-2000));process.exitCode=1;}).finally(async()=>{
+  sockets.forEach(ws=>ws.close());children.forEach(child=>{if(child.exitCode===null)child.kill();});await wait(500);
+  const absolute=path.resolve(tmp);if(path.dirname(absolute)!==path.resolve(os.tmpdir())||!path.basename(absolute).startsWith('suira-workspace-'))throw Error('Unsafe cleanup path');
+  fs.rmSync(absolute,{recursive:true,force:true,maxRetries:3,retryDelay:200});
+});

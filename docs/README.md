@@ -7,6 +7,8 @@
 | 当前版本界面 | [产品截图](product/README.md) |
 | 开发、测试与打包 | [贡献指南](../CONTRIBUTING.md) |
 | 版本变更 | [更新记录](../CHANGELOG.md) |
+| 本次发布验收 | [0.2.4 检查报告](RELEASE-CHECK-2026-10-31.md) |
+| 快捷键与本地 Markdown | [响应规则、冲突处理与默认打开方式](SHORTCUTS-AND-MARKDOWN.md) |
 | 使用限制与故障排查 | [已知问题](KNOWN-ISSUES.md) |
 | 手工验收 | [实机检查清单](REAL-MACHINE-CHECKLIST.md) |
 | 工作台实现 | [工作台说明](WORKSPACE-2026-10-29.md) |

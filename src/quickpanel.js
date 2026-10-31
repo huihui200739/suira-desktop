@@ -958,7 +958,8 @@ function installEvents() {
       if (event.key === 'Escape') { event.preventDefault(); closeBindingEditor(); }
       return;
     }
-    const inInput = event.target === input;
+    const inInput = event.target === input || Boolean(event.target.closest?.('input,textarea,select,[contenteditable="true"]'));
+    if(event.repeat)return;
     if (event.key === 'Escape') {
       event.preventDefault();
       if (state.query) clearSearch();
@@ -1007,7 +1008,7 @@ function installEvents() {
       return;
     }
     if (event.key === '/' || event.key === 'F3') { event.preventDefault(); focusSearch(); return; }
-    if (event.ctrlKey || event.altKey || event.metaKey) return;
+    if (event.ctrlKey || event.metaKey || event.shiftKey) return;
     if (event.key.length === 1) {
       const key = keyByChar(event.key);
       if (!key) return;

@@ -34,6 +34,7 @@ async function run({ screenshots = false } = {}) {
     fs.writeFileSync(entry, `const fs=require('node:fs');
 const {app,BrowserWindow,ipcMain,clipboard,globalShortcut}=require('electron');
 app.setPath('userData',${JSON.stringify(path.join(tmp, 'profile'))});
+app.getVersion=()=>${JSON.stringify(require('../package.json').version)};
 clipboard.read=async()=>[];clipboard.readText=async()=>'';
 globalShortcut.register=()=>true;globalShortcut.unregister=()=>{};globalShortcut.unregisterAll=()=>{};
 const handle=ipcMain.handle.bind(ipcMain);
@@ -91,7 +92,9 @@ class RegionCheck {
       await client.evaluate('document.fonts.ready'); await wait(350);
       const png = await client.send('Page.captureScreenshot', { format: 'png' });
       const dir = path.join(root, 'docs/product'); fs.mkdirSync(dir, { recursive: true });
-      fs.writeFileSync(path.join(dir, name + '.png'), Buffer.from(png.data, 'base64'));
+      const destination=path.join(dir,name+'.png'),temporary=destination+'.tmp';
+      try { fs.writeFileSync(temporary,Buffer.from(png.data,'base64'));fs.renameSync(temporary,destination); }
+      finally { fs.rmSync(temporary,{force:true}); }
     };
     await check('/index.html');
     await main.evaluate(`window.suira.tasks.create('整理灵感，开始下一步')`);

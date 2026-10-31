@@ -632,6 +632,7 @@ async function refreshSettings() {
   $('#setting-max').value = settings.maxItems;
   $('#setting-langs').value = settings.ocrLangs;
   $('#setting-theme').value = settings.theme || 'light';
+  $('#setting-global-shortcuts').checked=settings.globalShortcutsEnabled===true;
   applyTranslateSettings(settings);
   await refreshShortcuts();
 }
@@ -646,6 +647,19 @@ function bindSettings() {
   $('#setting-langs').addEventListener('change', (event) => window.suira.settings.update({ ocrLangs: event.target.value }));
   // 换肤走 nativeTheme：主进程改一次，所有窗口的 prefers-color-scheme 同时生效
   $('#setting-theme').addEventListener('change', (event) => window.suira.settings.update({ theme: event.target.value, themeChosen: true }));
+  $('#setting-global-shortcuts').addEventListener('change', async event => {
+    const input=event.target, enabled=input.checked;
+    if(enabled && !confirm('开启后，随序会在其他应用中响应已注册的组合键，Alt+字母可能覆盖它们的菜单快捷键。已被系统或其他程序占用的按键不会被抢占。是否开启？')){input.checked=false;return;}
+    input.disabled=true;
+    try{const result=await window.suira.settings.update({globalShortcutsEnabled:enabled});if(!result.ok)throw Error(result.error||'设置失败');await refreshShortcuts();await syncShortcutPills();}
+    catch(error){input.checked=!enabled;showGlobalToast(error.message,'error');}finally{input.disabled=false;}
+  });
+  $('#shortcut-check').addEventListener('click',async event=>{
+    const button=event.target;button.disabled=true;
+    try{const report=await window.suira.shortcuts.check();renderShortcutCheck(report.entries);}
+    catch(error){showGlobalToast(error.message,'error');}finally{button.disabled=false;}
+  });
+  $('#setup-shortcuts')?.addEventListener('click',async()=>{await navigate('settings');document.querySelector('[data-setting-tab="shortcuts"]')?.click();$('#setting-global-shortcuts')?.scrollIntoView({block:'center'});$('#shortcut-check')?.click();});
   bindTranslateSettings();
   bindShortcutEditors();
 }
@@ -859,9 +873,16 @@ function bindShortcutEditors() {
 }
 
 /** 从主进程拉取当前键位与注册状态并渲染。 */
+function renderShortcutCheck(entries) {
+  const target=$('#shortcut-check-result');
+  if(target && Array.isArray(entries))target.innerHTML=entries.map(entry=>'<div><kbd>'+escapeHtml(entry.accelerator)+'</kbd><small>'+escapeHtml(({registered:'已由随序注册',available:'当前可注册',conflict:'已被占用',protected:'系统或编辑保留',duplicate:'配置重复'})[entry.state]+(entry.reason?'：'+entry.reason:''))+'</small></div>').join('');
+}
 async function refreshShortcuts() {
   try {
     const snapshot = await window.suira.shortcuts.get();
+    renderShortcutCheck(snapshot.startupCheck);
+    if($('#setting-global-shortcuts'))$('#setting-global-shortcuts').checked=snapshot.globalEnabled===true;
+    if($('#shortcut-policy-status'))$('#shortcut-policy-status').textContent=snapshot.globalEnabled===true?'全局模式：只响应成功注册的组合键，冲突不会被绕过。':'面板模式：没有接管系统热键，可点击工具或在面板内按字母。';
     const render = (name, inputId, statusId) => {
       const input = $(inputId);
       const status = $(statusId);
@@ -873,6 +894,8 @@ async function refreshShortcuts() {
       if (!accelerator && entry?.cleared) {
         status.textContent = '未绑定，点击输入框可重新设置';
         status.className = 'shortcut-status is-warn';
+      } else if(entry?.localOnly){
+        status.textContent='仅面板内，未启用全局组合键';status.className='shortcut-status is-warn';
       } else if (entry && !entry.ok) {
         status.textContent = entry.error || '注册失败';
         status.className = 'shortcut-status is-error';
@@ -910,6 +933,8 @@ async function refreshShortcuts() {
       if (!accelerator && entry?.cleared) {
         momentaryStatus.textContent = '未绑定，点击输入框可重新设置';
         momentaryStatus.className = 'shortcut-status is-warn';
+      } else if(entry?.localOnly){
+        momentaryStatus.textContent='全局快捷键未启用，按住型侦测已暂停';momentaryStatus.className='shortcut-status is-warn';
       } else if (entry && entry.watching === false) {
         // 侦测没跑起来时「按住显示、松手收起」无法兑现，必须如实告知。
         // 主进程的 error 可能已经是「按住型侦测未运行」本身，避免拼出重复文案；
@@ -922,8 +947,8 @@ async function refreshShortcuts() {
         momentaryStatus.textContent = entry.error || '注册失败';
         momentaryStatus.className = 'shortcut-status is-error';
       } else if (entry?.fallback && entry?.ok) {
-        status.textContent = '已生效（兼容按键监听）';
-        status.className = 'shortcut-status is-ok';
+        momentaryStatus.textContent = '已生效';
+        momentaryStatus.className = 'shortcut-status is-ok';
       } else if (entry?.reserved) {
         momentaryStatus.textContent = `注意：${entry.reserved} 已被系统占用`;
         momentaryStatus.className = 'shortcut-status is-warn';
@@ -1180,6 +1205,7 @@ async function syncShortcutPills() {
       const host = document.getElementById(elId);
       if (!host) return;
       const accelerator = String(snapshot?.bindings?.[name] || '');
+      if(snapshot.globalEnabled===false){host.innerHTML='<kbd>面板内</kbd>';return;}
       host.innerHTML = accelerator
         ? accelerator.replace(/CommandOrControl/gi, 'Ctrl').split('+')
           .map((part) => `<kbd>${escapeHtml(part)}</kbd>`).join('<span>+</span>')

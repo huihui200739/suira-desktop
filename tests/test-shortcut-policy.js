@@ -1,0 +1,18 @@
+'use strict';
+const assert = require('node:assert/strict');
+const { shortcutAdapter, shortcutReport } = require('../lib/shortcut-policy');
+const { validateAccelerator, normalizeAccelerator, ShortcutManager } = require('../lib/shortcuts');
+const live = new Set(['Alt+Z']), calls = [];
+const system = { register(key) { calls.push(['register', key]); if (live.has(key)) return false; live.add(key); return true; }, unregister(key) { calls.push(['unregister', key]); live.delete(key); }, isRegistered(key) { return key === 'Alt+S'; } };
+const local = shortcutAdapter(system, false);
+local.register('Alt+A', () => {}); local.unregister('Alt+A'); assert.equal(calls.length, 0);
+const report = shortcutReport(system, { mine:'Alt+S', busy:'Alt+Z', free:'Alt+J', protected:'Ctrl+A' });
+assert.deepEqual(report.map(r => r.state), ['registered', 'conflict', 'available', 'protected']);
+assert.deepEqual([...live], ['Alt+Z']);
+assert.ok(!calls.some(([action,key]) => action === 'unregister' && ['Alt+Z','Alt+S'].includes(key)));
+assert.equal(normalizeAccelerator('Ctrl+J'), normalizeAccelerator('CommandOrControl+J'));
+for (const key of ['Ctrl+A', 'Control+C', 'CommandOrControl+V', 'Alt+Tab', 'Super+A', 'Alt+A+B']) assert.equal(validateAccelerator(key).ok, false, key);
+const manager = new ShortcutManager({ globalShortcut:shortcutAdapter(system, true), legacyBindings:false, bindings:{quick:'Alt+Z'}, handlers:{quick(){}} });
+assert.equal(manager.registerAll().quick.ok, false); assert.equal(manager.status.quick.fallback, undefined);
+assert.equal(manager.status.legacy, undefined);
+console.log('PASS shortcut consent, real conflicts, probe ownership and cleanup, protected editing keys, aliases, no hidden legacy binding');

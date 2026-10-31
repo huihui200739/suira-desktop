@@ -77,30 +77,33 @@
     clearTimeout(timer);if(!current||revision===savedRevision)return chain;
     const id=current, version=revision, payload={id,title:$('md-title').value.trim()||'未命名文档',text:$('md-editor').value};
     $('md-status').textContent='保存中…';
-    const job=chain.catch(()=>{}).then(async()=>{const result=await checked(api.save('markdown',payload));const index=docs.findIndex(d=>d.id===id);if(index>=0)docs[index]=result.item;if(current===id){savedRevision=Math.max(savedRevision,version);$('md-status').textContent=revision===savedRevision?'已保存':'有未保存的修改';docList();}});
+    const job=chain.catch(()=>{}).then(async()=>{const result=await checked(api.save('markdown',payload));const index=docs.findIndex(d=>d.id===id);if(index>=0)docs[index]=result.item;if(current===id){savedRevision=Math.max(savedRevision,version);$('md-status').textContent=revision===savedRevision?savedLabel(result.item):'有未保存的修改';docList();}});
     chain=job.catch(error=>{if(current===id)$('md-status').textContent='保存失败，请重试';throw error;});
     // Callers can await rejection, while the background save also has an observer.
     chain.catch(()=>{});return chain;
   }
-  async function selectDoc(id){clearTimeout(previewTimer);await flush();current=id;revision=savedRevision=0;const item=docs.find(d=>d.id===id);$('md-body').hidden=!item;$('md-empty').hidden=Boolean(item);if(item){$('md-title').value=item.title;$('md-editor').value=item.text;$('md-status').textContent='已保存';preview();}document.documentElement.classList.toggle('md-home',!item);if(document.documentElement.dataset.tool==='markdown')document.querySelector('.brand b').textContent=item?item.title+'.md':'未打开 Markdown';for(const id of ['md-save','md-export','md-export-format','md-delete'])$(id).disabled=!item;docList();}
-  async function loadDocs(){docs=await api.list('markdown');await selectDoc(docs.some(d=>d.id===current)?current:docs[0]?.id||'');}
+  async function selectDoc(id){clearTimeout(previewTimer);await flush();current=id;revision=savedRevision=0;const item=docs.find(d=>d.id===id);$('md-body').hidden=!item;$('md-empty').hidden=Boolean(item);if(item){$('md-title').value=item.title;$('md-editor').value=item.text;$('md-status').textContent=item.meta?.externalPath?'本地文件；Ctrl+S 保存到原位置':'已保存';preview();}document.documentElement.classList.toggle('md-home',!item);if(document.documentElement.dataset.tool==='markdown')document.querySelector('.brand b').textContent=item?item.title+'.md':'未打开 Markdown';for(const id of ['md-save','md-export','md-export-format','md-delete'])$(id).disabled=!item;docList();}
+  async function loadDocs(){docs=await api.list('markdown');const opened=await api.openedFile?.();await selectDoc(opened|| (docs.some(d=>d.id===current)?current:docs[0]?.id||''));}
   function dirty(){revision++;$('md-status').textContent='未保存';clearTimeout(previewTimer);previewTimer=setTimeout(preview,120);clearTimeout(timer);timer=setTimeout(()=>flush().catch(error=>notify(error.message)),400);}
   $('md-editor').oninput=dirty;$('md-title').oninput=dirty;$('md-search').oninput=docList;
   $('md-new').onclick=safe(async()=>{await flush();const result=await checked(api.save('markdown',{title:'未命名文档',text:'# 新的想法\n\n'}));docs.unshift(result.item);await selectDoc(result.item.id);$('md-title').focus();$('md-title').select();});
-  $('md-import').onclick=safe(async()=>{await flush();const result=await api.import();if(result.canceled)return;await checked(Promise.resolve(result));docs.unshift(result.item);await selectDoc(result.item.id);});
+  $('md-import').onclick=safe(async()=>{await flush();const result=await api.import();if(result.canceled)return;await checked(Promise.resolve(result));docs=[result.item,...docs.filter(item=>item.id!==result.item.id)];await selectDoc(result.item.id);if(result.recovered)notify('已恢复尚未写回原文件的草稿，请检查后再保存');});
   $('md-export').onclick=safe(async()=>{await flush();const result=await api.export(current,$('md-export-format').value);if(result.canceled)return;await checked(Promise.resolve(result));notify('文档已导出');});
   $('md-delete').onclick=safe(async()=>{if(!confirm('删除这篇文档？'))return;await flush();await checked(api.remove('markdown',current));current='';revision=savedRevision=0;await loadDocs();});
   function setDocumentView(view){$('md-split').dataset.view=view;document.querySelectorAll('[data-md-view]').forEach(b=>{b.classList.toggle('is-active',b.dataset.mdView===view);b.setAttribute('aria-pressed',String(b.dataset.mdView===view));});}
   document.querySelectorAll('[data-md-view]').forEach(b=>b.onclick=()=>setDocumentView(b.dataset.mdView));
-  $('md-save').onclick=safe(async()=>{await flush();notify('已保存在本地');});
+  const savedLabel=item=>item?.meta?.externalPath?'草稿已保存到随序；Ctrl+S 写回原文件':'已保存';
+  async function saveCurrentFile(){await flush();const item=docs.find(d=>d.id===current);if(item?.meta?.externalPath){const result=await checked(api.saveFile(current));docs[docs.findIndex(d=>d.id===current)]=result.item;$('md-status').textContent='已写回原文件';notify('已保存到 '+result.item.meta.externalPath);}else notify('已保存在随序');}
+  $('md-save').onclick=safe(saveCurrentFile);
+  api.onFileOpened?.(safe(async payload=>{await flush();docs=await api.list('markdown');await selectDoc(payload.id);if(payload.recovered)notify('已恢复尚未写回原文件的草稿，请检查后再保存');}));
   let syncing=false;
   function syncScroll(source,target){if(syncing||!$('md-sync-scroll').checked||$('md-split').dataset.view!=='split')return;syncing=true;const range=source.scrollHeight-source.clientHeight;target.scrollTop=range>0?source.scrollTop/range*(target.scrollHeight-target.clientHeight):0;requestAnimationFrame(()=>syncing=false);}
   $('md-editor').addEventListener('scroll',()=>syncScroll($('md-editor'),$('md-preview')));
   $('md-preview').addEventListener('scroll',()=>syncScroll($('md-preview'),$('md-editor')));
   const syntax={italic:['*','*'],quote:['> ',''],link:['[','](https://example.com)'],table:['| 列一 | 列二 |\n| --- | --- |\n| 内容 | 内容 |',''],rule:['\n---\n',''],heading:['## ',''],bold:['**','**'],list:['- ',''],task:['- [ ] ',''],code:['```\n','\n```']};
   document.querySelectorAll('[data-md]').forEach(button=>button.onclick=()=>{const editor=$('md-editor'),[left,right]=syntax[button.dataset.md],start=editor.selectionStart,end=editor.selectionEnd;const insertion=left+editor.value.slice(start,end)+right;editor.focus();editor.setSelectionRange(start,end);if(!document.execCommand('insertText',false,insertion))editor.setRangeText(insertion,start,end,'end');dirty();});
-  document.addEventListener('keydown',event=>{if((event.ctrlKey||event.metaKey)&&document.querySelector('#page-markdown.is-active')){const views={'1':'edit','2':'split','3':'preview'};if(views[event.key]){event.preventDefault();setDocumentView(views[event.key]);return;}}if((event.ctrlKey||event.metaKey)&&event.key.toLowerCase()==='s'&&document.querySelector('#page-markdown.is-active')){event.preventDefault();flush().catch(error=>notify(error.message));}});
-  api.onClosing?.(safe(async()=>{await flush();await api.closeReady();}));
+  document.addEventListener('keydown',event=>{if((event.ctrlKey||event.metaKey)&&document.querySelector('#page-markdown.is-active')){const views={'1':'edit','2':'split','3':'preview'};if(views[event.key]){event.preventDefault();setDocumentView(views[event.key]);return;}}if((event.ctrlKey||event.metaKey)&&event.key.toLowerCase()==='s'&&document.querySelector('#page-markdown.is-active')){event.preventDefault();saveCurrentFile().catch(error=>notify(error.message));}});
+  api.onClosing?.(safe(async()=>{await flush();const result=await api.confirmClose?.(current);if(result?.canceled)return;if(result && !result.ok)throw Error(result.error||'无法保存');await api.closeReady();}));
   window.addEventListener('blur',()=>flush().catch(()=>{}));
   // Preserve every original settings control and listener while changing the layout.
   const categories=['storage','general','translation','storage','shortcuts','about'];
@@ -143,6 +146,6 @@
     }
   }
   window.WorkspaceUI={open:safe(async type=>{if(type==='calendar')await loadCalendar();else await loadDocs();}),flush,
-    shortcuts(snapshot){const rows=Object.entries(snapshot.bindings||{}).filter(([name,acc])=>name.startsWith('panelKey:')&&acc);$('all-shortcut-status').innerHTML=rows.map(([name,acc])=>`<div><kbd>${esc(acc.replace('+',' + '))}</kbd><small class="${snapshot.status?.[name]?.ok?'is-ok':'is-error'}">${snapshot.status?.[name]?.ok?'已生效':esc(snapshot.status?.[name]?.error||'未注册')}</small></div>`).join('');}
+    shortcuts(snapshot){const rows=Object.entries(snapshot.bindings||{}).filter(([name,acc])=>name.startsWith('panelKey:')&&acc);$('all-shortcut-status').innerHTML=rows.map(([name,acc])=>`<div><kbd>${esc(acc.replace('+',' + '))}</kbd><small class="${snapshot.status?.[name]?.ok?'is-ok':'is-error'}">${snapshot.status?.[name]?.localOnly?'仅面板内':snapshot.status?.[name]?.ok?'已生效':esc(snapshot.status?.[name]?.error||'未注册')}</small></div>`).join('');}
   };
 })();

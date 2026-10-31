@@ -169,6 +169,7 @@ contextBridge.exposeInMainWorld('suira', {
     commit: (payload) => ipcRenderer.invoke('return:commit', payload)
   },
   shortcuts: {
+    check: () => ipcRenderer.invoke('shortcuts:check'),
     get: () => ipcRenderer.invoke('shortcuts:get'),
     set: (payload) => ipcRenderer.invoke('shortcuts:set', payload),
     restoreDefault: (payload) => ipcRenderer.invoke('shortcuts:restore-default', payload),
@@ -187,6 +188,10 @@ contextBridge.exposeInMainWorld('suira', {
     onProgress: (callback) => subscribe('ocr:progress', callback)
   },
   workspace: {
+    confirmClose: id => ipcRenderer.invoke('workspace:confirm-close',id),
+    openedFile: () => ipcRenderer.invoke('workspace:opened-file'),
+    saveFile: id => ipcRenderer.invoke('workspace:save-file',id),
+    onFileOpened: callback => subscribe('workspace:file-opened',callback),
     clipboard: () => ipcRenderer.invoke('workspace:clipboard'),
     open: type => ipcRenderer.invoke('workspace:open',type),
     onClosing: callback => subscribe('workspace:closing',callback),

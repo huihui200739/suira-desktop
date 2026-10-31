@@ -43,7 +43,7 @@ function slice(name, nextMarker) {
 }
 const prettySrc = slice('prettyAccelerator', 'function bindShortcutEditors(');
 const bindSrc = slice('bindShortcutEditors', '/** 从主进程拉取当前键位与注册状态并渲染。 */');
-const refreshSrc = slice('refreshShortcuts', '/* ---------- modal ---------- */');
+const refreshSrc = slice('renderShortcutCheck', '/* ---------- modal ---------- */');
 
 const PAGE = `<!doctype html><html><head><meta charset="utf-8">
 <link rel="stylesheet" href="styles.css">
