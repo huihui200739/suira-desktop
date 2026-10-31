@@ -137,7 +137,9 @@ class RegionCheck {
     await until(() => panel.evaluate('document.querySelectorAll(".key").length===38'));
     await check('/quickpanel.html'); await shot(panel, 'panel'); await shot(panel, 'panel-dark', 'dark');
     await panel.send('Emulation.setEmulatedMedia',{features:[{name:'prefers-color-scheme',value:'light'}]});
-    await panel.evaluate(`document.getElementById('panel-more').click();true`);await shot(panel,'panel-menu');
+    await panel.evaluate(`document.getElementById('panel-more').click();true`);
+    const hoverDisplay=async()=>{const point=await panel.evaluate(`(()=>{const r=document.querySelector('[data-menu-section="display"]').getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2};})()`);await panel.send('Input.dispatchMouseEvent',{type:'mouseMoved',...point});};
+    await hoverDisplay();await shot(panel,'panel-menu');
     await panel.evaluate(`closeMoreMenu(false);true`);
     await panel.evaluate(`document.getElementById('mode-apps').click();true`);
     await until(()=>panel.evaluate('document.querySelectorAll(".app-item").length>0'));
@@ -158,7 +160,7 @@ class RegionCheck {
     await until(()=>panel.evaluate('document.getElementById("panel").dataset.presentation==="fullscreen"'));
     await until(()=>panel.evaluate('[...document.querySelectorAll(".app-icon img")].filter(image=>image.naturalWidth>0).length>=Math.min(32,document.querySelectorAll(".app-item").length)'));
     await shot(panel,'apps-fullscreen');
-    await panel.evaluate(`document.getElementById('panel-more').click();true`);await shot(panel,'fullscreen-menu');
+    await panel.evaluate(`document.getElementById('panel-more').click();true`);await hoverDisplay();await shot(panel,'fullscreen-menu');
     await panel.evaluate(`closeMoreMenu(false);true`);
     await panel.evaluate(`(()=>{const input=document.getElementById('search');input.focus();input.value='wei';input.dispatchEvent(new Event('input',{bubbles:true}));return true;})()`);
     await until(()=>panel.evaluate('document.querySelectorAll(".command-item").length>0'));
