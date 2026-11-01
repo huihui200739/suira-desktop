@@ -1,0 +1,23 @@
+{
+  "version": "0.2.20",
+  "runs": [
+    {
+      "speed": 250,
+      "keys": 38,
+      "maxFirstVisibleMs": 32.3
+    },
+    {
+      "speed": 700,
+      "keys": 38,
+      "maxFirstVisibleMs": 17.9
+    },
+    {
+      "speed": 1400,
+      "keys": 38,
+      "maxFirstVisibleMs": 17.4
+    }
+  ],
+  "oneShotReflection": true,
+  "reentryCooldown": true,
+  "perFrameLayoutReads": 0
+}

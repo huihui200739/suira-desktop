@@ -4,7 +4,7 @@
   const objects = {
   "translate": "<span class=\"suira-art translation\" aria-hidden=\"true\"><span class=\"card-back\"><b>中</b></span><span class=\"card-front\"><b>A</b></span></span>",
   "capture": "<span class=\"suira-art capture\" aria-hidden=\"true\"><span class=\"camera\"></span><span class=\"photo\"><span class=\"sun\"></span><span class=\"mountain\"></span></span><span class=\"bracket tl\"></span><span class=\"bracket tr\"></span><span class=\"bracket bl\"></span><span class=\"bracket br\"></span></span>",
-  "calendar": "<span class=\"suira-art calendar\" aria-hidden=\"true\"><span class=\"page\"><span class=\"binding\"></span><span class=\"date\">1</span></span><span class=\"ring left\"></span><span class=\"ring right\"></span></span>",
+  "calendar": "<span class=\"suira-art calendar\" aria-hidden=\"true\"><span class=\"calendar-page\"><span class=\"binding\"></span><span class=\"date\">1</span></span><span class=\"ring left\"></span><span class=\"ring right\"></span></span>",
   "markdown": "<span class=\"suira-art markdown\" aria-hidden=\"true\"><span class=\"cover\"></span><span class=\"paper\"></span><span class=\"fold\"></span><span class=\"md\">MD</span><span class=\"rule\"></span></span>",
   "desktop": "<span class=\"suira-art desktop\" aria-hidden=\"true\"><span class=\"stem\"></span><span class=\"stand\"></span><span class=\"monitor\"><span class=\"screen\"></span></span><span class=\"window-back\"></span><span class=\"window-front\"></span></span>"
 };
@@ -31,13 +31,38 @@
     url:object('web-object','<span class="globe"><span class="meridian"></span><span class="equator"></span></span><span class="globe-base"></span>'),
     app:object('app-object','<span class="app-base"><span class="app-square a"></span><span class="app-square b"></span><span class="app-square c"></span><span class="app-square d"></span></span>')
   });
+  // The desktop action is a fan of collapsing windows, rather than a monitor.
+  objects.desktop=object('desktop window-deck','<span class="deck-window back"></span><span class="deck-window middle"></span><span class="deck-window front"><span class="deck-pane"></span></span><span class="deck-base"></span>');
+  const families={
+    capture:'sky','long-capture':'sky',ocr:'sky',pin:'sky',
+    clipboard:'amber',note:'amber',markdown:'amber',folder:'amber',
+    translate:'coral',calendar:'coral',
+    'edit-image':'iris',desktop:'iris',lock:'iris',
+    annotate:'jade','text-clean':'jade',island:'sky',shelf:'amber',library:'iris',settings:'slate',
+    url:'sky',file:'sky',app:'iris'
+  };
   const api = {
     has: id => Object.prototype.hasOwnProperty.call(objects,id),
     render(id) {
-      const markup=objects[id] || '';
-      return id==='calendar' ? markup.replace('class="date">1<','class="date">'+new Date().getDate()+'<') : markup;
+      let markup=objects[id] || '';
+      if(!markup)return '';
+      if(id==='calendar')markup=markup.replace('class="date">1<','class="date">'+new Date().getDate()+'<');
+      // Keep every object inside one colored body, with neutral UI around it.
+      const split=markup.indexOf('>')+1;
+      return markup.slice(0,split).replace('suira-art ','suira-art vivid family-'+families[id]+' ')+'<span class="art-object">'+markup.slice(split,-7)+'</span></span>';
+    },
+    mount(root=document) {
+      root.querySelectorAll('[data-tool-object]').forEach(node=>{
+        if(node.dataset.artMounted===node.dataset.toolObject)return;
+        const markup=api.render(node.dataset.toolObject);if(!markup)return;
+        node.innerHTML=markup;node.dataset.artMounted=node.dataset.toolObject;
+      });
     }
   };
   if(typeof module==='object' && module.exports) module.exports=api;
-  if(typeof window==='object') window.SuiraToolArt=api;
+  if(typeof window==='object') {
+    window.SuiraToolArt=api;
+    if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',()=>api.mount(),{once:true});
+    else api.mount();
+  }
 })();

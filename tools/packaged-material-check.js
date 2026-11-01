@@ -23,6 +23,11 @@ async function until(fn){let last;for(let i=0;i<180;i++){try{const value=await f
   await until(()=>panel.evaluate('document.querySelectorAll(".key").length===38'));
   assert.equal(await panel.evaluate('document.querySelectorAll(".key.is-bound .suira-art").length'),14,'Installed tool objects must be packaged');
   assert.equal(await panel.evaluate('Boolean(window.SuiraKeycapMotion && document.querySelector(".key-face"))'),true,'Installed key material and motion module must load');
+  assert.equal(await panel.evaluate('new Set([...document.querySelectorAll(".key.is-bound .suira-art.vivid")].map(n=>[...n.classList].find(c=>c.startsWith("family-")))).size'),5);
+  const target=await panel.evaluate('(()=>{const b=document.querySelector("[data-key=T]").getBoundingClientRect();return {x:b.x+b.width/2,y:b.y+b.width/2};})()');
+  await panel.send('Input.dispatchMouseEvent',{type:'mouseMoved',...target});
+  assert.equal(await panel.evaluate('document.querySelector("[data-key=T]").classList.contains("is-key-near")'),true);
+  await panel.send('Input.dispatchMouseEvent',{type:'mouseMoved',x:5,y:5});
   await panel.evaluate('window.suira.settings.update({panelMaterial:"solid"})');
   assert.equal((await panel.evaluate('window.suira.app.info()')).nativeBlur,false);
   await panel.evaluate('window.suira.settings.update({panelMaterial:"soft"})');
@@ -31,9 +36,16 @@ async function until(fn){let last;for(let i=0;i<180;i++){try{const value=await f
     await main.evaluate(`window.suira.workspace.open(${JSON.stringify(tool)})`);
     const client=await page('tool='+tool);
     assert.equal((await client.evaluate('window.suira.app.info()')).nativeBlur,true,'Packaged tool native blur: '+tool);
+    await until(()=>client.evaluate('Boolean(document.querySelector(".tool-kind .suira-art.vivid"))'));
+    if(tool==='calendar')assert.equal(await client.evaluate('document.querySelector(".tool-kind .calendar-page").getBoundingClientRect().height>0'),true,'Calendar icon content must not match the hidden page selector');
+    else {
+      await until(()=>client.evaluate('Boolean(document.querySelector("#md-empty .suira-art.vivid"))'));
+      assert.equal(await client.evaluate('getComputedStyle(document.querySelector("#md-empty .art-object")).backgroundColor'),'rgba(0, 0, 0, 0)','Empty-state styling must not leak into the object layers');
+    }
   }
   await main.evaluate('window.suira.clipboardBar.show()');const shelf=await page('/clipboardbar.html');
   assert.equal((await shelf.evaluate('window.suira.app.info()')).nativeBlur,true);
+  await until(()=>shelf.evaluate('Boolean(document.querySelector(".bar-mark .suira-art.vivid"))'));
   console.log('PASS installed '+info.version+': packaged native module, panel/calendar/Markdown/clipboard blur and preference toggles; isolated profile');
 })().catch(error=>{console.error(error);if(fs.existsSync(path.join(tmp,'app.log')))console.error(fs.readFileSync(path.join(tmp,'app.log'),'utf8').slice(-1400));process.exitCode=1;}).finally(async()=>{
   sockets.forEach(socket=>socket.close());if(child&&child.exitCode===null){const stopped=new Promise(r=>child.once('exit',r));child.kill();await stopped;}await wait(400);

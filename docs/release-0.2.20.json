@@ -1,0 +1,21 @@
+{
+  "version": "0.2.20",
+  "artifact": "Suira-0.2.20-x64.exe",
+  "bytes": 156514667,
+  "sha256": "07ACA19F97FA7C512F00ED63EF2449BB007581BE34085FC6D64FB24513CD09B9",
+  "sha512": "V3xfV3Zl/uJ1H4Cz+wCMv6Dh6HKfpSILMzKE60aUifdMGzB4elV+anAUaNU3lz78ri0OIqKfE4OpEHI6u1wbVA==",
+  "platform": "win32",
+  "arch": "x64",
+  "electron": "45.0.0",
+  "checkedSourceFiles": 100,
+  "checks": [
+    "source-payload-byte-match",
+    "no-test-profile-or-obsolete-key-hook",
+    "installer-archive-crc",
+    "updater-feed-and-sha512-match"
+  ],
+  "signature": "unsigned",
+  "published": false,
+  "payloadSha256": "ABFF3E8DF65D571335BAC487EEC2FAA5B902174C779EBF4DAFE49A64A2B8C996",
+  "executableSha256": "C2D49FC3E10A56DEEAA0E14648DB1DDD28F336656A3268C7D90162A8652C07E4"
+}

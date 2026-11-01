@@ -198,10 +198,10 @@
       if (!item.thumbnail) visualClass += ' is-placeholder';
     } else if (item.kind === 'files') {
       visualClass += ' is-stack';
-      visual = `<span class="card-glyph">${GLYPHS.file}</span><span class="card-count">${fileCount(item)} 个文件</span>`;
+      visual = `<span class="card-glyph">${window.SuiraToolArt?.render('file')||GLYPHS.file}</span><span class="card-count">${fileCount(item)} 个文件</span>`;
     } else if (item.kind === 'link') {
       visualClass += ' is-stack';
-      visual = `<span class="card-glyph">${GLYPHS.link}</span>
+      visual = `<span class="card-glyph">${window.SuiraToolArt?.render('url')||GLYPHS.link}</span>
         <b class="card-name" title="${escapeHtml(linkDomain(item))}">${escapeHtml(linkDomain(item))}</b>`;
     } else {
       visual = `<p class="card-snippet">${escapeHtml(textSummary(item))}</p>`;

@@ -196,7 +196,7 @@ function keyMarkup(key) {
     : custom ? `${key.key}：${key.label}`
     : key.state === 'unimplemented' ? `${key.key}：${key.label}（尚未实现）` : `${key.key}：未绑定`;
   return `<button class="${classes.join(' ')}" type="button" data-key="${escapeHtml(key.key)}" data-action="${escapeHtml(key.actionId)}" data-state="${escapeHtml(key.state)}" aria-label="${escapeHtml(aria)}" data-hint="${escapeHtml(title)}">
-    <span class="key-contact" aria-hidden="true"></span><span class="key-card"><span class="key-face">${inner}</span></span>
+    <span class="key-contact" aria-hidden="true"></span><span class="key-card"><span class="key-face">${inner}<span class="key-reflection" aria-hidden="true"><span class="key-sheen"></span></span></span></span>
     ${bound || custom || key.state === 'unimplemented' ? `<span class="key-name">${escapeHtml(key.label)}</span>` : ''}
   </button>`;
 }

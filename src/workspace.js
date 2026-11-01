@@ -2,6 +2,7 @@
 (() => {
   const $=id=>document.getElementById(id), api=window.suira.workspace;
   const esc=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const toolEmpty=(id,title,hint='')=>'<div class="workspace-empty"><span class="tool-emblem" aria-hidden="true">'+(window.SuiraToolArt?.render(id)||'')+'</span><b>'+esc(title)+'</b>'+(hint?'<p>'+esc(hint)+'</p>':'')+'</div>';
   const dateKey=date=>`${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`;
   const lunarFormatter = new Intl.DateTimeFormat('zh-CN-u-ca-chinese',{day:'numeric'});
   const lunarDays = ['初一','初二','初三','初四','初五','初六','初七','初八','初九','初十','十一','十二','十三','十四','十五','十六','十七','十八','十九','二十','廿一','廿二','廿三','廿四','廿五','廿六','廿七','廿八','廿九','三十'];
@@ -44,13 +45,13 @@
     $('agenda-date').textContent=new Date(selected+'T12:00:00').toLocaleDateString('zh-CN',{month:'long',day:'numeric',weekday:'long'});
     const entries=visible.filter(e=>e.meta.date===selected).sort((a,b)=>(a.meta.time||'').localeCompare(b.meta.time||''));
     $('agenda-count').textContent=`${entries.filter(e=>!e.meta.done).length} 项待办`;
-    $('agenda-list').innerHTML=entries.length?entries.map(e=>`<div class="agenda-item ${e.meta.done?'done':''}"><button class="agenda-check" data-done="${e.id}" aria-label="${e.meta.done?'重新打开':'标记完成'}">${e.meta.done?'✓':'○'}</button><div class="agenda-entry"><button class="agenda-content" data-event="${e.id}"><small>${esc(e.meta.time||'全天')} ${e.meta.priority==='high'?' · 重要':''}</small><b>${esc(e.title)}</b><small>${esc(e.meta.location||'')}</small></button>${e.text?`<details class="agenda-notes"><summary>备注</summary><p>${esc(e.text)}</p></details>`:''}</div><button class="agenda-remove" data-remove="${e.id}" aria-label="删除日程">×</button></div>`).join(''):'<div class="workspace-empty"><b>这一天，留给你安排</b><p>添加日程，或给自己留一点空闲。</p></div>';
+    $('agenda-list').innerHTML=entries.length?entries.map(e=>`<div class="agenda-item ${e.meta.done?'done':''}"><button class="agenda-check" data-done="${e.id}" aria-label="${e.meta.done?'重新打开':'标记完成'}">${e.meta.done?'✓':'○'}</button><div class="agenda-entry"><button class="agenda-content" data-event="${e.id}"><small>${esc(e.meta.time||'全天')} ${e.meta.priority==='high'?' · 重要':''}</small><b>${esc(e.title)}</b><small>${esc(e.meta.location||'')}</small></button>${e.text?`<details class="agenda-notes"><summary>备注</summary><p>${esc(e.text)}</p></details>`:''}</div><button class="agenda-remove" data-remove="${e.id}" aria-label="删除日程">×</button></div>`).join(''):toolEmpty('calendar','这一天，留给你安排','添加日程，或给自己留一点空闲。');
     if(agendaMode==='countdown'){
       const todayUTC=Date.UTC(new Date().getFullYear(),new Date().getMonth(),new Date().getDate());
       const builtins=upcomingDays.filter(e=>(countdownFilter==='all'||countdownFilter===e.kind)&&(!search||e.title.toLowerCase().includes(search))).map(e=>({title:e.title,meta:{date:e.date},builtin:e.kind}));
       const custom=['all','custom'].includes(countdownFilter)?visible.filter(e=>!e.meta.done&&e.meta.date>=today):[];
       const upcoming=[...builtins,...custom].sort((a,b)=>a.meta.date.localeCompare(b.meta.date));
-      $('agenda-list').innerHTML=upcoming.map(e=>{const days=Math.round((Date.parse(e.meta.date+'T00:00:00Z')-todayUTC)/86400000);return `<button class="countdown-row" ${e.builtin?`data-builtin-date="${e.meta.date}"`:`data-event="${esc(e.id)}"`}><div><b>${esc(e.title)}</b><small>${e.builtin==='term'?'节气 · ':e.builtin==='holiday'?'节日 · ':'自定义 · '}${esc(e.meta.date)}</small></div><strong>${days}</strong><small>天后</small></button>`;}).join('')||'<div class="workspace-empty">还没有即将到来的日程</div>';
+      $('agenda-list').innerHTML=upcoming.map(e=>{const days=Math.round((Date.parse(e.meta.date+'T00:00:00Z')-todayUTC)/86400000);return `<button class="countdown-row" ${e.builtin?`data-builtin-date="${e.meta.date}"`:`data-event="${esc(e.id)}"`}><div><b>${esc(e.title)}</b><small>${e.builtin==='term'?'节气 · ':e.builtin==='holiday'?'节日 · ':'自定义 · '}${esc(e.meta.date)}</small></div><strong>${days}</strong><small>天后</small></button>`;}).join('')||toolEmpty('calendar','还没有即将到来的日程');
     }
     $('countdown-filters')?.toggleAttribute('hidden',agendaMode!=='countdown');
     $('calendar-new').textContent=agendaMode==='countdown'?'⊕ 添加倒数日':'⊕ 添加待办';
@@ -167,7 +168,7 @@
   const tool=document.documentElement.dataset.tool;
   if(tool){
     const mark=document.createElement('span');mark.className='tool-kind';mark.title=tool==='markdown'?'Markdown 文档':'日历';mark.setAttribute('aria-label',mark.title);
-    mark.innerHTML=tool==='markdown'?'<svg viewBox="0 0 24 24"><path d="M6 3h8l4 4v14H6z M14 3v5h4 M9 17v-5l3 3 3-3v5"/></svg>':'<svg viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="16" rx="3"/><path d="M8 3v4 M16 3v4 M4 10h16 M8 14h2 M14 14h2 M8 17h2"/></svg>';
+    mark.dataset.toolObject=tool;mark.innerHTML=window.SuiraToolArt?.render(tool)||'';
     document.querySelector('.brand').prepend(mark);
     const top=document.createElement('div');top.className='tool-top-actions';
     document.querySelector('.titlebar').insertBefore(top,document.querySelector('.window-actions'));
@@ -183,7 +184,7 @@
       const viewIcons={edit:'M4 20l4-1L20 7l-3-3L5 16z',split:'M3 4h18v16H3z M12 4v16',preview:'M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z M12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6'};
       document.querySelectorAll('[data-md-view]').forEach(b=>{b.title=b.textContent;b.setAttribute('aria-label',b.textContent);b.innerHTML=`<svg viewBox="0 0 24 24"><path d="${viewIcons[b.dataset.mdView]}"/></svg>`;});
       const search=document.createElement('button');search.className='quiet-btn tool-icon';search.title='搜索文档';search.setAttribute('aria-label',search.title);search.innerHTML='<svg viewBox="0 0 24 24"><circle cx="10" cy="10" r="6"/><path d="m15 15 6 6"/></svg>';search.onclick=()=>{$('md-search').focus();};top.prepend(search);
-      const empty=$('md-empty');empty.innerHTML='<span class="welcome-document"><svg viewBox="0 0 48 56"><rect x="5" y="2" width="38" height="52" rx="5"/><path d="M13 13h11 M18 9v13 M12 18h14 M30 12h6 M30 19h6 M12 43l9-10 7 6 8-12v19H12z"/></svg></span><b>未打开 Markdown</b><p>打开 Markdown 文件，或新建空白文档</p><div class="welcome-actions"><button class="primary-btn" id="welcome-open">打开 Markdown</button><button class="quiet-btn" id="welcome-new">新建空白 Markdown</button></div>';
+      const empty=$('md-empty');empty.innerHTML='<span class="welcome-document tool-emblem" data-tool-object="markdown" aria-hidden="true"></span><b>未打开 Markdown</b><p>打开 Markdown 文件，或新建空白文档</p><div class="welcome-actions"><button class="primary-btn" id="welcome-open">打开 Markdown</button><button class="quiet-btn" id="welcome-new">新建空白 Markdown</button></div>';
       $('welcome-open').onclick=()=>$('md-import').click();$('welcome-new').onclick=()=>$('md-new').click();
       const paste=document.createElement('button');paste.className='quiet-btn';paste.id='md-paste';paste.title='从剪贴板新建';paste.textContent='从剪贴板新建';paste.onclick=safe(async()=>{await flush();const clip=await checked(api.clipboard());if(!clip.text.trim())return notify('剪贴板没有文本');const r=await checked(api.save('markdown',{title:'剪贴板文档',text:clip.text}));docs.unshift(r.item);await selectDoc(r.item.id);});empty.querySelector('.welcome-actions').after(paste);
       const outline=document.createElement('button');outline.id='md-outline-toggle';outline.className='quiet-btn tool-icon';outline.title='文档目录';outline.setAttribute('aria-label',outline.title);outline.setAttribute('aria-controls','md-outline');outline.setAttribute('aria-expanded','false');outline.innerHTML='<svg viewBox="0 0 24 24"><path d="M8 6h13 M8 12h13 M8 18h13 M3 6h1 M3 12h1 M3 18h1"/></svg>';
@@ -217,6 +218,7 @@
       tabs.querySelectorAll('button').forEach(button=>button.onclick=()=>{agendaMode=button.dataset.agenda;tabs.querySelectorAll('button').forEach(b=>{b.classList.toggle('is-active',b===button);b.setAttribute('aria-pressed',String(b===button));});calendar();});
     }
   }
+  window.SuiraToolArt?.mount();
   window.WorkspaceUI={open:safe(async type=>{if(type==='calendar')await loadCalendar();else await loadDocs();}),flush,
     shortcuts(snapshot){const rows=Object.entries(snapshot.bindings||{}).filter(([name,acc])=>name.startsWith('panelKey:')&&acc);$('all-shortcut-status').innerHTML=rows.map(([name,acc])=>`<div><kbd>${esc(acc.replace('+',' + '))}</kbd><small class="${snapshot.status?.[name]?.ok?'is-ok':'is-error'}">${snapshot.status?.[name]?.localOnly?'仅面板内':snapshot.status?.[name]?.ok?'已生效':esc(snapshot.status?.[name]?.error||'未注册')}</small></div>`).join('');}
   };
