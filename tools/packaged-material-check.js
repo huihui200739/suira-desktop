@@ -20,6 +20,9 @@ async function until(fn){let last;for(let i=0;i<180;i++){try{const value=await f
   assert.equal(info.version,require('../package.json').version);
   await main.evaluate('window.suira.quick.show()');const panel=await page('/quickpanel.html');
   assert.equal((await panel.evaluate('window.suira.app.info()')).nativeBlur,true,'Packaged native module must load and enable blur');
+  await until(()=>panel.evaluate('document.querySelectorAll(".key").length===38'));
+  assert.equal(await panel.evaluate('document.querySelectorAll(".key.is-bound .suira-art").length'),14,'Installed tool objects must be packaged');
+  assert.equal(await panel.evaluate('Boolean(window.SuiraKeycapMotion && document.querySelector(".key-face"))'),true,'Installed key material and motion module must load');
   await panel.evaluate('window.suira.settings.update({panelMaterial:"solid"})');
   assert.equal((await panel.evaluate('window.suira.app.info()')).nativeBlur,false);
   await panel.evaluate('window.suira.settings.update({panelMaterial:"soft"})');

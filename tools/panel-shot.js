@@ -14,6 +14,7 @@ const assert = require('node:assert/strict');
 const { QUICK_PANEL_SIZE } = require('../lib/display-geometry');
 const { keyLayout, TOOLBOX_TOOLS } = require('../lib/keybindings');
 const { bindingFixture, checkBindings } = require('./panel-bindings-check');
+const { checkKeycapMaterial } = require('./keycap-material-check');
 const CHECK_ONLY = process.argv.includes('--check');
 
 const ROOT = path.join(__dirname, '..');
@@ -113,7 +114,7 @@ function buildPage() {
   fs.writeFileSync(path.join(TMP, '__mock.js'), MOCK + bindingFixture, 'utf8');
   fs.writeFileSync(path.join(TMP, 'panel.html'), html, 'utf8');
   fs.copyFileSync(path.join(ROOT, 'assets', 'suira-icon.png'), path.join(TMP, 'suira-icon.png'));
-  for (const asset of ['theme.css', 'quickpanel.css', 'quickpanel.js', 'ui-motion.css', 'ui-motion.js']) {
+  for (const asset of ['theme.css', 'quickpanel.css', 'quickpanel.js', 'ui-motion.css', 'ui-motion.js', 'tool-art.css', 'tool-art.js', 'keycap-material.css', 'keycap-motion.js']) {
     fs.copyFileSync(path.join(ROOT, 'src', asset), path.join(TMP, asset));
   }
 }
@@ -453,6 +454,7 @@ async function capture(send, name) {
     }
 
     console.log('\n== 浅色 / 深色 / 小屏布局 ==');
+    await checkKeycapMaterial({send,evaluate});
     for (const [width, height, scheme] of [[QUICK_PANEL_SIZE.width,QUICK_PANEL_SIZE.height,'light'], [QUICK_PANEL_SIZE.width,QUICK_PANEL_SIZE.height,'dark'], [800,560,'light'], [640,480,'dark']]) {
       await send('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor:2, mobile:false });
       await send('Emulation.setEmulatedMedia', { features:[{name:'prefers-color-scheme',value:scheme}] });
@@ -471,7 +473,7 @@ async function capture(send, name) {
           footerVisible:document.querySelector('.panel-foot').getBoundingClientRect().bottom<=panel.getBoundingClientRect().bottom,
           keySize:keys[0].getBoundingClientRect().width,
           square:keys.every(k=>Math.abs(k.getBoundingClientRect().width-k.getBoundingClientRect().height)<1),
-          numberBorders:keys.slice(0,12).every(k=>getComputedStyle(k).borderTopStyle==='solid'&&getComputedStyle(k).borderTopColor!=='rgba(0, 0, 0, 0)'),
+          numberBorders:keys.slice(0,12).every(k=>{const face=k.querySelector('.key-face')||k;return getComputedStyle(face).borderTopStyle==='solid'&&getComputedStyle(face).borderTopColor!=='rgba(0, 0, 0, 0)';}),
           brandLoaded:document.querySelector('.brand-symbol img').naturalWidth>0,
           removedText:!document.querySelector('.key-label, .context-strip, #source-card, #return-bar'),
           errors:window.__errs

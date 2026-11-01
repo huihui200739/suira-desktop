@@ -120,7 +120,7 @@ require(${JSON.stringify(path.join(root,'main.js'))});`);
   await until(()=>panel.evaluate('Boolean(document.querySelector(".key[data-key=Q] .key-app-icon img"))'));
   console.log('PASS bind indexed app by keyboard, retain its display name and native key icon, no manual file picker required');
   await panel.evaluate(`document.getElementById('toolbox').click();true`);
-  const tools=await panel.evaluate(`[...document.querySelectorAll('.tool-item')].map(b=>{const r=b.getBoundingClientRect();return {icon:!!b.querySelector('.tool-mark svg'),width:r.width,height:r.height};})`);
+  const tools=await panel.evaluate(`[...document.querySelectorAll('.tool-item')].map(b=>{const r=b.getBoundingClientRect();return {icon:!!b.querySelector('.tool-mark .suira-art'),width:r.width,height:r.height};})`);
   assert.ok(tools.length>=15&&tools.every(t=>t.icon&&Math.abs(t.width-t.height)<1&&t.width<=97));
   assert.deepEqual(await panel.evaluate(`window.suira.quick.setPresentation('invalid')`),{ok:false,error:'无效的显示模式'});
   for(let n=0;n<3;n++){

@@ -1,10 +1,13 @@
 # 当前产品界面
 
-这些图片由 `npm run screenshots` 从当前源码启动的真实 Electron 实例生成。使用独立临时数据目录、虚构文档和日程，不读取用户剪贴板，也不占用系统快捷键。
+除下述 0.2.19 材质图外，这些图片由 `npm run screenshots` 从源码启动的真实 Electron 实例生成。使用独立临时数据目录、虚构文档和日程，不读取用户剪贴板，也不占用系统快捷键。
+
+2026-11-02 的 `panel-material*` 和 `toolbox-material` 图片使用真实 Chrome 渲染生产页面、样式和图标，IPC 为隔离演示数据；用于展示已确认的柔光键帽与全部工具物件。它们不包含 Windows 桌面合成层。安装版的图标、动效模块、原生模糊及外观切换另由独立配置实测通过。
 
 | 页面 | 截图 |
 | --- | --- |
 | 随手面板 | [浅色](panel.png) · [深色](panel-dark.png) · [全屏键位](keyboard-fullscreen.png) |
+| 0.2.19 柔光键帽与工具物件 | [浅色](panel-material.png) · [深色](panel-material-dark.png) · [工具箱](toolbox-material.png) |
 | 实际桌面透色验证 | [红色测试背景](panel-desktop-red.png) · [蓝色测试背景](panel-desktop-blue.png) |
 | 复杂背景遮挡验证 | [模拟消息窗口](panel-desktop-busy-blue.png) |
 | 应用启动台 | [窗口](apps.png) · [全屏展示](apps-fullscreen.png) |

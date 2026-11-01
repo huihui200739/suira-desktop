@@ -97,6 +97,9 @@ async function checkBindings({ send, evaluate, capture }) {
   assert.equal(await ev(`document.getElementById('capture-kbd').textContent`),'Alt C');
   assert.equal(await ev(`document.getElementById('clipboard-kbd').textContent`),'Alt V');
   const held=await start('C','R');
+  assert.equal(await ev('document.querySelectorAll(".is-key-hover,.is-key-pressed").length'),0,'Dragging suspends key tilt and press');
+  assert.equal(await ev('Boolean(document.querySelector(".key-drag-preview .suira-art"))'),true,'Dragging retains the actual tool object');
+  assert.equal(await ev('getComputedStyle(document.querySelector(".key-drag-preview .key-face")).backgroundImage.includes("linear-gradient")'),true,'Dragging retains the key material');
   const anchor=await ev(`(()=>{const r=document.querySelector('.key-drag-preview').getBoundingClientRect();const original=document.querySelector('[data-key="C"]').getBoundingClientRect();return {x:r.x,y:r.y,w:r.width,h:r.height,sourceW:original.width,sourceH:original.height};})()`);
   assert.ok(Math.abs(held.x-anchor.x-anchor.sourceW/2)<1,'拖动保留鼠标按下时的横向抓取点');
   assert.ok(Math.abs(held.y-anchor.y-anchor.sourceH/2)<1,'拖动保留鼠标按下时的纵向抓取点');

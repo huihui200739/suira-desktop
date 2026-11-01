@@ -13,6 +13,7 @@
 
 const $ = (selector, root = document) => root.querySelector(selector);
 const $$ = (selector, root = document) => Array.from(root.querySelectorAll(selector));
+let keyMotion = null;
 
 const GLYPHS = {
   calendar: '<svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="3"/><path d="M7 3v4m10-4v4M3 11h18m-12 4h2m4 0h2"/></svg>',
@@ -104,6 +105,7 @@ function fitFullscreenKeys(){
   fit();requestAnimationFrame(fit);
 }
 function setMode(mode) {
+  keyMotion?.clear();
   $('#mode-actions')?.setAttribute('aria-pressed', String(mode === 'actions'));
   $('#mode-apps')?.setAttribute('aria-pressed', String(mode === 'apps'));
   state.mode = mode;
@@ -142,6 +144,7 @@ function toggleApps() {
 /* ---------- 动作面板 ---------- */
 
 function renderKeys() {
+  keyMotion?.clear();
   const grid = $('#key-grid');
   const rows = new Map();
   for (const key of state.keys) {
@@ -174,8 +177,11 @@ function keyMarkup(key) {
   const custom = key.state === 'custom';
   const classes = ['key', bound ? 'is-bound' : custom ? 'is-custom' : key.state === 'unimplemented' ? 'is-unimplemented' : 'is-unbound'];
   let glyph = '';
-  if (bound) glyph = GLYPHS[key.actionId] || `<span class="glyph-text">${escapeHtml(key.label.slice(0, 1))}</span>`;
-  else if (custom) glyph = BINDING_GLYPHS[key.hint === '打开网页' ? 'url' : key.hint === '打开文件夹' ? 'folder' : key.hint === '打开应用' ? 'app' : 'file'] || '';
+  if (bound) glyph = window.SuiraToolArt?.render(key.actionId) || GLYPHS[key.actionId] || `<span class="glyph-text">${escapeHtml(key.label.slice(0, 1))}</span>`;
+  else if (custom) {
+    const kind=key.hint === '打开网页' ? 'url' : key.hint === '打开文件夹' ? 'folder' : key.hint === '打开应用' ? 'app' : 'file';
+    glyph=window.SuiraToolArt?.render(kind) || BINDING_GLYPHS[kind] || '';
+  }
   // 功能名放在键面下，键面只承载图标与直达键。
   const inner = bound || custom
     ? `<span class="key-glyph">${key.appPath?`<span class="key-app-icon" data-icon-path="${escapeHtml(key.appPath)}">${appIconMarkup(key.appPath)}</span>`:glyph}</span><i class="key-badge">${escapeHtml(key.key)}</i>`
@@ -190,7 +196,7 @@ function keyMarkup(key) {
     : custom ? `${key.key}：${key.label}`
     : key.state === 'unimplemented' ? `${key.key}：${key.label}（尚未实现）` : `${key.key}：未绑定`;
   return `<button class="${classes.join(' ')}" type="button" data-key="${escapeHtml(key.key)}" data-action="${escapeHtml(key.actionId)}" data-state="${escapeHtml(key.state)}" aria-label="${escapeHtml(aria)}" data-hint="${escapeHtml(title)}">
-    <span class="key-card" data-glass>${inner}</span>
+    <span class="key-contact" aria-hidden="true"></span><span class="key-card"><span class="key-face">${inner}</span></span>
     ${bound || custom || key.state === 'unimplemented' ? `<span class="key-name">${escapeHtml(key.label)}</span>` : ''}
   </button>`;
 }
@@ -204,6 +210,7 @@ function pressKey(char) {
   if (bindingState.busy || dragState.active) return;
   const key = keyByChar(char);
   if (!key) return;
+  keyMotion?.pulse($$('.key', $('#key-grid')).find(button => button.dataset.key === key.key));
   if (key.state === 'bound') {
     runAction(key.actionId);
     return;
@@ -229,6 +236,7 @@ function bindingEditorOpen() {
 }
 
 function openBindingEditor(keyChar) {
+  keyMotion?.clear();
   closeMoreMenu(false);
   const key = keyByChar(keyChar);
   if (!key || bindingState.busy || dragState.active) return;
@@ -310,6 +318,7 @@ function renderBindingApps(){
 async function bindIndexedApp(index){const app=bindingApps[index];if(!app)return;await setKeyBinding({type:'app',target:app.filePath,name:app.name});}
 
 function setBindingBusy(busy) {
+  if (busy) keyMotion?.clear();
   bindingState.busy = busy;
   $('#binding-editor').setAttribute('aria-busy', String(busy));
   $$('.binding-card button, .binding-card input').forEach(button => {
@@ -404,6 +413,7 @@ function updateKeyDrag(event) {
   if (!drag.active && Math.hypot(event.clientX - drag.x, event.clientY - drag.y) < 7) return;
   if (!drag.active) {
     drag.active = true;
+    keyMotion?.clear();
     drag.source.setPointerCapture(event.pointerId);
     drag.source.classList.add('is-drag-source');
     $('#panel').classList.add('is-key-dragging');
@@ -436,6 +446,7 @@ function updateKeyDrag(event) {
 }
 
 function cancelKeyDrag() {
+  keyMotion?.clear();
   const drag = dragState;
   if (drag.active) drag.suppressClickUntil = performance.now() + 250;
   const source = drag.source, pointerId = drag.pointerId;
@@ -591,7 +602,7 @@ async function openApp(filePath) {
 function renderTools() {
   $('#tool-grid').innerHTML = state.tools.map((tool) => `
     <button class="tool-item ${tool.implemented ? '' : 'is-todo'}" type="button" data-id="${escapeHtml(tool.id)}" ${tool.implemented ? '' : 'aria-disabled="true"'}>
-      <span class="tool-mark" data-tool="${escapeHtml(tool.id)}">${GLYPHS[tool.id]||BINDING_GLYPHS.app}</span>
+      <span class="tool-mark" data-tool="${escapeHtml(tool.id)}">${window.SuiraToolArt?.render(tool.id)||GLYPHS[tool.id]||BINDING_GLYPHS.app}</span>
       <span class="tool-copy"><b>${escapeHtml(tool.label)}</b><small>${escapeHtml(tool.implemented ? tool.hint : '尚未实现')}</small></span>
     </button>
   `).join('');
@@ -634,6 +645,7 @@ function clearSearch() {
 }
 
 function updateSearch(value) {
+  keyMotion?.clear();
   cancelCommands();
   state.query = value.trim();
   state.commandIndex = 0;
@@ -986,11 +998,18 @@ function focusSearch() {
 
 function installEvents() {
   let guideDismissed=false;
+  const showGuideIfNeeded=async()=>{
+    const settings=await window.suira.settings?.get?.();
+    if(!guideDismissed&&settings&&!settings.panelGuideSeen)$('#panel-guide').hidden=false;
+  };
   const syncMaterial=settings=>{const value=settings.panelMaterial||'soft';$('#panel').style.setProperty('--panel-opacity',({soft:.84,clear:.62,solid:.94})[value]||.84);$$('[data-material]').forEach(button=>button.setAttribute('aria-checked',String(button.dataset.material===value)));};
   window.suira.settings?.get?.().then(syncMaterial).catch(()=>{});
   window.suira.settings?.onChanged?.(syncMaterial);
   $$('[data-material]').forEach(button=>listen(button,'click',async()=>{const result=await window.suira.settings.update({panelMaterial:button.dataset.material});if(!result?.ok)throw Error(result?.error||'保存失败');syncMaterial(result.settings);closeMoreMenu(false);}));
   $('#guide-close').onclick=async()=>{guideDismissed=true;$('#panel-guide').hidden=true;await window.suira.settings.update({panelGuideSeen:true});};
+  // The first shown IPC can precede renderer event installation. Initialize the
+  // guide independently, while retaining the dismissal guard for late replies.
+  showGuideIfNeeded().catch(()=>{});
   $('#update-close').onclick=closeUpdates;
   window.suira.updates?.onState(renderUpdate);
   listen($('#update-action'),'click',async()=>{const api=window.suira.updates;renderUpdate(await (updateState.phase==='available'?api.download():updateState.phase==='ready'?api.install():api.check()));});
@@ -1361,11 +1380,14 @@ function installEvents() {
     closeTranslate();
     state.appPage = 0;
     await loadState();
-    const settings=await window.suira.settings?.get?.();if(!guideDismissed&&settings&&!settings.panelGuideSeen)$('#panel-guide').hidden=false;
+    await showGuideIfNeeded();
     loadRecent();
   });
 }
 
+keyMotion=window.SuiraKeycapMotion?.attach($('#key-grid'),{
+  suspended:() => dragState.active || bindingState.busy || bindingEditorOpen() || state.mode !== 'actions' || Boolean(state.query)
+});
 installEvents();
 loadState();
 loadRecent();

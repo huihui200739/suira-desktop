@@ -1,0 +1,25 @@
+{
+  "version": "0.2.19",
+  "artifact": "Suira-0.2.19-x64.exe",
+  "bytes": 156511382,
+  "sha256": "4911B6F369B6D474ABC00EE4A29E0252C851D9280E02543F15759E7C3FF0FB07",
+  "sha512": "zMp4cFknlwmfJTwDlusxW7/fCY7FZlh4EbEdUK1MFQnoptkRZ6zgOUjOAOcZMboK3GCvmoktWtQPwJWUThGDxQ==",
+  "platform": "win32",
+  "arch": "x64",
+  "electron": "45.0.0",
+  "checkedSourceFiles": 99,
+  "checks": [
+    "source-payload-byte-match",
+    "no-test-profile-or-obsolete-key-hook",
+    "installer-archive-crc",
+    "updater-feed-and-sha512-match",
+    "full-regression-including-keycap-motion-and-drag",
+    "native-launcher-fullscreen-and-preference-persistence",
+    "installed-payload-byte-match",
+    "installed-tool-objects-motion-and-four-surface-native-blur",
+    "existing-protected-key-content-and-key-bindings-preserved"
+  ],
+  "signature": "unsigned",
+  "published": false,
+  "localDeployment": "User completed desktop installation; installed payload verified and stale uninstall version metadata synchronized"
+}
