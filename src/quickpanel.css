@@ -741,6 +741,15 @@ kbd { font-family: var(--font-ui); font-size: var(--text-1); font-weight: 600; }
 .panel .toolbox-btn,.panel .capture-chip,.panel .clipboard-chip { box-shadow:none; border-color:var(--tool-edge); font-weight:500; }
 .panel .panel-more-menu,.panel .panel-more-submenu { background:var(--tool-surface); border-color:var(--tool-edge); border-radius:12px; }
 .panel-more-menu button,.panel-more-submenu button { min-height:36px; }
+.panel .binding-card { padding:8px; gap:4px; border-radius:12px; border-color:var(--tool-edge); background:var(--tool-surface); box-shadow:var(--shadow-lift); }
+.panel .binding-categories button,.panel .binding-action-grid button { min-height:36px; padding:8px; gap:8px; border-radius:8px; }
+.panel .binding-head b { font-weight:500; }
+.panel .binding-card svg { width:18px; height:18px; stroke-width:1.5; }
+.panel .binding-key { border-radius:4px; border-color:var(--tool-edge); background:var(--paper-soft); box-shadow:none; }
+.panel :is(.binding-card,.panel-more-menu,.panel-more-submenu):not([hidden]) { animation:panel-menu-in 180ms var(--ease-out); }
+@keyframes panel-menu-in { from { opacity:0; } to { opacity:1; } }
+.panel .binding-tool-icon { width:20px; height:20px; color:var(--ink-soft); }
+.panel .panel-foot kbd { padding:2px 4px; border:1px solid var(--tool-edge); border-radius:4px; font-weight:400; }
 .panel .key.is-drop-over .key-card { transform:none; border-color:var(--accent); background:var(--accent-soft); box-shadow:none; }
 .panel [data-glass]::after { display:none; }
 .panel[data-presentation="fullscreen"] .key-card { background:#ffffff14; border-color:#ffffff26; box-shadow:none; }

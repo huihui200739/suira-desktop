@@ -7,6 +7,12 @@
   const lunarDays = ['初一','初二','初三','初四','初五','初六','初七','初八','初九','初十','十一','十二','十三','十四','十五','十六','十七','十八','十九','二十','廿一','廿二','廿三','廿四','廿五','廿六','廿七','廿八','廿九','三十'];
   const lunar = day => lunarDays[Number(lunarFormatter.formatToParts(day).find(p=>p.type==='day')?.value)-1] || lunarFormatter.format(day);
   let previewTimer;
+  function documentIdentity(item) {
+    if(document.documentElement.dataset.tool!=='markdown')return;
+    document.querySelector('.brand b').textContent=item?item.title+'.md':'未打开 Markdown';
+    document.querySelector('.brand b').hidden=Boolean(item);
+    $('md-title').hidden=!item;
+  }
   let agendaMode='countdown', countdownFilter='all', upcomingDays=[];
   let calendarView='month';
   let month=new Date(), selected=dateKey(month), events=[], editing='', docs=[], current='', revision=0, savedRevision=0, timer, chain=Promise.resolve();
@@ -38,7 +44,7 @@
     $('agenda-date').textContent=new Date(selected+'T12:00:00').toLocaleDateString('zh-CN',{month:'long',day:'numeric',weekday:'long'});
     const entries=visible.filter(e=>e.meta.date===selected).sort((a,b)=>(a.meta.time||'').localeCompare(b.meta.time||''));
     $('agenda-count').textContent=`${entries.filter(e=>!e.meta.done).length} 项待办`;
-    $('agenda-list').innerHTML=entries.length?entries.map(e=>`<div class="agenda-item ${e.meta.done?'done':''}"><button class="agenda-check" data-done="${e.id}" aria-label="${e.meta.done?'重新打开':'标记完成'}">${e.meta.done?'✓':'○'}</button><button class="agenda-content" data-event="${e.id}"><small>${esc(e.meta.time||'全天')} ${e.meta.priority==='high'?' · 重要':''}</small><b>${esc(e.title)}</b><p>${esc(e.text)}</p><small>${esc(e.meta.location||'')}</small></button><button class="agenda-remove" data-remove="${e.id}" aria-label="删除日程">×</button></div>`).join(''):'<div class="workspace-empty"><b>这一天，留给你安排</b><p>添加日程，或给自己留一点空闲。</p></div>';
+    $('agenda-list').innerHTML=entries.length?entries.map(e=>`<div class="agenda-item ${e.meta.done?'done':''}"><button class="agenda-check" data-done="${e.id}" aria-label="${e.meta.done?'重新打开':'标记完成'}">${e.meta.done?'✓':'○'}</button><div class="agenda-entry"><button class="agenda-content" data-event="${e.id}"><small>${esc(e.meta.time||'全天')} ${e.meta.priority==='high'?' · 重要':''}</small><b>${esc(e.title)}</b><small>${esc(e.meta.location||'')}</small></button>${e.text?`<details class="agenda-notes"><summary>备注</summary><p>${esc(e.text)}</p></details>`:''}</div><button class="agenda-remove" data-remove="${e.id}" aria-label="删除日程">×</button></div>`).join(''):'<div class="workspace-empty"><b>这一天，留给你安排</b><p>添加日程，或给自己留一点空闲。</p></div>';
     if(agendaMode==='countdown'){
       const todayUTC=Date.UTC(new Date().getFullYear(),new Date().getMonth(),new Date().getDate());
       const builtins=upcomingDays.filter(e=>(countdownFilter==='all'||countdownFilter===e.kind)&&(!search||e.title.toLowerCase().includes(search))).map(e=>({title:e.title,meta:{date:e.date},builtin:e.kind}));
@@ -85,17 +91,17 @@
     const headings=[...$('md-preview').querySelectorAll('h1,h2,h3')];$('md-outline').innerHTML=headings.map((h,i)=>{h.id='md-heading-'+i;return `<button data-heading="${i}" title="${esc(h.textContent)}">${esc(h.textContent)}</button>`;}).join('');$('md-outline').querySelectorAll('button').forEach(b=>b.onclick=()=>headings[+b.dataset.heading].scrollIntoView({block:'start'}));
     $('md-words').textContent=`${text.length.toLocaleString()} 字符 · ${text.split('\n').length} 行`;
   }
-  function docList(){const query=$('md-search').value.trim().toLowerCase();$('md-list').innerHTML=docs.filter(d=>(d.title+' '+d.text).toLowerCase().includes(query)).map(d=>`<button class="document-row ${d.id===current?'is-active':''}" data-document="${d.id}"><span class="recent-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M6 3h8l4 4v14H6z M14 3v5h4 M9 12h6 M9 16h6"/></svg></span><div><b>${esc(d.title)}.md</b><small>本地文档 · ${new Date(d.updatedAt).toLocaleDateString('zh-CN')}</small></div><em>›</em></button>`).join('')||'<div class="workspace-empty">没有匹配的文档</div>';$('md-list').querySelectorAll('[data-document]').forEach(b=>b.onclick=safe(()=>selectDoc(b.dataset.document)));}
+  function docList(){const query=$('md-search').value.trim().toLowerCase();$('md-list').innerHTML=docs.filter(d=>(d.title+' '+d.text).toLowerCase().includes(query)).map(d=>`<button class="document-row ${d.id===current?'is-active':''}" data-document="${d.id}"><span class="recent-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M6 3h8l4 4v14H6z M14 3v5h4 M9 12h6 M9 16h6"/></svg></span><div><b>${esc(d.title)}.md</b><small class="recent-path" title="${esc(d.meta?.externalPath||'随序文档')}">${esc(d.meta?.externalPath||'随序文档')}</small><small>${new Date(d.updatedAt).toLocaleDateString('zh-CN')}</small></div><em>›</em></button>`).join('')||'<div class="workspace-empty">没有匹配的文档</div>';$('md-list').querySelectorAll('[data-document]').forEach(b=>b.onclick=safe(()=>selectDoc(b.dataset.document)));}
   function flush(){
     clearTimeout(timer);if(!current||revision===savedRevision)return chain;
     const id=current, version=revision, payload={id,title:$('md-title').value.trim()||'未命名文档',text:$('md-editor').value};
     $('md-status').textContent='保存中…';
-    const job=chain.catch(()=>{}).then(async()=>{const result=await checked(api.save('markdown',payload));const index=docs.findIndex(d=>d.id===id);if(index>=0)docs[index]=result.item;if(current===id){savedRevision=Math.max(savedRevision,version);$('md-status').textContent=revision===savedRevision?savedLabel(result.item):'有未保存的修改';docList();}});
+    const job=chain.catch(()=>{}).then(async()=>{const result=await checked(api.save('markdown',payload));const index=docs.findIndex(d=>d.id===id);if(index>=0)docs[index]=result.item;if(current===id){documentIdentity(result.item);savedRevision=Math.max(savedRevision,version);$('md-status').textContent=revision===savedRevision?savedLabel(result.item):'有未保存的修改';docList();}});
     chain=job.catch(error=>{if(current===id)$('md-status').textContent='保存失败，请重试';throw error;});
     // Callers can await rejection, while the background save also has an observer.
     chain.catch(()=>{});return chain;
   }
-  async function selectDoc(id){clearTimeout(previewTimer);await flush();closeDocumentFind(false);current=id;revision=savedRevision=0;const item=docs.find(d=>d.id===id);$('md-body').hidden=!item;$('md-empty').hidden=Boolean(item);if(item){$('md-title').value=item.title;$('md-editor').value=item.text;$('md-status').textContent=item.meta?.externalPath?'本地文件；Ctrl+S 保存到原位置':'已保存';preview();}document.documentElement.classList.toggle('md-home',!item);if(document.documentElement.dataset.tool==='markdown')document.querySelector('.brand b').textContent=item?item.title+'.md':'未打开 Markdown';for(const id of ['md-save','md-export','md-export-format','md-delete'])$(id).disabled=!item;docList();}
+  async function selectDoc(id){clearTimeout(previewTimer);await flush();closeDocumentFind(false);current=id;revision=savedRevision=0;const item=docs.find(d=>d.id===id);$('md-body').hidden=!item;$('md-empty').hidden=Boolean(item);if(item){$('md-title').value=item.title;$('md-editor').value=item.text;$('md-status').textContent=item.meta?.externalPath?'本地文件；Ctrl+S 保存到原位置':'已保存';preview();}document.documentElement.classList.toggle('md-home',!item);documentIdentity(item);for(const id of ['md-save','md-export','md-export-format','md-delete'])$(id).disabled=!item;docList();}
   async function loadDocs(){docs=await api.list('markdown');const opened=await api.openedFile?.();await selectDoc(opened|| (docs.some(d=>d.id===current)?current:docs[0]?.id||''));}
   function dirty(){revision++;$('md-status').textContent='未保存';clearTimeout(previewTimer);previewTimer=setTimeout(preview,120);clearTimeout(timer);timer=setTimeout(()=>flush().catch(error=>notify(error.message)),400);}
   $('md-editor').oninput=dirty;$('md-title').oninput=dirty;$('md-search').oninput=docList;
@@ -103,7 +109,7 @@
   $('md-import').onclick=safe(async()=>{await flush();const result=await api.import();if(result.canceled)return;await checked(Promise.resolve(result));docs=[result.item,...docs.filter(item=>item.id!==result.item.id)];await selectDoc(result.item.id);if(result.recovered)notify('已恢复尚未写回原文件的草稿，请检查后再保存');});
   $('md-export').onclick=safe(async()=>{await flush();const result=await api.export(current,$('md-export-format').value);if(result.canceled)return;await checked(Promise.resolve(result));notify('文档已导出');});
   $('md-delete').onclick=safe(async()=>{if(!confirm('删除这篇文档？'))return;await flush();await checked(api.remove('markdown',current));current='';revision=savedRevision=0;await loadDocs();});
-  function setDocumentView(view){$('md-split').dataset.view=view;document.querySelectorAll('[data-md-view]').forEach(b=>{b.classList.toggle('is-active',b.dataset.mdView===view);b.setAttribute('aria-pressed',String(b.dataset.mdView===view));});}
+  function setDocumentView(view){$('md-split').dataset.view=view;document.querySelector('.markdown-toolbar').hidden=view==='preview';document.querySelectorAll('[data-md-view]').forEach(b=>{b.classList.toggle('is-active',b.dataset.mdView===view);b.setAttribute('aria-pressed',String(b.dataset.mdView===view));});}
   document.querySelectorAll('[data-md-view]').forEach(b=>b.onclick=()=>setDocumentView(b.dataset.mdView));
   const findBar=document.createElement('div');findBar.id='md-find';findBar.hidden=true;
   findBar.innerHTML='<input id="md-find-query" type="search" maxlength="200" placeholder="查找正文" aria-label="查找当前 Markdown 正文"><span id="md-find-count" role="status" aria-live="polite">0 / 0</span><button id="md-find-prev" title="上一个 · Shift+Enter" aria-label="上一个匹配">↑</button><button id="md-find-next" title="下一个 · Enter" aria-label="下一个匹配">↓</button><button id="md-find-close" title="关闭查找 · Esc" aria-label="关闭文内查找">×</button>';
@@ -180,8 +186,21 @@
       const empty=$('md-empty');empty.innerHTML='<span class="welcome-document"><svg viewBox="0 0 48 56"><rect x="5" y="2" width="38" height="52" rx="5"/><path d="M13 13h11 M18 9v13 M12 18h14 M30 12h6 M30 19h6 M12 43l9-10 7 6 8-12v19H12z"/></svg></span><b>未打开 Markdown</b><p>打开 Markdown 文件，或新建空白文档</p><div class="welcome-actions"><button class="primary-btn" id="welcome-open">打开 Markdown</button><button class="quiet-btn" id="welcome-new">新建空白 Markdown</button></div>';
       $('welcome-open').onclick=()=>$('md-import').click();$('welcome-new').onclick=()=>$('md-new').click();
       const paste=document.createElement('button');paste.className='quiet-btn';paste.id='md-paste';paste.title='从剪贴板新建';paste.textContent='从剪贴板新建';paste.onclick=safe(async()=>{await flush();const clip=await checked(api.clipboard());if(!clip.text.trim())return notify('剪贴板没有文本');const r=await checked(api.save('markdown',{title:'剪贴板文档',text:clip.text}));docs.unshift(r.item);await selectDoc(r.item.id);});empty.querySelector('.welcome-actions').after(paste);
-      const outline=document.createElement('button');outline.className='quiet-btn tool-icon';outline.title='文档目录';outline.setAttribute('aria-label',outline.title);outline.setAttribute('aria-controls','md-outline');outline.setAttribute('aria-expanded','false');outline.innerHTML='<svg viewBox="0 0 24 24"><path d="M8 6h13 M8 12h13 M8 18h13 M3 6h1 M3 12h1 M3 18h1"/></svg>';
+      const outline=document.createElement('button');outline.id='md-outline-toggle';outline.className='quiet-btn tool-icon';outline.title='文档目录';outline.setAttribute('aria-label',outline.title);outline.setAttribute('aria-controls','md-outline');outline.setAttribute('aria-expanded','false');outline.innerHTML='<svg viewBox="0 0 24 24"><path d="M8 6h13 M8 12h13 M8 18h13 M3 6h1 M3 12h1 M3 18h1"/></svg>';
       $('md-outline').hidden=true;outline.onclick=()=>{const hidden=$('md-outline').hidden;$('md-outline').hidden=!hidden;outline.setAttribute('aria-expanded',String(hidden));};top.querySelector('[data-md-view]').parentElement.after(outline);
+      // Keep the original controls/listeners; title and save state each have one home.
+      document.querySelector('.brand>div').append($('md-title'));
+      $('md-words').after($('md-status'));
+      for(const [label,nodes] of [
+        ['文件',[$('md-import'),$('md-new')]],
+        ['文档视图',[top.querySelector('.view-switch'),outline]],
+        ['保存与导出',[$('md-save'),$('md-export-format'),$('md-export'),$('md-delete')]]
+      ]){
+        const group=document.createElement('div');group.className='tool-action-group';group.setAttribute('role','group');group.setAttribute('aria-label',label);
+        top.append(group);group.append(...nodes);
+      }
+      const foot=document.querySelector('.document-foot>span:last-child');
+      foot.innerHTML='<kbd>Ctrl</kbd> + <kbd>S</kbd> 保存';
       const label=document.createElement('h3');label.textContent='最近打开';document.querySelector('.document-sidebar').prepend(label);
     }else{
       top.append($('calendar-export'));

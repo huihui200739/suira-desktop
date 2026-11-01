@@ -26,6 +26,11 @@ async function until(fn){let error;for(let n=0;n<140;n++){try{const value=await 
   await go('shelf');await shot('36-workspace-tasks.png');
   await go('calendar');await until(()=>main.evaluate('document.querySelectorAll(".calendar-day").length===42'));await main.evaluate(`document.querySelector('[data-agenda="todo"]').click();true`);await main.evaluate(`document.getElementById('calendar-new').click();document.getElementById('event-title').value='产品评审';document.getElementById('event-time').value='14:30';document.getElementById('event-notes').value='讨论下一版工作台';document.getElementById('event-form').requestSubmit(document.querySelector('#event-form button[type="submit"]'));true`);
   await until(()=>main.evaluate(`document.querySelector('.agenda-content b')?.textContent==='产品评审'`));
+  assert.equal(await main.evaluate('document.querySelector(".agenda-notes").open'),false);
+  await main.evaluate('document.querySelector(".agenda-notes summary").click();true');
+  assert.equal(await main.evaluate('document.querySelector(".agenda-notes").open'),true);
+  assert.equal(await main.evaluate('document.querySelector(".agenda-notes p").textContent'),'讨论下一版工作台');
+  assert.equal(await main.evaluate('document.getElementById("event-form").hidden'),true,'Expanding notes must not open the edit form');
   await main.evaluate(`document.querySelector('[data-done]').click();true`);await until(()=>main.evaluate(`Boolean(document.querySelector('.agenda-item.done'))`));
   await main.evaluate(`document.querySelector('[data-calendar-view="week"]').click();true`);
   assert.equal(await main.evaluate('document.querySelectorAll(".calendar-day").length'),7);
@@ -66,6 +71,13 @@ async function until(fn){let error;for(let n=0;n<140;n++){try{const value=await 
   assert.equal(await main.evaluate(`document.querySelector('#md-preview table')!==null && !document.querySelector('#md-preview script,#md-preview img,#md-preview [onerror]') && !window.__unsafe`),true);
   await main.evaluate(`document.getElementById('md-editor').value=${JSON.stringify(markdown.split('<img')[0])};document.getElementById('md-editor').dispatchEvent(new Event('input'));window.WorkspaceUI.flush()`);
   const markdownClient=main;
+  assert.equal(await main.evaluate('document.getElementById("md-title").closest(".titlebar")!==null'),true);
+  assert.equal(await main.evaluate('document.getElementById("md-status").closest(".document-foot")!==null'),true);
+  assert.equal(await main.evaluate('document.querySelectorAll(".tool-action-group").length'),3);
+  await main.send('Emulation.setDeviceMetricsOverride',{width:900,height:700,deviceScaleFactor:1,mobile:false});
+  assert.ok(await main.evaluate('document.documentElement.scrollWidth<=innerWidth'), 'Compact document window must not overflow');
+  assert.ok(await main.evaluate('document.querySelector(".window-actions").getBoundingClientRect().right<=innerWidth'), 'Window controls remain reachable');
+  await main.send('Emulation.clearDeviceMetricsOverride');
   assert.equal(await main.evaluate('document.getElementById("md-outline").hidden'),true);
   await main.evaluate('document.querySelector("[aria-controls=md-outline]").click();true');
   assert.equal(await main.evaluate('document.getElementById("md-outline").hidden'),false);
@@ -77,6 +89,7 @@ async function until(fn){let error;for(let n=0;n<140;n++){try{const value=await 
   for(const view of ['preview','edit','split']){
     await main.evaluate(`document.querySelector('[data-md-view="${view}"]').click();true`);
     assert.equal(await main.evaluate('document.getElementById("md-split").dataset.view'),view);
+    assert.equal(await main.evaluate('document.querySelector(".markdown-toolbar").hidden'),view==='preview');
   }
   assert.equal(await main.evaluate('getComputedStyle(document.querySelector(".sidebar")).display'),'none');
   const beforeFind=await main.evaluate(`document.getElementById('md-editor').value`);

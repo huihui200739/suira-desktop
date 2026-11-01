@@ -13,7 +13,7 @@
  *
  * 字号全站只用四档：12（辅助）/ 13（正文）/ 15（标题）/ 20（页面大标题），
  * 最小可用字号 12px；层级关系优先用字重、颜色与间距表达。
- * 动效基准：反馈 120ms、常规 180ms ease-out；装饰性动画一律省略。
+ * 动效基准：反馈 140ms、常规 180ms ease-out；装饰性动画一律省略。
  *
  * 主题开关：settings.theme = system | light | dark，主进程写 nativeTheme.themeSource，
  * 渲染层只认 prefers-color-scheme，不需要任何 JS 参与换肤。
@@ -152,9 +152,9 @@
   --shadow-card: none;
   --shadow-inset-top: inset 0 1px 0 var(--floating-edge);
 
-  /* 动效：ease-out 250ms，少即是多 */
-  --ease-out: cubic-bezier(0, 0, 0.2, 1);
-  --dur-fast: 120ms;
+  /* 动效：140ms 反馈、180ms 菜单，少即是多 */
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --dur-fast: 140ms;
   --dur-base: 180ms;
 
   /* 字号：全站四档 */

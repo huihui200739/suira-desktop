@@ -171,10 +171,11 @@ body { background:transparent; }
 @media(max-width:1000px){.tool-top-actions{gap:3px}.tool-window .calendar-month #calendar-selected{display:none}.tool-window .calendar-month h2{font-size:18px}.tool-window .calendar-day>span{font-size:22px}.tool-window.md-home .document-sidebar{padding:0 18px}}
 
 /* Content tools share one quiet surface; the document is the focal layer. */
-.tool-window .app-shell { background:var(--tool-surface); border-color:var(--tool-edge); grid-template-rows:56px minmax(0,1fr); }
+.tool-window .app-shell { background:var(--tool-surface); border-color:var(--tool-edge); grid-template-rows:56px minmax(0,1fr); grid-template-columns:minmax(0,1fr); }
+.tool-window .titlebar { min-width:0; }
 .tool-window .page { padding:16px 24px 24px; }
 .tool-window .brand b { font-size:15px; font-weight:500; }
-.tool-top-actions { gap:4px; }
+.tool-top-actions { gap:4px; overflow-x:auto; scrollbar-width:thin; }
 .tool-top-actions .tool-icon { width:32px; height:32px; min-height:32px; padding:8px; border-radius:8px; }
 .tool-top-actions .tool-icon svg,.tool-top-actions .view-switch svg { width:18px; height:18px; }
 .tool-window .quiet-btn { border-color:var(--tool-edge); box-shadow:none; }
@@ -194,7 +195,15 @@ body { background:transparent; }
 .tool-window .document-row .recent-icon { width:28px; height:32px; border-radius:6px; color:var(--ink-soft); background:transparent; }
 .recent-icon svg { width:20px; height:20px; fill:none; stroke:currentColor; stroke-width:1.5; }
 .tool-window .document-main { background:var(--tool-content); }
-.tool-window .document-heading { padding:8px 24px; min-height:40px; border:0; }
+.tool-window .document-heading { display:none; }
+.tool-window #md-title { width:clamp(96px,18vw,260px); min-width:0; padding:4px 0; border:0; border-radius:4px; background:transparent; color:var(--ink); font:500 15px/24px var(--font-ui); text-overflow:ellipsis; -webkit-app-region:no-drag; }
+.tool-window #md-title:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+.tool-action-group { display:flex; align-items:center; gap:4px; padding-left:8px; margin-left:4px; border-left:1px solid var(--tool-edge); flex-shrink:0; }
+.tool-window .document-row div { flex:1; min-width:0; }
+.tool-window .recent-path { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.tool-window .document-foot { justify-content:flex-start; gap:16px; }
+.tool-window .document-foot>span:last-child { margin-left:auto; }
+.tool-window .document-foot kbd { padding:2px 4px; border:1px solid var(--tool-edge); border-radius:4px; font:inherit; }
 .tool-window .document-heading input { font-size:15px; font-weight:500; }
 .tool-window .document-heading>span { font-size:12px; }
 .tool-window .markdown-toolbar { padding:4px 16px; gap:4px; min-height:36px; border-color:var(--tool-edge); }
@@ -247,6 +256,11 @@ body { background:transparent; }
 .tool-window .agenda-content b,.tool-window .countdown-row b { font-size:14px; font-weight:500; }
 .tool-window .agenda-content small { color:var(--ink-soft); font-size:12px; }
 .tool-window .agenda-content p:empty,.tool-window .agenda-content small:empty { display:none; }
+.agenda-entry { flex:1; min-width:0; }
+.agenda-entry>.agenda-content { display:block; width:100%; }
+.agenda-notes { margin-top:8px; font-size:12px; color:var(--ink-soft); }
+.agenda-notes summary { cursor:pointer; width:fit-content; padding:2px 0; }
+.agenda-notes p { margin:8px 0 0; line-height:1.7; white-space:pre-wrap; overflow-wrap:anywhere; }
 .tool-window .countdown-row strong { font-size:24px; font-weight:500; font-variant-numeric:tabular-nums; }
 .agenda-tabs svg { width:16px; height:16px; fill:none; stroke:currentColor; stroke-width:1.5; vertical-align:-3px; margin-right:4px; }
 @media(prefers-color-scheme:dark) { .tool-window .primary-btn { color:#101820; } }
