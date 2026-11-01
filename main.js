@@ -254,7 +254,15 @@ function translateConfig(overrides = {}) {
 
 /** 翻译一次：给面板、动作层、设置页的「测试」共用同一条路径。 */
 async function runTranslation(text, overrides = {}) {
-  return translateLib.translateText({ config: translateConfig(overrides), text });
+  const config=translateConfig(overrides);
+  const requestedModel=config.model;
+  if(config.provider==='openai'&&/\s/.test(config.model)){
+    const result=await translateLib.listModels(config,electron.net.fetch);
+    if(result.ok)config.model=translateLib.matchModel(config.model,result.models);
+  }
+  const result=await translateLib.translateText({ config, text,fetchImpl:electron.net.fetch });
+  if(result.ok&&config.model!==requestedModel&&translateConfig().model===requestedModel){await store.updateSettings({translateModel:config.model});broadcast('settings:changed',publicSettings());}
+  return result;
 }
 
 /** 当前翻译能力概述：设置页与面板据此显示「未配置」而不是假装可用。 */
@@ -3898,6 +3906,7 @@ function registerIpc() {
   /* ---------- 翻译（图片取词翻译 = 翻译 B 支） ---------- */
 
   ipcMain.handle('translate:status', () => translateStatus());
+  ipcMain.handle('translate:models',()=>translateLib.listModels(translateConfig(),electron.net.fetch));
   ipcMain.handle('translate:run', async (_event, payload) => {
     const text = String(payload?.text || '');
     if (!text.trim()) return { ok: false, error: '没有需要翻译的文字' };
@@ -3917,14 +3926,18 @@ function registerIpc() {
 
   // 清空剪贴板来源的内容（保留固定项与任务内引用）
   ipcMain.handle('content:clear-clipboard', async () => {
-    const items = store.data.items.filter((item) => item.source?.type === 'clipboard' && !item.pinned);
+    const plan=require('./lib/history-cleanup').historyCleanup(store.data.items,store.data.tasks);
+    const items=plan.removed;
     for (const item of items) {
       store.removeItem(item.id);
-      if (item.kind === 'image' && item.filePath) await fsp.rm(item.filePath, { force: true }).catch(() => {});
+      if (item.kind === 'image' && item.filePath && !plan.kept.some(kept=>kept.filePath===item.filePath)) {
+        const owned=[capturesDir(),clipboardImageDir()].some(dir=>path.resolve(item.filePath).startsWith(path.resolve(dir)+path.sep));
+        if(owned)await fsp.rm(item.filePath, { force: true }).catch(() => {});
+      }
     }
     await store.save();
     broadcast('content:changed');
-    return { ok: true, removed: items.length };
+    return { ok: true, removed: items.length, protected:plan.protectedCount };
   });
 
 }

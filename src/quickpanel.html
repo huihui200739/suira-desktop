@@ -39,7 +39,7 @@
       <div data-menu-group="layout" hidden><button type="button" role="menuitemradio" data-layout="actions">动作面板</button><button type="button" role="menuitemradio" data-layout="apps">应用启动台</button><button type="button" role="menuitemradio" data-layout="toolbox">工具箱</button></div>
       <button type="button" role="menuitem" data-menu-section="appearance" aria-expanded="false">外观<span>›</span></button>
       <div data-menu-group="appearance" hidden><button type="button" role="menuitemradio" data-theme="light">浅色</button><button type="button" role="menuitemradio" data-theme="dark">深色</button><button type="button" role="menuitemradio" data-theme="system">跟随系统</button></div>
-      <hr><button type="button" role="menuitem" data-menu-action="releases">检查更新</button>
+      <hr><button type="button" role="menuitem" data-menu-action="guide">使用指南</button><button type="button" role="menuitem" data-menu-action="releases">检查更新</button>
       <button type="button" role="menuitem" data-menu-action="restart">重启随序</button>
       <button type="button" role="menuitem" data-menu-action="quit">退出随序</button>
     </div>
@@ -171,6 +171,7 @@
     </div>
 
     <div id="update-dialog" class="update-dialog" role="dialog" aria-modal="true" aria-labelledby="update-title" hidden><div class="update-card"><header><b id="update-title">软件更新</b><button id="update-close" type="button" aria-label="关闭更新面板">×</button></header><p id="update-version"></p><p id="update-message" role="status"></p><progress id="update-progress" max="100" value="0" hidden aria-label="下载进度"></progress><small>重启前会保存随序草稿；原文件保持原有保存方式。</small><button id="update-action" type="button">检查更新</button></div></div>
+    <aside id="panel-guide" class="panel-guide" hidden aria-label="随手面板使用指南"><b>从这里，顺手开始</b><p>点击工具，或直接按对应字母。空格切换应用，输入框可搜索。</p><p>拖动键位调整位置，右键绑定应用、工具或网页。Esc 收起面板。</p><p>全局快捷键需在设置中主动开启，冲突时请换键。</p><small>三点菜单 → 使用指南，随时再看。</small><button id="guide-close" type="button">知道了</button></aside>
     <div class="toast" id="toast" role="status"></div>
   </main>
   <script src="ui-motion.js"></script>

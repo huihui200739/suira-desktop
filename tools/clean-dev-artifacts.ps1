@@ -45,7 +45,7 @@ function Add-Target([string]$candidate, [string]$owner, [string]$group) {
 
 foreach ($name in @('edge-profile','edge-profile2','mem','probe-app','probe-app2','udata-copy','udata-default','udata-test',
                     'launch-suira.cmd','run-app.cmd','run-app2.cmd','run-probe.cmd','release-edit.py','release-ui-edit.py','update-repo.py','repo-info.json','latest-release.json',
-                    'cleanup-protected.json','installer-lifecycle-result.json','release-audit.json')) {
+                    'cleanup-protected.json','installer-lifecycle-result.json','release-audit.json','coco-probe.js','coco-electron-probe.js')) {
   Add-Target (Join-Path $repoRoot ('.workbuddy\' + $name)) $repoRoot 'workspace-test-artifacts'
 }
 if (Test-Path -LiteralPath (Join-Path $repoRoot '.workbuddy')) {

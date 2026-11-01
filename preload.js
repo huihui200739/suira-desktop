@@ -188,6 +188,7 @@ contextBridge.exposeInMainWorld('suira', {
   },
   // 翻译（图片取词翻译）：密钥只在主进程解密，渲染层只看到「是否已配置」
   translate: {
+    models: () => ipcRenderer.invoke('translate:models'),
     status: () => ipcRenderer.invoke('translate:status'),
     run: (payload) => ipcRenderer.invoke('translate:run', payload),
     test: () => ipcRenderer.invoke('translate:test'),

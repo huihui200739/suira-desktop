@@ -699,6 +699,17 @@ function applyTranslateSettings(settings) {
 }
 
 function bindTranslateSettings() {
+  $('#setting-translate-models').addEventListener('click',async()=>{
+    const button=$('#setting-translate-models'),status=$('#setting-translate-status');button.disabled=true;status.textContent='正在获取模型…';
+    try{const patch={translateProvider:$('#setting-translate-provider').value,translateBaseUrl:$('#setting-translate-base').value};if($('#setting-translate-key').value.trim())patch.translateApiKey=$('#setting-translate-key').value.trim();
+      const saved=await window.suira.settings.update(patch);if(!saved?.ok)throw Error(saved?.error||'保存失败');$('#setting-translate-key').value='';
+      const result=await window.suira.translate.models();if(!result.ok)throw Error(result.error);
+      $('#translate-models').replaceChildren(...result.models.map(model=>{const option=document.createElement('option');option.value=model;return option;}));
+      const input=$('#setting-translate-model'),slug=input.value.trim().replace(/\s+/g,'-').toLowerCase(),match=result.models.find(model=>model.toLowerCase()===slug);
+      if(match&&input.value!==match){input.value=match;await window.suira.settings.update({translateModel:match});}
+      status.className='setting-hint is-ok';status.textContent=`已获取 ${result.models.length} 个模型，请从模型输入框的列表中选择`;input.focus();
+    }catch(error){status.className='setting-hint is-error';status.textContent=error.message;}finally{button.disabled=false;}
+  });
   $('#setting-translate-provider').addEventListener('change', async (event) => {
     const provider = event.target.value;
     syncTranslateRows(provider);
@@ -1104,11 +1115,11 @@ function installEvents() {
     if (!result?.ok) showGlobalToast(result?.error || '暂时无法开始截图', 'error');
   });
   $('#library-clear').addEventListener('click', () => {
-    openModal('清空剪贴板记录', '输入「清空」以确认', async (value) => {
+    openModal('清理历史记录', '清理剪贴板、截图与派生记录，保留固定项、任务引用和文档。输入「清空」以确认', async (value) => {
       if (value !== '清空') { showGlobalToast('已取消', 'error'); return; }
       const result = await window.suira.content.clearClipboard();
       if (result?.ok) {
-        showGlobalToast(`已清空 ${result.removed || 0} 条剪贴板记录`, 'success');
+        showGlobalToast(`已清理 ${result.removed || 0} 条历史记录${result.protected?'，保留 '+result.protected+' 条固定或任务引用内容':''}`, 'success');
         await refreshLibrary();
       } else {
         showGlobalToast(result?.error || '清空失败', 'error');

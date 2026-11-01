@@ -985,6 +985,7 @@ function focusSearch() {
 }
 
 function installEvents() {
+  $('#guide-close').onclick=async()=>{$('#panel-guide').hidden=true;await window.suira.settings.update({panelGuideSeen:true});};
   $('#update-close').onclick=closeUpdates;
   window.suira.updates?.onState(renderUpdate);
   listen($('#update-action'),'click',async()=>{const api=window.suira.updates;renderUpdate(await (updateState.phase==='available'?api.download():updateState.phase==='ready'?api.install():api.check()));});
@@ -1021,6 +1022,7 @@ function installEvents() {
   $$('#panel-more-menu [data-menu-action]').forEach(button=>listen(button,'click',async()=>{
     const action=button.dataset.menuAction;closeMoreMenu(false);
     if(action==='settings'||action==='shortcuts')await window.suira.quick.showMain(action==='shortcuts'?'settings:shortcuts':'settings');
+    else if(action==='guide')$('#panel-guide').hidden=false;
     else if(action==='releases')await openUpdates();
     else if(action==='restart')await window.suira.app.restart();
     else if(action==='quit')await window.suira.app.quit();
@@ -1354,6 +1356,7 @@ function installEvents() {
     closeTranslate();
     state.appPage = 0;
     await loadState();
+    const settings=await window.suira.settings?.get?.();if(settings&&!settings.panelGuideSeen)$('#panel-guide').hidden=false;
     loadRecent();
   });
 }

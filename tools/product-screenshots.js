@@ -135,6 +135,7 @@ class RegionCheck {
     await main.evaluate(`window.suira.quick.show()`);
     const panel = await page(t => t.url.endsWith('/quickpanel.html'));
     await until(() => panel.evaluate('document.querySelectorAll(".key").length===38'));
+    await panel.evaluate(`document.getElementById('guide-close').click();true`);
     await check('/quickpanel.html'); await shot(panel, 'panel'); await shot(panel, 'panel-dark', 'dark');
     await panel.evaluate(`window.suira.quick.setPresentation('fullscreen')`);
     await until(()=>panel.evaluate('document.getElementById("panel").dataset.mode==="actions"&&document.querySelector(".key-card").getBoundingClientRect().width>72')).catch(async error=>{console.error('Fullscreen state:',await panel.evaluate(`({mode:state.mode,presentation,scale:document.getElementById('panel').style.getPropertyValue('--keyboard-scale'),key:document.querySelector('.key-card').getBoundingClientRect().width,width:innerWidth,height:innerHeight})`));throw error;});
