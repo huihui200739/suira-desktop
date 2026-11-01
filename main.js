@@ -37,6 +37,8 @@ const fsp = require('node:fs/promises');
 const os = require('node:os');
 const crypto = require('node:crypto');
 const {readLaunchpadBackground}=require('./lib/launchpad-background');
+const { createWindowMaterial, shouldEnableBlur } = require('./lib/window-material');
+const windowMaterial = createWindowMaterial();
 const {UpdateController}=require('./lib/update-controller');
 let updateController;
 let updateInstallPrepared=false;
@@ -936,11 +938,23 @@ function clipFloatingSurface(win) {
     shape=clipToWorkAreas(shape,bounds,areas);
   }
   try { win.setShape(shape); } catch {}
+  if (win.__allowNativeBlur) updateWindowMaterial(win);
 }
 
-function prepareFloatingSurface(win, radius = 24) {
+function updateWindowMaterial(win) {
+  const enabled = shouldEnableBlur({ reducedTransparency:nativeTheme.prefersReducedTransparency,
+    highContrast:nativeTheme.shouldUseHighContrastColors, fullscreen:win.__launchpadFullscreen,
+    material:store?.getSettings().panelMaterial });
+  win.__nativeBlur = windowMaterial.apply(win, enabled);
+}
+nativeTheme.on('updated', () => {
+  for (const win of BrowserWindow.getAllWindows()) if (win.__allowNativeBlur && !win.isDestroyed()) updateWindowMaterial(win);
+});
+
+function prepareFloatingSurface(win, radius = 24, blur = false) {
   if (process.platform !== 'win32') return;
   win.__surfaceRadius = radius;
+  win.__allowNativeBlur = blur;
   // DWM acrylic 在透明 HWND 的 HRGN 外仍会绘制灰色底板。
   // Quick panel already has a transparent HWND. Calling setBackgroundMaterial
   // even with 'none' replaces its alpha composition with an opaque backing.
@@ -1035,7 +1049,7 @@ function createQuickWindow() {
     }
   });
   quickWindow.setAlwaysOnTop(true, 'floating');
-  prepareFloatingSurface(quickWindow);
+  prepareFloatingSurface(quickWindow, 24, true);
   quickWindow.__loaded=quickWindow.loadFile(path.join(__dirname, 'src', 'quickpanel.html'));
   quickWindow.__loaded.catch(error=>console.warn('面板加载失败:',error.message));
   quickWindow.setMenuBarVisibility(false);
@@ -1497,7 +1511,7 @@ function createClipboardBarWindow() {
     }
   });
   clipboardBarWindow.setAlwaysOnTop(true, 'floating');
-  prepareFloatingSurface(clipboardBarWindow);
+  prepareFloatingSurface(clipboardBarWindow, 24, true);
   clipboardBarWindow.__loaded = clipboardBarWindow.loadFile(path.join(__dirname, 'src', 'clipboardbar.html'));
   clipboardBarWindow.__loaded.catch(error => console.warn('剪贴板条加载失败:', error.message));
   clipboardBarWindow.setMenuBarVisibility(false);
@@ -1803,7 +1817,7 @@ function showWorkspaceWindow(type) {
   win=new BrowserWindow({width:Math.min(type==='markdown'?1300:1180,area.width-40),height:Math.min(860,area.height-40),minWidth:800,minHeight:600,show:false,frame:false,thickFrame:false,
     title:type==='markdown'?'Markdown · 随序':'日历 · 随序',backgroundColor:'#00000000',backgroundMaterial:'none',hasShadow:false,roundedCorners:true,icon:assetPath('suira-icon.png'),
     webPreferences:{preload:path.join(__dirname,'preload.js'),contextIsolation:true,nodeIntegration:false,sandbox:false,spellcheck:false}});
-  prepareFloatingSurface(win);
+  prepareFloatingSurface(win, 24, true);
   prepareDesktopWindow(win);
   workspaceWindows.set(type,win);win.__tool=type;
   win.webContents.setWindowOpenHandler(()=>({action:'deny'}));
@@ -3221,12 +3235,13 @@ function registerIpc() {
   ipcMain.handle('clipboard-bar:hide', () => hideClipboardBar());
   ipcMain.handle('clipboard-bar:toggle', () => toggleClipboardBar());
 
-  ipcMain.handle('app:info', () => ({
+  ipcMain.handle('app:info', event => ({
     name: APP_NAME,
     version: app.getVersion(),
     userData: userRoot(),
     dataPath: dataPath(),
     shortcuts: shortcutBindings(),
+    nativeBlur: Boolean(senderWindow(event)?.__nativeBlur),
     runtime: 'Electron prototype'
   }));
   ipcMain.handle('app:open-data-dir', () => shell.openPath(userRoot()));
@@ -3897,6 +3912,9 @@ function registerIpc() {
     }
     // 换肤只改一处：nativeTheme 一变，所有窗口的 prefers-color-scheme 同时跟着变
     if (incoming.theme !== undefined) applyTheme();
+    if (incoming.panelMaterial !== undefined) {
+      for (const win of BrowserWindow.getAllWindows()) if (win.__allowNativeBlur && !win.isDestroyed()) updateWindowMaterial(win);
+    }
     const safe = publicSettings();
     broadcast('settings:changed', safe);
     if (keyTouched) broadcast('translate:status', translateStatus());

@@ -1,0 +1,20 @@
+{
+  "version": "0.2.17",
+  "artifact": "Suira-0.2.17-x64.exe",
+  "bytes": 156502336,
+  "sha256": "8232A6E5CD68FDDD6334EB0328F25D32E4D7E77F0059E9EFDBA7E319213E928E",
+  "sha512": "PScYlGo34/Fe5Oy3uhWBNboiUZpIN8qomRQ4XdqiiJmrnMIbgsKjDjiOQ7FqOFy6ITCxgqF2uONBQ1O72vpCKw==",
+  "platform": "win32",
+  "arch": "x64",
+  "electron": "45.0.0",
+  "checkedSourceFiles": 8,
+  "checks": [
+    "source-payload-byte-match",
+    "installed-payload-byte-match",
+    "packaged-native-module-and-material-toggles",
+    "profile-data-and-key-preserved"
+  ],
+  "signature": "unsigned",
+  "published": false,
+  "localDeployment": "verified in-place runtime replacement after legacy NSIS uninstall returned 2"
+}

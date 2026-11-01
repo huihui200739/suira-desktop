@@ -1,0 +1,25 @@
+'use strict';
+const assert = require('node:assert/strict');
+const { createWindowMaterial, shouldEnableBlur } = require('../lib/window-material');
+const calls = [];
+let loads = 0, rejected = false, handle = 42n;
+const fake = { struct: value => value, pointer: value => value, sizeof: () => 16,
+  load: () => ({ func: () => (hwnd, data) => { calls.push({ hwnd, data }); return rejected ? 0 : 1; } }) };
+const material = createWindowMaterial({ platform: 'win32', load: () => { loads++; return fake; } });
+const win = { isDestroyed: () => false, getNativeWindowHandle: () => { const value = Buffer.alloc(8); value.writeBigUInt64LE(handle); return value; } };
+assert.equal(material.apply(win, true), true);
+assert.equal(calls[0].hwnd, 42n);
+assert.deepEqual(calls[0].data, { attribute: 19, policy: { state: 3, flags: 0, color: 0, animation: 0 }, size: 16 });
+material.apply(win, true); assert.equal(calls.length, 1, 'Unchanged HWND does not repeat native work');
+assert.equal(material.apply(win, false), false); assert.equal(calls.at(-1).data.policy.state, 0);
+handle = 99n; material.apply(win, true); assert.equal(calls.at(-1).hwnd, 99n, 'Recreated HWND is reapplied');
+rejected = true; assert.equal(material.apply(win, false), false);
+rejected = false; material.apply(win, false); assert.equal(calls.at(-1).data.policy.state, 0, 'Failure must not poison cache');
+assert.equal(loads, 1);
+const unavailable = createWindowMaterial({ platform: 'win32', load: () => { throw Error('Unavailable'); } });
+assert.equal(unavailable.apply(win, true), false);
+assert.equal(createWindowMaterial({ platform: 'linux', load: () => { throw Error('Must not load'); } }).apply(win, true), false);
+assert.equal(material.apply({ isDestroyed: () => true }, true), false);
+assert.equal(shouldEnableBlur(),true);
+for(const preference of [{reducedTransparency:true},{highContrast:true},{fullscreen:true},{material:'solid'}])assert.equal(shouldEnableBlur(preference),false);
+console.log('PASS native material ABI payload, HWND lifecycle, disable, caching and unavailable-API fallback');
