@@ -78,7 +78,7 @@
   --graphite: var(--slate-12);
 
   /* 强调与状态 */
-  --accent: var(--blue-9);
+  --accent: #0878d1;
   --accent-deep: var(--blue-11);
   --accent-soft: var(--blue-3);
   --accent-glow: color-mix(in srgb, var(--blue-9) 18%, transparent);
@@ -165,6 +165,14 @@
 
   --font-ui: "Segoe UI Variable Text", "Segoe UI", "Microsoft YaHei UI", "Microsoft YaHei", sans-serif;
 
+  /* Shared restrained surfaces: desktop color stays outside readable content. */
+  --tool-surface: rgba(245, 246, 248, .94);
+  --tool-content: var(--paper-raised);
+  --tool-edge: rgba(28, 32, 36, .10);
+  --tool-key: rgba(255, 255, 255, .62);
+  --tool-key-bound: rgba(255, 255, 255, .88);
+  --tool-hover: rgba(255, 255, 255, .96);
+
   font-family: var(--font-ui);
   -webkit-font-smoothing: antialiased;
 }
@@ -219,6 +227,13 @@
     --line-glass: color-mix(in srgb, #ffffff 9%, transparent);
 
     --accent-glow: color-mix(in srgb, var(--blue-9) 24%, transparent);
+    --accent: #70b8ff;
+    --tool-surface: rgba(27, 29, 32, .96);
+    --tool-content: #202225;
+    --tool-edge: rgba(237, 238, 240, .12);
+    --tool-key: rgba(55, 58, 62, .82);
+    --tool-key-bound: rgba(65, 69, 74, .94);
+    --tool-hover: #484d53;
     --danger-soft: var(--red-3);
 
     --shadow-float:

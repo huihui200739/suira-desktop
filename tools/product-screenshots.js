@@ -84,7 +84,8 @@ class RegionCheck {
       assert.ok(surface, 'Missing clipped surface: ' + suffix);
       assert.equal(surface.material, 'transparent');
       const result = path.join(tmp, 'region.json');
-      execFileSync(checker, [surface.handle, result], { windowsHide: true, timeout: 5000 });
+      // A newly created HWND can be exposed before Windows applies its HRGN.
+      await until(()=>{execFileSync(checker, [surface.handle, result], { windowsHide: true, timeout: 5000, stdio:'pipe' });return true;});
       assert.equal(JSON.parse(fs.readFileSync(result, 'utf8')), true, 'Native corners must be excluded: ' + suffix);
       console.log('PASS native region: ' + suffix);
       return surface;
@@ -202,6 +203,11 @@ class RegionCheck {
     const markdown = await page(t => t.url.includes('tool=markdown'));
     await until(() => markdown.evaluate('Boolean(document.querySelector("#md-preview h1"))'));
     await check('tool=markdown'); await shot(markdown, 'markdown');
+    await shot(markdown, 'markdown-dark', 'dark');
+    await markdown.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: 'light' }] });
+    await markdown.evaluate('document.getElementById("md-home").click();true');
+    await until(()=>markdown.evaluate('document.documentElement.classList.contains("md-home")'));
+    await shot(markdown, 'markdown-home');
     await checkPlacement(markdown,'tool=markdown');
     assert.equal(await markdown.evaluate('document.querySelector(".tool-kind").getAttribute("aria-label")'),'Markdown 文档');
     await until(()=>calendar.evaluate('document.documentElement.dataset.windowActive==="false"'));

@@ -124,6 +124,10 @@ require(${JSON.stringify(path.join(root,'main.js'))});`);
   assert.ok(tools.length>=15&&tools.every(t=>t.icon&&Math.abs(t.width-t.height)<1&&t.width<=97));
   assert.deepEqual(await panel.evaluate(`window.suira.quick.setPresentation('invalid')`),{ok:false,error:'无效的显示模式'});
   for(let n=0;n<3;n++){
+    // CDP invokes IPC without a native click. Restore user-visible focus before
+    // exercising the menu action; production deliberately dismisses on blur.
+    await main.evaluate('window.suira.quick.show()');
+    await panel.send('Page.bringToFront');
     assert.equal((await panel.evaluate(`window.suira.quick.setPresentation('fullscreen')`)).ok,true);
     await until(async()=>{const win=await info();return win.full&&win.visible&&Object.keys(win.bounds).every(k=>Math.abs(win.bounds[k]-win.display[k])<=1);}).catch(async error=>{console.error('Fullscreen state:',await info());throw error;});
     await panel.evaluate(`document.getElementById('mode-apps').click();true`);

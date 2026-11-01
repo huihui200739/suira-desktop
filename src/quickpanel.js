@@ -176,12 +176,11 @@ function keyMarkup(key) {
   let glyph = '';
   if (bound) glyph = GLYPHS[key.actionId] || `<span class="glyph-text">${escapeHtml(key.label.slice(0, 1))}</span>`;
   else if (custom) glyph = BINDING_GLYPHS[key.hint === '打开网页' ? 'url' : key.hint === '打开文件夹' ? 'folder' : key.hint === '打开应用' ? 'app' : 'file'] || '';
-  // 绑定键：图标块 + 功能名 + 键位角标，功能不用靠悬停提示猜；
-  // 未实现键也标出名字（淡色），让整个面板可扫读。
+  // 功能名放在键面下，键面只承载图标与直达键。
   const inner = bound || custom
-    ? `<span class="key-glyph">${key.appPath?`<span class="key-app-icon" data-icon-path="${escapeHtml(key.appPath)}">${appIconMarkup(key.appPath)}</span>`:glyph}<i class="key-badge">${escapeHtml(key.key)}</i></span><span class="key-name">${escapeHtml(key.label)}</span>`
+    ? `<span class="key-glyph">${key.appPath?`<span class="key-app-icon" data-icon-path="${escapeHtml(key.appPath)}">${appIconMarkup(key.appPath)}</span>`:glyph}</span><i class="key-badge">${escapeHtml(key.key)}</i>`
     : key.state === 'unimplemented'
-      ? `<span class="key-letter">${escapeHtml(key.key)}</span><span class="key-name">${escapeHtml(key.label)}</span>`
+      ? `<span class="key-letter">${escapeHtml(key.key)}</span>`
       : `<span class="key-letter">${escapeHtml(key.key)}</span>`;
   const shortcutHint=key.accelerator?`（${key.accelerator.replace(/\+/g, ' + ')}）${key.shortcutStatus?.ok===false?' 全局键不可用：'+key.shortcutStatus.error:''}`:'';
   const title = bound ? `${key.label}${key.hint ? `：${key.hint}` : ''}${shortcutHint}`
@@ -192,6 +191,7 @@ function keyMarkup(key) {
     : key.state === 'unimplemented' ? `${key.key}：${key.label}（尚未实现）` : `${key.key}：未绑定`;
   return `<button class="${classes.join(' ')}" type="button" data-key="${escapeHtml(key.key)}" data-action="${escapeHtml(key.actionId)}" data-state="${escapeHtml(key.state)}" aria-label="${escapeHtml(aria)}" data-hint="${escapeHtml(title)}">
     <span class="key-card" data-glass>${inner}</span>
+    ${bound || custom || key.state === 'unimplemented' ? `<span class="key-name">${escapeHtml(key.label)}</span>` : ''}
   </button>`;
 }
 

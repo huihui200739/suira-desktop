@@ -213,7 +213,7 @@
       <div class="${visualClass}">${visual}</div>
       <div class="card-caption">${escapeHtml(selectionTitle(item))}</div>
       <div class="card-foot">
-        <span class="card-source">${escapeHtml(item.appName || label)}</span>
+        <span class="card-source">${escapeHtml(item.appName)}</span>
         <span class="card-time">${escapeHtml(time)}</span>
       </div>
     </article>`;

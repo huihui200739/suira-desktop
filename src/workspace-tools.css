@@ -169,3 +169,86 @@ body { background:transparent; }
 .tool-window .agenda-card:has([data-agenda="countdown"].is-active)>.setting-title { display:none; }
 .tool-window .agenda-card { max-height:none; }.tool-window .calendar-layout[data-view="agenda"] .calendar-dates { display:none; }
 @media(max-width:1000px){.tool-top-actions{gap:3px}.tool-window .calendar-month #calendar-selected{display:none}.tool-window .calendar-month h2{font-size:18px}.tool-window .calendar-day>span{font-size:22px}.tool-window.md-home .document-sidebar{padding:0 18px}}
+
+/* Content tools share one quiet surface; the document is the focal layer. */
+.tool-window .app-shell { background:var(--tool-surface); border-color:var(--tool-edge); grid-template-rows:56px minmax(0,1fr); }
+.tool-window .page { padding:16px 24px 24px; }
+.tool-window .brand b { font-size:15px; font-weight:500; }
+.tool-top-actions { gap:4px; }
+.tool-top-actions .tool-icon { width:32px; height:32px; min-height:32px; padding:8px; border-radius:8px; }
+.tool-top-actions .tool-icon svg,.tool-top-actions .view-switch svg { width:18px; height:18px; }
+.tool-window .quiet-btn { border-color:var(--tool-edge); box-shadow:none; }
+.tool-window .tool-top-actions .tool-icon { background:transparent; border-color:transparent; box-shadow:none; color:var(--ink-soft); }
+.tool-window .tool-top-actions .tool-icon:hover { background:var(--paper-soft); color:var(--ink); }
+.tool-window .tool-top-actions .tool-icon[aria-pressed="true"] { background:var(--accent-soft); color:var(--accent-deep); }
+.tool-window .tool-top-actions .view-switch .is-active { background:var(--paper-raised); box-shadow:none; }
+.tool-window .primary-btn { box-shadow:none; }
+.tool-window button:hover { border-color:var(--line-strong); }
+.tool-window .markdown-layout { gap:0; grid-template-columns:216px minmax(0,1fr); }
+.tool-window :is(.document-main,.document-sidebar) { border:0; border-radius:0; box-shadow:none; background:transparent; }
+.tool-window .document-sidebar { border-right:1px solid var(--tool-edge); padding:16px 16px 0 0; }
+.tool-window .document-sidebar h3 { margin:0 0 16px; font-size:12px; }
+.tool-window .document-sidebar .text-input { min-height:32px; border-radius:8px; font-size:12px; }
+.tool-window .document-row { padding:12px 8px; gap:8px; border-radius:8px; }
+.tool-window .document-row b { font-weight:500; }
+.tool-window .document-row .recent-icon { width:28px; height:32px; border-radius:6px; color:var(--ink-soft); background:transparent; }
+.recent-icon svg { width:20px; height:20px; fill:none; stroke:currentColor; stroke-width:1.5; }
+.tool-window .document-main { background:var(--tool-content); }
+.tool-window .document-heading { padding:8px 24px; min-height:40px; border:0; }
+.tool-window .document-heading input { font-size:15px; font-weight:500; }
+.tool-window .document-heading>span { font-size:12px; }
+.tool-window .markdown-toolbar { padding:4px 16px; gap:4px; min-height:36px; border-color:var(--tool-edge); }
+.tool-window .markdown-toolbar button { padding:6px 8px; color:var(--ink-soft); }
+.tool-window .md-outline { padding:4px 16px; border-color:var(--tool-edge); }
+.tool-window .md-outline button { font-size:12px; padding:4px 8px; }
+.tool-window .md-outline[hidden] { display:none; }
+.tool-window .markdown-split textarea { padding:24px; background:var(--tool-content); font:15px/1.75 "Cascadia Code",Consolas,"Microsoft YaHei UI","Microsoft YaHei",monospace; border-color:var(--tool-edge); }
+.tool-window .markdown-preview { padding:24px 32px; background:var(--tool-content); font-size:15px; line-height:1.75; }
+.tool-window .markdown-preview :is(h1,h2,h3) { font-weight:600; line-height:1.4; }
+.tool-window .markdown-preview h1 { font-size:28px; margin:0 0 24px; }
+.tool-window .markdown-preview h2 { font-size:22px; margin:28px 0 16px; }
+.tool-window .document-foot { padding:8px 16px; min-height:32px; font-size:12px; border-color:var(--tool-edge); }
+.tool-window .document-foot label { font-size:12px; }
+.tool-window.md-home .markdown-layout { gap:24px; }
+.tool-window.md-home .document-main { background:transparent; }
+.tool-window.md-home .document-sidebar { width:min(720px,100%); margin:0 auto; padding:0 24px; border:0; }
+.tool-window.md-home .document-sidebar>input { float:none; margin:0 0 12px; max-width:none; }
+.tool-window.md-home #md-list { display:flex; flex-direction:column; gap:4px; }
+.tool-window.md-home .document-row { min-height:64px; padding:12px 16px; border:1px solid var(--tool-edge); border-radius:8px; background:color-mix(in srgb,var(--tool-content) 80%,transparent); box-shadow:none; }
+.tool-window.md-home .document-row b { max-width:500px; }
+.tool-window #md-empty { min-height:280px; padding:32px 24px 8px; gap:12px; }
+.tool-window #md-empty>b { font-size:24px; font-weight:500; letter-spacing:0; }
+.tool-window #md-empty>p { font-size:14px; }
+.tool-window #md-empty .welcome-document { width:40px; height:48px; margin:0; }
+.welcome-document svg { width:32px; height:40px; stroke-width:1.5; }
+.tool-window .welcome-actions { gap:12px; flex-wrap:wrap; justify-content:center; }
+.tool-window .welcome-actions button { min-height:40px; padding:8px 16px; border-radius:8px!important; font-size:14px; font-weight:500; }
+.tool-window[data-tool="calendar"] .page { padding:24px; }
+.tool-window .calendar-layout { grid-template-columns:minmax(0,1fr) minmax(264px,30%); }
+.tool-window .calendar-month { padding-bottom:16px; gap:4px; min-height:48px; }
+.tool-window .calendar-month h2 { font-size:22px; font-weight:500; }
+.tool-window .calendar-week { padding:8px 0 12px; font-size:13px; }
+.tool-window .calendar-day { border-radius:8px; }
+.tool-window .calendar-day>span { font-size:26px; font-weight:500; font-variant-numeric:tabular-nums; }
+.tool-window .calendar-day.weekend:not(.selected):not(:hover) { background:transparent; }
+.tool-window .calendar-day.weekend>span { color:var(--ink-soft); }
+.tool-window .calendar-day.today>span { color:var(--accent-deep); border:1px solid var(--accent-deep); border-radius:50%; min-width:36px; height:36px; display:grid; place-items:center; }
+.tool-window .calendar-day.selected { background:color-mix(in srgb,var(--accent) 7%,transparent); border-radius:8px; }
+.tool-window .calendar-day.selected::before { display:none; }
+.tool-window .calendar-day .date-badge { border:0; padding:0; background:transparent; font-size:12px; }
+.tool-window .calendar-day small { font-size:12px; padding:0 4px; line-height:18px; background:color-mix(in srgb,var(--accent) 7%,transparent); }
+.tool-window .calendar-day .category-personal { color:var(--jade-11); background:color-mix(in srgb,var(--jade-11) 7%,transparent); }
+.tool-window .calendar-day .category-study { color:var(--violet-11); background:color-mix(in srgb,var(--violet-11) 7%,transparent); }
+.tool-window .calendar-clock { font-size:18px; font-weight:500; }
+.tool-window .agenda-card { padding:0 0 12px 24px; border-color:var(--tool-edge); }
+.tool-window .agenda-tabs { margin-bottom:16px; padding:4px; gap:4px; border-radius:8px; }
+.tool-window #calendar-new { min-height:36px; margin-bottom:16px; border-radius:8px; box-shadow:none; font-weight:500; }
+.tool-window .agenda-item,.tool-window .countdown-row { margin:0; padding:16px 0; border:0; border-bottom:1px solid var(--tool-edge); border-radius:0; background:transparent; gap:8px; }
+.tool-window .agenda-content b,.tool-window .countdown-row b { font-size:14px; font-weight:500; }
+.tool-window .agenda-content small { color:var(--ink-soft); font-size:12px; }
+.tool-window .agenda-content p:empty,.tool-window .agenda-content small:empty { display:none; }
+.tool-window .countdown-row strong { font-size:24px; font-weight:500; font-variant-numeric:tabular-nums; }
+.agenda-tabs svg { width:16px; height:16px; fill:none; stroke:currentColor; stroke-width:1.5; vertical-align:-3px; margin-right:4px; }
+@media(prefers-color-scheme:dark) { .tool-window .primary-btn { color:#101820; } }
+@media(max-width:1000px) { .tool-window .markdown-layout { grid-template-columns:176px minmax(0,1fr); }.tool-window .markdown-preview { padding:20px; }.tool-window .calendar-month h2 { font-size:18px; } }
+@media(prefers-reduced-transparency:reduce) { .tool-window .app-shell { background:var(--paper); } }

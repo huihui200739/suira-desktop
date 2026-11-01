@@ -11,10 +11,10 @@
   border-color:color-mix(in srgb,var(--window-marker) 38%,var(--line));
   box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--paper-raised) 80%,transparent),inset 0 2px 8px color-mix(in srgb,var(--slate-12) 4%,transparent);
 }
-.tool-window .titlebar {
-  background:linear-gradient(100deg,color-mix(in srgb,var(--window-marker) 5%,var(--paper-raised)),color-mix(in srgb,var(--paper-raised) 80%,transparent));
-  border-bottom:1px solid color-mix(in srgb,var(--line) 75%,transparent);
-}
+.tool-window .titlebar { background:transparent; border-bottom:1px solid var(--tool-edge); }
+.tool-window .app-shell::after { border-color:var(--tool-edge); box-shadow:none; }
+:root[data-window-active="true"].tool-window .app-shell::after { border-color:var(--line-strong); box-shadow:none; }
+.tool-window .brand::after { display:none; }
 .brand::after { content:"后台"; font-size:11px; color:var(--ink-faint); white-space:nowrap; }
 :root[data-window-active="true"] .brand::after { content:"当前"; color:var(--window-marker); }
 :root[data-window-active="false"] .titlebar .brand { opacity:.68; }
