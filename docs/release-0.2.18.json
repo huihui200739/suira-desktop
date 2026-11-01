@@ -1,0 +1,31 @@
+{
+  "version": "0.2.18",
+  "artifact": "Suira-0.2.18-x64.exe",
+  "bytes": 156504932,
+  "sha256": "59F2831775A47B5AEEEBFC9D7D1591A0078059B7D41408702F1D56CAF0F8CD1C",
+  "sha512": "fT9e3s5WJYzvnGUBXNfZ+XuJRS54bcItOlw7Wy4rQ8fLFeYCutQC/R6Wg6HZbq94PtWAVsLn7BqtjAfyxaTP+g==",
+  "platform": "win32",
+  "arch": "x64",
+  "electron": "45.0.0",
+  "checkedSourceFiles": 95,
+  "checks": [
+    "source-payload-byte-match",
+    "no-test-profile-or-obsolete-key-hook",
+    "installer-archive-crc",
+    "updater-feed-and-sha512-match",
+    "nsis-legacy-upgrade-reinstall-update-and-uninstall",
+    "extra-user-files-preserved-and-lock-rollback",
+    "restricted-context-rejected-before-mutation",
+    "installed-payload-and-uninstaller-byte-match",
+    "installed-four-surface-native-blur-and-toggles",
+    "existing-profile-decryption-verified"
+  ],
+  "signature": "unsigned",
+  "published": false,
+  "localDeployment": "User completed normal desktop installation; installed payload verified, stale uninstall version metadata corrected",
+  "legacyInstallDataArchive": {
+    "files": 60,
+    "byteVerified": true,
+    "location": "APPDATA/随序 SUIRA/LegacyInstallData/0.2.17-udata"
+  }
+}

@@ -45,7 +45,9 @@ function Add-Target([string]$candidate, [string]$owner, [string]$group) {
 
 foreach ($name in @('edge-profile','edge-profile2','mem','probe-app','probe-app2','udata-copy','udata-default','udata-test',
                     'launch-suira.cmd','run-app.cmd','run-app2.cmd','run-probe.cmd','release-edit.py','release-ui-edit.py','update-repo.py','repo-info.json','latest-release.json',
-                    'cleanup-protected.json','installer-lifecycle-result.json','release-audit.json','coco-probe.js','coco-electron-probe.js')) {
+                    'cleanup-protected.json','installer-lifecycle-result.json','release-audit.json','coco-probe.js','coco-electron-probe.js',
+                    'process-probe.exe','process-probe.nsi','process-probe.txt','context-guard-probe.exe','context-guard-probe.nsi',
+                    'verified-18-uninstaller','build-runtime-path.txt')) {
   Add-Target (Join-Path $repoRoot ('.workbuddy\' + $name)) $repoRoot 'workspace-test-artifacts'
 }
 if (Test-Path -LiteralPath (Join-Path $repoRoot '.workbuddy')) {
@@ -66,6 +68,12 @@ $testDirectoryPattern = '^suira-(?:(?:clipboardbar|island|notes|island-wake|late
 Get-ChildItem -LiteralPath $tempRoot -Directory -Filter 'suira-*' | Where-Object { $_.Name -match $testDirectoryPattern } | ForEach-Object {
   Add-Target $_.FullName $tempRoot 'temporary-test-packages'
 }
+# Installer probes create only synthetic files here. Match their exact namespace,
+# retaining the real installation, application profile and reusable Electron runtime.
+foreach ($name in @('suira-installer-probe-561cfcfa6a95','suira-installer-probe-be53b72981f3')) {
+  Add-Target (Join-Path $tempRoot ('Low\' + $name)) $tempRoot 'installer-test-fixtures'
+}
+Add-Target (Join-Path $tempRoot 'suira-workspace-buildruntime-a7658f29af61474aa39e9d67a8bc0fee') $tempRoot 'obsolete-build-runtime-copy'
 $testFilePattern = '^suira-(?:foreground-test-[a-f0-9]+\.exe|latency-foreground(?:-v\d+)?\.exe|diag\d*\.log|test\d*\.log|run\d*\.log|start-(?:err|out)\.log|(?:render|sec)-[a-z0-9-]+\.txt|(?:native|corner|real-app)-[a-z0-9-]+\.png|(?:orphan-(?:check|parent)|ps-(?:check|debug)|real-inject)\.js|(?:inject-test|key-inject)\.ps1)$'
 Get-ChildItem -LiteralPath $tempRoot -File -Filter 'suira-*' | Where-Object { $_.Name -match $testFilePattern } | ForEach-Object {
   Add-Target $_.FullName $tempRoot 'temporary-test-files'

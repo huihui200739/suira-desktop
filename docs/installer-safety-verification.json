@@ -1,0 +1,12 @@
+{
+  "version": "0.2.18",
+  "checks": [
+    "normal-context-accepted",
+    "restricted-workspace-context-rejected-before-mutation",
+    "owned-runtime-removed-user-data-retained",
+    "rollback-resource-restored-transactionally",
+    "rollback-root-restored-transactionally"
+  ],
+  "contextExit": 0,
+  "workspaceContextExit": 740
+}

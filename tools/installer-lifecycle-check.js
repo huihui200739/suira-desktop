@@ -32,6 +32,8 @@ async function until(fn){for(let n=0;n<200;n++){if(fn())return;await wait(100);}
     assert.deepEqual(JSON.parse(defaults()),before);console.log('PASS legacy process-macro fixture installed');
   }
   const expectedHash=crypto.createHash('sha256').update(fs.readFileSync(path.join(appDir,'resources','app.asar'))).digest('hex');
+  const retainedFiles=new Map([['udata/suira-data.json','{"fixture":true}'],['udata/suira-data.key','fixture-key'],['user-note.md','user document fixture']]);
+  function checkRetainedFiles(){for(const [name,contents] of retainedFiles)assert.equal(fs.readFileSync(path.join(target,name),'utf8'),contents,'Extra user file changed: '+name);}
   for(const stage of [process.argv.includes('--legacy-upgrade')?'legacy macro upgrade':'fresh install','reinstall upgrade']){
     await run(installer,['/S','/currentuser','/D='+target]);await until(()=>fs.existsSync(exe));
     assert.equal(crypto.createHash('sha256').update(fs.readFileSync(path.join(target,'resources','app.asar'))).digest('hex'),expectedHash);
@@ -40,6 +42,8 @@ async function until(fn){for(let n=0;n<200;n++){if(fn())return;await wait(100);}
     assert.equal(command,'"'+exe+'" "%1"');
     for(const ext of ['md','markdown'])assert.equal(ps(`$k=[Microsoft.Win32.Registry]::CurrentUser.OpenSubKey(${quote('Software\\Classes\\.'+ext+'\\OpenWithProgids')});if($k){$k.GetValueNames() -contains ${quote(appId+'.Markdown')};$k.Dispose()}`),'True');
     assert.deepEqual(JSON.parse(defaults()),before,'Existing default associations changed');
+    if(stage==='reinstall upgrade')checkRetainedFiles();
+    else for(const [name,contents] of retainedFiles){fs.mkdirSync(path.dirname(path.join(target,name)),{recursive:true});fs.writeFileSync(path.join(target,name),contents);}
     console.log('PASS NSIS '+stage+': installed payload verified; quoted OpenWith commands; existing defaults unchanged');
   }
   // Exercise the updater's --updated path while a same-name test process exits.
@@ -54,12 +58,15 @@ async function until(fn){for(let n=0;n<200;n++){if(fn())return;await wait(100);}
   await run(installer,['/S','/currentuser','--updated','/D='+target]);
   assert.deepEqual(fs.readFileSync(feedFile),expectedFeed,'Updated install must replace the old payload after the process exits');
   assert.deepEqual(JSON.parse(defaults()),before);
+  checkRetainedFiles();
   console.log('PASS --updated installer waits for exiting test process and reinstalls verified feed without changing defaults');
+  console.log((await run(process.execPath,[path.join(root,'tools','packaged-material-check.js'),exe],60000)).trim());
   await run(path.join(target,uninstall),['/S','/currentuser']);await until(()=>!fs.existsSync(exe));
   assert.equal(ps(`Test-Path -LiteralPath ${quote('Registry::HKEY_CURRENT_USER\\Software\\Classes\\'+appId+'.Markdown')}`),'False');
   assert.deepEqual(JSON.parse(defaults()),before);
+  checkRetainedFiles();
   console.log('PASS NSIS uninstall: test product and own file association removed; existing defaults unchanged');
-  fs.writeFileSync(path.join(root,'.workbuddy','installer-lifecycle-result.json'),JSON.stringify({version,appId,passed:[process.argv.includes('--legacy-upgrade')?'legacy-process-macro-upgrade':'fresh-install','reinstall-upgrade','updated-waits-for-exiting-process','uninstall','unicode-space-path','payload-hash','open-with-both-extensions','defaults-preserved'],date:new Date().toISOString()},null,2));
+  fs.writeFileSync(path.join(root,'.workbuddy','installer-lifecycle-result.json'),JSON.stringify({version,appId,passed:[process.argv.includes('--legacy-upgrade')?'legacy-process-macro-upgrade':'fresh-install','reinstall-upgrade','updated-waits-for-exiting-process','uninstall','unicode-space-path','payload-hash','open-with-both-extensions','defaults-preserved','legacy-user-data-and-extra-documents-preserved','installed-native-blur-and-toggles'],date:new Date().toISOString()},null,2));
 })().catch(error=>{console.error(error);console.error('Test artifacts:',tmp);process.exitCode=1;}).finally(async()=>{
   // Preserve failed test installations for diagnosis; do not touch production registration.
   if(process.exitCode || fs.existsSync(exe))return;

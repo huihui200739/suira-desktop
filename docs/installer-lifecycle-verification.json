@@ -1,0 +1,17 @@
+{
+  "version": "0.2.18",
+  "appId": "com.suira.releasecheck.8c67e4b4c38b",
+  "passed": [
+    "legacy-process-macro-upgrade",
+    "reinstall-upgrade",
+    "updated-waits-for-exiting-process",
+    "uninstall",
+    "unicode-space-path",
+    "payload-hash",
+    "open-with-both-extensions",
+    "defaults-preserved",
+    "legacy-user-data-and-extra-documents-preserved",
+    "installed-native-blur-and-toggles"
+  ],
+  "date": "2026-11-01T13:58:35.185Z"
+}

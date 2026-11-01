@@ -1,5 +1,16 @@
 ; Avoid synchronous PowerShell/CIM launches in the installer UI thread.
 ; Prompt for a normal tray exit so document close/save handlers can finish.
+!include "${BUILD_RESOURCES_DIR}\installer-context.nsh"
+!include "${BUILD_RESOURCES_DIR}\runtime-removal.nsh"
+
+!macro customInit
+  !insertmacro suiraCheckInstallerContext
+!macroend
+
+!macro customUnInit
+  !insertmacro suiraCheckInstallerContext
+!macroend
+
 !macro customCheckAppRunning
   Push $R0
   Push $R1
