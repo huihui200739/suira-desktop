@@ -1,6 +1,6 @@
 {
   "name": "suira-desktop",
-  "version": "0.2.12",
+  "version": "0.2.13",
   "description": "随序 SUIRA — Windows 随手工作台。截图、剪贴板、日历与 Markdown，让零散内容自然接成工作流。",
   "main": "main.js",
   "author": "huihui200739",
@@ -43,7 +43,8 @@
     "verify:latency": "node tools/latency-live-check.js --idle",
     "audit:batch3": "node tools/fuyin-modules.js",
     "dist": "electron-builder --win nsis --publish never",
-    "dist:portable": "electron-builder --win portable",
+    "dist:portable": "electron-builder --win portable --publish never",
+    "release:updates": "node tools/publish-updates.js",
     "verify:island": "node tools/electron-island-check.js",
     "verify:core": "node tools/electron-core-check.js",
     "verify:notes": "node tools/electron-notes-check.js",
@@ -156,7 +157,7 @@
       {
         "provider": "github",
         "owner": "huihui200739",
-        "repo": "suira-desktop",
+        "repo": "suira-updates",
         "releaseType": "draft"
       }
     ]

@@ -1,0 +1,21 @@
+{
+  "version": "0.2.13",
+  "artifact": "Suira-0.2.13-x64.exe",
+  "bytes": 155578808,
+  "sha256": "7F78B9C64B746278AF1764B9967DCE9222FAB80DABAB2F39666C92015E925AD1",
+  "sha512": "RkkHntmy+w4GQCtyvHpGGZ2/TtiU0ibX4WX2NSEI/pAoYPDyVrmDJY0uOal3dxWdSWCLsclmEzJ/Gg+UqZuGjg==",
+  "platform": "win32",
+  "arch": "x64",
+  "electron": "45.0.0",
+  "checkedSourceFiles": 93,
+  "checks": [
+    "source-payload-byte-match",
+    "no-test-profile-or-obsolete-key-hook",
+    "installer-archive-crc",
+    "updater-feed-and-sha512-match"
+  ],
+  "signature": "unsigned",
+  "published": true,
+  "releaseUrl": "https://github.com/huihui200739/suira-updates/releases/tag/v0.2.13",
+  "publishedAt": "2026-11-01T03:11:52Z"
+}

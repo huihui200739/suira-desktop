@@ -6,18 +6,18 @@
 
 ## 分发源
 
-当前源码仓库 `huihui200739/suira-desktop` 为私有仓库，普通用户无法匿名访问其中的 Release 和更新文件。客户端不能内置 GitHub 访问令牌。接通在线分发需要仓库所有者选择公开安装包仓库、公开当前仓库，或提供自己的 HTTPS 下载服务；在这项配置完成并发布正式更新之前，不能把本次功能描述为已经上线的在线更新服务。
+源码仓库 `huihui200739/suira-desktop` 保持私有。0.2.13 起，安装包、更新元数据和说明发布在公开的 [suira-updates](https://github.com/huihui200739/suira-updates)。客户端匿名检查和下载，不包含 GitHub 访问令牌。
 
-推荐保留源码私有，另建公开仓库，只分发安装包、校验元数据与更新说明。此时需要把 `package.json` 的 `build.publish.repo` 指向该公开仓库，并给发布工作流配置仅有该分发仓库写入权限的令牌。令牌仅作为 CI Secret，不能进入源码、安装包或用户设置。当前构建配置仍指向源码仓库，待所有者确认分发方式后调整。
+`package.json` 的 `build.publish.repo` 已指向 `suira-updates`。维护者发布时使用进程环境变量 `UPDATE_RELEASE_TOKEN`，或本机已登录的 Git 凭据；凭据只在维护工具内存中使用，不写入仓库、安装包和用户配置。公开仓库只包含产品说明与 Release 产物，不镜像私有源码历史。
 
 ## 发布步骤
 
 1. 更新 `package.json` / `package-lock.json` 的版本及 `CHANGELOG.md`，完成对应验证。
 2. 运行 `npm run dist` 构建。该命令只生成产物，不发布。
-3. 将同一次构建生成的 `Suira-版本-x64.exe`、对应 `.blockmap` 和 `latest.yml` 放入同一个版本 Release。`latest.yml` 的名称、大小、SHA512 必须与安装包匹配，不能手工改版本号冒充新包。
-4. 保持草稿直到安装与升级检查完成。发布为正式 Release 后，安装版才应能查到；不读取草稿和预发布版本，也不降级安装。
+3. 运行 `node tools/release-package-check.js`，生成已核对的构建清单，再运行 `npm run release:updates -- --draft`。工具仅上传安装包、`.blockmap`、`latest.yml` 和生成的 `SHA256SUMS.txt`，并核对远端每个文件的大小和 SHA256。说明来自 `docs/distribution/版本.md`。
+4. 完成检查后运行 `npm run release:updates -- --publish`，将一致的草稿公开为正式 Release。安装版不读取草稿和预发布版本，也不降级安装。已上传的不同内容不会自动覆盖。
 
-`.github/workflows/release-windows.yml` 支持手动触发或版本标签 `v版本号`，在 Windows 构建并上传草稿 Release。标签必须与包版本一致。当前默认 `GITHUB_TOKEN` 只能写当前仓库；分发到单独仓库时必须替换为相应 Secret。不应在未配置公开更新源时发布给普通用户使用。
+`.github/workflows/release-windows.yml` 支持手动触发或版本标签 `v版本号`，在 Windows 测试并构建。标签必须与包版本一致。默认 `GITHUB_TOKEN` 不能跨仓库发布；若需要 CI 自动上传草稿，可自行配置仅有 `suira-updates` 内容写入权限的 `UPDATE_RELEASE_TOKEN` Secret。未配置时不尝试跨仓库上传，仍保留可下载的构建产物，可在本机执行上述发布命令。本轮使用本机 Git 登录发布，没有复制本机凭据到 CI。
 
 自动更新内部仍是下载并运行安装器，用户无需再次寻找下载地址或手动覆盖安装。本项目当前安装包尚未代码签名，SHA512 用于校验下载完整性，不代表发布者代码签名；Windows 可能仍显示安全提示。
 
@@ -25,6 +25,7 @@
 
 - `npm test`：包括更新状态流、显式下载、草稿保存失败时取消安装、未发布与不支持模式。
 - `node tools/updater-network-check.js`：使用真实 Electron 与 electron-updater，从本机隔离 HTTP 服务下载无执行能力的测试文件，验证正确校验值通过、错误校验值被拒绝。不会执行安装器。
+- `node tools/updater-public-check.js`：匿名检查公开更新源，模拟旧版下载完整安装包并验证 SHA512，随后确认当前版本返回已是最新版；使用隔离数据，不执行安装器。
 - `npm run verify:launcher`：真实 Electron 验证 38 键全屏比例、更新菜单与开发模式提示。
 - `node tools/release-package-check.js`：打包源码、更新配置与安装包校验元数据一致。
 - `npm run verify:installer`：独立名称、独立路径的测试产品，验证安装、覆盖安装、等待旧进程退出、卸载及默认文件关联保持不变。不会替换用户正在使用的随序。
