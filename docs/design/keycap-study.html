@@ -1,0 +1,218 @@
+<!-- Interaction study for Suira. Design method: unslop by Damir Sokolovsky, CC BY 4.0. -->
+<div id="suira-keycap-study">
+  <style>
+    #suira-keycap-study { color-scheme:inherit; --s-ink:light-dark(#202b34,#edf2f6); --s-secondary:light-dark(#5e6b76,#b0bdc8); --s-panel:light-dark(#e2e8eb,#252e36); --s-panel-top:light-dark(#f0f3f4,#303c47); --s-key:light-dark(#f9faf9,#465361); --s-key-bottom:light-dark(#e7ebec,#36424e); --s-side:light-dark(#bbc5cb,#18232c); --s-edge:light-dark(#ffffffd9,#ffffff35); --s-shadow:light-dark(#14293624,#00000055); --s-blue:#1784e4; --s-blue-deep:#0754ab; --s-paper:#fffdf7; --s-coral:#df655b; --s-amber:#dda03e; font:400 14px/1.5 "Segoe UI","Microsoft YaHei UI",sans-serif; color:var(--s-ink); }
+    #suira-keycap-study * { box-sizing:border-box; }
+    #suira-keycap-study button { font:inherit; color:inherit; }
+    #suira-keycap-study [hidden] { display:none !important; }
+    #suira-keycap-study .study-product { min-height:376px; padding:28px 32px 24px; border:1px solid var(--s-edge); border-radius:28px; background:linear-gradient(135deg,var(--s-panel-top),var(--s-panel) 65%); box-shadow:inset 0 1px 0 var(--s-edge),0 12px 30px var(--s-shadow); }
+    #suira-keycap-study .study-head { display:flex; align-items:center; gap:12px; flex-wrap:wrap; padding-right:64px; }
+    #suira-keycap-study .study-wordmark { font-size:18px; font-weight:500; letter-spacing:.02em; }
+    #suira-keycap-study .study-context { color:var(--s-secondary); font-size:12px; }
+    #suira-keycap-study .study-keyboard { display:grid; grid-template-columns:repeat(5,minmax(0,1fr)); gap:16px; margin:56px auto 48px; max-width:620px; }
+    #suira-keycap-study .study-key { display:flex; align-items:center; flex-direction:column; gap:16px; width:100%; padding:0; border:0; background:transparent; user-select:none; -webkit-tap-highlight-color:transparent; touch-action:manipulation; }
+    #suira-keycap-study .study-key:focus-visible { outline:2px solid var(--s-blue); outline-offset:6px; border-radius:16px; }
+    #suira-keycap-study .key-stage { position:relative; width:100%; max-width:100px; aspect-ratio:1; perspective:650px; isolation:isolate; }
+    #suira-keycap-study .contact { position:absolute; inset:15px 8px -3px; border-radius:25px; background:var(--s-shadow); filter:blur(7px); opacity:.45; transform:translateY(3px); transition:opacity 180ms ease-out,transform 180ms ease-out; }
+    #suira-keycap-study .cap { position:absolute; inset:0; border-radius:24px; background:var(--s-side); box-shadow:0 2px 1px var(--s-shadow); transform-style:preserve-3d; transform:translateY(0) rotateX(0) rotateY(0); transition:transform 180ms cubic-bezier(.22,1,.36,1); }
+    #suira-keycap-study .face { position:absolute; inset:0 0 3px; display:grid; place-items:center; border:1px solid var(--s-edge); border-radius:24px; background:linear-gradient(145deg,var(--s-key),var(--s-key-bottom)); box-shadow:inset 0 1px 1px var(--s-edge),inset 0 -1px 2px var(--s-shadow); transform-style:preserve-3d; }
+    #suira-keycap-study .letter { position:absolute; right:8px; bottom:4px; color:var(--s-secondary); font-size:12px; font-weight:500; transform:translateZ(1px); }
+    #suira-keycap-study .key-name { font-size:14px; white-space:nowrap; }
+    #suira-keycap-study .study-key.engaged .cap { transform:translateY(calc(-1 * var(--lift,3px))) rotateX(var(--rx,-2deg)) rotateY(var(--ry,2deg)); }
+    #suira-keycap-study .study-key.engaged .contact { opacity:.7; transform:translateY(5px); }
+    #suira-keycap-study .study-key.pressed .cap { transform:translateY(2px) rotateX(0deg) rotateY(0deg) scale(.98); transition-duration:90ms; }
+    #suira-keycap-study .study-key.pressed .contact { opacity:.2; transform:translateY(0); }
+    #suira-keycap-study .art { position:relative; display:block; width:68px; height:68px; transform:translateZ(8px); transition:transform 180ms cubic-bezier(.22,1,.36,1); pointer-events:none; }
+    #suira-keycap-study .study-key.engaged .art { transform:translateZ(11px) translateY(-1px); }
+    #suira-keycap-study .art * { position:absolute; display:block; }
+    #suira-keycap-study .translation .card-back { width:44px; height:52px; left:3px; top:7px; border-radius:12px; background:linear-gradient(145deg,#5aaff4,#1976d5); border:1px solid #ffffff7a; box-shadow:inset 0 1px 0 #ffffff8a,0 3px 0 #0c5eae,0 5px 7px #0b4a902d; transform:rotate(-10deg); color:#fff; }
+    #suira-keycap-study .translation .card-back b { inset:5px 0 0; display:grid; place-items:center; font-size:28px; font-weight:500; }
+    #suira-keycap-study .translation .card-front { width:38px; height:45px; left:27px; top:19px; border-radius:11px; background:linear-gradient(150deg,#f4fbff,#cce7fa); border:1px solid #ffffffd9; box-shadow:inset 0 1px 0 #fff,0 2px 0 #82b7df,0 5px 7px #0b4a9030; transform:rotate(9deg); color:#1568b3; }
+    #suira-keycap-study .translation .card-front b { inset:0; display:grid; place-items:center; font-size:27px; font-weight:500; }
+    #suira-keycap-study .capture .camera { inset:5px; border-radius:16px; background:linear-gradient(145deg,#46b1fb,#1377d5); border:1px solid #ffffff88; box-shadow:inset 0 1px 0 #ffffff9c,inset 0 -2px 0 #1266b9,0 3px 0 #0e5ca8,0 5px 7px #124c8a33; }
+    #suira-keycap-study .capture .photo { inset:18px 14px 17px; overflow:hidden; border-radius:5px; border:1px solid #c6edffba; background:linear-gradient(#a5e3ff,#e8f8ff); box-shadow:0 2px 3px #12599d33; }
+    #suira-keycap-study .capture .mountain { inset:12px -2px -3px; background:#2789c7; clip-path:polygon(0 100%,35% 10%,65% 65%,82% 38%,100% 100%); }
+    #suira-keycap-study .capture .sun { width:5px; height:5px; border-radius:50%; background:#fff6ca; top:4px; right:5px; }
+    #suira-keycap-study .capture .bracket { width:11px; height:11px; border:2px solid #f1fbff; border-radius:3px; }
+    #suira-keycap-study .capture .tl { left:13px; top:13px; border-right:0; border-bottom:0; }
+    #suira-keycap-study .capture .tr { right:13px; top:13px; border-left:0; border-bottom:0; }
+    #suira-keycap-study .capture .bl { left:13px; bottom:12px; border-right:0; border-top:0; }
+    #suira-keycap-study .capture .br { right:13px; bottom:12px; border-left:0; border-top:0; }
+    #suira-keycap-study .calendar .page { inset:9px 7px 4px; border-radius:12px; background:linear-gradient(135deg,#fffefb,#f1ebdd); border:1px solid #ffffffde; box-shadow:inset 0 -2px 0 #e2d7c3,0 3px 0 #c2b9a8,0 6px 7px #5f44332a; }
+    #suira-keycap-study .calendar .binding { inset:0 0 auto; height:18px; border-radius:11px 11px 3px 3px; background:linear-gradient(#f58a79,#df655b); box-shadow:inset 0 1px 0 #ffc9b8; }
+    #suira-keycap-study .calendar .ring { width:6px; height:12px; top:3px; border-radius:4px; background:linear-gradient(90deg,#b1bbc1,#f9ffff 55%,#a0aab2); box-shadow:0 1px 2px #754d3d4d; z-index:1; }
+    #suira-keycap-study .calendar .ring.left { left:20px; }
+    #suira-keycap-study .calendar .ring.right { right:20px; }
+    #suira-keycap-study .calendar .date { inset:19px 0 3px; display:grid; place-items:center; color:#4f5359; font-size:29px; font-weight:500; line-height:1; }
+    #suira-keycap-study .markdown .cover { inset:5px 8px 4px 5px; border-radius:12px; background:linear-gradient(130deg,#f3c76c,#d49b35); box-shadow:inset 0 1px 0 #ffebbb,0 3px 0 #b6842f,0 6px 7px #6d4d2630; }
+    #suira-keycap-study .markdown .paper { inset:9px 5px 7px 13px; border-radius:5px 12px 6px 5px; background:linear-gradient(145deg,#fffefb,#f5e8c9); box-shadow:-2px 0 3px #99732e2b; clip-path:polygon(0 0,74% 0,100% 21%,100% 100%,0 100%); }
+    #suira-keycap-study .markdown .fold { width:13px; height:12px; right:5px; top:9px; background:#dfca98; clip-path:polygon(0 0,100% 100%,0 100%); }
+    #suira-keycap-study .markdown .md { left:19px; top:23px; color:#a96b18; font-size:20px; font-weight:500; letter-spacing:-.04em; }
+    #suira-keycap-study .markdown .rule { left:20px; right:14px; height:2px; border-radius:1px; bottom:17px; background:#cba668; box-shadow:0 5px 0 #dfc699; }
+    #suira-keycap-study .desktop .monitor { inset:8px 3px 16px; padding:4px; border-radius:9px; background:linear-gradient(140deg,#75899b,#354858); border:1px solid #ffffffa8; box-shadow:inset 0 1px 0 #c9d5dd,0 2px 0 #263b4c,0 5px 7px #2436432d; }
+    #suira-keycap-study .desktop .screen { inset:4px; border-radius:5px; background:linear-gradient(150deg,#b3d7eb,#6ba8cd); overflow:hidden; }
+    #suira-keycap-study .desktop .window-back { width:29px; height:22px; left:9px; top:14px; border-radius:3px; background:#3684bc; border:1px solid #d2ecfb; box-shadow:0 2px 2px #234f7240; }
+    #suira-keycap-study .desktop .window-front { width:30px; height:22px; left:23px; top:20px; border-radius:3px; background:linear-gradient(#f7fcff,#d7eaf4); border:1px solid #fff; box-shadow:0 2px 3px #234f723b; }
+    #suira-keycap-study .desktop .window-front::before { content:""; position:absolute; inset:0 0 auto; height:5px; border-radius:2px 2px 0 0; background:#bad4e7; }
+    #suira-keycap-study .desktop .stem { width:9px; height:11px; bottom:7px; left:30px; background:linear-gradient(90deg,#657986,#b5c1c8,#7e909c); }
+    #suira-keycap-study .desktop .stand { width:29px; height:5px; bottom:4px; left:20px; border-radius:6px 6px 3px 3px; background:linear-gradient(#c5d0d7,#7f929e); box-shadow:0 2px 2px #20394c26; }
+    #suira-keycap-study .study-foot { display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; padding-top:20px; border-top:1px solid light-dark(#596b7b1c,#ffffff1c); }
+    #suira-keycap-study .state-picker { display:flex; gap:4px; padding:3px; background:light-dark(#c5ced34d,#17232d66); border-radius:10px; }
+    #suira-keycap-study .state-picker button { border:0; background:transparent; border-radius:7px; padding:6px 12px; font-size:12px; color:var(--s-secondary); }
+    #suira-keycap-study .state-picker button[aria-pressed="true"] { background:var(--s-key); color:var(--s-ink); box-shadow:0 1px 2px var(--s-shadow); }
+    #suira-keycap-study output { font-size:12px; color:var(--s-secondary); min-height:18px; }
+    #suira-keycap-study .old .cap { box-shadow:none; background:transparent; }
+    #suira-keycap-study .old .face { inset:0; background:light-dark(#ffffffb3,#ffffff16); border:0; box-shadow:none; }
+    #suira-keycap-study .old .old-art { display:grid; place-items:center; width:56px; height:56px; border-radius:16px; background:light-dark(#1784e415,#1784e42b); color:light-dark(#0675d3,#7cbeff); }
+    #suira-keycap-study .old .warm { background:light-dark(#b77b2015,#b77b202b); color:light-dark(#9b6515,#eac17d); }
+    #suira-keycap-study .old .old-art svg { width:28px; height:28px; stroke-width:1.5; }
+    #suira-keycap-study .old .letter { bottom:5px; }
+    #suira-keycap-study .old .study-foot { min-height:60px; }
+    @media(max-width:560px) { #suira-keycap-study .study-product { padding:24px 20px; } #suira-keycap-study .study-keyboard { grid-template-columns:repeat(3,minmax(0,1fr)); gap:28px 18px; margin:36px auto; } #suira-keycap-study .study-key { gap:12px; } #suira-keycap-study .key-stage { max-width:88px; } #suira-keycap-study .study-key:nth-child(4) { grid-column:1; } #suira-keycap-study .study-foot { align-items:flex-start; flex-direction:column; } #suira-keycap-study .study-product { min-height:496px; } }
+    @media(prefers-reduced-motion:reduce) { #suira-keycap-study .cap,#suira-keycap-study .art,#suira-keycap-study .contact { transition:none !important; transform:none !important; } }
+    @media(max-width:420px) { #suira-keycap-study .study-keyboard { grid-template-columns:repeat(2,minmax(0,1fr)); } #suira-keycap-study .study-key:nth-child(4) { grid-column:auto; } #suira-keycap-study .study-key:last-child { grid-column:1 / -1; } #suira-keycap-study .study-key:last-child .key-stage { width:88px; } #suira-keycap-study .study-product { min-height:624px; } }
+    #suira-keycap-study[data-motion="off"] .cap,#suira-keycap-study[data-motion="off"] .art { transform:none !important; }
+    @media(max-width:560px) { #suira-keycap-study .letter { right:5px; bottom:2px; font-size:11px; } }
+  </style>
+  <div class="viz-carousel viz-dotted-background" aria-label="随序键位设计对比" data-previous-label="上一版" data-next-label="下一版">
+    <section data-variant="柔光键帽" aria-label="柔光键帽">
+      <div class="study-product" aria-label="随序键位材质与交互样稿">
+        <header class="study-head"><span class="study-wordmark">随序</span><span class="study-context">键位材质样稿</span></header>
+        <div class="study-keyboard" aria-label="五个代表工具">
+          <button type="button" class="study-key cursor-interaction" data-tool="translate" aria-label="翻译，预览键位反馈">
+            <span class="key-stage"><span class="contact"></span><span class="cap"><span class="face"><span class="art translation" aria-hidden="true"><span class="card-back"><b>中</b></span><span class="card-front"><b>A</b></span></span><span class="letter">T</span></span></span></span><span class="key-name">翻译</span>
+          </button>
+          <button type="button" class="study-key cursor-interaction" data-tool="capture" aria-label="截图，预览键位反馈">
+            <span class="key-stage"><span class="contact"></span><span class="cap"><span class="face"><span class="art capture" aria-hidden="true"><span class="camera"></span><span class="photo"><span class="sun"></span><span class="mountain"></span></span><span class="bracket tl"></span><span class="bracket tr"></span><span class="bracket bl"></span><span class="bracket br"></span></span><span class="letter">C</span></span></span></span><span class="key-name">截图</span>
+          </button>
+          <button type="button" class="study-key cursor-interaction" data-tool="calendar" aria-label="日历，预览键位反馈">
+            <span class="key-stage"><span class="contact"></span><span class="cap"><span class="face"><span class="art calendar" aria-hidden="true"><span class="page"><span class="binding"></span><span class="date">1</span></span><span class="ring left"></span><span class="ring right"></span></span><span class="letter">F</span></span></span></span><span class="key-name">日历</span>
+          </button>
+          <button type="button" class="study-key cursor-interaction" data-tool="markdown" aria-label="Markdown，预览键位反馈">
+            <span class="key-stage"><span class="contact"></span><span class="cap"><span class="face"><span class="art markdown" aria-hidden="true"><span class="cover"></span><span class="paper"></span><span class="fold"></span><span class="md">MD</span><span class="rule"></span></span><span class="letter">M</span></span></span></span><span class="key-name">Markdown</span>
+          </button>
+          <button type="button" class="study-key cursor-interaction" data-tool="desktop" aria-label="回到桌面，预览键位反馈">
+            <span class="key-stage"><span class="contact"></span><span class="cap"><span class="face"><span class="art desktop" aria-hidden="true"><span class="stem"></span><span class="stand"></span><span class="monitor"><span class="screen"></span></span><span class="window-back"></span><span class="window-front"></span></span><span class="letter">D</span></span></span></span><span class="key-name">回到桌面</span>
+          </button>
+        </div>
+        <footer class="study-foot">
+          <div class="state-picker" role="group" aria-label="翻译键状态对照">
+            <button type="button" class="cursor-interaction" data-pose="live" aria-pressed="true">默认</button>
+            <button type="button" class="cursor-interaction" data-pose="hover" aria-pressed="false">悬停</button>
+            <button type="button" class="cursor-interaction" data-pose="press" aria-pressed="false">按下</button>
+          </div>
+          <output aria-live="polite">实时交互</output>
+        </footer>
+      </div>
+    </section>
+    <section data-variant="当前样式对照" aria-label="当前扁平图标样式对照" hidden>
+      <div class="study-product old">
+        <header class="study-head"><span class="study-wordmark">随序</span><span class="study-context">当前样式对照</span></header>
+        <div class="study-keyboard">
+          <button type="button" class="study-key cursor-interaction" aria-label="当前翻译键"><span class="key-stage"><span class="cap"><span class="face"><span class="old-art"><i data-lucide="languages" aria-hidden="true"></i></span><span class="letter">T</span></span></span></span><span class="key-name">翻译</span></button>
+          <button type="button" class="study-key cursor-interaction" aria-label="当前截图键"><span class="key-stage"><span class="cap"><span class="face"><span class="old-art"><i data-lucide="scan" aria-hidden="true"></i></span><span class="letter">C</span></span></span></span><span class="key-name">截图</span></button>
+          <button type="button" class="study-key cursor-interaction" aria-label="当前日历键"><span class="key-stage"><span class="cap"><span class="face"><span class="old-art warm"><i data-lucide="calendar-days" aria-hidden="true"></i></span><span class="letter">F</span></span></span></span><span class="key-name">日历</span></button>
+          <button type="button" class="study-key cursor-interaction" aria-label="当前 Markdown 键"><span class="key-stage"><span class="cap"><span class="face"><span class="old-art warm"><i data-lucide="file-code-2" aria-hidden="true"></i></span><span class="letter">M</span></span></span></span><span class="key-name">Markdown</span></button>
+          <button type="button" class="study-key cursor-interaction" aria-label="当前回到桌面键"><span class="key-stage"><span class="cap"><span class="face"><span class="old-art"><i data-lucide="monitor" aria-hidden="true"></i></span><span class="letter">D</span></span></span></span><span class="key-name">回到桌面</span></button>
+        </div>
+        <footer class="study-foot"><span class="study-context">相同尺寸 · 相同背景</span></footer>
+      </div>
+    </section>
+  </div>
+  <script>
+  (() => {
+    const root = document.getElementById('suira-keycap-study');
+    const keys = Array.from(root.querySelectorAll('[data-tool]'));
+    const poseButtons = Array.from(root.querySelectorAll('[data-pose]'));
+    const output = root.querySelector('output');
+    const preferences = { lift:3, tilt:3, motion:true };
+    const reduced = matchMedia('(prefers-reduced-motion: reduce)');
+    let pose = 'live';
+    let active = null;
+    const pending = new Map();
+    const timers = new Map();
+    let raf = 0;
+    function clearKey(key) {
+      clearTimeout(timers.get(key));
+      timers.delete(key);
+      pending.delete(key);
+      key.classList.remove('engaged','pressed');
+      key.style.removeProperty('--rx');
+      key.style.removeProperty('--ry');
+    }
+    function resetLive() {
+      if(pose !== 'live') return;
+      keys.forEach(clearKey);
+      active=null;
+    }
+    root.addEventListener('pointerleave',resetLive);
+    document.addEventListener('pointerout',event => { if(!event.relatedTarget) resetLive(); });
+    window.addEventListener('blur',resetLive);
+    function applyPreferences() {
+      root.dataset.motion = preferences.motion ? 'on' : 'off';
+      keys.forEach(key => {
+        key.querySelector('.cap').style.setProperty('--lift',preferences.lift + 'px');
+      });
+      applyPose();
+    }
+    function applyPose() {
+      keys.forEach(clearKey);
+      const target = keys[0];
+      if (pose === 'hover') { target.classList.add('engaged'); target.style.setProperty('--rx','-2deg'); target.style.setProperty('--ry','2deg'); }
+      if (pose === 'press') target.classList.add('pressed');
+      poseButtons.forEach(button => button.setAttribute('aria-pressed',String(button.dataset.pose === pose)));
+      output.textContent = pose === 'live' ? '实时交互' : '翻译 · ' + (pose === 'hover' ? '悬停状态' : '按下状态');
+    }
+    function savePose() {
+      const host = window.openai;
+      if (host && typeof host.setWidgetState === 'function') {
+        const result = host.setWidgetState({modelContent:{study:'随序键位材质',pose},privateContent:null});
+        if (result && typeof result.catch === 'function') result.catch(() => {});
+      }
+    }
+    poseButtons.forEach(button => button.addEventListener('click',() => { pose=button.dataset.pose; applyPose(); savePose(); }));
+    keys.forEach(key => {
+      key.addEventListener('pointerenter',event => {
+        if (pose !== 'live' || event.pointerType === 'touch') return;
+        active=key;
+        timers.set(key,setTimeout(() => { if(active===key) key.classList.add('engaged'); },120));
+      });
+      key.addEventListener('pointermove',event => {
+        if (pose !== 'live' || reduced.matches || !preferences.motion || event.pointerType === 'touch') return;
+        const bounds=key.querySelector('.key-stage').getBoundingClientRect();
+        const x=Math.max(-1,Math.min(1,(event.clientX-bounds.left)/bounds.width*2-1));
+        const y=Math.max(-1,Math.min(1,(event.clientY-bounds.top)/bounds.height*2-1));
+        pending.set(key,{x,y});
+        if(!raf) raf=requestAnimationFrame(() => {
+          pending.forEach((point,item) => {
+            item.style.setProperty('--rx',(-point.y*preferences.tilt).toFixed(2)+'deg');
+            item.style.setProperty('--ry',(point.x*preferences.tilt).toFixed(2)+'deg');
+          });
+          pending.clear(); raf=0;
+        });
+      });
+      key.addEventListener('pointerleave',() => { if(pose==='live') { clearKey(key); if(active===key) active=null; } });
+      key.addEventListener('pointerdown',() => { if(pose==='live') key.classList.add('pressed'); });
+      key.addEventListener('pointerup',() => { if(pose==='live') key.classList.remove('pressed'); });
+      key.addEventListener('pointercancel',() => { if(pose==='live') clearKey(key); });
+      key.addEventListener('keydown',event => { if(pose==='live' && [' ','Enter'].includes(event.key)) key.classList.add('pressed'); });
+      key.addEventListener('keyup',() => { if(pose==='live') key.classList.remove('pressed'); });
+      key.addEventListener('blur',() => { if(pose==='live') clearKey(key); });
+      key.addEventListener('click',() => { if(pose==='live') output.textContent=key.querySelector('.key-name').textContent+' · 按压反馈'; });
+    });
+    const saved = window.openai && window.openai.widgetState;
+    if(saved && saved.modelContent && ['live','hover','press'].includes(saved.modelContent.pose)) pose=saved.modelContent.pose;
+    window.addEventListener('openai:set_globals',event => {
+      const state=event.detail && event.detail.globals && event.detail.globals.widgetState;
+      if(state && state.modelContent && ['live','hover','press'].includes(state.modelContent.pose)) { pose=state.modelContent.pose; applyPose(); }
+    });
+    applyPreferences();
+    if(globalThis.Tweak) {
+      const tweak=new Tweak({container:root.querySelector('.study-product'),onChange:applyPreferences});
+      tweak.addSlider(preferences,'lift',{label:'抬升高度',min:0,max:5,step:1,unit:'px'});
+      tweak.addSlider(preferences,'tilt',{label:'倾斜幅度',min:0,max:5,step:1,unit:'°'});
+      tweak.addToggle(preferences,'motion',{label:'立体反馈'});
+    }
+  })();
+  </script>
+</div>
