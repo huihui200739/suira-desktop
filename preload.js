@@ -38,7 +38,7 @@ contextBridge.exposeInMainWorld('suira', {
   quick: {
     background: () => ipcRenderer.invoke('quick:background'),
     presentation: () => ipcRenderer.invoke('quick:presentation'),
-    setPresentation: mode => ipcRenderer.invoke('quick:presentation:set', mode),
+    setPresentation: (mode,options) => ipcRenderer.invoke('quick:presentation:set', mode,options),
     onPresentation: callback => subscribe('quick:presentation-changed', callback),
     hide: () => ipcRenderer.invoke('quick:hide'),
     show: () => ipcRenderer.invoke('quick:show'),

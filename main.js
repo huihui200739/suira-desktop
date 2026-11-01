@@ -903,7 +903,7 @@ async function migrateLegacyHistory() {
   } catch {}
 }
 
-function positionQuickPanel(win,mode='window') {
+function positionQuickPanel(win,mode=store?.getSettings().panelPresentation||'window') {
   const display = screen.getDisplayNearestPoint(screen.getCursorScreenPoint());
   const fullscreen=mode==='fullscreen';
   win.__changingPresentation=true;
@@ -942,8 +942,9 @@ function prepareFloatingSurface(win, radius = 24) {
   if (process.platform !== 'win32') return;
   win.__surfaceRadius = radius;
   // DWM acrylic 在透明 HWND 的 HRGN 外仍会绘制灰色底板。
-  // 由页面保留透光材质，原生层不再画越过圆角的系统背景。
-  try { win.setBackgroundMaterial('none'); win.__surfaceMaterial = 'transparent'; }
+  // Quick panel already has a transparent HWND. Calling setBackgroundMaterial
+  // even with 'none' replaces its alpha composition with an opaque backing.
+  try { if(win!==quickWindow)win.setBackgroundMaterial('none'); win.__surfaceMaterial = 'transparent'; }
   catch { win.__surfaceMaterial = 'fallback'; }
   clipFloatingSurface(win);
   if (!win.__surfaceClippingBound) {
@@ -1125,13 +1126,11 @@ function hideQuickPanel() {
   quickShowRevision++;
   if (quickWindow && !quickWindow.isDestroyed()) {
     quickWindow.hide();
-    quickWindow.__launchpadFullscreen=false;
     scheduleIdleTeardown(quickWindow, '动作面板', HOT_WINDOW_IDLE_MS);
   }
 }
 
 function toggleQuickPanel() {
-  if(quickWindow?.__launchpadFullscreen)return showQuickPanel();
   if (quickWindow && quickWindow.isVisible() && quickWindow.isFocused()) hideQuickPanel();
   else showQuickPanel();
 }
@@ -3154,10 +3153,11 @@ function registerIpc() {
   ipcMain.handle('workspace:close-ready', event => {const win=senderWindow(event);if([...workspaceWindows.values()].includes(win)){win.__allowClose=true;win.close();}return {ok:true};});
 
   ipcMain.handle('quick:hide', () => hideQuickPanel());
-  ipcMain.handle('quick:presentation',()=>({mode:quickWindow?.__launchpadFullscreen?'fullscreen':'window'}));
+  ipcMain.handle('quick:presentation',()=>({mode:quickWindow?.isVisible()?(quickWindow.__launchpadFullscreen?'fullscreen':'window'):(store.getSettings().panelPresentation||'window')}));
   ipcMain.handle('quick:background',event=>event.sender===quickWindow?.webContents?readLaunchpadBackground(nativeImage):{dataUrl:'',source:'gradient'});
-  ipcMain.handle('quick:presentation:set',async(event,mode)=>{
+  ipcMain.handle('quick:presentation:set',async(event,mode,options)=>{
     if(event.sender!==quickWindow?.webContents||!['window','fullscreen'].includes(mode))return {ok:false,error:'无效的显示模式'};
+    if(options?.remember!==false)await store.updateSettings({panelPresentation:mode});
     positionQuickPanel(quickWindow,mode);
     return {ok:true,mode};
   });

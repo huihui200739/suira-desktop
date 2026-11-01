@@ -30,6 +30,10 @@ async function until(fn){let last;for(let n=0;n<160;n++){try{const value=await f
   await until(()=>panel.evaluate('document.visibilityState==="visible"&&document.querySelectorAll(".key").length===38'));await wait(200);
   assert.equal((await panel.evaluate(`window.suira.quick.setPresentation('fullscreen')`)).ok,true);
   await until(()=>panel.evaluate('document.getElementById("panel").dataset.presentation==="fullscreen"&&outerWidth>=screen.width&&outerHeight>=screen.height'));
+  assert.equal((await panel.evaluate('window.suira.settings.get()')).panelPresentation,'fullscreen');
+  await panel.evaluate('window.suira.quick.hide()');await workbench.evaluate('window.suira.quick.show()');
+  await until(()=>panel.evaluate('document.visibilityState==="visible"&&document.getElementById("panel").dataset.presentation==="fullscreen"&&outerWidth>=screen.width'));
+  console.log('PASS actual packaged display selection persists across hide/reopen');
   await panel.evaluate(`document.getElementById('mode-apps').click();true`);
   assert.equal((await panel.evaluate(`window.suira.search.query('Edge',{scope:'apps'})`)).every(item=>item.kind==='app'),true);
   await panel.send('Input.dispatchKeyEvent',{type:'keyDown',key:'Escape',code:'Escape',windowsVirtualKeyCode:27});

@@ -5,6 +5,7 @@
 | 页面 | 截图 |
 | --- | --- |
 | 随手面板 | [浅色](panel.png) · [深色](panel-dark.png) · [全屏键位](keyboard-fullscreen.png) |
+| 实际桌面透色验证 | [红色测试背景](panel-desktop-red.png) · [蓝色测试背景](panel-desktop-blue.png) |
 | 应用启动台 | [窗口](apps.png) · [全屏展示](apps-fullscreen.png) |
 | 应用搜索与绑定 | [搜索结果](app-search.png) · [键位应用选择](app-binding.png) |
 | 三点菜单 | [窗口菜单](panel-menu.png) · [全屏菜单](fullscreen-menu.png) |
@@ -15,7 +16,7 @@
 | 工作台 | [任务匣](workbench.png) |
 | 剪贴板 | [柔光渐变与内容操作](clipboard.png) |
 
-截图是渲染内容，不包含 Windows 桌面合成层。原生四角另外通过 `npm run test:surfaces` 验证：读取实际 HWND 的窗口区域，检查四角被排除、中心仍可见，并覆盖窗口缩放及最大化恢复。
+除 `panel-desktop-*` 外，截图是渲染内容，不包含 Windows 桌面合成层。桌面透色图通过受控背景和原生屏幕采集生成，不拍摄用户桌面；`npm run verify:composition` 同时对两种背景做像素差分。原生四角另外通过 `npm run test:surfaces` 验证：读取实际 HWND 的窗口区域，检查四角被排除、中心仍可见，并覆盖窗口缩放及最大化恢复。
 
 应用名称与图标来自本机 Windows 开始菜单；文档、日程与剪贴板使用独立演示数据。全屏展示图为当前显示器大小的无边框启动台，不代表 macOS 的独立空间。
 

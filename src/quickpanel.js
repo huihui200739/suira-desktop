@@ -966,9 +966,9 @@ function syncPresentation(value){
   if(full){setSearchExpanded(true);$('#search').placeholder=state.mode==='apps'?'直接按首字母搜索':'搜索工具、应用或内容';renderApps();loadAppIcons();fitFullscreenKeys();}
   button.title=full?'窗口模式 (F11 / Esc)':'全屏启动台 (F11)';button.querySelector('span').textContent=full?'窗口':'全屏';
 }
-async function changePresentation(mode=presentation==='fullscreen'?'window':'fullscreen'){
+async function changePresentation(mode=presentation==='fullscreen'?'window':'fullscreen',remember=true){
   const button=$('#presentation-toggle');if(button.disabled)return;button.disabled=true;
-  try{const result=await window.suira.quick.setPresentation(mode);if(!result?.ok)throw Error(result?.error||'切换显示模式失败');syncPresentation(result);positionBindingEditor();}
+  try{const result=await window.suira.quick.setPresentation(mode,{remember});if(!result?.ok)throw Error(result?.error||'切换显示模式失败');syncPresentation(result);positionBindingEditor();}
   catch(error){toast(error.message,'error');}finally{button.disabled=false;}
 }
 async function loadImmersiveBackground(){
@@ -1057,7 +1057,7 @@ function installEvents() {
       event.preventDefault();
       event.stopPropagation();
       if (state.query) clearSearch();
-      else if(presentation==='fullscreen')changePresentation('window');
+      else if(presentation==='fullscreen')changePresentation('window',false);
       else if (state.mode !== 'actions') setMode('actions');
       else window.suira.quick.hide();
       return;
@@ -1119,7 +1119,7 @@ function installEvents() {
     if (event.key === 'Escape') {
       event.preventDefault();
       if (state.query) clearSearch();
-      else if(presentation==='fullscreen')changePresentation('window');
+      else if(presentation==='fullscreen')changePresentation('window',false);
       else if (state.mode !== 'actions') { clearSearch(); setMode('actions'); }
       else window.suira.quick.hide();
       return;
