@@ -6,6 +6,7 @@
 | --- | --- |
 | 随手面板 | [浅色](panel.png) · [深色](panel-dark.png) · [全屏键位](keyboard-fullscreen.png) |
 | 实际桌面透色验证 | [红色测试背景](panel-desktop-red.png) · [蓝色测试背景](panel-desktop-blue.png) |
+| 复杂背景遮挡验证 | [模拟消息窗口](panel-desktop-busy-blue.png) |
 | 应用启动台 | [窗口](apps.png) · [全屏展示](apps-fullscreen.png) |
 | 应用搜索与绑定 | [搜索结果](app-search.png) · [键位应用选择](app-binding.png) |
 | 三点菜单 | [窗口菜单](panel-menu.png) · [全屏菜单](fullscreen-menu.png) |

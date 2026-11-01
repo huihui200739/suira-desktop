@@ -985,7 +985,12 @@ function focusSearch() {
 }
 
 function installEvents() {
-  $('#guide-close').onclick=async()=>{$('#panel-guide').hidden=true;await window.suira.settings.update({panelGuideSeen:true});};
+  let guideDismissed=false;
+  const syncMaterial=settings=>{const value=settings.panelMaterial||'soft';$('#panel').style.setProperty('--panel-opacity',({soft:.84,clear:.62,solid:.94})[value]||.84);$$('[data-material]').forEach(button=>button.setAttribute('aria-checked',String(button.dataset.material===value)));};
+  window.suira.settings?.get?.().then(syncMaterial).catch(()=>{});
+  window.suira.settings?.onChanged?.(syncMaterial);
+  $$('[data-material]').forEach(button=>listen(button,'click',async()=>{const result=await window.suira.settings.update({panelMaterial:button.dataset.material});if(!result?.ok)throw Error(result?.error||'保存失败');syncMaterial(result.settings);closeMoreMenu(false);}));
+  $('#guide-close').onclick=async()=>{guideDismissed=true;$('#panel-guide').hidden=true;await window.suira.settings.update({panelGuideSeen:true});};
   $('#update-close').onclick=closeUpdates;
   window.suira.updates?.onState(renderUpdate);
   listen($('#update-action'),'click',async()=>{const api=window.suira.updates;renderUpdate(await (updateState.phase==='available'?api.download():updateState.phase==='ready'?api.install():api.check()));});
@@ -1356,7 +1361,7 @@ function installEvents() {
     closeTranslate();
     state.appPage = 0;
     await loadState();
-    const settings=await window.suira.settings?.get?.();if(settings&&!settings.panelGuideSeen)$('#panel-guide').hidden=false;
+    const settings=await window.suira.settings?.get?.();if(!guideDismissed&&settings&&!settings.panelGuideSeen)$('#panel-guide').hidden=false;
     loadRecent();
   });
 }
