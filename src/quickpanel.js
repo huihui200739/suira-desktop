@@ -1002,7 +1002,7 @@ function installEvents() {
     const settings=await window.suira.settings?.get?.();
     if(!guideDismissed&&settings&&!settings.panelGuideSeen)$('#panel-guide').hidden=false;
   };
-  const syncMaterial=settings=>{const value=settings.panelMaterial||'soft';$('#panel').style.setProperty('--panel-opacity',({soft:.84,clear:.62,solid:.94})[value]||.84);$$('[data-material]').forEach(button=>button.setAttribute('aria-checked',String(button.dataset.material===value)));};
+  const syncMaterial=settings=>{const value=settings.panelMaterial||'soft';$('#panel').style.setProperty('--panel-opacity',({soft:.94,clear:.87,solid:.98})[value]||.94);$$('[data-material]').forEach(button=>button.setAttribute('aria-checked',String(button.dataset.material===value)));};
   window.suira.settings?.get?.().then(syncMaterial).catch(()=>{});
   window.suira.settings?.onChanged?.(syncMaterial);
   $$('[data-material]').forEach(button=>listen(button,'click',async()=>{const result=await window.suira.settings.update({panelMaterial:button.dataset.material});if(!result?.ok)throw Error(result?.error||'保存失败');syncMaterial(result.settings);closeMoreMenu(false);}));

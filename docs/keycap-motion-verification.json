@@ -1,20 +1,20 @@
 {
-  "version": "0.2.20",
+  "version": "0.2.22",
   "runs": [
     {
       "speed": 250,
       "keys": 38,
-      "maxFirstVisibleMs": 32.3
+      "maxFirstVisibleMs": 17.6
     },
     {
       "speed": 700,
       "keys": 38,
-      "maxFirstVisibleMs": 17.9
+      "maxFirstVisibleMs": 17.4
     },
     {
       "speed": 1400,
       "keys": 38,
-      "maxFirstVisibleMs": 17.4
+      "maxFirstVisibleMs": 17.9
     }
   ],
   "oneShotReflection": true,

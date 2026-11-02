@@ -50,7 +50,7 @@
 
 ## 开始使用
 
-当前正式版本 **0.2.21**，面向 Windows 11。[下载安装包](https://github.com/huihui200739/suira-updates/releases/latest)。首次安装或从旧版升级需要运行一次安装包；安装版提供三点菜单「检查更新」，支持检查、下载校验、保存草稿后重启安装。[在线更新与发布配置](docs/UPDATES.md)；本轮启动台与应用绑定见 [改进记录](docs/LAUNCHER-2026-10-31.md)，共同功能对照见 [对照报告](docs/SHARED-FEATURES-2026-10-31.md)。也可以从源码运行：
+当前正式版本 **0.2.23**，面向 Windows 11。[下载安装包](https://github.com/huihui200739/suira-updates/releases/latest)。首次安装或从旧版升级需要运行一次安装包；安装版提供三点菜单「检查更新」，支持检查、下载校验、保存草稿后重启安装。[在线更新与发布配置](docs/UPDATES.md)；本轮启动台与应用绑定见 [改进记录](docs/LAUNCHER-2026-10-31.md)，共同功能对照见 [对照报告](docs/SHARED-FEATURES-2026-10-31.md)。也可以从源码运行：
 
 ```powershell
 npm ci

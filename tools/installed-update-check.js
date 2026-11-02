@@ -35,7 +35,7 @@ async function until(fn,count=240){for(let i=0;i<count;i++){const v=await fn();i
     assert.equal(await panel.evaluate('document.getElementById("update-action").textContent'),'保存草稿并重启更新');
   }
   const proof={version:require('../package.json').version,installedVersion:info.version,menuOpensDialog:true,phase:(await state()).phase,anonymous:true,downloadAndChecksumVerified:process.argv.includes('--download'),installationTriggered:false,isolatedDataAndCache:true};
-  fs.writeFileSync(path.join(__dirname,'../docs/installed-update-'+(process.argv.includes('--current')?'current':'download')+'-verification.json'),JSON.stringify(proof,null,2)+'\n');
+  fs.writeFileSync(path.join(__dirname,'../docs/installed-update-'+require('../package.json').version+'-'+(process.argv.includes('--current')?'current':process.argv.includes('--download')?'download':'available')+'-verification.json'),JSON.stringify(proof,null,2)+'\n');
   console.log('PASS installed app public update menu',JSON.stringify(proof));
 })().catch(error=>{console.error(error);if(fs.existsSync(path.join(tmp,'app.log')))console.error(fs.readFileSync(path.join(tmp,'app.log'),'utf8').slice(-1200));process.exitCode=1;}).finally(async()=>{
   sockets.forEach(s=>s.close());if(child&&child.exitCode===null){const stopped=new Promise(r=>child.once('exit',r));child.kill();await stopped;}

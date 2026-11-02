@@ -62,7 +62,7 @@ async function pushText() {
   try {
     const result = await window.suira.notes.update({ id: state.id, text: $('#note-body').value });
     if (!result || result.ok === false) throw new Error((result && result.error) || '保存失败');
-    setSaved('已保存');
+    setSaved('已保存');window.SuiraCompanion?.saved();
     showError('');
   } catch (error) {
     state.dirty = true;

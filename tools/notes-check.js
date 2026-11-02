@@ -279,6 +279,7 @@ function buildFixtures() {
   fs.writeFileSync(path.join(TMP, '__notes_error_probe.js'), ERROR_PROBE, 'utf8');
   fs.copyFileSync(path.join(ROOT, 'src', 'theme.css'), path.join(TMP, 'theme.css'));
   fs.copyFileSync(path.join(ROOT, 'src', 'notes.css'), path.join(TMP, 'notes.css'));
+  fs.mkdirSync(path.join(TMP,'art'),{recursive:true});for(const asset of ['companion.js','companion.css','art/companion-courier.png'])fs.copyFileSync(path.join(ROOT,'src',asset),path.join(TMP,asset));
   fs.copyFileSync(path.join(ROOT, 'src', 'notes.js'), path.join(TMP, 'notes.js'));
   const page = html
     .replace('<script src="notes.js"></script>', [

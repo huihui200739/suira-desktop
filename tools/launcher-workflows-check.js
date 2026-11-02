@@ -192,7 +192,7 @@ require(${JSON.stringify(path.join(root,'main.js'))});`);
   assert.equal((await resumed.evaluate('window.suira.settings.get()')).panelPresentation,'window');
   console.log('PASS selecting window replaces the saved fullscreen preference and reopens as a window');
   await again.evaluate(`document.getElementById('panel-more').click();document.querySelector('[data-menu-section="appearance"]').click();document.querySelector('[data-material="clear"]').click();true`);
-  await until(()=>again.evaluate(`getComputedStyle(document.getElementById('panel')).getPropertyValue('--panel-opacity').trim()==='0.62'`));
+  await until(()=>again.evaluate(`getComputedStyle(document.getElementById('panel')).getPropertyValue('--panel-opacity').trim()==='0.87'`));
   assert.equal((await resumed.evaluate('window.suira.settings.get()')).panelMaterial,'clear');assert.equal((await resumed.evaluate('window.suira.app.info()')).windows.find(w=>w.url.endsWith('/quickpanel.html')).nativeBlur,false,'Clear material keeps corner-safe alpha glass');
   console.log('PASS material presets apply immediately and persist across restart');
 })().catch(error=>{console.error(error);if(fs.existsSync(path.join(tmp,'app.log')))console.error(fs.readFileSync(path.join(tmp,'app.log'),'utf8').slice(-1700));process.exitCode=1;}).finally(async()=>{

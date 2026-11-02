@@ -97,7 +97,7 @@
     clearTimeout(timer);if(!current||revision===savedRevision)return chain;
     const id=current, version=revision, payload={id,title:$('md-title').value.trim()||'未命名文档',text:$('md-editor').value};
     $('md-status').textContent='保存中…';
-    const job=chain.catch(()=>{}).then(async()=>{const result=await checked(api.save('markdown',payload));const index=docs.findIndex(d=>d.id===id);if(index>=0)docs[index]=result.item;if(current===id){documentIdentity(result.item);savedRevision=Math.max(savedRevision,version);$('md-status').textContent=revision===savedRevision?savedLabel(result.item):'有未保存的修改';docList();}});
+    const job=chain.catch(()=>{}).then(async()=>{const result=await checked(api.save('markdown',payload));const index=docs.findIndex(d=>d.id===id);if(index>=0)docs[index]=result.item;if(current===id){documentIdentity(result.item);savedRevision=Math.max(savedRevision,version);window.SuiraCompanion?.saved();$('md-status').textContent=revision===savedRevision?savedLabel(result.item):'有未保存的修改';docList();}});
     chain=job.catch(error=>{if(current===id)$('md-status').textContent='保存失败，请重试';throw error;});
     // Callers can await rejection, while the background save also has an observer.
     chain.catch(()=>{});return chain;

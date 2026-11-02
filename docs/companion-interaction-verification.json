@@ -1,0 +1,21 @@
+{
+  "materialAndSettingsVersion": "0.2.22",
+  "visibilityVersion": "0.2.23",
+  "smallestNoteViewport": [
+    240,
+    200
+  ],
+  "popupFits": true,
+  "quietPreferencePersists": true,
+  "hideAndRestore": true,
+  "actualSaveShowsLetterPose": true,
+  "emptyKeyReflectionMs": 240,
+  "visibleBoundedDocks": [
+    "workbench",
+    "panel",
+    "calendar",
+    "markdown",
+    "clipboard",
+    "note"
+  ]
+}

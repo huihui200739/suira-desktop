@@ -43,7 +43,7 @@
       dwell=setTimeout(()=>{
         dwell=0;if(active!==key||reduce.matches||suspended())return;
         key.classList.add('is-key-hover');
-        if(key.dataset.state!=='unbound'&&performance.now()-(lastSweep.get(key)??-Infinity)>=280){
+        if(performance.now()-(lastSweep.get(key)??-Infinity)>=280){
           lastSweep.set(key,performance.now());key.classList.add('is-key-sheen');
         }
       },40);
