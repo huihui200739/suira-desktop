@@ -1,0 +1,78 @@
+{
+  "version": "0.2.24",
+  "source": "real DWM compositor over synthetic windows; no user screen content",
+  "results": [
+    {
+      "name": "panel",
+      "red": [
+        198,
+        124,
+        133
+      ],
+      "blue": [
+        123,
+        149,
+        200
+      ],
+      "cornerMean": 12.289473684210526,
+      "cornerMax": 38,
+      "cornerSamples": 228,
+      "blurEnergy": 0.62,
+      "bareEnergy": 85
+    },
+    {
+      "name": "workbench",
+      "red": [
+        228,
+        205,
+        211
+      ],
+      "blue": [
+        202,
+        213,
+        234
+      ],
+      "cornerMean": 9.078947368421053,
+      "cornerMax": 38,
+      "cornerSamples": 228,
+      "blurEnergy": 0.10666666666666667,
+      "bareEnergy": 85
+    },
+    {
+      "name": "calendar",
+      "red": [
+        197,
+        122,
+        132
+      ],
+      "blue": [
+        120,
+        148,
+        200
+      ],
+      "cornerMean": 9.078947368421053,
+      "cornerMax": 38,
+      "cornerSamples": 228,
+      "blurEnergy": 0.4666666666666667,
+      "bareEnergy": 85
+    },
+    {
+      "name": "markdown-home",
+      "red": [
+        195,
+        121,
+        131
+      ],
+      "blue": [
+        119,
+        146,
+        199
+      ],
+      "cornerMean": 9.078947368421053,
+      "cornerMax": 38,
+      "cornerSamples": 228,
+      "blurEnergy": 0.4066666666666667,
+      "bareEnergy": 85
+    }
+  ]
+}

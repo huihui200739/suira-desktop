@@ -6,12 +6,13 @@ const tmp=fs.mkdtempSync(path.join(os.tmpdir(),'suira-workspace-')),profile=path
 const wait=ms=>new Promise(resolve=>setTimeout(resolve,ms));let child;
 async function until(fn){let last;for(let i=0;i<180;i++){try{const value=await fn();if(value)return value;}catch(error){last=error;}await wait(80);}throw last||Error('Packaged window did not become ready');}
 (async()=>{
-  const exe=process.argv.slice(2).find(arg=>!arg.startsWith('--'))||path.join(process.env.LOCALAPPDATA,'Programs/suira-desktop/随序.exe');
+  let exe=path.resolve(process.argv.slice(2).find(arg=>!arg.startsWith('--'))||path.join(process.env.LOCALAPPDATA,'Programs/suira-desktop/随序.exe'));
   assert.ok(fs.existsSync(exe));
   const store=new SuiraStore(path.join(profile,'suira-data.json'));
   await store.updateSettings({globalShortcutsEnabled:false,recordClipboard:false,panelMaterial:'soft',panelGuideSeen:true});
   const server=net.createServer();await new Promise(r=>server.listen(0,'127.0.0.1',r));const port=server.address().port;await new Promise(r=>server.close(r));
-  const env={...process.env};delete env.ELECTRON_RUN_AS_NODE;
+  const env={...process.env,APPDATA:path.join(tmp,'roaming'),LOCALAPPDATA:path.join(tmp,'local')};delete env.ELECTRON_RUN_AS_NODE;
+  fs.mkdirSync(env.APPDATA);fs.mkdirSync(env.LOCALAPPDATA);
   const log=fs.openSync(path.join(tmp,'app.log'),'w');child=spawn(exe,['--user-data-dir='+profile,'--remote-debugging-port='+port],{windowsHide:false,env,stdio:['ignore',log,log]});fs.closeSync(log);
   const page=async suffix=>{const client=await until(()=>connect(port,t=>t.url.includes(suffix)));sockets.push(client.ws);await until(()=>client.evaluate('Boolean(window.suira)'));return client;};
   const main=await page('/index.html');
@@ -25,7 +26,7 @@ async function until(fn){let last;for(let i=0;i<180;i++){try{const value=await f
   assert.equal(path.resolve(info.userData),path.resolve(profile),'Test must use an isolated profile');
   assert.equal(info.version,require('../package.json').version);
   await main.evaluate('window.suira.quick.show()');const panel=await page('/quickpanel.html');
-  assert.equal((await panel.evaluate('window.suira.app.info()')).nativeBlur,false,'Packaged rounded panel must not paint a rectangular native backdrop');
+  assert.equal((await panel.evaluate('window.suira.app.info()')).nativeBlur,true,'Packaged panel must use native glass with DWM corners');
   await until(()=>panel.evaluate('document.querySelectorAll(".key").length===38'));
   await companion(panel);
   if(process.argv.includes('--preview')){
@@ -46,12 +47,14 @@ async function until(fn){let last;for(let i=0;i<180;i++){try{const value=await f
   await panel.evaluate('window.suira.settings.update({panelMaterial:"solid"})');
   assert.equal((await panel.evaluate('window.suira.app.info()')).nativeBlur,false);
   await panel.evaluate('window.suira.settings.update({panelMaterial:"soft"})');
-  assert.equal((await panel.evaluate('window.suira.app.info()')).nativeBlur,false);
+  assert.equal((await panel.evaluate('window.suira.app.info()')).nativeBlur,true);
+  assert.equal(await panel.evaluate('document.documentElement.dataset.glassBackend'),'native');
+  assert.equal(await panel.evaluate('document.querySelector(".glass-scene").children.length'),0,'No wallpaper background');
   for(const tool of ['calendar','markdown']){
     await main.evaluate(`window.suira.workspace.open(${JSON.stringify(tool)})`);
     const client=await page('tool='+tool);
     await companion(client);
-    assert.equal((await client.evaluate('window.suira.app.info()')).nativeBlur,false,'Corner-safe tool material: '+tool);
+    assert.equal((await client.evaluate('window.suira.app.info()')).nativeBlur,true,'Native glass with system corners: '+tool);
     await until(()=>client.evaluate('Boolean(document.querySelector(".tool-kind .suira-art.vivid"))'));
     if(tool==='calendar')assert.equal(await client.evaluate('document.querySelector(".tool-kind .calendar-page").getBoundingClientRect().height>0'),true,'Calendar icon content must not match the hidden page selector');
     else {
@@ -60,7 +63,7 @@ async function until(fn){let last;for(let i=0;i<180;i++){try{const value=await f
     }
   }
   await main.evaluate('window.suira.clipboardBar.show()');const shelf=await page('/clipboardbar.html');
-  assert.equal((await shelf.evaluate('window.suira.app.info()')).nativeBlur,false);
+  assert.equal((await shelf.evaluate('window.suira.app.info()')).nativeBlur,true);
   await until(()=>shelf.evaluate('Boolean(document.querySelector(".bar-mark .suira-art.vivid"))'));
   await companion(shelf);
   console.log('PASS installed '+info.version+': packaged native module, panel/calendar/Markdown/clipboard corner-safe material and preference toggles; isolated profile');

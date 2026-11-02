@@ -25,6 +25,7 @@ function pathForFile(file) {
 }
 
 contextBridge.exposeInMainWorld('suira', {
+  material:{preferences:()=>ipcRenderer.invoke('material:preferences')},
   updates:{state:()=>ipcRenderer.invoke('updates:state'),check:()=>ipcRenderer.invoke('updates:check'),download:()=>ipcRenderer.invoke('updates:download'),install:()=>ipcRenderer.invoke('updates:install'),onState:callback=>subscribe('updates:state',callback)},
   window: {
     reset: () => ipcRenderer.invoke('window:reset'),

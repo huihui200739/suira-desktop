@@ -354,7 +354,7 @@ const PROBE = `
 
 function buildFixtures() {
   fs.mkdirSync(path.join(TMP,'art'),{recursive:true});
-  for (const asset of ['ui-motion.css','ui-motion.js','tool-art.css','tool-art.js', 'companion.js', 'companion.css', 'art/companion-courier.png','tool-surfaces.css']) fs.copyFileSync(path.join(ROOT,'src',asset),path.join(TMP,asset));
+  for (const asset of ['ui-motion.css','ui-motion.js','tool-art.css','tool-art.js', 'liquid-glass.js','liquid-glass.css','companion.js', 'companion.css', 'art/companion-courier.png','tool-surfaces.css']) fs.copyFileSync(path.join(ROOT,'src',asset),path.join(TMP,asset));
   fs.writeFileSync(path.join(TMP, '__bar_mock.js'), MOCK, 'utf8');
   fs.writeFileSync(path.join(TMP, '__bar_probe.js'), PROBE, 'utf8');
   fs.copyFileSync(path.join(ROOT, 'src', 'theme.css'), path.join(TMP, 'theme.css'));

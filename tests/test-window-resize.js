@@ -19,3 +19,15 @@ assert.deepEqual(clipToWorkAreas([{x:0,y:0,width:1722,height:1034}],{x:-7,y:-7,w
 assert.deepEqual(clipToWorkAreas([{x:0,y:0,width:200,height:100}],{x:-100,y:0,width:200,height:100},[{x:-1280,y:0,width:1280,height:720},{x:0,y:0,width:1920,height:1040}]),[{x:0,y:0,width:100,height:100},{x:100,y:0,width:100,height:100}]);
 assert.deepEqual(clipToWorkAreas([{x:0,y:0,width:100,height:100}],{x:0,y:1100,width:100,height:100},[area]),[{x:0,y:0,width:0,height:0}]);
 console.log('PASS native visible-region mask: maximized frame overhang, spanning monitors and empty shape does not reset clipping');
+const {EventEmitter}=require('node:events'),{installFramelessMaximize}=require('../lib/frameless-maximize');
+const monitor=new EventEmitter();let work={x:-1280,y:30,width:1280,height:960};
+monitor.getDisplayMatching=()=>({workArea:work});monitor.getCursorScreenPoint=()=>({x:-900,y:50});
+const windowMock=new EventEmitter();let bounds={x:-1200,y:80,width:900,height:700};
+Object.assign(windowMock,{isDestroyed:()=>false,maximize(){throw Error('Native transparent maximize must not be used');},unmaximize(){},isMaximized:()=>false,getBounds:()=>({...bounds}),getNormalBounds:()=>({...bounds}),setBounds:value=>{bounds={...value};}});
+installFramelessMaximize(windowMock,monitor);windowMock.maximize();assert.deepEqual(bounds,work);assert.equal(windowMock.isMaximized(),true);
+windowMock.maximize();assert.deepEqual(windowMock.getNormalBounds(),{x:-1200,y:80,width:900,height:700});
+work={...work,height:920};monitor.emit('display-metrics-changed');assert.deepEqual(bounds,work);
+windowMock.unmaximize();assert.deepEqual(bounds,{x:-1200,y:80,width:900,height:700});assert.equal(windowMock.isMaximized(),false);
+windowMock.maximize();let prevented=false;windowMock.emit('will-move',{preventDefault(){prevented=true;}});assert.equal(prevented,true);assert.equal(windowMock.isMaximized(),false);assert.equal(bounds.width,900);
+windowMock.emit('closed');assert.equal(monitor.listenerCount('display-metrics-changed'),0);assert.equal(monitor.listenerCount('display-removed'),0);
+console.log('PASS transparent-window maximize, normal bounds, negative monitors, work-area changes, drag restore and listener cleanup');

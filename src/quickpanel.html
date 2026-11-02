@@ -3,7 +3,6 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="color-scheme" content="light dark">
   <title>随序 动作面板</title>
   <link rel="stylesheet" href="theme.css">
   <link rel="stylesheet" href="quickpanel.css">
@@ -11,6 +10,7 @@
   <link rel="stylesheet" href="tool-art.css">
   <link rel="stylesheet" href="keycap-material.css">
   <link rel="stylesheet" href="companion.css">
+  <link rel="stylesheet" href="liquid-glass.css">
 </head>
 <body>
   <main class="panel" id="panel" data-mode="actions" data-presentation="window" aria-label="随序动作面板">
@@ -41,7 +41,7 @@
       <button type="button" role="menuitem" data-menu-section="layout" aria-expanded="false">布局<span>›</span></button>
       <div data-menu-group="layout" hidden><button type="button" role="menuitemradio" data-layout="actions">动作面板</button><button type="button" role="menuitemradio" data-layout="apps">应用启动台</button><button type="button" role="menuitemradio" data-layout="toolbox">工具箱</button></div>
       <button type="button" role="menuitem" data-menu-section="appearance" aria-expanded="false">外观<span>›</span></button>
-      <div data-menu-group="appearance" hidden><button type="button" role="menuitemradio" data-theme="light">浅色</button><button type="button" role="menuitemradio" data-theme="dark">深色</button><button type="button" role="menuitemradio" data-theme="system">跟随系统</button><hr><button type="button" role="menuitemradio" data-material="soft">柔和玻璃（推荐）</button><button type="button" role="menuitemradio" data-material="clear">更通透</button><button type="button" role="menuitemradio" data-material="solid">更强遮挡</button></div>
+      <div data-menu-group="appearance" hidden><button type="button" role="menuitemradio" data-theme="light">浅色</button><button type="button" role="menuitemradio" data-theme="dark">深色</button><button type="button" role="menuitemradio" data-theme="system">跟随系统</button><hr><button type="button" role="menuitemradio" data-material="liquid">实时玻璃（推荐）</button><button type="button" role="menuitemradio" data-material="soft">柔和磨砂</button><button type="button" role="menuitemradio" data-material="clear">轻透玻璃</button><button type="button" role="menuitemradio" data-material="solid">纯色</button></div>
       <hr><button type="button" role="menuitem" data-menu-action="guide">使用指南</button><button type="button" role="menuitem" data-menu-action="releases">检查更新</button>
       <button type="button" role="menuitem" data-menu-action="restart">重启随序</button>
       <button type="button" role="menuitem" data-menu-action="quit">退出随序</button>
@@ -182,5 +182,6 @@
   <script src="keycap-motion.js"></script>
   <script src="quickpanel.js"></script>
   <script src="companion.js"></script>
+  <script src="liquid-glass.js"></script>
 </body>
 </html>

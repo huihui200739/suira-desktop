@@ -36,9 +36,10 @@ const fs = require('node:fs');
 const fsp = require('node:fs/promises');
 const os = require('node:os');
 const crypto = require('node:crypto');
-const {readLaunchpadBackground}=require('./lib/launchpad-background');
-const { createWindowMaterial, shouldEnableBlur } = require('./lib/window-material');
+const { createWindowMaterial, shouldEnableBlur,supportsSystemGlass } = require('./lib/window-material');
+const SYSTEM_GLASS=supportsSystemGlass();
 const windowMaterial = createWindowMaterial();
+const {installFramelessMaximize}=require('./lib/frameless-maximize');
 const {UpdateController}=require('./lib/update-controller');
 let updateController;
 let updateInstallPrepared=false;
@@ -924,6 +925,11 @@ function positionQuickPanel(win,mode=store?.getSettings().panelPresentation||'wi
 
 function clipFloatingSurface(win) {
   if (process.platform !== 'win32' || !win || win.isDestroyed()) return;
+  if(win.__systemGlass){
+    updateWindowMaterial(win);
+    win.__glassFrameReady=windowMaterial.prepareSystemGlass(win,{square:win.isMaximized()||win.isFullScreen()||win.__launchpadFullscreen});
+    return;
+  }
   const bounds=win.getBounds(),{width,height}=bounds;
   let shape=roundedWindowShape(width,height,win.isMaximized()||win.isFullScreen()||win.__launchpadFullscreen?0:(win.__surfaceRadius||24));
   if(win.__desktopWindow){
@@ -944,7 +950,7 @@ function clipFloatingSurface(win) {
 function updateWindowMaterial(win) {
   const enabled = shouldEnableBlur({ reducedTransparency:nativeTheme.prefersReducedTransparency,
     highContrast:nativeTheme.shouldUseHighContrastColors, fullscreen:win.__launchpadFullscreen,
-    material:store?.getSettings().panelMaterial, radius:win.__surfaceRadius || 24 });
+    material:store?.getSettings().panelMaterial, radius:win.__surfaceRadius || 24,systemGlass:win.__systemGlass });
   win.__nativeBlur = windowMaterial.apply(win, enabled);
 }
 nativeTheme.on('updated', () => {
@@ -953,15 +959,21 @@ nativeTheme.on('updated', () => {
 
 function prepareFloatingSurface(win, radius = 24, blur = false) {
   if (process.platform !== 'win32') return;
-  win.__surfaceRadius = radius;
+  win.__systemGlass = blur&&SYSTEM_GLASS;
+  if(win.__systemGlass){win.contentView.setBackgroundColor('#00000000');for(const view of win.contentView.children){if(view.webContents===win.webContents)view.setBackgroundColor('#00000000');}}
+  win.__surfaceRadius = win.__systemGlass?8:radius;
   win.__allowNativeBlur = blur;
-  // Keep the creation-time compositor intact. Even setting system material to
-  // 'none' can add a rectangular backing beyond the native corner region.
-  win.__surfaceMaterial = 'transparent';
+  // Native glass uses the DWM frame and corners without setShape. Other
+  // transparent tools retain their alpha mask and never receive accent blur.
+  win.__surfaceMaterial = win.__systemGlass?'native-glass':'transparent';
   clipFloatingSurface(win);
   if (!win.__surfaceClippingBound) {
     win.__surfaceClippingBound = true;
-    for (const event of ['resize', 'show', 'restore', 'maximize', 'unmaximize']) {
+    const refresh=()=>{if(win.__systemGlass)windowMaterial.invalidate(win);clipFloatingSurface(win);};
+    win.webContents.on('did-finish-load',refresh);
+    for(const event of ['show','focus','always-on-top-changed'])win.on(event,refresh);
+    if(win.__systemGlass){let readyTimer;const settle=()=>{clearTimeout(readyTimer);readyTimer=setTimeout(()=>{if(!win.isDestroyed())refresh();},80);};win.on('show',settle);win.webContents.on('did-finish-load',settle);win.on('closed',()=>clearTimeout(readyTimer));}
+    for (const event of ['resize', 'restore', 'maximize', 'unmaximize']) {
       win.on(event, () => clipFloatingSurface(win));
     }
   }
@@ -971,6 +983,7 @@ function prepareFloatingSurface(win, radius = 24, blur = false) {
 // native drag ends so moving between monitors is not trapped at the first edge.
 function prepareDesktopWindow(win) {
   win.__desktopWindow=true;
+  if(process.platform==='win32')installFramelessMaximize(win,screen);
   const minimum=win.getMinimumSize();let nativeMoving=false,adjusting=false,timer;
   const state=()=>{if(!win.isDestroyed())win.webContents.send('window:state',{focused:win.isFocused(),maximized:win.isMaximized()});};
   const fit=async()=>{
@@ -1007,7 +1020,7 @@ function prepareDesktopWindow(win) {
     } finally {adjusting=false;}
   };
   const schedule=()=>{clearTimeout(timer);timer=setTimeout(()=>fit().catch(error=>console.warn('窗口位置调整失败:',error.message)),60);};
-  win.on('will-move',()=>{nativeMoving=true;clearTimeout(timer);});
+  win.on('will-move',event=>{if(event.defaultPrevented)return;nativeMoving=true;clearTimeout(timer);});
   win.on('moved',()=>{nativeMoving=false;schedule();});
   for(const event of ['move','resize','restore','unmaximize'])win.on(event,schedule);
   win.on('move',()=>clipFloatingSurface(win));
@@ -1024,11 +1037,12 @@ function createQuickWindow() {
     height: QUICK_HEIGHT,
     show: false,
     frame: false,
-    thickFrame: false,
+    thickFrame: SYSTEM_GLASS,
     transparent: true,
+    backgroundMaterial: SYSTEM_GLASS?'acrylic':undefined,
     backgroundColor: '#00000000',
-    hasShadow: false,
-    resizable: false,
+    hasShadow: SYSTEM_GLASS,
+    resizable: SYSTEM_GLASS,
     movable: false,
     maximizable: false,
     minimizable: false,
@@ -1048,6 +1062,7 @@ function createQuickWindow() {
   });
   quickWindow.setAlwaysOnTop(true, 'floating');
   prepareFloatingSurface(quickWindow, 24, true);
+  quickWindow.on('will-resize',event=>event.preventDefault());
   quickWindow.__loaded=quickWindow.loadFile(path.join(__dirname, 'src', 'quickpanel.html'));
   quickWindow.__loaded.catch(error=>console.warn('面板加载失败:',error.message));
   quickWindow.setMenuBarVisibility(false);
@@ -1487,11 +1502,12 @@ function createClipboardBarWindow() {
     ...clipboardBarBounds(),
     show: false,
     frame: false,
-    thickFrame: false,
+    thickFrame: SYSTEM_GLASS,
     transparent: true,
+    backgroundMaterial: SYSTEM_GLASS?'acrylic':undefined,
     backgroundColor: '#00000000',
-    hasShadow: false,
-    resizable: false,
+    hasShadow: SYSTEM_GLASS,
+    resizable: SYSTEM_GLASS,
     movable: false,
     maximizable: false,
     minimizable: false,
@@ -1510,6 +1526,7 @@ function createClipboardBarWindow() {
   });
   clipboardBarWindow.setAlwaysOnTop(true, 'floating');
   prepareFloatingSurface(clipboardBarWindow, 24, true);
+  clipboardBarWindow.on('will-resize',event=>event.preventDefault());
   clipboardBarWindow.__loaded = clipboardBarWindow.loadFile(path.join(__dirname, 'src', 'clipboardbar.html'));
   clipboardBarWindow.__loaded.catch(error => console.warn('剪贴板条加载失败:', error.message));
   clipboardBarWindow.setMenuBarVisibility(false);
@@ -1812,8 +1829,8 @@ function showWorkspaceWindow(type) {
   let win=workspaceWindows.get(type);
   if(win&&!win.isDestroyed()){if(win.isMinimized())win.restore();win.show();win.focus();return win;}
   const area=screen.getPrimaryDisplay().workArea;
-  win=new BrowserWindow({width:Math.min(type==='markdown'?1300:1180,area.width-40),height:Math.min(860,area.height-40),minWidth:800,minHeight:600,show:false,frame:false,thickFrame:false,
-    title:type==='markdown'?'Markdown · 随序':'日历 · 随序',backgroundColor:'#00000000',hasShadow:false,roundedCorners:true,icon:assetPath('suira-icon.png'),
+  win=new BrowserWindow({width:Math.min(type==='markdown'?1300:1180,area.width-40),height:Math.min(860,area.height-40),minWidth:800,minHeight:600,show:false,frame:false,thickFrame:SYSTEM_GLASS,
+    title:type==='markdown'?'Markdown · 随序':'日历 · 随序',transparent:true,backgroundColor:'#00000000',hasShadow:SYSTEM_GLASS,roundedCorners:true,icon:assetPath('suira-icon.png'),
     webPreferences:{preload:path.join(__dirname,'preload.js'),contextIsolation:true,nodeIntegration:false,sandbox:false,spellcheck:false}});
   prepareFloatingSurface(win, 24, true);
   prepareDesktopWindow(win);
@@ -1846,9 +1863,11 @@ function createMainWindow() {
     minHeight: 680,
     show: false,
     frame: false,
-    thickFrame: false,
+    thickFrame: SYSTEM_GLASS,
+    transparent: true,
+    backgroundMaterial: SYSTEM_GLASS?'acrylic':undefined,
     backgroundColor: '#00000000',
-    hasShadow: false,
+    hasShadow: SYSTEM_GLASS,
     title: APP_NAME,
     icon: assetPath('suira-icon.png'),
     roundedCorners: true,
@@ -1861,7 +1880,7 @@ function createMainWindow() {
       spellcheck: false
     }
   });
-  prepareFloatingSurface(mainWindow);
+  prepareFloatingSurface(mainWindow,24,true);
   if(saved?.physicalWidth&&saved?.physicalHeight)mainWindow.__restorePhysicalSize={width:saved.physicalWidth,height:saved.physicalHeight,scale:saved.scaleFactor};
   prepareDesktopWindow(mainWindow);
   mainWindow.loadFile(path.join(__dirname, 'src', 'index.html'));
@@ -1931,7 +1950,7 @@ async function rememberMainWindowState() {
     const bounds=maximized?win.getNormalBounds():win.getBounds();
     let size=win.__stableNormalSize;
     let physical=win.__stableNormalPhysical;
-    if(foregroundProbe.isReady()){
+    if(!win.__customMaximized&&foregroundProbe.isReady()){
       const own=await foregroundProbe.query(win.getNativeWindowHandle().readBigUInt64LE().toString());
       if(own?.pid===process.pid&&own.bounds){
         const scale=screen.getDisplayMatching(bounds).scaleFactor||1;
@@ -2915,10 +2934,11 @@ function createNoteWindow(noteId) {
     minHeight: 200,
     show: false,
     frame: false,
-    thickFrame: false,
+    thickFrame: SYSTEM_GLASS,
     // 钉住的速记浮在其它窗口之上；未钉住就是普通窗口，不抢屏幕
     alwaysOnTop: Boolean(note.pinned),
     transparent: true,
+    backgroundMaterial: SYSTEM_GLASS?'acrylic':undefined,
     backgroundColor: '#00000000',
     title: '随序 · 速记',
     icon: assetPath('suira-icon.png'),
@@ -2933,7 +2953,7 @@ function createNoteWindow(noteId) {
     }
   });
   noteWindows.set(noteId, win);
-  prepareFloatingSurface(win);
+  prepareFloatingSurface(win,24,true);
   win.loadFile(path.join(__dirname, 'src', 'notes.html'));
   win.setMenuBarVisibility(false);
   win.webContents.once('did-finish-load', () => {
@@ -3165,7 +3185,12 @@ function registerIpc() {
 
   ipcMain.handle('quick:hide', () => hideQuickPanel());
   ipcMain.handle('quick:presentation',()=>({mode:quickWindow?.isVisible()?(quickWindow.__launchpadFullscreen?'fullscreen':'window'):(store.getSettings().panelPresentation||'window')}));
-  ipcMain.handle('quick:background',event=>event.sender===quickWindow?.webContents?readLaunchpadBackground(nativeImage):{dataUrl:'',source:'gradient'});
+  ipcMain.handle('material:preferences',event=>{
+    const win=BrowserWindow.fromWebContents(event.sender);
+    if(!win||!win.__surfaceRadius)return {};
+    return {nativeGlass:Boolean(win.__systemGlass),reducedTransparency:Boolean(nativeTheme.prefersReducedTransparency),highContrast:Boolean(nativeTheme.shouldUseHighContrastColors)};
+  });
+  ipcMain.handle('quick:background',()=>({dataUrl:'',source:'native'}));
   ipcMain.handle('quick:presentation:set',async(event,mode,options)=>{
     if(event.sender!==quickWindow?.webContents||!['window','fullscreen'].includes(mode))return {ok:false,error:'无效的显示模式'};
     if(options?.remember!==false)await store.updateSettings({panelPresentation:mode});
@@ -4081,6 +4106,7 @@ async function initialize() {
   if (!store.getSettings().themeChosen) {
     await store.updateSettings({ theme: 'light', themeChosen: true });
   }
+  if(store.getSettings().glassSystemVersion!==1)await store.updateSettings({panelMaterial:'liquid',glassSystemVersion:1});
   // 主题要在建任何窗口之前定下来，否则首帧会闪一下系统默认色
   applyTheme();
   // 旧版三键默认键位迁移到两键组合；改过键的用户不受影响

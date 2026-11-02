@@ -35,7 +35,6 @@ async function run({ screenshots = false } = {}) {
 const {app,BrowserWindow,ipcMain,clipboard,globalShortcut}=require('electron');
 app.setPath('userData',${JSON.stringify(path.join(tmp, 'profile'))});
 app.getVersion=()=>${JSON.stringify(require('../package.json').version)};
-require(${JSON.stringify(path.join(root,'lib','launchpad-background.js'))}).readLaunchpadBackground=async()=>({dataUrl:'',source:'demo-gradient'});
 clipboard.read=async()=>[];clipboard.readText=async()=>'';
 globalShortcut.register=()=>true;globalShortcut.unregister=()=>{};globalShortcut.unregisterAll=()=>{};
 const handle=ipcMain.handle.bind(ipcMain);
@@ -73,8 +72,22 @@ class RegionCheck {
  [DllImport("user32.dll")]static extern int GetWindowLong(IntPtr w,int index);
  [DllImport("user32.dll")]static extern bool GetWindowRect(IntPtr w,out Rect r);
  [DllImport("user32.dll")]static extern bool SetProcessDpiAwarenessContext(IntPtr context);
+ [DllImport("dwmapi.dll")]static extern int DwmGetWindowAttribute(IntPtr w,int a,out int v,int s);
+ [DllImport("dwmapi.dll",EntryPoint="DwmGetWindowAttribute")]static extern int DwmRect(IntPtr w,int a,out Rect v,int s);
  struct Rect{public int l,t,r,b;}
- static void Main(string[] args){SetProcessDpiAwarenessContext(new IntPtr(-4));var region=CreateRectRgn(0,0,0,0);try{Rect rect;var hwnd=new IntPtr(long.Parse(args[0]));if(!GetWindowRect(hwnd,out rect)||GetWindowRgn(hwnd,region)==0)throw new Exception("Missing native region");int w=rect.r-rect.l,h=rect.b-rect.t;bool ok;if(args.Length>=6){int l=int.Parse(args[2])-rect.l,t=int.Parse(args[3])-rect.t,r=int.Parse(args[4])-rect.l,b=int.Parse(args[5])-rect.t;string edges=args.Length>6?args[6]:"ltrb";Rect box;GetRgnBox(region,out box);File.WriteAllText(args[1]+".debug","hwnd="+rect.l+","+rect.t+","+rect.r+","+rect.b+" region="+box.l+","+box.t+","+box.r+","+box.b+" area="+l+","+t+","+r+","+b);ok=PtInRegion(region,w/2,h/2)&&(!edges.Contains("l")||l<=0||!PtInRegion(region,l-1,h/2))&&(!edges.Contains("t")||t<=0||!PtInRegion(region,w/2,t-1))&&(!edges.Contains("r")||r>=w||!PtInRegion(region,r,h/2))&&(!edges.Contains("b")||b>=h||!PtInRegion(region,w/2,b));}else{ok=(GetWindowLong(hwnd,-16)&0x40000)==0&&!PtInRegion(region,0,0)&&!PtInRegion(region,w-1,0)&&!PtInRegion(region,0,h-1)&&!PtInRegion(region,w-1,h-1)&&PtInRegion(region,w/2,h/2);}File.WriteAllText(args[1],ok?"true":"false");}finally{DeleteObject(region);}}
+ static void Main(string[] args){
+  SetProcessDpiAwarenessContext(new IntPtr(-4));var region=CreateRectRgn(0,0,0,0);
+  try{Rect rect;var hwnd=new IntPtr(long.Parse(args[0]));if(!GetWindowRect(hwnd,out rect))throw new Exception("Missing HWND");
+   bool system=GetWindowRgn(hwnd,region)==0;int w=rect.r-rect.l,h=rect.b-rect.t;bool ok;
+   if(system){
+    int corner;DwmGetWindowAttribute(hwnd,33,out corner,4);
+    ok=(GetWindowLong(hwnd,-20)&0x80000)==0&&corner==(args.Length>=6?1:2);
+    if(args.Length>=6){Rect visible;if(DwmRect(hwnd,9,out visible,16)!=0)throw new Exception("Missing DWM frame bounds");ok=ok&&visible.l>=int.Parse(args[2])-1&&visible.t>=int.Parse(args[3])-1&&visible.r<=int.Parse(args[4])+1&&visible.b<=int.Parse(args[5])+1;File.WriteAllText(args[1]+".debug",visible.l+","+visible.t+","+visible.r+","+visible.b);}
+   }else if(args.Length>=6){int l=int.Parse(args[2])-rect.l,t=int.Parse(args[3])-rect.t,r=int.Parse(args[4])-rect.l,b=int.Parse(args[5])-rect.t;string edges=args.Length>6?args[6]:"ltrb";ok=PtInRegion(region,w/2,h/2)&&(!edges.Contains("l")||l<=0||!PtInRegion(region,l-1,h/2))&&(!edges.Contains("t")||t<=0||!PtInRegion(region,w/2,t-1))&&(!edges.Contains("r")||r>=w||!PtInRegion(region,r,h/2))&&(!edges.Contains("b")||b>=h||!PtInRegion(region,w/2,b));}
+   else ok=(GetWindowLong(hwnd,-16)&0x40000)==0&&!PtInRegion(region,0,0)&&!PtInRegion(region,w-1,0)&&!PtInRegion(region,0,h-1)&&!PtInRegion(region,w-1,h-1)&&PtInRegion(region,w/2,h/2);
+   File.WriteAllText(args[1],ok?"true":"false");
+  }finally{DeleteObject(region);}
+ }
 }`);
     const checker = await ensureNativeHost({ sourcePath: source, targetPath: path.join(tmp, 'region.exe'), onError: message => { throw Error(message); } });
     assert.ok(checker);
@@ -82,7 +95,7 @@ class RegionCheck {
     const check = async suffix => {
       const surface = await until(async () => (await info()).surfaces.find(s => s.url.includes(suffix)));
       assert.ok(surface, 'Missing clipped surface: ' + suffix);
-      assert.equal(surface.material, 'transparent');
+      assert.ok(['transparent','native-glass'].includes(surface.material));
       const result = path.join(tmp, 'region.json');
       // A newly created HWND can be exposed before Windows applies its HRGN.
       await until(()=>{execFileSync(checker, [surface.handle, result], { windowsHide: true, timeout: 5000, stdio:'pipe' });return true;});

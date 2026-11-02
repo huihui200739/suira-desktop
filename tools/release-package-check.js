@@ -2,6 +2,7 @@
 const fs=require('node:fs'),path=require('node:path'),assert=require('node:assert/strict'),crypto=require('node:crypto'),{execFileSync}=require('node:child_process'),asar=require('@electron/asar');
 const root=path.resolve(__dirname,'..'),version=require('../package.json').version;
 const payload=path.join(root,'dist','win-unpacked','resources','app.asar'),installer=path.join(root,'dist',`Suira-${version}-x64.exe`);
+for(const name of ['udata','debug.log'])assert.equal(fs.existsSync(path.join(root,'dist/win-unpacked',name)),false,'Runtime-owner cache must not ship: '+name);
 const files=asar.listPackage(payload).map(file=>file.replace(/\\/g,'/').replace(/^\//,''));
 assert.ok(!files.some(file=>/(^|\/)(?:__fx_[^/]*|suira-data\.(?:json|key)|\.workbuddy|\.git|shortcut-fallback[^/]*)(?:\/|$)/.test(file)),'Development files or obsolete fallback leaked into payload');
 let checked=0;

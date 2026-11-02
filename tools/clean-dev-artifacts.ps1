@@ -48,7 +48,10 @@ foreach ($name in @('edge-profile','edge-profile2','mem','probe-app','probe-app2
                     'cleanup-protected.json','installer-lifecycle-result.json','release-audit.json','coco-probe.js','coco-electron-probe.js',
                     'process-probe.exe','process-probe.nsi','process-probe.txt','context-guard-probe.exe','context-guard-probe.nsi',
                     'verified-18-uninstaller','build-runtime-path.txt','art-base.json',
-                    'keycaps-production-light.png','keycaps-production-dark.png','keycaps-production-tools.png')) {
+                    'keycaps-production-light.png','keycaps-production-dark.png','keycaps-production-tools.png',
+                    'native-frost-probe.js','native-frost-probe-app.js','native-frost-probe.png','native-frost-ready.json','native-frost-probe-profile',
+                    'native-live-probe.js','native-live-probe-app.js','native-live-probe.png','native-live-probe-profile',
+                    'native-glass-failure.png','native-minimal.png','replace-unpublished-24.js')) {
   Add-Target (Join-Path $repoRoot ('.workbuddy\' + $name)) $repoRoot 'workspace-test-artifacts'
 }
 if (Test-Path -LiteralPath (Join-Path $repoRoot '.workbuddy')) {

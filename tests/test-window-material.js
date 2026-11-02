@@ -1,6 +1,7 @@
 'use strict';
 const assert = require('node:assert/strict');
 const { createWindowMaterial, shouldEnableBlur } = require('../lib/window-material');
+const {supportsSystemGlass}=require('../lib/window-material');
 const calls = [];
 let loads = 0, rejected = false, handle = 42n;
 const fake = { struct: value => value, pointer: value => value, sizeof: () => 16,
@@ -24,3 +25,20 @@ assert.equal(shouldEnableBlur(),false,'Rounded surfaces must not enable unclippe
 assert.equal(shouldEnableBlur({radius:0}),true,'Rectangular surfaces can still use native blur');
 for(const preference of [{reducedTransparency:true},{highContrast:true},{fullscreen:true},{material:'solid'}])assert.equal(shouldEnableBlur({...preference,radius:0}),false);
 console.log('PASS native material ABI payload, HWND lifecycle, disable, caching and unavailable-API fallback');
+assert.equal(supportsSystemGlass('win32','10.0.22631'),true);
+assert.equal(supportsSystemGlass('win32','10.0.19045'),false);
+assert.equal(supportsSystemGlass('linux','6.8.22000'),false);
+assert.equal(shouldEnableBlur({systemGlass:true}),true);
+assert.equal(shouldEnableBlur({systemGlass:true,fullscreen:true}),true);
+assert.equal(shouldEnableBlur({systemGlass:true,material:'solid'}),false);
+const frameCalls=[];
+const nativeFake={...fake,load:name=>({func:(abi,method)=>name==='dwmapi.dll'?((...args)=>{frameCalls.push({method,args});return 0;}):(()=>1)})};
+const framed=createWindowMaterial({platform:'win32',load:()=>nativeFake});
+assert.equal(framed.prepareSystemGlass(win),true);
+assert.equal(frameCalls[0].method,'DwmExtendFrameIntoClientArea');
+assert.deepEqual(frameCalls[0].args[1],{left:-1,right:-1,top:-1,bottom:-1});
+assert.equal(frameCalls[1].method,'DwmSetWindowAttribute');assert.deepEqual(frameCalls[1].args.slice(1),[33,[2],4]);
+framed.prepareSystemGlass(win);assert.equal(frameCalls.length,2,'Stable frame is not reapplied on every move');
+framed.prepareSystemGlass(win,{square:true});assert.deepEqual(frameCalls.at(-1).args[2],[1],'Fullscreen and maximize use square DWM bounds');
+handle=100n;framed.prepareSystemGlass(win);assert.equal(frameCalls.at(-1).args[0],100n);
+console.log('PASS native glass eligibility, DWM full-client frame, system corners, square presentation and HWND lifecycle');
