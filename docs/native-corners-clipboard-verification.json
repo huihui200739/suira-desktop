@@ -1,0 +1,31 @@
+{
+  "version": "0.2.21",
+  "surface": "clipboard",
+  "cornerDifference": {
+    "max": 0,
+    "mean": 0,
+    "samples": 1926
+  },
+  "captures": [
+    {
+      "requestedBlur": false,
+      "actualBlur": false,
+      "edgeEnergy": 5,
+      "corner": [
+        255,
+        255,
+        255
+      ]
+    },
+    {
+      "requestedBlur": true,
+      "actualBlur": false,
+      "edgeEnergy": 5,
+      "corner": [
+        255,
+        255,
+        255
+      ]
+    }
+  ]
+}

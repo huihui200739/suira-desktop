@@ -1,0 +1,17 @@
+{
+  "version": "0.2.21",
+  "protectedKeyUnchanged": true,
+  "existingItemsNotesTasksPreserved": true,
+  "existingContentDecrypts": true,
+  "panelBindingsUnchanged": true,
+  "installedExecutableVersion": "0.2.21.0",
+  "installedBytesMatchPublicRelease": true,
+  "installedExecutableSha256": "E7DB76F3047B89A26A0492258D54EAB9509207AA445AAE770B84C3FBAD7324BD",
+  "installedPayloadSha256": "045936B3CC632B7EF3C13329141C2BE202BAD71FDB1D37B4ADEA9102C5BB4426",
+  "updateFrom": "0.2.20",
+  "updateTo": "0.2.21",
+  "userConfirmedInAppUpgrade": true,
+  "installedFourWindowMaterialCheck": true,
+  "currentVersionUpdateCheck": true,
+  "uninstallVersionField": "manually-synchronized-after-payload-verification"
+}

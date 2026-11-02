@@ -31,7 +31,7 @@ require(${JSON.stringify(path.join(root,'main.js'))});`);
   const panel=await until(()=>connect(port,t=>t.url.endsWith('/quickpanel.html')));sockets.push(panel.ws);
   await until(()=>panel.evaluate('document.querySelectorAll(".key").length===38'));
   const info=async()=> (await main.evaluate('window.suira.app.info()')).windows.find(w=>w.url.endsWith('/quickpanel.html'));
-  await until(async()=>(await info()).visible);await wait(200);assert.equal((await info()).nativeBlur,true,'Window panel uses native blur');
+  await until(async()=>(await info()).visible);await wait(200);assert.equal((await info()).nativeBlur,false,'Rounded panel uses corner-safe alpha glass');
   await until(()=>panel.evaluate('!document.getElementById("panel-guide").hidden'));
   assert.equal(await panel.evaluate('getComputedStyle(document.querySelector(".foot-hints")).display'),'none');
   await panel.evaluate(`document.getElementById('guide-close').click();true`);
@@ -193,7 +193,7 @@ require(${JSON.stringify(path.join(root,'main.js'))});`);
   console.log('PASS selecting window replaces the saved fullscreen preference and reopens as a window');
   await again.evaluate(`document.getElementById('panel-more').click();document.querySelector('[data-menu-section="appearance"]').click();document.querySelector('[data-material="clear"]').click();true`);
   await until(()=>again.evaluate(`getComputedStyle(document.getElementById('panel')).getPropertyValue('--panel-opacity').trim()==='0.62'`));
-  assert.equal((await resumed.evaluate('window.suira.settings.get()')).panelMaterial,'clear');assert.equal((await resumed.evaluate('window.suira.app.info()')).windows.find(w=>w.url.endsWith('/quickpanel.html')).nativeBlur,true,'Clear material re-enables native blur');
+  assert.equal((await resumed.evaluate('window.suira.settings.get()')).panelMaterial,'clear');assert.equal((await resumed.evaluate('window.suira.app.info()')).windows.find(w=>w.url.endsWith('/quickpanel.html')).nativeBlur,false,'Clear material keeps corner-safe alpha glass');
   console.log('PASS material presets apply immediately and persist across restart');
 })().catch(error=>{console.error(error);if(fs.existsSync(path.join(tmp,'app.log')))console.error(fs.readFileSync(path.join(tmp,'app.log'),'utf8').slice(-1700));process.exitCode=1;}).finally(async()=>{
   sockets.forEach(ws=>ws.close());if(child&&child.exitCode===null)child.kill();await wait(500);

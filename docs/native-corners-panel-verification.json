@@ -1,0 +1,31 @@
+{
+  "version": "0.2.21",
+  "surface": "panel",
+  "cornerDifference": {
+    "max": 0,
+    "mean": 0,
+    "samples": 2100
+  },
+  "captures": [
+    {
+      "requestedBlur": false,
+      "actualBlur": false,
+      "edgeEnergy": 13.337037037037037,
+      "corner": [
+        255,
+        255,
+        255
+      ]
+    },
+    {
+      "requestedBlur": true,
+      "actualBlur": false,
+      "edgeEnergy": 13.337037037037037,
+      "corner": [
+        255,
+        255,
+        255
+      ]
+    }
+  ]
+}

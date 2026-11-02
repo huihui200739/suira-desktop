@@ -20,6 +20,7 @@ const unavailable = createWindowMaterial({ platform: 'win32', load: () => { thro
 assert.equal(unavailable.apply(win, true), false);
 assert.equal(createWindowMaterial({ platform: 'linux', load: () => { throw Error('Must not load'); } }).apply(win, true), false);
 assert.equal(material.apply({ isDestroyed: () => true }, true), false);
-assert.equal(shouldEnableBlur(),true);
-for(const preference of [{reducedTransparency:true},{highContrast:true},{fullscreen:true},{material:'solid'}])assert.equal(shouldEnableBlur(preference),false);
+assert.equal(shouldEnableBlur(),false,'Rounded surfaces must not enable unclipped accent blur');
+assert.equal(shouldEnableBlur({radius:0}),true,'Rectangular surfaces can still use native blur');
+for(const preference of [{reducedTransparency:true},{highContrast:true},{fullscreen:true},{material:'solid'}])assert.equal(shouldEnableBlur({...preference,radius:0}),false);
 console.log('PASS native material ABI payload, HWND lifecycle, disable, caching and unavailable-API fallback');

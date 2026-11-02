@@ -944,7 +944,7 @@ function clipFloatingSurface(win) {
 function updateWindowMaterial(win) {
   const enabled = shouldEnableBlur({ reducedTransparency:nativeTheme.prefersReducedTransparency,
     highContrast:nativeTheme.shouldUseHighContrastColors, fullscreen:win.__launchpadFullscreen,
-    material:store?.getSettings().panelMaterial });
+    material:store?.getSettings().panelMaterial, radius:win.__surfaceRadius || 24 });
   win.__nativeBlur = windowMaterial.apply(win, enabled);
 }
 nativeTheme.on('updated', () => {
@@ -955,11 +955,9 @@ function prepareFloatingSurface(win, radius = 24, blur = false) {
   if (process.platform !== 'win32') return;
   win.__surfaceRadius = radius;
   win.__allowNativeBlur = blur;
-  // DWM acrylic 在透明 HWND 的 HRGN 外仍会绘制灰色底板。
-  // Quick panel already has a transparent HWND. Calling setBackgroundMaterial
-  // even with 'none' replaces its alpha composition with an opaque backing.
-  try { if(win!==quickWindow)win.setBackgroundMaterial('none'); win.__surfaceMaterial = 'transparent'; }
-  catch { win.__surfaceMaterial = 'fallback'; }
+  // Keep the creation-time compositor intact. Even setting system material to
+  // 'none' can add a rectangular backing beyond the native corner region.
+  win.__surfaceMaterial = 'transparent';
   clipFloatingSurface(win);
   if (!win.__surfaceClippingBound) {
     win.__surfaceClippingBound = true;
@@ -1815,7 +1813,7 @@ function showWorkspaceWindow(type) {
   if(win&&!win.isDestroyed()){if(win.isMinimized())win.restore();win.show();win.focus();return win;}
   const area=screen.getPrimaryDisplay().workArea;
   win=new BrowserWindow({width:Math.min(type==='markdown'?1300:1180,area.width-40),height:Math.min(860,area.height-40),minWidth:800,minHeight:600,show:false,frame:false,thickFrame:false,
-    title:type==='markdown'?'Markdown · 随序':'日历 · 随序',backgroundColor:'#00000000',backgroundMaterial:'none',hasShadow:false,roundedCorners:true,icon:assetPath('suira-icon.png'),
+    title:type==='markdown'?'Markdown · 随序':'日历 · 随序',backgroundColor:'#00000000',hasShadow:false,roundedCorners:true,icon:assetPath('suira-icon.png'),
     webPreferences:{preload:path.join(__dirname,'preload.js'),contextIsolation:true,nodeIntegration:false,sandbox:false,spellcheck:false}});
   prepareFloatingSurface(win, 24, true);
   prepareDesktopWindow(win);
@@ -1850,7 +1848,6 @@ function createMainWindow() {
     frame: false,
     thickFrame: false,
     backgroundColor: '#00000000',
-    backgroundMaterial: 'none',
     hasShadow: false,
     title: APP_NAME,
     icon: assetPath('suira-icon.png'),

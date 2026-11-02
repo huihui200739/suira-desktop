@@ -1,0 +1,22 @@
+{
+  "version": "0.2.21",
+  "artifact": "Suira-0.2.21-x64.exe",
+  "bytes": 156514120,
+  "sha256": "4E3A638217F11865A1C6D1D507BEF070E0E8A3E90BA67907E213CBA3428ED212",
+  "sha512": "w+wHrR7b2qSYdBBOnw3VyoEHFu3vh6XWNMkb52gKN9XgFjPQU2FljOY5CnnJPzT5zHWALH4nmz9p77OV/u2mRA==",
+  "platform": "win32",
+  "arch": "x64",
+  "electron": "45.0.0",
+  "checkedSourceFiles": 100,
+  "checks": [
+    "source-payload-byte-match",
+    "no-test-profile-or-obsolete-key-hook",
+    "installer-archive-crc",
+    "updater-feed-and-sha512-match"
+  ],
+  "signature": "unsigned",
+  "published": true,
+  "payloadSha256": "045936B3CC632B7EF3C13329141C2BE202BAD71FDB1D37B4ADEA9102C5BB4426",
+  "executableSha256": "E7DB76F3047B89A26A0492258D54EAB9509207AA445AAE770B84C3FBAD7324BD",
+  "releaseUrl": "https://github.com/huihui200739/suira-updates/releases/tag/v0.2.21"
+}
