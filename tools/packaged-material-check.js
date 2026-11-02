@@ -37,8 +37,11 @@ async function until(fn){let last;for(let i=0;i<180;i++){try{const value=await f
   assert.equal(await panel.evaluate('Boolean(window.SuiraKeycapMotion && document.querySelector(".key-face"))'),true,'Installed key material and motion module must load');
   assert.equal(await panel.evaluate('new Set([...document.querySelectorAll(".key.is-bound .suira-art.vivid")].map(n=>[...n.classList].find(c=>c.startsWith("family-")))).size'),5);
   const target=await panel.evaluate('(()=>{const b=document.querySelector("[data-key=T]").getBoundingClientRect();return {x:b.x+b.width/2,y:b.y+b.width/2};})()');
+  await panel.send('Emulation.setEmulatedMedia',{features:[{name:'prefers-reduced-motion',value:'no-preference'}]});
+  await panel.send('Page.bringToFront');
+  await panel.send('Input.dispatchMouseEvent',{type:'mouseMoved',x:5,y:5});
   await panel.send('Input.dispatchMouseEvent',{type:'mouseMoved',...target});
-  assert.equal(await panel.evaluate('document.querySelector("[data-key=T]").classList.contains("is-key-near")'),true);
+  await until(()=>panel.evaluate('document.querySelector("[data-key=T]").classList.contains("is-key-near")'));
   await panel.send('Input.dispatchMouseEvent',{type:'mouseMoved',x:5,y:5});
   await panel.evaluate('window.suira.settings.update({panelMaterial:"solid"})');
   assert.equal((await panel.evaluate('window.suira.app.info()')).nativeBlur,false);

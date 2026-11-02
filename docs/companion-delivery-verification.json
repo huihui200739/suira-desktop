@@ -1,0 +1,19 @@
+{
+  "version": "0.2.23",
+  "protectedKeyUnchanged": true,
+  "existingItemsNotesTasksPreserved": true,
+  "existingContentDecrypts": true,
+  "panelBindingsUnchanged": true,
+  "installedExecutableVersion": "0.2.23.0",
+  "installedPayloadSha256": "408C865A6121C7DF861891AD736ED6EA4D1F719688C8747E49B6AC37AD2FEC88",
+  "installedExecutableSha256": "D3AA120BFE8847462BA4A5660A25CB9C755A6A8601717098000B7DC377725E82",
+  "installedBytesMatchPublicRelease": true,
+  "installedCalendarAndMarkdownDockVisible": true,
+  "installedPanelAndClipboardDockVisible": true,
+  "spriteLoadsFromInstalledPayload": true,
+  "companionPaletteSizeMotionMatchBackup": true,
+  "companionCurrentlyEnabled": false,
+  "companionToggleDiffersFromEarlierSnapshot": true,
+  "companionToggleLeftUnchanged": true,
+  "uninstallVersionField": "manually-synchronized-after-payload-verification"
+}
