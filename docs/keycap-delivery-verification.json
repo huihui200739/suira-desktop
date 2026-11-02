@@ -1,0 +1,23 @@
+{
+  "version": "0.2.20",
+  "protectedKeyUnchanged": true,
+  "existingItemsNotesTasksPreserved": true,
+  "existingContentDecrypts": true,
+  "panelBindingsUnchanged": true,
+  "installedExecutableVersion": "0.2.20.0",
+  "installedExecutableSha256": "C2D49FC3E10A56DEEAA0E14648DB1DDD28F336656A3268C7D90162A8652C07E4",
+  "installedPayloadSha256": "ABFF3E8DF65D571335BAC487EEC2FAA5B902174C779EBF4DAFE49A64A2B8C996",
+  "installedBytesMatchBuild": true,
+  "installedIsolatedChecks": [
+    "five-color-families",
+    "14-tool-objects",
+    "immediate-pointer-feedback",
+    "calendar-date-visible",
+    "markdown-object-style-isolation",
+    "shared-clipboard-emblem",
+    "four-window-native-module-and-setting-toggles"
+  ],
+  "normalProfileRestarted": true,
+  "uninstallVersionField": "manually-synchronized-after-payload-verification",
+  "desktopPixelCompositionRetested": false
+}
