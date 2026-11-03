@@ -12,6 +12,8 @@
 
 ## 发布步骤
 
+产品介绍与展示图同步：`docs/product/INTRO.md` 是两仓库共享的介绍来源，版本从 package.json 生成。运行 `npm run screenshots` 后，使用 `node tools/sync-showcase.js <已检出的公开仓库目录>` 更新两份 README，并只复制允许的展示文件；`--verify` 核对一致性。公开 checkout 的变更须正常提交、推送并核对远端，源码仓库的介绍和截图也须一起提交。公开仓库保存自己的图片，不依赖私有仓库资源。
+
 1. 更新 `package.json` / `package-lock.json` 的版本及 `CHANGELOG.md`，完成对应验证。
 2. 运行 `npm run dist` 构建。该命令只生成产物，不发布。
 3. 运行 `node tools/release-package-check.js`，生成已核对的构建清单，再运行 `npm run release:updates -- --draft`。工具仅上传安装包、`.blockmap`、`latest.yml` 和生成的 `SHA256SUMS.txt`，并核对远端每个文件的大小和 SHA256。说明来自 `docs/distribution/版本.md`。

@@ -1,0 +1,17 @@
+{
+  "version": "0.2.30",
+  "repositories": [
+    {
+      "name": "suira-desktop",
+      "descriptionMatches": true,
+      "downloadLinkMatches": true,
+      "visibility": "private"
+    },
+    {
+      "name": "suira-updates",
+      "descriptionMatches": true,
+      "downloadLinkMatches": true,
+      "visibility": "public"
+    }
+  ]
+}

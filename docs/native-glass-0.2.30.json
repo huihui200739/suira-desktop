@@ -1,0 +1,25 @@
+{
+  "version": "0.2.30",
+  "source": "real DWM compositor over synthetic windows; no user screen content",
+  "results": [
+    {
+      "name": "notes",
+      "transitionReadback": "set-only attribute",
+      "red": [
+        199,
+        127,
+        136
+      ],
+      "blue": [
+        125,
+        151,
+        202
+      ],
+      "cornerMean": 9.56578947368421,
+      "cornerMax": 38,
+      "cornerSamples": 228,
+      "blurEnergy": 0.24,
+      "bareEnergy": 85
+    }
+  ]
+}

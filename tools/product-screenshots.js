@@ -154,6 +154,7 @@ class RegionCheck {
     await panel.evaluate(`window.suira.quick.setPresentation('fullscreen')`);
     await until(()=>panel.evaluate('document.getElementById("panel").dataset.mode==="actions"&&document.querySelector(".key-card").getBoundingClientRect().width>72')).catch(async error=>{console.error('Fullscreen state:',await panel.evaluate(`({mode:state.mode,presentation,scale:document.getElementById('panel').style.getPropertyValue('--keyboard-scale'),key:document.querySelector('.key-card').getBoundingClientRect().width,width:innerWidth,height:innerHeight})`));throw error;});
     await shot(panel,'keyboard-fullscreen');
+    await panel.evaluate('document.getElementById("panel-more").click();true');await shot(panel,'keyboard-menu');await panel.evaluate('closeMoreMenu(false);true');
     await panel.evaluate(`window.suira.quick.setPresentation('window')`);
     await panel.send('Emulation.setEmulatedMedia',{features:[{name:'prefers-color-scheme',value:'light'}]});
     await panel.evaluate(`document.getElementById('panel-more').click();true`);
@@ -179,7 +180,7 @@ class RegionCheck {
     await until(()=>panel.evaluate('document.getElementById("panel").dataset.presentation==="fullscreen"'));
     await until(()=>panel.evaluate('[...document.querySelectorAll(".app-icon img")].filter(image=>image.naturalWidth>0).length>=Math.min(32,document.querySelectorAll(".app-item").length)'));
     await shot(panel,'apps-fullscreen');
-    await panel.evaluate(`document.getElementById('panel-more').click();true`);await hoverDisplay();await shot(panel,'fullscreen-menu');
+    await panel.evaluate(`document.getElementById('panel-more').click();true`);await hoverDisplay();await shot(panel,'fullscreen-menu');const menuStyle=await panel.evaluate('(()=>{const m=getComputedStyle(document.getElementById("panel-more-menu")),s=getComputedStyle(document.querySelector(".search-field"));return {background:m.backgroundColor,ink:m.color,height:s.height}})()');assert.equal(menuStyle.height,'44px');assert.ok(menuStyle.background.startsWith('rgba(241, 245, 248'),'Fullscreen menu must share the light glass surface');assert.equal(await panel.evaluate('getComputedStyle(document.querySelector(".app-name")).textShadow'),'none');
     await panel.evaluate(`closeMoreMenu(false);true`);
     await panel.evaluate(`(()=>{const input=document.getElementById('search');input.focus();input.value='wei';input.dispatchEvent(new Event('input',{bubbles:true}));return true;})()`);
     await until(()=>panel.evaluate('document.querySelectorAll(".command-item").length>0'));
@@ -225,7 +226,7 @@ class RegionCheck {
     assert.equal(await markdown.evaluate('document.querySelector(".tool-kind").getAttribute("aria-label")'),'Markdown 文档');
     await until(()=>calendar.evaluate('document.documentElement.dataset.windowActive==="false"'));
     await main.evaluate('window.suira.notes.create()');
-    await page(t => t.url.endsWith('/notes.html')); await check('/notes.html');
+    const note=await page(t => t.url.endsWith('/notes.html')); await check('/notes.html');await until(()=>note.evaluate('document.getElementById("note").dataset.state==="ready"'));await note.evaluate('(()=>{const e=document.getElementById("note-body");e.value="随手记下，接着做\\n\\n把想法先放在这里，稍后再整理。";e.dispatchEvent(new Event("input",{bubbles:true}));return true})()');await shot(note,'notes');
     await main.evaluate('window.suira.imageEditor.open()');
     await page(t => t.url.includes('mode=image-editor')); await check('mode=image-editor');
     const demo = await main.evaluate(`(()=>{const c=document.createElement('canvas');c.width=400;c.height=240;const x=c.getContext('2d');x.fillStyle='#dce8ff';x.fillRect(0,0,400,240);return c.toDataURL()})()`);

@@ -128,7 +128,7 @@ html { background:transparent!important; color-scheme:normal!important; }
 .liquid-ui .calendar-day small { background:transparent; }
 .liquid-ui .countdown-row,.liquid-ui .agenda-item { background:transparent; border-color:var(--tool-edge); }
 .liquid-ui .bar-card { background:var(--tool-content); border-radius:14px; }
-.liquid-ui .note-body { background:var(--tool-content); }
+.liquid-ui .note-body { background:#ffffff12; }
 .liquid-ui .panel .key.is-unbound .key-face { background:linear-gradient(145deg,#ffffffbb,#e9f0f4b3); border-color:#ffffffa3; }
 .liquid-ui .panel .key.is-bound .key-face,.liquid-ui .panel .key.is-custom .key-face { background:linear-gradient(145deg,#fffffff0,#edf3f7db); }
 .liquid-ui .panel .key.is-unbound .key-card { background:#5d748136; }
@@ -162,3 +162,22 @@ html { background:transparent!important; color-scheme:normal!important; }
 }
 @media(max-width:1050px) { .liquid-ui .main-scroll { padding:16px; } .liquid-ui .shelf-layout { grid-template-columns:208px minmax(0,1fr); gap:16px; } .liquid-ui .app-body { grid-template-columns:208px minmax(0,1fr); } .liquid-ui.tool-window .app-body { display:block; } }
 @media(prefers-reduced-transparency:reduce),(forced-colors:active) { .glass-scene { background:var(--paper)!important; } .liquid-ui .titlebar,.liquid-ui .sidebar { backdrop-filter:none; background:var(--paper); } }
+
+/* Fullscreen shares the windowed panel's material and theme tokens. */
+.liquid-ui .panel[data-presentation="fullscreen"] { --immersive-search-width:clamp(280px,32vw,440px); --ink:inherit; --ink-soft:inherit; --ink-muted:inherit; --ink-faint:inherit; --line:var(--tool-edge); --line-strong:var(--glass-edge); --control-field:var(--glass-field); --control-selected:var(--glass-selected); color:var(--ink); }
+.liquid-ui .panel[data-presentation="fullscreen"] .panel-head { height:44px; }
+.liquid-ui .panel[data-presentation="fullscreen"] .search-slot { height:44px; }
+.liquid-ui .panel[data-presentation="fullscreen"] .search-field { height:44px; gap:8px; padding:0 6px; border-radius:22px; background:var(--glass-button); border-color:var(--glass-edge); color:var(--ink); box-shadow:inset 0 1px 0 var(--glass-light),0 2px 8px #182c3c12; }
+.liquid-ui .panel[data-presentation="fullscreen"] .search-field input { font-size:14px; color:var(--ink); caret-color:var(--accent); }
+.liquid-ui .panel[data-presentation="fullscreen"] .search-field input::placeholder { color:var(--ink-muted); }
+.liquid-ui .panel[data-presentation="fullscreen"] :is(.immersive-back,.panel-more) { width:32px; height:32px; flex-basis:32px; border:0; border-radius:6px; color:var(--ink-soft); background:transparent; box-shadow:none; }
+.liquid-ui .panel[data-presentation="fullscreen"] :is(.immersive-back,.panel-more):hover { background:var(--glass-hover); }
+.liquid-ui .panel[data-presentation="fullscreen"] .toolbox-btn { height:40px; padding:0 16px; border-radius:20px; font-size:14px; color:var(--ink); background:var(--glass-button); border-color:var(--glass-edge); box-shadow:inset 0 1px 0 var(--glass-light); }
+.liquid-ui .panel[data-presentation="fullscreen"] :is(.panel-more-menu,.panel-more-submenu,.command-section,.update-card) { background:var(--tool-surface); border-color:var(--tool-edge); color:var(--ink); box-shadow:inset 0 1px 0 var(--glass-light),0 8px 24px #182c3c1c; }
+.liquid-ui .panel[data-presentation="fullscreen"] :is(.command-copy b,.command-item) { color:var(--ink); }
+.liquid-ui .panel[data-presentation="fullscreen"] :is(.command-copy small,.command-type) { color:var(--ink-muted); }
+.liquid-ui .panel[data-presentation="fullscreen"] .command-item.is-selected { background:var(--glass-selected); border-color:var(--glass-edge); }
+.liquid-ui .panel[data-presentation="fullscreen"] .command-item:hover { background:var(--glass-hover); }
+.liquid-ui .panel[data-presentation="fullscreen"] .app-name { color:var(--ink); text-shadow:none; }
+.liquid-ui .panel[data-presentation="fullscreen"] .apps-dots button { background:var(--line-strong); }
+.liquid-ui .panel[data-presentation="fullscreen"] .apps-dots button[aria-current="page"] { background:var(--accent); }

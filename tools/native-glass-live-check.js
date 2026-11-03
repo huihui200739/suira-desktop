@@ -15,10 +15,10 @@ try{
  let w=BrowserWindow.getAllWindows().find(w=>w.webContents.getURL().includes(command.suffix||'/index.html'));
  if(!w)throw Error('Window not ready');
  if(command.expression){const value=await w.webContents.executeJavaScript(command.expression);fs.writeFileSync(${JSON.stringify(response)},JSON.stringify({id:command.id,value}));return;}
- if(command.color&&w){const b=w.getBounds();if(!bg)bg=new BrowserWindow({frame:false,show:false,alwaysOnTop:true,skipTaskbar:true});bg.setBounds({x:b.x-20,y:b.y-20,width:b.width+40,height:b.height+40});
+ if(command.color&&w){w.hide();const b=w.getBounds();if(!bg)bg=new BrowserWindow({frame:false,show:false,alwaysOnTop:true,skipTaskbar:true});bg.setBounds({x:b.x-20,y:b.y-20,width:b.width+40,height:b.height+40});
   const background=command.color==='stripes'?'repeating-linear-gradient(90deg,black 0 2px,white 2px 4px)':command.color==='scene'?'linear-gradient(105deg,#7d927f 0%,#c7b39a 34%,#7b95a1 70%,#99a68b 100%)':command.color;
   await bg.loadURL('data:text/html,'+encodeURIComponent('<style>html,body{margin:0;height:100%;background:'+background+'}</style>'));
-  bg.showInactive();bg.moveTop();if(!w.isAlwaysOnTop())w.setAlwaysOnTop(true);w.show();w.moveTop();w.focus();
+  bg.showInactive();bg.moveTop();await bg.webContents.executeJavaScript('new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)))');await new Promise(r=>setTimeout(r,100));if(!w.isAlwaysOnTop())w.setAlwaysOnTop(true);w.show();w.moveTop();w.focus();
  }
  if(command.hide&&w)w.hide();
  fs.writeFileSync(${JSON.stringify(response)},JSON.stringify({id:command.id,value:{target:{handle:w.getNativeWindowHandle().readBigUInt64LE().toString(),native:w.__nativeBlur,frame:w.__glassFrameReady,system:w.__systemGlass,scale:screen.getDisplayMatching(w.getBounds()).scaleFactor}}}));
@@ -43,9 +43,10 @@ class Pixels{
  const command=request;
  const capture=(file,rect)=>{execFileSync(pixels,[file,...rect.slice(0,4).map(String)],{windowsHide:true,timeout:5000});return PNG.sync.read(fs.readFileSync(file));};
  const results=[];
- for(const [name,suffix,open] of [['panel','/quickpanel.html','window.suira.quick.show()'],['workbench','/index.html',null],['calendar','tool=calendar',"window.suira.workspace.open('calendar')"],['markdown-home','tool=markdown',"window.suira.workspace.open('markdown')"]].filter(([name])=>!process.argv.includes('--panel-only')||name==='panel')){
+ for(const [name,suffix,open] of [['panel','/quickpanel.html','window.suira.quick.show()'],['notes','/notes.html','window.suira.notes.create()'],['workbench','/index.html',null],['calendar','tool=calendar',"window.suira.workspace.open('calendar')"],['markdown-home','tool=markdown',"window.suira.workspace.open('markdown')"]].filter(([name])=>(!process.argv.includes('--panel-only')||name==='panel')&&(!process.argv.includes('--notes-only')||name==='notes')&&(!process.argv.includes('--glass-only')||['panel','notes'].includes(name)))){
   if(open)await main.evaluate(open);const client=await page(suffix);await until(()=>client.evaluate('document.documentElement.dataset.glassBackend==="native"'));
   if(name==='panel')await client.evaluate('document.getElementById("guide-close").click();true');
+  if(name==='notes'){await until(()=>client.evaluate('document.getElementById("note").dataset.state==="ready"'));await client.evaluate('(()=>{const e=document.getElementById("note-body");e.value="随手记下，接着做\\n\\n今天的三个想法：\\n1. 把零散的参考收进任务匣\\n2. 写下讨论中最重要的一句话\\n3. 为下一步留一个明确的入口";e.dispatchEvent(new Event("input",{bubbles:true}));return true})()');}
   const snapshots=[];let rect,info;
   for(const color of ['#b02030','#2050b0','stripes']){
    info=await command({suffix,color});assert.equal(info.target.native,true,name+' must enable real native blur');assert.equal(info.target.system,true);assert.equal(info.target.frame,true,'Full-client DWM frame must succeed');

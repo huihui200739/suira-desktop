@@ -53,7 +53,7 @@ foreach ($name in @('edge-profile','edge-profile2','mem','probe-app','probe-app2
                     'native-live-probe.js','native-live-probe-app.js','native-live-probe.png','native-live-probe-profile',
                     'native-glass-failure.png','native-minimal.png','replace-unpublished-24.js',
                     'video-review-27','inspect-panel-video.py','inspect-reveal27.js','refactor-document-menu27.py','replace-draft27.js',
-                    'verify-installed-profile27.js','refine29.py','implement28.py','panel-native28.js','verify-installed-profile28.js')) {
+                    'verify-installed-profile27.js','distribution-sync30','refine29.py','implement28.py','panel-native28.js','verify-installed-profile28.js')) {
   Add-Target (Join-Path $repoRoot ('.workbuddy\' + $name)) $repoRoot 'workspace-test-artifacts'
 }
 if (Test-Path -LiteralPath (Join-Path $repoRoot '.workbuddy')) {
