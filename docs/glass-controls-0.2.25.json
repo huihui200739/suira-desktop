@@ -1,0 +1,69 @@
+{
+  "version": "0.2.25",
+  "syntheticBacking": true,
+  "userDataCaptured": false,
+  "checks": [
+    "Empty workbench hierarchy",
+    "Sidebar backing",
+    "Task content actions",
+    "Library filters",
+    "Settings fields",
+    "Markdown primary/secondary/text actions",
+    "Light-on-dark and dark-on-light reading contrast",
+    "Keyboard focus",
+    "Calendar add and segmented actions",
+    "Five reading/collection windows have no static background"
+  ],
+  "contrast": [
+    {
+      "theme": "light",
+      "selector": "#md-empty>b",
+      "ratio": 5.34
+    },
+    {
+      "theme": "light",
+      "selector": "#md-empty>p",
+      "ratio": 4.64
+    },
+    {
+      "theme": "light",
+      "selector": "#md-paste",
+      "ratio": 4.56
+    },
+    {
+      "theme": "light",
+      "selector": ".document-sidebar h3",
+      "ratio": 4.64
+    },
+    {
+      "theme": "light",
+      "selector": ".workspace-empty",
+      "ratio": 4.64
+    },
+    {
+      "theme": "dark",
+      "selector": "#md-empty>b",
+      "ratio": 6.2
+    },
+    {
+      "theme": "dark",
+      "selector": "#md-empty>p",
+      "ratio": 5.25
+    },
+    {
+      "theme": "dark",
+      "selector": "#md-paste",
+      "ratio": 5.35
+    },
+    {
+      "theme": "dark",
+      "selector": ".document-sidebar h3",
+      "ratio": 5.25
+    },
+    {
+      "theme": "dark",
+      "selector": ".workspace-empty",
+      "ratio": 5.25
+    }
+  ]
+}

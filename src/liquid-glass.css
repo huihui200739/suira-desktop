@@ -1,11 +1,15 @@
 /* Layered glass inspired by wave2234, MIT; unslop by Damir Sokolovsky, CC BY 4.0.
    The Windows compositor supplies the live background; CSS only finishes it. */
 .liquid-ui {
- --glass-edge:#ffffff91; --glass-shade:#25364129; --glass-chrome:#f6f9fc6b;
- --glass-card:#ffffffa8; --glass-field:#ffffffb8; --glass-selected:#0878d11c;
+ --glass-edge:#ffffff70; --glass-shade:#19344126; --glass-chrome:#ffffff14;
+ --glass-card:#ffffff26; --glass-field:#ffffff24; --glass-selected:#197bb51a;
+ --glass-light:#ffffff70; --glass-hover:#ffffff40; --glass-accent-ink:#073651;
+ --glass-button:linear-gradient(180deg,#ffffff35,#ffffff16);
+ --glass-primary:linear-gradient(180deg,#086bb2f5,#05548ff5);
+ --glass-content-card:#ffffff6b; --control-field:var(--glass-field); --control-top:#ffffff26; --control-bottom:#ffffff0d; --control-selected:var(--glass-selected); --surface-hover:var(--glass-field);
  --tool-surface:#f1f5f8f2; --tool-content:#fcfdfff2; --tool-edge:#53616c24;
- --line:#53616c33; --line-strong:#53616c66; --ink:#202a32; --ink-soft:#465460;
- --ink-muted:#62707c; --ink-faint:#6c7882; --accent:#0878d1; --radius-card:16px; --radius-sm:10px;
+ --line:#29445324; --line-strong:#29445350; --ink:#142a35; --ink-soft:#203440;
+ --ink-muted:#263c49; --ink-faint:#314653; --accent:#0878d1; --accent-deep:var(--glass-accent-ink); --radius-card:16px; --radius-sm:10px;
 }
 .liquid-ui body { background:transparent!important; }
 html { background:transparent!important; color-scheme:normal!important; }
@@ -15,9 +19,11 @@ html { background:transparent!important; color-scheme:normal!important; }
 .glass-scene { position:absolute; inset:0; z-index:-1; overflow:hidden; border-radius:inherit; pointer-events:none; background:linear-gradient(145deg,#ffffff33,transparent 50%,#ffffff0d),#d5dfe6f5; box-shadow:inset 0 1px 1px #ffffffb3,inset 0 -1px 1px #283d5026; }
 .liquid-ui[data-glass-backend="native"] .glass-window { border-radius:8px; clip-path:none; }
 .liquid-ui[data-glass-backend="native"] .glass-scene { background:linear-gradient(145deg,#ffffff33,transparent 50%,#ffffff0d),#edf3f75c; }
+.liquid-ui[data-glass-backend="native"] .app-shell>.glass-scene { background:linear-gradient(145deg,#ffffff1f,transparent 50%,#ffffff0a),#edf3f7a3; }
 .liquid-ui[data-glass-backend="native"][data-glass-mode="soft"] .glass-scene { background:linear-gradient(145deg,#ffffff33,transparent 50%),#edf3f7b3; }
 .liquid-ui[data-glass-backend="native"][data-glass-mode="clear"] .glass-scene { background:linear-gradient(145deg,#ffffff26,transparent 50%),#edf3f736; }
-.liquid-ui[data-glass-mode="solid"] .glass-scene { background:#edf1f5; }
+.liquid-ui[data-glass-backend="native"][data-glass-mode="clear"] .app-shell>.glass-scene { background:linear-gradient(145deg,#ffffff12,transparent 50%),#edf3f7a3; }
+.liquid-ui[data-glass-mode="solid"] .glass-window>.glass-scene { background:#edf1f5; }
 .liquid-ui .launchpad-backdrop,.liquid-ui .panel[data-presentation="fullscreen"]::before { display:none!important; }
 .liquid-ui .panel[data-presentation="fullscreen"] { --ink:#202a32; --ink-soft:#465460; --ink-muted:#62707c; --ink-faint:#6c7882; }
 .liquid-ui .titlebar,.liquid-ui .sidebar,.liquid-ui .bar-head,.liquid-ui .note-head,.liquid-ui .note-foot { background:var(--glass-chrome); border-color:var(--tool-edge); backdrop-filter:blur(14px) saturate(1.2); }
@@ -30,8 +36,12 @@ html { background:transparent!important; color-scheme:normal!important; }
 .liquid-ui .sidebar { width:auto; padding:20px 12px 12px; min-height:0; }
 .liquid-ui .sidebar-label { margin:0 8px 16px; padding:0; font-size:12px; letter-spacing:0; font-weight:400; }
 .liquid-ui .nav { gap:4px; }
-.liquid-ui .nav-item { padding:10px 12px; min-height:40px; border-radius:10px; box-shadow:none; transform:none; border:1px solid transparent; }
-.liquid-ui .nav-item.is-active { background:var(--glass-selected); border-color:#0878d11c; box-shadow:inset 0 1px 0 #ffffff66; color:var(--accent); }
+.liquid-ui [data-selection-group] { --selection-fill:var(--glass-selected); --selection-edge:var(--line); --selection-light:var(--glass-light); }
+.liquid-ui .has-shared-selection>button:is(.is-active,[aria-pressed="true"]) { background:transparent; border-color:transparent; box-shadow:none; }
+.liquid-ui .nav-item { position:relative; padding:10px 12px; min-height:40px; border-radius:10px; box-shadow:none; transform:none; border:1px solid transparent; }
+.liquid-ui .nav-item:hover { background:var(--glass-field); border-color:var(--glass-edge); }
+.liquid-ui .nav-item.is-active { background:linear-gradient(135deg,var(--glass-selected),var(--glass-field)); border-color:#197bb52b; box-shadow:inset 0 1px 0 var(--glass-light); color:var(--glass-accent-ink); }
+.liquid-ui .nav-item.is-active::after { content:""; position:absolute; left:4px; top:12px; bottom:12px; width:2px; border-radius:2px; background:var(--accent); }
 .liquid-ui .nav-item b,.liquid-ui .nav-item.is-active b { font-weight:500; color:inherit; }
 .liquid-ui .main-scroll { background:transparent; padding:24px; }
 .liquid-ui .page { max-width:none; padding:8px; }
@@ -39,36 +49,53 @@ html { background:transparent!important; color-scheme:normal!important; }
 .liquid-ui .page-eyebrow { display:none; }
 .liquid-ui .page h1 { font-size:28px; line-height:1.25; font-weight:500; letter-spacing:0; }
 .liquid-ui .page-description { margin-top:8px; color:var(--ink-soft); font-size:13px; }
-.liquid-ui :is(.task-column,.task-detail,.setting-card,.document-sidebar,.document-main,.calendar-card,.agenda-card) { background:var(--glass-card); border:1px solid var(--tool-edge); border-radius:16px; box-shadow:inset 0 1px 0 #ffffff91,0 4px 16px #243e4c08; }
+.liquid-ui :is(.task-column,.task-detail,.setting-card,.document-sidebar,.document-main,.calendar-card,.agenda-card) { background:linear-gradient(145deg,var(--glass-card),transparent 85%); border:1px solid var(--glass-edge); border-radius:16px; box-shadow:inset 0 1px 0 var(--glass-light),inset 0 -1px 0 var(--glass-shade); }
 .liquid-ui .shelf-layout { grid-template-columns:240px minmax(0,1fr); gap:20px; align-items:start; }
 .liquid-ui .task-detail { min-height:360px; }
+.liquid-ui .task-detail:has(#task-empty:not([hidden])) { background:none; border-color:transparent; box-shadow:none; min-height:300px; }
+.liquid-ui #task-empty { align-items:flex-start; text-align:left; min-height:280px; max-width:520px; padding:28px; }
+.liquid-ui #task-empty>span { width:48px; height:48px; background:transparent; color:var(--glass-accent-ink); box-shadow:none; }
+.liquid-ui #task-empty>span svg { width:42px; height:42px; stroke-width:1.4; }
+.liquid-ui #task-empty>b { font-size:20px; font-weight:500; margin-top:16px; }
+.liquid-ui #task-empty>p { color:var(--ink-soft); max-width:360px; margin:8px 0 0; line-height:1.7; text-align:left; }
+.liquid-ui #shelf-first { display:none; }
 .liquid-ui .task-column { overflow:hidden; }
+.liquid-ui :is(.shelf-card,.library-card) { background:var(--glass-content-card); border-color:var(--glass-edge); box-shadow:inset 0 1px 0 var(--glass-light); }
+.liquid-ui .shelf-card-head b { font-weight:500; }
 .liquid-ui .task-row { border:1px solid transparent; border-radius:10px; }
 .liquid-ui .task-row.is-active { background:var(--glass-selected); border-color:#0878d12e; }
 .liquid-ui .task-steps:empty { display:none; }
 .liquid-ui :is(.quiet-btn,.primary-btn,.text-input,select,.shortcut-pill,.view-switch,.agenda-tabs,.settings-nav button) { border-radius:10px; font-size:13px; font-weight:400; }
-.liquid-ui :is(.quiet-btn,.text-input,select,.shortcut-pill) { border:1px solid var(--tool-edge); background:var(--glass-field); box-shadow:inset 0 1px 0 #ffffff9c; }
+.liquid-ui :is(.quiet-btn,.text-input,select,.shortcut-pill,.searchbox,.number-input,.shortcut-input) { border:1px solid var(--glass-edge); background:var(--glass-button); box-shadow:inset 0 1px 0 var(--glass-light),inset 0 -1px 0 var(--glass-shade); color:var(--ink-soft); }
 .liquid-ui :is(.quiet-btn,.primary-btn) { min-height:36px; padding:7px 12px; transition:background 140ms var(--ease-out),border-color 140ms var(--ease-out),transform 100ms var(--ease-out); }
-.liquid-ui .primary-btn { background:var(--accent); border:1px solid #ffffff42; color:#fff; box-shadow:inset 0 1px 0 #ffffff38,0 2px 4px #133a4e14; font-weight:500; }
-.liquid-ui .quiet-btn:hover { background:#ffffffd6; border-color:var(--line-strong); }
-.liquid-ui :is(.icon-text-btn,.icon-btn,.item-actions button) { border:1px solid var(--tool-edge); border-radius:10px; background:var(--glass-field); color:var(--ink-soft); font-size:12px; font-weight:400; box-shadow:inset 0 1px 0 #ffffff80; }
-.liquid-ui :is(.icon-text-btn,.item-actions button) { min-height:32px; padding:6px 10px; }
-.liquid-ui :is(.icon-text-btn,.icon-btn,.item-actions button):hover { background:#ffffffd6; border-color:var(--line-strong); }
+.liquid-ui .primary-btn { background:var(--glass-primary); border:1px solid #ffffff61; color:#fff; box-shadow:inset 0 1px 0 #ffffff52,inset 0 -1px 0 #04365866,0 2px 4px #133a4e14; font-weight:500; }
+.liquid-ui .quiet-btn:hover { background:var(--glass-hover); border-color:var(--glass-light); }
+.liquid-ui :is(.icon-text-btn,.icon-btn,.shelf-card-actions button,.chip) { border:1px solid var(--glass-edge); border-radius:10px; background:var(--glass-button); color:var(--ink-soft); font-size:12px; font-weight:400; box-shadow:inset 0 1px 0 var(--glass-light),inset 0 -1px 0 var(--glass-shade); }
+.liquid-ui :is(.icon-text-btn,.shelf-card-actions button) { min-height:32px; padding:6px 10px; }
+.liquid-ui :is(.icon-text-btn,.icon-btn,.shelf-card-actions button,.chip):hover { background:var(--glass-hover); border-color:var(--glass-light); }
+.liquid-ui .chip.is-active { background:var(--glass-selected); color:var(--glass-accent-ink); border-color:var(--line-strong); }
+.liquid-ui :is(.icon-btn.danger,.shelf-card-actions .is-danger):hover { color:var(--danger); background:var(--danger-soft); border-color:var(--danger); }
+.liquid-ui :is(.summary-card,.trail-row,.derived-card,.shortcut-matrix>div) { background:var(--glass-card); border-color:var(--glass-edge); box-shadow:inset 0 1px 0 var(--glass-light); }
+.liquid-ui .summary-card b { font-weight:500; }
 .liquid-ui :is(.trail-step,.trail-step b,.item-head b,.setting-row b) { font-weight:500; }
 .liquid-ui .task-timeline { padding:12px 0; }
 .liquid-ui .trail-step.is-muted { border:0; border-radius:0; padding:0; }
-.liquid-ui .primary-btn:hover { background:#066dbf; }
+.liquid-ui .primary-btn:hover { filter:brightness(1.07); }
 .liquid-ui :is(.quiet-btn,.primary-btn):active { transform:translateY(1px); }
 .liquid-ui :is(.quiet-btn,.primary-btn):disabled { opacity:.45; cursor:default; transform:none; }
 .liquid-ui :is(input,select,textarea):focus-visible,.liquid-ui button:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
 .liquid-ui :is(.view-switch,.agenda-tabs) { padding:3px; gap:3px; background:#53616c12; border:1px solid var(--tool-edge); box-shadow:inset 0 1px 2px #2538480a; }
 .liquid-ui :is(.view-switch,.agenda-tabs) button { border:1px solid transparent; border-radius:7px; min-height:30px; padding:5px 10px; font-weight:400; }
-.liquid-ui :is(.view-switch,.agenda-tabs) button.is-active { background:#ffffffc9; color:var(--accent); border-color:#ffffff99; box-shadow:0 1px 2px #243e4c12; }
+.liquid-ui :is(.view-switch,.agenda-tabs) button.is-active { background:var(--glass-button); color:var(--glass-accent-ink); border-color:var(--glass-edge); box-shadow:inset 0 1px 0 var(--glass-light),0 1px 2px #243e4c12; }
 .liquid-ui .setting-title b,.liquid-ui .task-row b,.liquid-ui .detail-head h2 { font-weight:500; }
-.liquid-ui .settings-nav button.is-active { background:var(--glass-selected); color:var(--accent); }
+.liquid-ui .settings-nav button:hover { background:var(--glass-field); }
+.liquid-ui .settings-nav button.is-active { background:var(--glass-selected); color:var(--glass-accent-ink); }
 .liquid-ui .setting-card { padding:24px; }
 .liquid-ui .window-btn { border-radius:8px; width:34px; height:32px; color:var(--ink-soft); }
 .liquid-ui .tool-top-actions .tool-icon { border-radius:8px; min-height:32px; width:32px; height:32px; padding:7px; }
+.liquid-ui.tool-window .tool-top-actions .tool-icon:hover { background:var(--glass-field); border-color:var(--glass-edge); }
+.liquid-ui.tool-window .tool-top-actions .tool-icon[aria-pressed="true"] { background:var(--glass-selected); color:var(--glass-accent-ink); border-color:var(--glass-edge); }
+.liquid-ui.tool-window .tool-top-actions .view-switch .is-active { background:var(--glass-button); color:var(--glass-accent-ink); border-color:var(--glass-edge); box-shadow:inset 0 1px 0 var(--glass-light); }
 .liquid-ui .tool-window .tool-action-group { border-color:var(--tool-edge); }
 .liquid-ui .tool-action-group { padding-left:8px; margin-left:4px; }
 .liquid-ui.tool-window .app-shell { grid-template-rows:56px minmax(0,1fr); }
@@ -79,9 +106,19 @@ html { background:transparent!important; color-scheme:normal!important; }
 .liquid-ui.tool-window .markdown-layout { gap:0; }
 .liquid-ui.tool-window.md-home .document-main { background:transparent; border:0; box-shadow:none; }
 .liquid-ui.tool-window.md-home .document-sidebar { background:transparent; border:0; }
-.liquid-ui.tool-window.md-home .document-row { background:#ffffffb8; border-radius:12px; padding:14px 16px; }
+.liquid-ui.tool-window.md-home .document-row { background:var(--glass-button); border-color:var(--glass-edge); border-radius:12px; padding:14px 16px; }
 .liquid-ui.tool-window #md-empty { padding:44px 24px 16px; min-height:300px; }
 .liquid-ui.tool-window .welcome-actions button { border-radius:10px!important; min-height:40px; }
+.liquid-ui.tool-window #md-empty>b { color:var(--ink); font-weight:500; }
+.liquid-ui.tool-window #md-empty>p,.liquid-ui .workspace-empty,.liquid-ui.tool-window.md-home .document-sidebar h3 { color:var(--ink-soft); }
+.liquid-ui.tool-window #md-empty #md-paste { min-height:28px; padding:4px 8px; border:0; box-shadow:none; background:transparent; color:var(--glass-accent-ink); font-size:13px; }
+.liquid-ui.tool-window #md-empty #md-paste:hover { text-decoration:underline; text-underline-offset:4px; }
+.liquid-ui :is(.text-input,.number-input,.shortcut-input,input[type="search"],select,textarea) { color-scheme:light; }
+.liquid-ui.tool-window #calendar-new { background:var(--glass-button); border-color:var(--glass-edge); color:var(--ink-soft); box-shadow:inset 0 1px 0 var(--glass-light),inset 0 -1px 0 var(--glass-shade); }
+.liquid-ui.tool-window #calendar-new:hover { background:var(--glass-hover); }
+.liquid-ui :is(.markdown-toolbar button,.md-outline button):hover { background:var(--glass-field); color:var(--ink); }
+.liquid-ui #md-find { background:var(--glass-chrome); }
+.liquid-ui input::placeholder { color:var(--ink-muted); opacity:1; }
 .liquid-ui.tool-window :is(.markdown-split textarea,.markdown-preview) { background:var(--tool-content); }
 .liquid-ui.tool-window .calendar-card { padding:16px; background:#ffffff24; box-shadow:none; border:0; }
 .liquid-ui.tool-window .agenda-card { background:#ffffff42; border:0; border-left:1px solid var(--tool-edge); border-radius:0; box-shadow:none; padding:0 0 16px 24px; }
@@ -97,26 +134,31 @@ html { background:transparent!important; color-scheme:normal!important; }
 .liquid-ui .panel .key.is-unbound .key-card { background:#5d748136; }
 .liquid-ui .panel .panel-search,.liquid-ui .panel .toolbox-button { background:#ffffff80; border-color:var(--glass-edge); }
 .liquid-ui .companion-options { background:var(--tool-content); border-color:var(--tool-edge); }
+.liquid-ui :is(.panel-more-menu,.panel-more-submenu,.binding-card,.modal-card,.preview-card,.companion-options) { background:var(--tool-surface); border-color:var(--glass-edge); box-shadow:inset 0 1px 0 var(--glass-light),0 8px 24px #182c3c1c; }
+.liquid-ui :is(.quiet-btn,.icon-text-btn,.text-input,select,.icon-btn,.shortcut-pill):focus-visible { border-color:var(--accent); }
 .liquid-ui .sidebar .suira-companion { margin-top:8px; padding:0; }
 .liquid-ui[data-window-maximized="true"] .glass-window { border-radius:0; clip-path:none; border-color:transparent; }
 .liquid-ui ::selection { background:#0878d13d; color:var(--ink); }
 @media(prefers-color-scheme:dark) {
- .liquid-ui { --glass-edge:#ffffff33; --glass-shade:#00000052; --glass-chrome:#1d2832a8; --glass-card:#23303be0; --glass-field:#344450d9; --glass-selected:#55b3ff2e; --tool-surface:#24313bf5; --tool-content:#202b35f5; --tool-edge:#c0d4df29; --line:#c0d4df2e; --line-strong:#c0d4df70; --ink:#edf3f7; --ink-soft:#c0ced8; --ink-muted:#a2b1bd; --ink-faint:#91a1ae; --accent:#58b7ff; }
+ .liquid-ui { --glass-edge:#ffffff2e; --glass-shade:#00000038; --glass-chrome:#ffffff08; --glass-card:#ffffff10; --glass-field:#ffffff0d; --glass-selected:#55b3ff26; --glass-light:#ffffff33; --glass-hover:#ffffff24; --glass-accent-ink:#c3e7ff; --glass-content-card:#20323cbf; --glass-button:linear-gradient(180deg,#ffffff1a,#ffffff08); --glass-primary:linear-gradient(180deg,#126da8f5,#084c7bf5); --tool-surface:#24313bf5; --tool-content:#202b35f5; --tool-edge:#c0d4df29; --line:#c0d4df2e; --line-strong:#c0d4df70; --ink:#edf3f7; --ink-soft:#d4e2ec; --ink-muted:#c6d6e0; --ink-faint:#c6d6e0; --accent:#58b7ff; }
  .glass-scene { background:linear-gradient(145deg,#ffffff0d,transparent 55%),#16212bf5!important; }
  .liquid-ui[data-glass-backend="native"] .glass-scene { background:linear-gradient(145deg,#ffffff0d,transparent 55%),#16212b94!important; }
+ .liquid-ui[data-glass-backend="native"] .app-shell>.glass-scene { background:linear-gradient(145deg,#ffffff0a,transparent 55%),#16212bbd!important; }
  .liquid-ui[data-glass-backend="native"][data-glass-mode="soft"] .glass-scene { background:#16212bcc!important; }
  .liquid-ui[data-glass-backend="native"][data-glass-mode="clear"] .glass-scene { background:#16212b70!important; }
- .liquid-ui[data-glass-mode="solid"] .glass-scene { background:#1c2731!important; }
+ .liquid-ui[data-glass-backend="native"][data-glass-mode="clear"] .app-shell>.glass-scene { background:#16212bbd!important; }
+ .liquid-ui[data-glass-mode="solid"] .glass-window>.glass-scene { background:#1c2731!important; }
  .liquid-ui .panel[data-presentation="fullscreen"] { --ink:#edf3f7; --ink-soft:#c0ced8; --ink-muted:#a2b1bd; --ink-faint:#91a1ae; }
- .liquid-ui .primary-btn { background:#126ea6; color:#fff; }
- .liquid-ui .quiet-btn:hover { background:#415664eb; }
- .liquid-ui :is(.view-switch,.agenda-tabs) button.is-active { background:#5167769c; border-color:#ffffff21; }
- .liquid-ui.tool-window.md-home .document-row { background:#273642bf; }
+ .liquid-ui .primary-btn { background:var(--glass-primary); color:#fff; }
+ .liquid-ui .quiet-btn:hover { background:var(--glass-hover); }
+ .liquid-ui :is(.view-switch,.agenda-tabs) button.is-active { background:var(--glass-button); border-color:var(--glass-edge); }
+ .liquid-ui.tool-window.md-home .document-row { background:var(--glass-button); }
  .liquid-ui.tool-window .calendar-card { background:#1b2c392b; }
  .liquid-ui.tool-window .agenda-card { background:#1b2c3959; }
  .liquid-ui .panel .key.is-unbound .key-face { background:linear-gradient(145deg,#586b79db,#394e5ed4); border-color:#ffffff36; }
  .liquid-ui .panel .key.is-bound .key-face,.liquid-ui .panel .key.is-custom .key-face { background:linear-gradient(145deg,#627989ee,#405b70eb); }
  .liquid-ui .panel .panel-search,.liquid-ui .panel .toolbox-button { background:#263b4ac2; }
+ .liquid-ui :is(.text-input,.number-input,.shortcut-input,input[type="search"],select,textarea) { color-scheme:dark; }
 }
 @media(max-width:1050px) { .liquid-ui .main-scroll { padding:16px; } .liquid-ui .shelf-layout { grid-template-columns:208px minmax(0,1fr); gap:16px; } .liquid-ui .app-body { grid-template-columns:208px minmax(0,1fr); } .liquid-ui.tool-window .app-body { display:block; } }
 @media(prefers-reduced-transparency:reduce),(forced-colors:active) { .glass-scene { background:var(--paper)!important; } .liquid-ui .titlebar,.liquid-ui .sidebar { backdrop-filter:none; background:var(--paper); } }
