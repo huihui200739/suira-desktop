@@ -1,0 +1,20 @@
+{
+  "version": "0.2.28",
+  "companionRemovedEverywhere": true,
+  "centeredEmptyCollection": true,
+  "recentClearPreservesDocuments": true,
+  "allDocumentsRemainAccessible": true,
+  "standaloneConversion": true,
+  "sourcePreserved": true,
+  "compactCjkSpacing": true,
+  "compactCopyKeepsOriginal": true,
+  "imageTextTranslation": true,
+  "editableTranslation": true,
+  "lateResultsIgnored": true,
+  "translationFailureProtected": true,
+  "copyKeepsToolOpen": true,
+  "notesStyleUnified": true,
+  "moreCircleRemoved": true,
+  "nativeShowTransitionsDisabled": true,
+  "outsideFocusDismisses": true
+}

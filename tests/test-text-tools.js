@@ -1,0 +1,11 @@
+'use strict';
+const assert=require('node:assert/strict'),{transformText}=require('../lib/text-tools');
+const source='这 是 一 段 中 文 。\r\n\r\n\r\nHello   world\r\n\r\n下一段';
+assert.equal(transformText(source,'compact'),'这是一段中文。\nHello world\n下一段');
+assert.equal(transformText('中文 English words 混排','cjk'),'中文 English words 混排');
+assert.equal(transformText('Hello\nworld\n\n第二\n段','merge'),'Hello world\n\n第二段');
+assert.equal(transformText('ß hello 中文','upper'),'SS HELLO 中文');
+assert.equal(transformText('HELLO 中文','lower'),'hello 中文');
+assert.throws(()=>transformText('text','unknown'));assert.throws(()=>transformText('x'.repeat(200001)));
+assert.equal(source.includes('\r\n'),true,'Operations do not mutate the original');
+console.log('PASS explicit text conversion, CJK spacing, English word boundaries, paragraph handling and input limits');

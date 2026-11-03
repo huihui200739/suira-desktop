@@ -25,6 +25,9 @@
 .liquid-ui.tool-window[data-tool="markdown"]:not(.md-home) .document-foot { background:var(--md-page); border-color:var(--md-rule); color:var(--md-muted); padding:8px 24px; }
 .liquid-ui.tool-window[data-tool="markdown"]:not(.md-home) :is(.markdown-split textarea,.markdown-preview) { background:var(--md-page); color:var(--md-text); border-color:var(--md-rule); border-radius:0; }
 .md-sidebar-head { display:flex; align-items:center; justify-content:space-between; gap:8px; min-height:28px; margin-bottom:12px; }
+.md-clear-recent{margin-left:auto;padding:4px 6px;border-radius:5px;font:11px/1.5 var(--font-ui);color:var(--md-muted,var(--ink-muted));white-space:nowrap}
+.md-clear-recent:hover{background:var(--md-hover,var(--surface-hover));color:var(--md-text,var(--ink))}
+.md-home .md-sidebar-collapse{display:none}
 .tool-window .document-sidebar .md-sidebar-head h3 { margin:0; font-size:12px; font-weight:500; }
 .md-sidebar-collapse { width:28px; height:28px; padding:5px; border-radius:6px; color:var(--md-muted); }
 .md-sidebar-collapse svg { width:18px; height:18px; fill:none; stroke:currentColor; stroke-width:1.5; }

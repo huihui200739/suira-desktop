@@ -6,8 +6,8 @@
   <title>随序 速记</title>
   <link rel="stylesheet" href="theme.css">
   <link rel="stylesheet" href="notes.css">
-  <link rel="stylesheet" href="companion.css">
   <link rel="stylesheet" href="liquid-glass.css">
+  <link rel="stylesheet" href="utility-surface.css">
 </head>
 <body>
   <!--
@@ -21,11 +21,11 @@
       </span>
       <h1 class="note-title" id="note-title">速记</h1>
       <div class="note-tools">
-        <button id="note-index-btn" type="button" title="全部速记" aria-label="全部速记" aria-expanded="false">记</button>
-        <button id="note-new" type="button" title="新建一条速记" aria-label="新建一条速记">＋</button>
-        <button id="note-pin" type="button" title="钉在桌面上" aria-label="钉在桌面上" aria-pressed="false">钉</button>
-        <button id="note-min" type="button" title="最小化" aria-label="最小化">─</button>
-        <button id="note-close" type="button" title="关闭（Esc）" aria-label="关闭">×</button>
+        <button id="note-index-btn" type="button" title="全部速记" aria-label="全部速记" aria-expanded="false"><svg viewBox="0 0 24 24"><path d="M4 5h16M4 12h16M4 19h16"/></svg></button>
+        <button id="note-new" type="button" title="新建一条速记" aria-label="新建一条速记"><svg viewBox="0 0 24 24"><path d="M12 4v16M4 12h16"/></svg></button>
+        <button id="note-pin" type="button" title="钉在桌面上" aria-label="钉在桌面上" aria-pressed="false"><svg viewBox="0 0 24 24"><path d="m8 3 8 0-1 7 3 4H6l3-4zM12 14v7"/></svg></button>
+        <button id="note-min" type="button" title="最小化" aria-label="最小化"><svg viewBox="0 0 24 24"><path d="M5 12h14"/></svg></button>
+        <button id="note-close" type="button" title="关闭（Esc）" aria-label="关闭"><svg viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></svg></button>
       </div>
     </header>
 
@@ -44,7 +44,6 @@
     <p class="note-error" id="note-error" role="alert" hidden></p>
   </main>
   <script src="notes.js"></script>
-  <script src="companion.js"></script>
   <script src="liquid-glass.js"></script>
 </body>
 </html>

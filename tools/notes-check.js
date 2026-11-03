@@ -279,7 +279,7 @@ function buildFixtures() {
   fs.writeFileSync(path.join(TMP, '__notes_error_probe.js'), ERROR_PROBE, 'utf8');
   fs.copyFileSync(path.join(ROOT, 'src', 'theme.css'), path.join(TMP, 'theme.css'));
   fs.copyFileSync(path.join(ROOT, 'src', 'notes.css'), path.join(TMP, 'notes.css'));
-  fs.mkdirSync(path.join(TMP,'art'),{recursive:true});for(const asset of ['liquid-glass.js','liquid-glass.css','companion.js','companion.css','art/companion-courier.png'])fs.copyFileSync(path.join(ROOT,'src',asset),path.join(TMP,asset));
+  fs.mkdirSync(path.join(TMP,'art'),{recursive:true});for(const asset of ['utility-surface.css','liquid-glass.js','liquid-glass.css','companion.js','companion.css','art/companion-courier.png'])fs.copyFileSync(path.join(ROOT,'src',asset),path.join(TMP,asset));
   fs.copyFileSync(path.join(ROOT, 'src', 'notes.js'), path.join(TMP, 'notes.js'));
   const page = html
     .replace('<script src="notes.js"></script>', [
@@ -428,7 +428,7 @@ async function runScenario(send, scenario, width, height) {
     check('点一条切过去（走主进程 open）', main.openCalls && main.openCalls.length >= 1, JSON.stringify(main.openCalls));
     check('切换后浮层收起', main.indexClosedAfterPick === true);
 
-    check('钉住可切换往返', main.afterPin && main.afterPin.pinned === 'false' && main.afterPin.pinLabel === '钉',
+    check('钉住可切换往返', main.afterPin && main.afterPin.pinned === 'false' && main.afterPin.pinPressed === 'false',
       JSON.stringify(main.afterPin));
     check('删除走过确认再删', main.removeCalls && main.removeCalls.length === 1, JSON.stringify(main.removeCalls));
     check('删除后关掉窗口', main.hideCalls >= 1, String(main.hideCalls));

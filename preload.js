@@ -201,7 +201,16 @@ contextBridge.exposeInMainWorld('suira', {
     recognizeItem: (itemId) => ipcRenderer.invoke('ocr:recognize-item', itemId),
     onProgress: (callback) => subscribe('ocr:progress', callback)
   },
+  textTools: {
+    open: payload => ipcRenderer.invoke('text-tools:open',payload),
+    initial: () => ipcRenderer.invoke('text-tools:initial'),
+    transform: (text,operation) => ipcRenderer.invoke('text-tools:transform',text,operation),
+    configure: () => ipcRenderer.invoke('text-tools:configure'),
+    onInput: callback => subscribe('text-tools:input',callback),
+    onConfigure: callback => subscribe('settings:translation',callback)
+  },
   workspace: {
+    recent: (action,id) => ipcRenderer.invoke('workspace:recent',action,id),
     confirmClose: id => ipcRenderer.invoke('workspace:confirm-close',id),
     openedFile: () => ipcRenderer.invoke('workspace:opened-file'),
     saveFile: id => ipcRenderer.invoke('workspace:save-file',id),

@@ -17,9 +17,7 @@ async function until(fn){let last;for(let i=0;i<180;i++){try{const value=await f
   const page=async suffix=>{const client=await until(()=>connect(port,t=>t.url.includes(suffix)));sockets.push(client.ws);await until(()=>client.evaluate('Boolean(window.suira)'));return client;};
   const main=await page('/index.html');
   async function companion(client){
-    await until(()=>client.evaluate('Boolean(document.querySelector(".suira-companion:not([hidden])"))'));
-    assert.equal(await client.evaluate('(()=>{const r=document.querySelector(".companion-button").getBoundingClientRect();return r.width>0&&r.height>0&&r.left>=0&&r.top>=0&&r.right<=innerWidth&&r.bottom<=innerHeight;})()'),true,'Companion has a visible, bounded dock');
-    await client.evaluate('new Promise((resolve,reject)=>{const i=new Image();i.onload=resolve;i.onerror=reject;i.src="art/companion-courier.png";})');
+    assert.equal(await client.evaluate('Boolean(document.querySelector(".suira-companion,[data-buddy]")) || Array.from(document.scripts).some(script=>script.src.includes("companion.js"))'),false,'Pixel companion and settings are removed');
   }
   await companion(main);
   const info=await main.evaluate('window.suira.app.info()');

@@ -519,11 +519,12 @@ function openPreview(itemId) {
       // 只读、可选中复制的全文区；内容用 textContent 写入，不拼 innerHTML
       const content = document.createElement('div');
       content.className = 'preview-text';
-      content.textContent = text;
+      content.textContent = text.replace(/\n[ \t]*\n+/g,'\n');
       body.appendChild(content);
     }
   }
 
+  const cleanup=$('#preview-clean-spacing');cleanup.hidden=!['text','link'].includes(item.kind);cleanup.textContent='紧凑复制';$('#preview-copy').textContent=cleanup.hidden?'复制':'复制原文';cleanup.onclick=async()=>{try{const result=await window.suira.textTools.transform(String(item.text||''),'compact');if(!result?.ok)throw Error(result?.error||'整理失败');const saved=await window.suira.content.addText({text:result.text,title:'整理间距后的文字',source:'derived'});if(!saved?.ok)throw Error(saved?.error||'保存失败');const copied=await window.suira.actions.run(saved.item.id,'output.copy');if(!copied?.ok)throw Error(copied?.error||'复制失败');const content=$('.preview-text');if(content)content.textContent=result.text;showGlobalToast('已清理间距并复制，原文保持不变');}catch(error){showGlobalToast(error.message,'error');}};
   preview.hidden = false;
   if (window.SuiraUI) window.SuiraUI.openDialog(preview, { close: closePreview });
   const closeButton = $('#preview-close');
@@ -1059,6 +1060,7 @@ function installEvents() {
   $('#trail-filter').addEventListener('change',renderTrail);
   $('#trail-search').addEventListener('input',renderTrail);
   $('#shelf-first').addEventListener('click',()=>$('#shelf-new').click());
+  window.suira.textTools?.onConfigure?.(()=>{document.querySelector('[data-page=settings]').click();document.querySelector('[data-setting-tab=translation]').click();});
   $('#task-search').addEventListener('input',event=>{state.taskQuery=event.target.value;renderTaskList();renderTaskDetail();});
   $$('[data-task-filter]').forEach(button=>button.onclick=()=>{state.taskFilter=button.dataset.taskFilter;$$('[data-task-filter]').forEach(b=>b.setAttribute('aria-pressed',String(b===button)));renderTaskList();renderTaskDetail();});
   const taskMenu=$('#task-more'),taskMore=$('#task-more-toggle');

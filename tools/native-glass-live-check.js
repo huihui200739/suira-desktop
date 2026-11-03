@@ -35,7 +35,7 @@ class Pixels{
  [DllImport("dwmapi.dll",EntryPoint="DwmGetWindowAttribute")]static extern int DwmValue(IntPtr w,int a,out int v,int n);
  struct Rect{public int l,t,r,b;}
  static void Main(string[] args){SetProcessDpiAwarenessContext(new IntPtr(-4));Rect r;
-  if(args[0]=="rect"){var w=new IntPtr(long.Parse(args[1]));DwmGetWindowAttribute(w,9,out r,16);int corner;DwmValue(w,33,out corner,4);Console.WriteLine(r.l+","+r.t+","+(r.r-r.l)+","+(r.b-r.t)+","+corner+","+((GetWindowLong(w,-20)&0x80000)!=0?1:0));return;}
+  if(args[0]=="rect"){var w=new IntPtr(long.Parse(args[1]));DwmGetWindowAttribute(w,9,out r,16);int corner,transitions;DwmValue(w,33,out corner,4);int transitionStatus=DwmValue(w,3,out transitions,4);Console.WriteLine(r.l+","+r.t+","+(r.r-r.l)+","+(r.b-r.t)+","+corner+","+((GetWindowLong(w,-20)&0x80000)!=0?1:0)+","+transitions+","+transitionStatus);return;}
   int x=int.Parse(args[1]),y=int.Parse(args[2]),width=int.Parse(args[3]),height=int.Parse(args[4]);using(var b=new Bitmap(width,height)){using(var g=Graphics.FromImage(b)){g.CopyFromScreen(x,y,0,0,b.Size);}b.Save(args[0],ImageFormat.Png);}
  }
 }`);
@@ -49,7 +49,7 @@ class Pixels{
   const snapshots=[];let rect,info;
   for(const color of ['#b02030','#2050b0','stripes']){
    info=await command({suffix,color});assert.equal(info.target.native,true,name+' must enable real native blur');assert.equal(info.target.system,true);assert.equal(info.target.frame,true,'Full-client DWM frame must succeed');
-   await wait(280);rect=execFileSync(pixels,['rect',info.target.handle],{encoding:'utf8',windowsHide:true}).trim().split(',').map(Number);assert.equal(rect[4],2,'DWM round corners');assert.equal(rect[5],0,'Native glass must not be per-pixel layered');
+   await wait(280);rect=execFileSync(pixels,['rect',info.target.handle],{encoding:'utf8',windowsHide:true}).trim().split(',').map(Number);assert.equal(rect[4],2,'DWM round corners');assert.equal(rect[5],0,'Native glass must not be per-pixel layered');if(name==='panel'){console.log('DWM transition readback HRESULT:',rect[7]);if(rect[7]===0)assert.equal(rect[6],1,'DWM native show/hide transitions are disabled');}
    snapshots.push(capture(path.join(tmp,name+'-'+snapshots.length+'.png'),rect));
    if(color!=='stripes'){await command({suffix,hide:true});const expected=color.match(/[a-f0-9]{2}/g).map(v=>parseInt(v,16));await until(()=>{const controlImage=capture(path.join(tmp,'control.png'),rect),i=(Math.round(rect[3]*.5)*controlImage.width+Math.round(16*info.target.scale))*4;return expected.every((value,c)=>Math.abs(controlImage.data[i+c]-value)<4);});}
   }
@@ -68,7 +68,7 @@ class Pixels{
   const energy=png=>{let sum=0,n=0;for(let px=Math.round(10*scale);px<Math.round(110*scale);px++){sum+=Math.abs(png.data[(y*png.width+px)*4]-png.data[(y*png.width+px-1)*4]);n++;}return sum/n;};
   assert.ok(energy(bare)>35,'Sharp native background must be visible in control capture');assert.ok(energy(glass)<5,name+' must blur live background stripes');
   assert.equal(await client.evaluate('document.querySelector(".glass-scene").children.length'),0,'No wallpaper or screenshot background layer');
-  results.push({name,red,blue,cornerMean,cornerMax:max,cornerSamples:count,blurEnergy:energy(glass),bareEnergy:energy(bare)});console.log('PASS live blur, dynamic colors and four compositor corners:',name);
+  results.push({name,transitionReadback:rect[7]===0?rect[6]:'set-only attribute',red,blue,cornerMean,cornerMax:max,cornerSamples:count,blurEnergy:energy(glass),bareEnergy:energy(bare)});console.log('PASS live blur, dynamic colors and four compositor corners:',name);
   if(process.argv.includes('--screenshots')){await command({suffix,color:'scene'});await wait(200);capture(path.join(root,'docs/product',name+'.png'),rect);}
   await command({suffix,hide:true});
  }

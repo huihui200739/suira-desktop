@@ -765,3 +765,5 @@ kbd { font-family: var(--font-ui); font-size: var(--text-1); font-weight: 600; }
 .panel-foot .foot-hints{display:none}.panel-foot{padding-block:6px 12px;margin-top:0;justify-content:flex-end}.panel-foot .clipboard-chip{margin-left:auto}
 .panel-guide{position:absolute;z-index:65;right:24px;bottom:62px;width:min(310px,calc(100% - 48px));padding:18px;border-radius:16px;background:var(--paper-raised);color:var(--ink);border:1px solid var(--line-strong);box-shadow:var(--shadow-float);font-family:var(--font-ui)}
 .panel-guide p{font-size:13px;line-height:1.65;margin:10px 0}.panel-guide small{color:var(--ink-muted)}.panel-guide button{display:block;margin-top:12px;padding:8px 14px;border-radius:8px;background:var(--accent);color:white}
+.panel .panel-more{border:0;border-radius:6px;box-shadow:none;background:transparent}
+.panel .panel-more:hover,.panel .panel-more[aria-expanded="true"]{background:var(--glass-hover,var(--surface-hover));box-shadow:none}

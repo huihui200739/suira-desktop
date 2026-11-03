@@ -1380,10 +1380,8 @@ function installEvents() {
     closeOcr();
     closeTranslate();
     state.appPage = 0;
-    await loadState();
-    await loadRecent();
     await document.fonts.ready;
-    await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
+    await new Promise(resolve=>requestAnimationFrame(resolve));
     document.documentElement.dataset.panelPrepared=String(token);
     window.suira.quick.prepared(token);
   });

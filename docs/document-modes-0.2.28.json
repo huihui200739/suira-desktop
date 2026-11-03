@@ -1,0 +1,16 @@
+{
+  "version": "0.2.28",
+  "sourceSlash": true,
+  "splitSlash": true,
+  "previewSlash": true,
+  "consistentToolbars": true,
+  "sourceColors": true,
+  "sourcePreserved": true,
+  "escapeLiteral": true,
+  "urlAndCodeLiteral": true,
+  "keyboardChoice": true,
+  "taskSearch": true,
+  "taskFilters": true,
+  "progressiveTaskMenu": true,
+  "actionableEmptyTask": true
+}

@@ -486,7 +486,7 @@ t('main.js 引入放回/应用索引/前台探测模块', () => {
 t('显示面板前先记录目标窗口（顺序正确）', () => {
   const fn = mainJs.slice(mainJs.indexOf('function showQuickPanel'));
   const body = fn.slice(0, fn.indexOf('\n}'));
-  const recordAt = body.indexOf('clipboardTarget(await queryForeground()');
+  const recordAt = body.indexOf('clipboardTarget(snapshot,process.pid)');
   const showAt = body.indexOf('win.show()');
   if (recordAt < 0) throw new Error('未重新记录本次前台窗口');
   if (showAt < 0) throw new Error('未调用 show()');

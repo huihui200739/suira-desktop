@@ -146,5 +146,10 @@
 .liquid-ui.workbench .page:not(#page-shelf) h1 { font-size:26px; }
 .liquid-ui.workbench :is(button,input,select):focus-visible { outline:2px solid #1377ce88; outline-offset:2px; }
 .liquid-ui.workbench ::selection { background:#c2def6; color:#173a5a; }
+.liquid-ui.workbench #task-detail[data-empty="true"] #task-body{min-height:100%;display:flex;flex-direction:column}
+.liquid-ui.workbench #task-detail[data-empty="true"] .task-items{flex:1;display:grid;place-items:center;min-height:340px}
+.liquid-ui.workbench .collection-start{text-align:center;margin:auto;padding:36px 16px}
+.liquid-ui.workbench .collection-start>div{justify-content:center}
+.liquid-ui.workbench .preview-text{font:14px/1.55 var(--font-ui);letter-spacing:normal;word-spacing:normal;text-align:left;white-space:pre-wrap;padding:16px 20px;color:var(--ink);background:var(--wb-surface)}
 @media(max-width:1200px){.liquid-ui.workbench .shelf-layout{grid-template-columns:224px minmax(0,1fr)}.liquid-ui.workbench .task-detail{padding:24px}.liquid-ui.workbench .detail-head{align-items:flex-start;flex-direction:column}.liquid-ui.workbench .detail-actions{justify-content:flex-start}}
 @media(max-width:900px){.liquid-ui.workbench .app-body{grid-template-columns:168px minmax(0,1fr)}.liquid-ui.workbench .main-scroll:has(#page-shelf.is-active){overflow:auto}.liquid-ui.workbench #page-shelf.is-active{height:auto;min-height:100%}.liquid-ui.workbench #page-shelf>.page-head{padding:20px}.liquid-ui.workbench .shelf-layout{grid-template-columns:1fr}.liquid-ui.workbench .task-column{max-height:264px;border-right:0;border-bottom:1px solid var(--line);padding:16px 20px}.liquid-ui.workbench .column-head{padding-bottom:12px}.liquid-ui.workbench .task-filters{margin:8px 0}.liquid-ui.workbench .task-detail{min-height:400px}}

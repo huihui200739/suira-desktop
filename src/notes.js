@@ -48,7 +48,7 @@ function renderNote(note) {
   $('#note').dataset.pinned = String(state.pinned);
   $('#note').dataset.state = 'ready';
   $('#note-pin').setAttribute('aria-pressed', String(state.pinned));
-  $('#note-pin').textContent = state.pinned ? '已钉' : '钉';
+  $('#note-pin').setAttribute('title',state.pinned?'取消置顶':'钉在桌面上');
 }
 
 /* ---------- 写入 ---------- */
@@ -62,7 +62,7 @@ async function pushText() {
   try {
     const result = await window.suira.notes.update({ id: state.id, text: $('#note-body').value });
     if (!result || result.ok === false) throw new Error((result && result.error) || '保存失败');
-    setSaved('已保存');window.SuiraCompanion?.saved();
+    setSaved('已保存');
     showError('');
   } catch (error) {
     state.dirty = true;
@@ -113,7 +113,7 @@ async function boot() {
       state.pinned = Boolean(result.note && result.note.pinned);
       $('#note').dataset.pinned = String(state.pinned);
       $('#note-pin').setAttribute('aria-pressed', String(state.pinned));
-      $('#note-pin').textContent = state.pinned ? '已钉' : '钉';
+      $('#note-pin').setAttribute('title',state.pinned?'取消置顶':'钉在桌面上');
     } catch (error) {
       showError(error.message || '切换失败');
     }
@@ -164,7 +164,7 @@ async function boot() {
     state.pinned = Boolean(mine.pinned);
     $('#note').dataset.pinned = String(state.pinned);
     $('#note-pin').setAttribute('aria-pressed', String(state.pinned));
-    $('#note-pin').textContent = state.pinned ? '已钉' : '钉';
+    $('#note-pin').setAttribute('title',state.pinned?'取消置顶':'钉在桌面上');
     if (!state.dirty && document.activeElement !== body) renderNote(mine);
   });
 }

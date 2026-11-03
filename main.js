@@ -185,6 +185,7 @@ let clipboardSessionTarget = null;
 const clipboardLedger = new ClipboardWriteLedger();
 const appIndex = new AppIndex();
 const foregroundProbe = new ForegroundProbe({ onWarn: (...args) => console.warn(...args) });
+const panelNative=require('./lib/panel-native').createPanelNative();
 const inputInjector = new InputInjector();
 let shortcutManager = null;
 let keyVault = null;
@@ -1073,6 +1074,7 @@ function createQuickWindow() {
   });
   quickWindow.setAlwaysOnTop(true, 'floating');
   prepareFloatingSurface(quickWindow, 24, true);
+  quickWindow.__instantTransitions=panelNative.disableTransitions(quickWindow);
   quickWindow.on('will-resize',event=>event.preventDefault());
   quickWindow.__loaded=quickWindow.loadFile(path.join(__dirname, 'src', 'quickpanel.html'));
   quickWindow.__loaded.catch(error=>console.warn('面板加载失败:',error.message));
@@ -1080,9 +1082,10 @@ function createQuickWindow() {
   quickWindow.webContents.once('did-finish-load', () => {
     quickReady = true;
     broadcast('content:changed');
+    primeQuickFrame(quickWindow);
   });
   quickWindow.on('blur', () => {
-    if (!quickWindow || quickWindow.isDestroyed() || quickWindow.__changingPresentation || panelBindingPickerOpen || quickWindow.webContents.isDevToolsOpened()) return;
+    if (!quickWindow || quickWindow.isDestroyed() || panelBindingPickerOpen || quickWindow.webContents.isDevToolsOpened()) return;
     hideQuickPanel();
   });
   quickWindow.on('show', () => {
@@ -1144,48 +1147,53 @@ function cancelIdleTeardown(win) {
   win.__teardownTimer = null;
 }
 
+let quickFrameRevision=0;
+function primeQuickFrame(win){
+  if(!win||win.isDestroyed())return Promise.resolve();
+  const token=++quickFrameRevision;
+  win.__prepareShow?.cancel();
+  win.__frameReady=new Promise(resolve=>{
+    const timer=setTimeout(()=>{if(win.__prepareShow?.token===token)win.__prepareShow=null;resolve();},2000);
+    const finish=()=>{clearTimeout(timer);if(win.__prepareShow?.token===token)win.__prepareShow=null;resolve();};
+    win.__prepareShow={token,finish,cancel:finish};
+    win.webContents.send('quick:prepare',{token});
+  });
+  return win.__frameReady;
+}
 async function showQuickPanel() {
   if (!quickWindow || quickWindow.isDestroyed()) createQuickWindow();
-  const win = quickWindow;
-  const revision = ++quickShowRevision;
+  const win=quickWindow,revision=++quickShowRevision;win.__showRequested=true;
   try {
     cancelIdleTeardown(win);
-    // 先记录目标，再显示窗口——顺序不能反
-    quickInvocationTarget=clipboardTarget(await queryForeground(),process.pid);
-    returnTarget=quickInvocationTarget;
-    if (revision !== quickShowRevision || win.isDestroyed()) return;
+    // Capture the exact pre-focus process identity without waiting on helper IO.
+    let snapshot=panelNative.foreground();
+    if(!snapshot)snapshot=await Promise.race([queryForeground(),new Promise(resolve=>setTimeout(()=>resolve(null),100))]);
+    quickInvocationTarget=clipboardTarget(snapshot,process.pid);returnTarget=quickInvocationTarget;
+    if(revision!==quickShowRevision||win.isDestroyed())return;
     await win.__loaded;
-    if (revision !== quickShowRevision || win.isDestroyed()) return;
-    positionQuickPanel(win);
-    // Prepare state and layout while hidden. Acknowledge only this invocation;
-    // a cancelled/hide request must never resurrect an obsolete reveal.
-    await new Promise((resolve,reject)=>{
-      win.__prepareShow?.cancel();
-      const timer=setTimeout(()=>{win.__prepareShow=null;reject(Error('面板准备超时'));},5000);
-      const finish=()=>{clearTimeout(timer);win.__prepareShow=null;resolve();};
-      win.__prepareShow={token:revision,finish,cancel:finish};
-      win.webContents.send('quick:prepare',{token:revision});
-    });
-    if (revision !== quickShowRevision || win.isDestroyed()) return;
-    win.show();
-    win.focus();
+    await win.__frameReady;
+    // Coalesce a hide/toggle queued in the same input turn without a timed fade.
+    await new Promise(resolve=>setImmediate(resolve));
+    if(revision!==quickShowRevision||win.isDestroyed())return;
+    positionQuickPanel(win);win.show();win.focus();
     win.webContents.send('quick:shown');
-  } catch(error) {
-    if(!win.isDestroyed()&&revision===quickShowRevision)console.warn('面板显示失败:',error.message);
-  }
+  }catch(error){if(!win.isDestroyed())console.warn('面板显示失败:',error.message);}
+  finally{if(!win.isDestroyed()&&revision===quickShowRevision)win.__showRequested=false;}
 }
 
 function hideQuickPanel() {
   quickShowRevision++;
   if (quickWindow && !quickWindow.isDestroyed()) {
-    quickWindow.__prepareShow?.cancel();
+    quickWindow.__showRequested=false;quickWindow.__prepareShow?.cancel();
     quickWindow.hide();
-    scheduleIdleTeardown(quickWindow, '动作面板', HOT_WINDOW_IDLE_MS);
+    // Keep this frequent hotkey surface warm. Other utility windows still have
+    // their independent idle release policy.
+    primeQuickFrame(quickWindow);
   }
 }
 
 function toggleQuickPanel() {
-  if (quickWindow && (quickWindow.__prepareShow || (quickWindow.isVisible() && quickWindow.isFocused()))) hideQuickPanel();
+  if (quickWindow && (quickWindow.__showRequested || (quickWindow.isVisible() && quickWindow.isFocused()))) hideQuickPanel();
   else showQuickPanel();
 }
 
@@ -1392,7 +1400,13 @@ function armIsland() {
   return { ok: true, mode: 'sleep' };
 }
 
+let quickPointerDown=false;
 function handleIslandPointer(point) {
+  const pressed=point.down&&!quickPointerDown;quickPointerDown=point.down;
+  if(pressed&&quickWindow?.isVisible()&&!panelBindingPickerOpen&&!quickWindow.webContents.isDevToolsOpened()){
+    const dip=screen.screenToDipPoint({x:point.x,y:point.y});
+    if(!contains(quickWindow.getBounds(),dip))hideQuickPanel();
+  }
   const receiver = receiverDisplay(screen.getAllDisplays(), point);
   if ((!islandWindow || islandWindow.isDestroyed()) && !receiver) return;
   const win = createIslandWindow();
@@ -1993,6 +2007,21 @@ async function rememberMainWindowState() {
   } catch {
     // 窗口正在销毁时取 bounds 可能抛错，忽略即可
   }
+}
+
+const textToolWindows=new Map();
+async function openTextTools(mode='convert',input,operation='compact'){
+  if(!['translate','convert'].includes(mode))return {ok:false,error:'未知文字工具'};
+  let win=textToolWindows.get(mode),fresh=!win||win.isDestroyed();
+  const text=typeof input==='string'?input.slice(0,200000):(await readClipboardText()).slice(0,200000);
+  if(fresh){
+    win=new BrowserWindow({width:960,height:680,minWidth:640,minHeight:440,show:false,frame:false,thickFrame:SYSTEM_GLASS,transparent:true,backgroundColor:'#00000000',title:mode==='translate'?'随序 · 翻译':'随序 · 文本转换',icon:assetPath('suira-icon.png'),webPreferences:{preload:path.join(__dirname,'preload.js'),contextIsolation:true,nodeIntegration:false,sandbox:false,spellcheck:false}});
+    textToolWindows.set(mode,win);win.__textTool={mode,text,operation};
+    prepareFloatingSurface(win,24,true);prepareDesktopWindow(win);panelNative.disableTransitions(win);
+    win.__loaded=win.loadFile(path.join(__dirname,'src','text-tools.html'),{query:{mode}});win.on('closed',()=>textToolWindows.delete(mode));win.setMenuBarVisibility(false);
+    await win.__loaded;
+  }else{win.__textTool={mode,text,operation};win.webContents.send('text-tools:input',win.__textTool);}
+  if(!win.isDestroyed()){win.show();win.focus();}return {ok:true};
 }
 
 function showMain(page = 'shelf') {
@@ -2785,6 +2814,7 @@ function getPanelActions() {
       lockWorkstation,
       // 速记：接着最近一条写，没有才新建
       openNote: () => openLatestNote(),
+      openTextTools,
       openImageEditor: () => openImageEditor()
     });
   }
@@ -3800,6 +3830,16 @@ function registerIpc() {
   });
   ipcMain.handle('workspace:clipboard', async()=>({ok:true,text:(await readClipboardText()).slice(0,200000)}));
   ipcMain.handle('workspace:list', (_event,type) => workspace.list(type));
+  ipcMain.handle('workspace:recent',async(_event,action,id)=>{
+    if(!['clear','open'].includes(action))return {ok:false,error:'无效操作'};
+    const items=workspace.list('markdown');
+    for(const item of items)if(action==='clear'||item.id===id)item.meta.recentHidden=action==='clear';
+    await store.save();return {ok:true};
+  });
+  ipcMain.handle('text-tools:open',(_event,payload)=>openTextTools(payload?.mode,payload?.text,require('./lib/text-tools').OPERATIONS.has(payload?.operation)?payload.operation:'compact'));
+  ipcMain.handle('text-tools:initial',event=>BrowserWindow.fromWebContents(event.sender)?.__textTool||{mode:'convert',text:''});
+  ipcMain.handle('text-tools:transform',(_event,text,operation)=>{try{return {ok:true,text:require('./lib/text-tools').transformText(text,operation)};}catch(error){return {ok:false,error:error.message};}});
+  ipcMain.handle('text-tools:configure',()=>{showMain('settings');const send=()=>mainWindow?.webContents.send('settings:translation');if(mainWindow?.webContents.isLoading())mainWindow.webContents.once('did-finish-load',send);else send();return {ok:true};});
   ipcMain.handle('workspace:save', async (_event,type,payload) => {
     try { const item=workspace.save(type,payload); await store.save(); broadcast('content:changed'); return {ok:true,item}; }
     catch(error){return {ok:false,error:error.message};}

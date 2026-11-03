@@ -1,0 +1,12 @@
+{
+  "version": "0.2.28",
+  "installedPayloadMatchesRelease": true,
+  "installedExecutableMatchesRelease": true,
+  "existingKeyUnchanged": true,
+  "existingKeyDecrypts": true,
+  "retainedRecords": 33,
+  "unchangedTextRecords": 33,
+  "userEditedRecords": 0,
+  "customBindingsUnchanged": true,
+  "readOnly": true
+}
