@@ -887,24 +887,6 @@ async function loadState() {
     toast(error?.message || '面板加载失败，请重新打开', 'error');
   }
   renderKeys();
-  syncShortcutChip();
-}
-
-/** 底部截图角标显示真实的全局键位（用户改过键时不再显示写死的 Ctrl Shift A）。 */
-async function syncShortcutChip() {
-  try {
-    const snapshot = await window.suira.shortcuts.get();
-    for (const [name, selector] of [['capture', '#capture-kbd'], ['clipboardBar', '#clipboard-kbd']]) {
-      const el = $(selector);
-      if (!el) continue;
-      const action=name==='capture'?'capture':'clipboard';
-      const bound=state.keys.find(key=>key.actionId===action&&key.state==='bound');
-      const accelerator = String(bound?.accelerator || snapshot?.bindings?.[name] || '');
-      el.textContent = accelerator ? accelerator.replace(/CommandOrControl/gi, 'Ctrl').split('+').join(' ') : '未绑定';
-    }
-  } catch {
-    /* 读不到键位时保留默认文案 */
-  }
 }
 
 let submenuTimer=0,submenuSwitchTimer=0;
@@ -1022,7 +1004,7 @@ function installEvents() {
   $('#panel-more').addEventListener('keydown',event=>{if(['ArrowDown','ArrowUp'].includes(event.key)){event.preventDefault();toggleMoreMenu();}});
   document.addEventListener('pointerdown',event=>{if(!event.target.closest('#panel-more-menu,#panel-more,[data-menu-group]'))closeMoreMenu(false);});
   window.addEventListener('resize',()=>{positionMoreMenu();fitFullscreenKeys();});
-  window.addEventListener('blur',()=>closeMoreMenu(false));
+  window.addEventListener('blur',()=>setTimeout(()=>{if(!document.hasFocus())closeMoreMenu(false);},0));
   $$('[data-menu-group]').forEach(group=>{
     group.classList.add('panel-more-submenu');group.setAttribute('role','menu');group.id='panel-submenu-'+group.dataset.menuGroup;
     $('#panel').append(group);group.addEventListener('pointerenter',()=>{clearTimeout(submenuTimer);clearTimeout(submenuSwitchTimer);});group.addEventListener('pointerleave',deferCloseSubmenu);
@@ -1211,8 +1193,6 @@ function installEvents() {
   });
   $('#mode-actions').addEventListener('click', () => { clearSearch(); setMode('actions'); });
   $('#mode-apps').addEventListener('click', () => { clearSearch(); setMode('apps'); });
-  $('#capture').addEventListener('click', () => runAction('capture'));
-  listen($('#open-clipboard'), 'click', openClipboardBar);
   $('#apps-prev').addEventListener('click', () => { state.appPage -= 1; renderApps(); loadAppIcons(); });
   $('#apps-next').addEventListener('click', () => { state.appPage += 1; renderApps(); loadAppIcons(); });
   listen($('#apps-retry'), 'click', loadApps);
@@ -1356,7 +1336,6 @@ function installEvents() {
   window.suira.panel.onChanged?.(() => {
     if (!bindingState.busy && !dragState.source && !bindingEditorOpen()) loadState();
   });
-  window.suira.shortcuts?.onChanged?.(() => syncShortcutChip());
   // 主进程的「面板布局轮换」快捷键：动作 / 应用 / 工具箱 之间切换
   window.suira.quick.onMode((mode) => {
     if (typeof mode !== 'string' || !mode) return;

@@ -381,7 +381,10 @@ button { color: inherit; }
   background: var(--control-field);
   color: var(--ink);
   font-size: var(--text-2);
-  line-height: 1.7;
+  line-height: 1.5;
+  letter-spacing: normal;
+  word-spacing: normal;
+  text-align: left;
   user-select: text;
 }
 #ocr-result-text:focus { border-color: var(--accent); }

@@ -56,18 +56,9 @@
 
       <main class="main-scroll" id="main-scroll">
         <section class="page is-active" id="page-shelf" aria-label="任务匣">
-          <div class="page-head">
-            <div>
-              <h1>任务匣</h1><p class="page-description">收集在一起，接着做下去</p>
-            </div>
-            <div class="page-actions">
-              <button class="primary-btn" id="shelf-new" type="button"><span>＋</span> 新建任务</button>
-            </div>
-          </div>
-
           <div class="shelf-layout">
             <div class="task-column">
-              <div class="column-head"><span>我的任务</span><small id="task-count">0 个</small></div>
+              <div class="column-head"><h1>任务匣</h1><small id="task-count">0 个</small><button class="task-add" id="shelf-new" type="button" aria-label="新建任务" title="新建任务"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button></div>
               <label class="task-search"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6"/><path d="m15 15 5 5"/></svg><input id="task-search" type="search" placeholder="查找任务" aria-label="查找任务"></label>
               <div class="task-filters" aria-label="任务状态"><button type="button" data-task-filter="all" aria-pressed="true">全部</button><button type="button" data-task-filter="active" aria-pressed="false">进行中</button><button type="button" data-task-filter="done" aria-pressed="false">已完成</button></div>
               <div class="task-list" id="task-list"></div>
@@ -78,7 +69,7 @@
               </div>
               <div class="detail-body" id="task-body" hidden>
                 <div class="detail-head">
-                  <div><h2 id="task-title">临时收集</h2><p id="task-subtitle"></p></div>
+                  <div class="task-heading"><span class="task-context">任务匣 <span aria-hidden="true">/</span> 内容收集</span><h2 id="task-title">临时收集</h2><p id="task-subtitle"></p></div>
                   <div class="detail-actions">
                     <button class="quiet-btn" id="task-done" type="button">标记完成</button>
                     <button class="primary-btn" id="shelf-import" type="button">加入剪贴板内容</button>
@@ -295,7 +286,7 @@
     </div>
   </div>
   <script src="ui-motion.js"></script>
-  <script src="vendor/marked.js"></script><script src="vendor/purify.js"></script><script src="markdown-format.js"></script><script src="vendor/document-editor.js"></script><script src="calendar-data.js"></script><script src="tool-art.js"></script><script src="workspace.js"></script><script src="app.js"></script>
+  <script src="vendor/marked.js"></script><script src="vendor/purify.js"></script><script src="markdown-format.js"></script><script src="vendor/document-editor.js"></script><script src="calendar-data.js"></script><script src="tool-art.js"></script><script src="workspace.js"></script><script src="text-spacing.js"></script><script src="app.js"></script>
   <script src="liquid-glass.js"></script>
 </body>
 </html>

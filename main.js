@@ -1086,7 +1086,8 @@ function createQuickWindow() {
   });
   quickWindow.on('blur', () => {
     if (!quickWindow || quickWindow.isDestroyed() || panelBindingPickerOpen || quickWindow.webContents.isDevToolsOpened()) return;
-    hideQuickPanel();
+    const win=quickWindow;
+    setImmediate(()=>{if(quickWindow===win&&!win.isDestroyed()&&!win.isFocused()&&!panelBindingPickerOpen)hideQuickPanel();});
   });
   quickWindow.on('show', () => {
     cancelIdleTeardown(quickWindow);
@@ -1404,7 +1405,9 @@ let quickPointerDown=false;
 function handleIslandPointer(point) {
   const pressed=point.down&&!quickPointerDown;quickPointerDown=point.down;
   if(pressed&&quickWindow?.isVisible()&&!panelBindingPickerOpen&&!quickWindow.webContents.isDevToolsOpened()){
-    const dip=screen.screenToDipPoint({x:point.x,y:point.y});
+    // The pointer helper can be DPI-virtualized. Electron supplies the cursor
+    // in the same DIP space as BrowserWindow bounds, including mixed-DPI screens.
+    const dip=screen.getCursorScreenPoint();
     if(!contains(quickWindow.getBounds(),dip))hideQuickPanel();
   }
   const receiver = receiverDisplay(screen.getAllDisplays(), point);

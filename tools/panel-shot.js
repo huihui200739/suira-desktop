@@ -205,7 +205,7 @@ async function capture(send, name) {
     await send('Page.navigate', { url });
     await sleep(1200);
     // 模拟主进程唤起面板
-    await evaluate(send, `(function(){ var cbs = window.__handlers['quick:shown'] || []; for (var i=0;i<cbs.length;i++){ try{ cbs[i](); }catch(e){} } return 'ok'; })()`);
+    await evaluate(send, `(async function(){ for(const cb of window.__handlers['quick:prepare']||[])await cb({token:1}); var cbs = window.__handlers['quick:shown'] || []; for (var i=0;i<cbs.length;i++){ try{ cbs[i](); }catch(e){} } return 'ok'; })()`);
     await sleep(900);
 
     const facts = await evaluate(send, `JSON.stringify({
@@ -249,7 +249,7 @@ async function capture(send, name) {
     assert.equal(await evaluate(send, `document.getElementById('surface-hint').hidden`),true);
     console.log('  PASS  键位提示可由焦点访问、贴合屏幕边界并随焦点离开关闭');
 
-    await evaluate(send, `document.getElementById('open-clipboard').click(), true`);
+    await evaluate(send, `window.suira.clipboardBar.show(), true`);
     await sleep(30);
     assert.equal(await evaluate(send, `window.__barOpened`),1);
     await evaluate(send, `document.dispatchEvent(new KeyboardEvent('keydown',{key:'v',bubbles:true})), true`);
@@ -442,6 +442,7 @@ async function capture(send, name) {
       translations.en({ok:true,text:'过期英文'}); await wait(20);
       out.latestTranslationWins = document.getElementById('translate-text').value === '最新日文';
       window.suira.translate.run = originalTranslate;
+      for (const cb of window.__handlers['quick:prepare'] || []) await cb({token:2});
       for (const cb of window.__handlers['quick:shown'] || []) cb();
       await wait(60);
       out.reopenClosesTranslation = document.getElementById('translate-panel').hidden;
@@ -502,4 +503,4 @@ async function capture(send, name) {
     child.kill();
     await sleep(400);
   }
-})().catch((e) => { console.error('FAIL ' + e.message); process.exit(1); });
+})().catch((e) => { console.error('FAIL ' + e.stack); process.exit(1); });

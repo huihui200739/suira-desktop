@@ -78,63 +78,70 @@
 /* Collection desk: navigation → task index → an uninterrupted content plane.
    Impeccable's Operate/layout guidance: proximity before containers, stable
    density, progressive actions and an empty state that starts real work. */
-.liquid-ui.workbench .app-body { grid-template-columns:192px minmax(0,1fr); }
+/* A compact collection rail and a bounded document surface. */
+.liquid-ui.workbench .app-body { grid-template-columns:176px minmax(0,1fr); }
 .liquid-ui.workbench .sidebar { padding:24px 12px 16px; }
 .liquid-ui.workbench .nav { gap:4px; }
-.liquid-ui.workbench .nav-item { min-height:38px; padding:8px 12px; border-radius:7px; }
-.liquid-ui.workbench .nav-item.is-active::after { width:2px; top:10px; bottom:10px; }
+.liquid-ui.workbench .nav-item { min-height:36px; padding:8px 12px; border-radius:6px; }
 .liquid-ui.workbench .main-scroll:has(#page-shelf.is-active) { padding:0; overflow:hidden; }
-.liquid-ui.workbench #page-shelf.is-active { display:flex; flex-direction:column; height:100%; max-width:none; }
-.liquid-ui.workbench #page-shelf>.page-head { padding:24px 32px 20px; margin:0; border-bottom:1px solid var(--line); flex-shrink:0; }
-.liquid-ui.workbench #page-shelf h1 { font-size:24px; }
-.liquid-ui.workbench #page-shelf .page-description { font-size:12px; margin-top:4px; }
-.liquid-ui.workbench .shelf-layout { flex:1; min-height:0; grid-template-columns:264px minmax(0,1fr); gap:0; align-items:stretch; }
-.liquid-ui.workbench .task-column { display:flex; flex-direction:column; min-height:0; border:0; border-right:1px solid var(--line); border-radius:0; background:var(--wb-canvas); padding:20px 12px; }
-.liquid-ui.workbench .column-head { padding:0 8px 16px; border:0; min-height:0; }
-.liquid-ui.workbench .column-head>span { font-size:12px; font-weight:600; }
-.task-search { display:flex; align-items:center; gap:8px; border:1px solid var(--line-strong); border-radius:7px; background:var(--wb-surface); padding:7px 10px; }
-.task-search svg { width:16px; height:16px; flex:none; fill:none; stroke:currentColor; stroke-width:1.5; color:var(--ink-muted); }
-.task-search input { width:100%; min-width:0; padding:0; border:0; outline:none; background:transparent; font:12px/1.5 var(--font-ui); color:var(--ink); }
+.liquid-ui.workbench #page-shelf.is-active { display:flex; height:100%; max-width:none; }
+.liquid-ui.workbench .shelf-layout { flex:1; min-height:0; grid-template-columns:248px minmax(0,1fr); gap:0; align-items:stretch; }
+.liquid-ui.workbench .task-column { display:flex; flex-direction:column; min-height:0; border:0; border-right:1px solid var(--line); border-radius:0; background:color-mix(in srgb,var(--wb-canvas) 50%,var(--wb-surface)); padding:24px 12px; }
+.liquid-ui.workbench .column-head { display:flex; align-items:center; gap:8px; padding:0 8px 20px; border:0; }
+.liquid-ui.workbench #page-shelf .column-head h1 { font-size:18px; line-height:28px; margin:0; }
+.liquid-ui.workbench .column-head small { font-size:12px; font-variant-numeric:tabular-nums; color:var(--ink-muted); }
+.task-add { margin-left:auto; display:grid; place-items:center; width:28px; height:28px; border:1px solid var(--line-strong); background:var(--wb-surface); border-radius:6px; color:var(--ink); }
+.task-add:hover { background:var(--wb-soft); }
+.task-add svg,.task-search svg { width:16px; height:16px; fill:none; stroke:currentColor; stroke-width:1.5; }
+.task-search { display:flex; align-items:center; gap:8px; border:1px solid var(--line-strong); border-radius:6px; background:var(--wb-surface); padding:8px 12px; }
+.task-search svg { flex:none; color:var(--ink-muted); }
+.task-search input { width:100%; min-width:0; border:0; padding:0; outline:none; background:transparent; font:12px/1.5 var(--font-ui); color:var(--ink); }
 .task-search:focus-within { outline:2px solid #1377ce55; outline-offset:1px; }
-.task-filters { display:flex; gap:4px; margin:12px 0 16px; }
-.task-filters button { flex:1; padding:6px 4px; font:12px/1.5 var(--font-ui); color:var(--ink-muted); border-radius:6px; }
-.task-filters button:hover { background:var(--wb-soft); }
-.task-filters button[aria-pressed="true"] { color:var(--ink); background:var(--wb-surface); box-shadow:0 1px 2px #24354b12; }
+.task-filters { display:flex; gap:4px; margin:16px 0 12px; padding:0 4px; border-bottom:1px solid var(--line); }
+.task-filters button { flex:1; position:relative; padding:8px 0; font:12px/1.5 var(--font-ui); color:var(--ink-muted); }
+.task-filters button[aria-pressed="true"] { color:var(--accent); }
+.task-filters button[aria-pressed="true"]::after { content:''; position:absolute; bottom:-1px; left:8px; right:8px; height:2px; background:var(--accent); }
 .liquid-ui.workbench .task-list { padding:0; overflow:auto; min-height:0; }
-.liquid-ui.workbench .task-row { padding:12px; margin-bottom:4px; border-radius:7px; gap:10px; min-height:64px; }
-.liquid-ui.workbench .task-row.is-active { background:var(--glass-selected); }
+.liquid-ui.workbench .task-row { padding:12px; margin:0 0 4px; border-radius:6px; gap:12px; min-height:64px; border:1px solid transparent; }
+.liquid-ui.workbench .task-row.is-active { background:var(--glass-selected); border-color:var(--line-strong); }
 .liquid-ui.workbench .task-row-body b { font-weight:500; font-size:13px; }
-.liquid-ui.workbench .task-row-body small { font-size:11px; margin-top:5px; }
-.liquid-ui.workbench .task-row-mark { width:6px; height:6px; margin-top:7px; background:var(--accent); flex:none; }
-.liquid-ui.workbench .task-row-mark.is-done { background:#338168; }
-.liquid-ui.workbench .task-detail { padding:28px 32px; min-width:0; min-height:0; border:0; border-radius:0; overflow:auto; background:var(--wb-surface); }
-.liquid-ui.workbench .task-detail:has(#task-empty:not([hidden])) { background:var(--wb-surface); }
-.liquid-ui.workbench .detail-head { align-items:center; padding-bottom:24px; gap:16px; border:0; }
-.liquid-ui.workbench .detail-head h2 { font-size:22px; font-weight:600; line-height:1.5; overflow-wrap:anywhere; }
-.liquid-ui.workbench .detail-head p { margin-top:6px; font-size:11px; color:var(--ink-muted); }
-.liquid-ui.workbench .detail-actions { display:flex; align-items:center; flex-wrap:wrap; justify-content:flex-end; gap:8px; }
-.liquid-ui.workbench .detail-actions .icon-btn { padding:8px; width:36px; height:36px; }
-.detail-actions svg { width:18px; height:18px; fill:currentColor; stroke:currentColor; }
-.liquid-ui.workbench .task-timeline { padding:0 0 20px; margin:0; border:0; min-height:0; }
+.liquid-ui.workbench .task-row-body small { font-size:11px; margin-top:4px; }
+.liquid-ui.workbench .task-row-mark { width:8px; height:8px; margin-top:6px; background:transparent; border:1.5px solid var(--accent); flex:none; }
+.liquid-ui.workbench .task-row-mark.is-done { background:#338168; border-color:#338168; }
+.liquid-ui.workbench .task-detail { min-width:0; min-height:0; padding:32px; border:0; border-radius:0; overflow:auto; background:var(--wb-canvas); }
+.liquid-ui.workbench .task-detail:has(#task-empty:not([hidden])) { background:var(--wb-canvas); }
+.liquid-ui.workbench #task-body { width:100%; max-width:1000px; min-height:100%; margin:0 auto; padding:32px 40px; background:var(--wb-surface); border:1px solid var(--line); border-radius:12px; }
+.liquid-ui.workbench #task-body:not([hidden]) { display:flex; flex-direction:column; }
+.liquid-ui.workbench .detail-head { align-items:flex-start; padding-bottom:24px; gap:16px; border:0; }
+.task-context { display:flex; gap:8px; margin-bottom:16px; color:var(--ink-muted); font:12px/1.5 var(--font-ui); }
+.task-context>span { color:#b7c0cb; }
+.liquid-ui.workbench .detail-head h2 { font-size:24px; font-weight:600; line-height:1.4; overflow-wrap:anywhere; }
+.liquid-ui.workbench .detail-head p { margin-top:8px; font-size:12px; color:var(--ink-muted); }
+.liquid-ui.workbench .detail-actions { display:flex; align-items:center; flex-wrap:wrap; justify-content:flex-end; gap:8px; padding-top:32px; }
+.liquid-ui.workbench .detail-actions .icon-btn { padding:8px; width:32px; height:32px; }
+.detail-actions svg { width:16px; height:16px; fill:currentColor; stroke:currentColor; }
+.liquid-ui.workbench .task-timeline { padding:0 0 16px; margin:0; border:0; min-height:0; }
 .liquid-ui.workbench .task-timeline[hidden] { display:none; }
-.task-content-heading { display:flex; align-items:center; gap:8px; border-top:1px solid var(--line); border-bottom:1px solid var(--line); padding:14px 0; margin-bottom:4px; }
+.task-content-heading { display:flex; align-items:center; gap:8px; border-top:1px solid var(--line); padding:16px 0; }
 .task-content-heading h3 { font-size:12px; font-weight:500; margin:0; }
-.task-content-heading span { font-size:11px; color:var(--ink-muted); font-variant-numeric:tabular-nums; }
+.task-content-heading span { font-size:12px; color:var(--ink-muted); font-variant-numeric:tabular-nums; }
 .liquid-ui.workbench .task-items { gap:0; }
-.liquid-ui.workbench .task-detail .shelf-card { padding:24px 0; }
-.liquid-ui.workbench .shelf-card-head { gap:10px; }
-.liquid-ui.workbench .shelf-card-head b { font-weight:500; font-size:14px; }
+.liquid-ui.workbench .task-detail .shelf-card { padding:20px 0; }
+.liquid-ui.workbench .shelf-card-head { gap:8px; }
+.liquid-ui.workbench .shelf-card-head b { font-weight:500; font-size:13px; }
 .liquid-ui.workbench .shelf-card-head time { margin-left:auto; font-size:11px; }
-.liquid-ui.workbench .shelf-text { max-width:72ch; line-height:1.85; margin:16px 0; font-size:14px; }
-.liquid-ui.workbench .shelf-card-actions { margin-top:16px; gap:8px; }
-.liquid-ui.workbench .shelf-card-actions button { border:0; background:var(--wb-soft); box-shadow:none; font-size:11px; padding:5px 10px; }
-.collection-start { padding:48px 0; max-width:480px; }
-.collection-mark { display:inline-grid; place-items:center; width:44px; height:44px; color:#447397; margin-bottom:20px; }
-.collection-mark svg { width:36px; height:36px; stroke:currentColor; fill:none; stroke-width:1.3; }
-.collection-start h3 { font-size:18px; font-weight:500; margin:0 0 8px; }
-.collection-start p { font-size:13px; line-height:1.7; color:var(--ink-muted); margin:0 0 24px; }
-.collection-start>div { display:flex; flex-wrap:wrap; gap:8px; }
-.collection-start>small { display:block; font-size:11px; margin-top:28px; color:var(--ink-muted); }
+.liquid-ui.workbench .shelf-text { max-width:72ch; line-height:1.55; margin:12px 0; font-size:14px; letter-spacing:normal; word-spacing:normal; text-align:left; white-space:pre-wrap; }
+.liquid-ui.workbench .derived-card p { line-height:1.55; letter-spacing:normal; white-space:pre-wrap; }
+.liquid-ui.workbench .shelf-card-actions { margin-top:12px; gap:8px; }
+.liquid-ui.workbench .shelf-card-actions button { border:0; background:var(--wb-soft); box-shadow:none; font-size:11px; padding:4px 8px; }
+.liquid-ui.workbench #task-detail[data-empty="true"] .task-items { flex:1; display:grid; place-items:center; min-height:320px; }
+.liquid-ui.workbench .collection-start { text-align:center; margin:auto; padding:40px 16px; max-width:480px; }
+.collection-mark { display:inline-grid; place-items:center; width:56px; height:56px; border:1px solid var(--line-strong); border-radius:12px; background:var(--wb-soft); color:var(--glass-accent-ink); margin-bottom:24px; }
+.collection-mark svg { width:28px; height:28px; stroke:currentColor; fill:none; stroke-width:1.4; }
+.collection-start h3 { font-size:20px; font-weight:500; margin:0 0 12px; }
+.collection-start p { font-size:13px; line-height:1.55; color:var(--ink-muted); margin:0 0 24px; }
+.collection-start>div { display:flex; justify-content:center; flex-wrap:wrap; gap:8px; }
+.collection-start>small { display:block; font-size:11px; margin-top:24px; color:var(--ink-muted); }
 .liquid-ui.workbench #task-detail[data-empty="true"] .detail-actions #shelf-import { display:none; }
 .workbench-menu { position:fixed; margin:0; padding:6px; width:196px; border:1px solid var(--line-strong); border-radius:8px; background:var(--wb-surface); color:var(--ink); box-shadow:0 8px 28px #172a3a20; }
 .workbench-menu button { display:block; width:100%; text-align:left; border-radius:4px; padding:8px 10px; font:12px/1.5 var(--font-ui); color:inherit; }
@@ -146,10 +153,7 @@
 .liquid-ui.workbench .page:not(#page-shelf) h1 { font-size:26px; }
 .liquid-ui.workbench :is(button,input,select):focus-visible { outline:2px solid #1377ce88; outline-offset:2px; }
 .liquid-ui.workbench ::selection { background:#c2def6; color:#173a5a; }
-.liquid-ui.workbench #task-detail[data-empty="true"] #task-body{min-height:100%;display:flex;flex-direction:column}
-.liquid-ui.workbench #task-detail[data-empty="true"] .task-items{flex:1;display:grid;place-items:center;min-height:340px}
-.liquid-ui.workbench .collection-start{text-align:center;margin:auto;padding:36px 16px}
-.liquid-ui.workbench .collection-start>div{justify-content:center}
 .liquid-ui.workbench .preview-text{font:14px/1.55 var(--font-ui);letter-spacing:normal;word-spacing:normal;text-align:left;white-space:pre-wrap;padding:16px 20px;color:var(--ink);background:var(--wb-surface)}
-@media(max-width:1200px){.liquid-ui.workbench .shelf-layout{grid-template-columns:224px minmax(0,1fr)}.liquid-ui.workbench .task-detail{padding:24px}.liquid-ui.workbench .detail-head{align-items:flex-start;flex-direction:column}.liquid-ui.workbench .detail-actions{justify-content:flex-start}}
-@media(max-width:900px){.liquid-ui.workbench .app-body{grid-template-columns:168px minmax(0,1fr)}.liquid-ui.workbench .main-scroll:has(#page-shelf.is-active){overflow:auto}.liquid-ui.workbench #page-shelf.is-active{height:auto;min-height:100%}.liquid-ui.workbench #page-shelf>.page-head{padding:20px}.liquid-ui.workbench .shelf-layout{grid-template-columns:1fr}.liquid-ui.workbench .task-column{max-height:264px;border-right:0;border-bottom:1px solid var(--line);padding:16px 20px}.liquid-ui.workbench .column-head{padding-bottom:12px}.liquid-ui.workbench .task-filters{margin:8px 0}.liquid-ui.workbench .task-detail{min-height:400px}}
+
+@media(max-width:1200px){.liquid-ui.workbench .shelf-layout{grid-template-columns:224px minmax(0,1fr)}.liquid-ui.workbench .task-detail{padding:20px}.liquid-ui.workbench #task-body{padding:24px}.liquid-ui.workbench .detail-head{flex-wrap:wrap}.liquid-ui.workbench .detail-actions{padding-top:0}}
+@media(max-width:900px){.liquid-ui.workbench .app-body{grid-template-columns:156px minmax(0,1fr)}.liquid-ui.workbench .shelf-layout{grid-template-columns:196px minmax(0,1fr)}.liquid-ui.workbench .task-detail{padding:12px}.liquid-ui.workbench #task-body{padding:20px}.liquid-ui.workbench .detail-head h2{font-size:20px}.liquid-ui.workbench .detail-actions{justify-content:flex-start}}

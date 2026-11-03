@@ -1,0 +1,19 @@
+{
+  "version": "0.2.29",
+  "coldReadyBeforeShow": true,
+  "warmReadyBeforeShow": true,
+  "oneShownEvent": true,
+  "cancelledRevealSuppressed": true,
+  "recreatedReadyBeforeShow": true,
+  "keys": 38,
+  "nativeBlur": true,
+  "nativeCorners": true,
+  "wholePanelFadeRemoved": true,
+  "coldMilliseconds": 574,
+  "warmMilliseconds": [
+    231,
+    61,
+    60
+  ],
+  "recreatedMilliseconds": 299
+}

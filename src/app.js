@@ -116,7 +116,7 @@ function renderTaskList() {
   list.innerHTML = visible.map((task) => `
     <button class="task-row ${task.id === state.selectedTaskId ? 'is-active' : ''}" type="button" data-id="${escapeHtml(task.id)}">
       <span class="task-row-mark ${task.progress==='done'?'is-done':''}" aria-label="${task.progress==='done'?'已完成':'进行中'}"></span>
-      <span class="task-row-body"><b>${escapeHtml(task.title)}</b><small>${task.progress==='done'?'已完成 · ':''}${task.items.length} 项，${relativeTime(task.updatedAt)}</small></span>
+      <span class="task-row-body"><b>${escapeHtml(task.title)}</b><small>${task.progress==='done'?'已完成 · ':''}${task.items.length} 项 · ${relativeTime(task.updatedAt)}</small></span>
     </button>
   `).join('');
   $$('.task-row', list).forEach((row) => {
@@ -170,7 +170,7 @@ function renderTaskDetail() {
 
   const container = $('#task-items');
   if (!task.items.length) {
-    container.innerHTML = '<div class="collection-start"><span class="collection-mark" aria-hidden="true"><svg viewBox="0 0 32 32"><path d="M7 5h13l5 5v17H7zM20 5v6h5M12 17h8M12 22h5"/></svg></span><h3>给这件事，放进第一份内容</h3><p>复制一段文字，或从内容库挑一张截图</p><div><button type="button" class="primary-btn" data-collect-clipboard>加入剪贴板内容</button><button type="button" class="quiet-btn" data-collect-library>去内容库挑选</button></div><small>之后可按顺序复制，或整理成 Markdown 文档</small></div>';
+    container.innerHTML = '<div class="collection-start"><span class="collection-mark" aria-hidden="true"><svg viewBox="0 0 32 32"><path d="M7 5h13l5 5v17H7zM20 5v6h5M12 17h8M12 22h5"/></svg></span><h3>先收集，再整理</h3><p>把这件事需要的截图、文字和链接放在一起</p><div><button type="button" class="primary-btn" data-collect-clipboard>加入剪贴板内容</button><button type="button" class="quiet-btn" data-collect-library>去内容库挑选</button></div><small>内容会保留顺序，随时复制或导出 Markdown</small></div>';
     container.querySelector('[data-collect-clipboard]').onclick=()=>$('#shelf-import').click();
     container.querySelector('[data-collect-library]').onclick=()=>navigate('library');
   } else {
@@ -184,7 +184,7 @@ function taskItemCard(item) {
   const childHtml = children.map((child) => `
     <div class="derived-card">
       <span class="derived-tag">${escapeHtml(SOURCE_LABELS[child.source?.type] || '整理')}</span>
-      <p>${escapeHtml((child.text || child.title || '').slice(0, 220))}</p>
+      <p>${escapeHtml(SuiraTextSpacing.compactCapture(child.text || child.title || '').slice(0, 220))}</p>
       <div class="derived-actions">
         <button type="button" data-copy="${escapeHtml(child.id)}">复制</button>
       </div>
@@ -199,7 +199,7 @@ function taskItemCard(item) {
       </header>
       ${item.kind === 'image' && item.thumbnail
         ? `<img class="shelf-thumb" src="${escapeHtml(item.thumbnail)}" alt="">`
-        : `<p class="shelf-text">${escapeHtml((item.text || item.filePath || '').slice(0, 300))}</p>`}
+        : `<p class="shelf-text">${escapeHtml(SuiraTextSpacing.compactCapture(item.text || item.filePath || '').slice(0, 300))}</p>`}
       ${childHtml ? `<div class="derived-wrap">${childHtml}</div>` : ''}
       <footer class="shelf-card-actions">
         <button type="button" data-copy="${escapeHtml(item.id)}">复制</button>
@@ -345,7 +345,7 @@ function renderLibrary() {
       </header>
       ${item.kind === 'image' && item.thumbnail
         ? `<img class="shelf-thumb" src="${escapeHtml(item.thumbnail)}" alt="">`
-        : `<p class="shelf-text">${escapeHtml((item.text || item.filePath || '').slice(0, 220) || '（无文字内容）')}</p>`}
+        : `<p class="shelf-text">${escapeHtml(SuiraTextSpacing.compactCapture(item.text || item.filePath || '').slice(0, 220) || '（无文字内容）')}</p>`}
       ${derived.length ? `<div class="derived-note">${derived.length} 个处理结果</div>` : ''}
       <footer class="shelf-card-actions">
         <button type="button" data-copy="${escapeHtml(item.id)}">复制</button>
@@ -519,7 +519,7 @@ function openPreview(itemId) {
       // 只读、可选中复制的全文区；内容用 textContent 写入，不拼 innerHTML
       const content = document.createElement('div');
       content.className = 'preview-text';
-      content.textContent = text.replace(/\n[ \t]*\n+/g,'\n');
+      content.textContent = SuiraTextSpacing.compactCapture(text);
       body.appendChild(content);
     }
   }

@@ -1,0 +1,22 @@
+{
+  "version": "0.2.29",
+  "artifact": "Suira-0.2.29-x64.exe",
+  "bytes": 156830179,
+  "sha256": "8C2CCF3437ECC7D40C60E63F59A6FD68704B74D62266885504F6DC2AFFDD0576",
+  "sha512": "KQlWtVRvlIVlnTpwEqVC67E0qkvfKBESNfjgkaL24Ghdea1yqdIF1hoZbHRQZOHGI4/kjxJPXEW6KsI6t7Va5A==",
+  "platform": "win32",
+  "arch": "x64",
+  "electron": "45.0.0",
+  "checkedSourceFiles": 118,
+  "checks": [
+    "source-payload-byte-match",
+    "no-test-profile-or-obsolete-key-hook",
+    "installer-archive-crc",
+    "updater-feed-and-sha512-match"
+  ],
+  "signature": "unsigned",
+  "published": true,
+  "payloadSha256": "507C8DA71CDEDF7E0BB3CA14ECF9FB710F70FF234AC8DDFDE56E64BE172369BF",
+  "executableSha256": "2FA6A4D0A635A672572171EE0991FD666005F1F14D19C5679AE8145A7E956BF1",
+  "releaseUrl": "https://github.com/huihui200739/suira-updates/releases/tag/v0.2.29"
+}

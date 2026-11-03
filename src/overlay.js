@@ -697,7 +697,7 @@ async function startOcr() {
     const result = await captureApi.finish({ dataUrl, action: 'ocr' });
     if (!result?.ok) throw new Error(result?.error || '识别失败');
     state.ocrItemId = result.item?.id || result.output?.id || '';
-    const text = result.output?.text || '';
+    const text = SuiraTextSpacing.compactCapture(result.output?.text || '');
     ocrText.value = text;
     ocrText.placeholder = text ? '' : '没有识别到文字，可以重新框选或换一张更清晰的图片';
     showAction(text ? '识别完成' : '没有识别到文字');

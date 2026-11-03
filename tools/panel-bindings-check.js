@@ -48,7 +48,7 @@ async function checkBindings({ send, evaluate, capture }) {
   const query = key => `.key[data-key="${key}"]`;
   const state = key => ev(`document.querySelector(${JSON.stringify(query(key))}).dataset.state`);
   async function shown() {
-    await ev(`(async()=>{for(const cb of window.__handlers['quick:shown']||[])await cb();document.activeElement?.blur();document.getElementById('panel-body').scrollTop=0;return true;})()`);
+    await ev(`(async()=>{for(const cb of window.__handlers['quick:prepare']||[])await cb({token:3});for(const cb of window.__handlers['quick:shown']||[])await cb();document.activeElement?.blur();document.getElementById('panel-body').scrollTop=0;return true;})()`);
   }
   async function point(key) {
     return ev(`(()=>{const e=document.querySelector(${JSON.stringify(query(key))});e.scrollIntoView({block:'nearest'});const r=e.getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2};})()`);
@@ -94,8 +94,8 @@ async function checkBindings({ send, evaluate, capture }) {
   await ev('window.__runs=[],true');
   assert.equal(await ev(`document.querySelector('[data-key="C"]').dataset.action`),'capture');
   assert.equal(await ev(`document.querySelector('[data-key="V"]').dataset.action`),'clipboard');
-  assert.equal(await ev(`document.getElementById('capture-kbd').textContent`),'Alt C');
-  assert.equal(await ev(`document.getElementById('clipboard-kbd').textContent`),'Alt V');
+  assert.equal(await ev(`Boolean(document.getElementById('capture'))`),false);
+  assert.equal(await ev(`Boolean(document.getElementById('open-clipboard'))`),false);
   const held=await start('C','R');
   assert.equal(await ev('document.querySelectorAll(".is-key-near,.is-key-hover,.is-key-trail,.is-key-sheen,.is-key-pressed").length'),0,'Dragging suspends key feedback, trails, reflection and press');
   assert.equal(await ev('Boolean(document.querySelector(".key-drag-preview .suira-art"))'),true,'Dragging retains the actual tool object');
@@ -111,7 +111,7 @@ async function checkBindings({ send, evaluate, capture }) {
   assert.equal(await state('C'),'unbound');
   assert.equal(await ev(`document.querySelector('[data-key="R"]').dataset.action`),'capture');
   assert.equal(await ev(`document.querySelector('[data-key="R"] .key-badge').textContent`),'R');
-  assert.equal(await ev(`document.getElementById('capture-kbd').textContent`),'Alt R');
+
   assert.deepEqual(await ev('window.__runs'),[],'拖动不能顺带执行源动作');
   await key('r','KeyR');await wait(30);
   assert.deepEqual(await ev('window.__runs'),['capture']);
