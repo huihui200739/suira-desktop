@@ -1,0 +1,26 @@
+{
+  "version": "0.2.31",
+  "publicCommit": "ab0bfb4c1f581625a098295709ed41e3a9279b60",
+  "publicRemoteMatches": true,
+  "publicWorktreeClean": true,
+  "identicalIntroduction": true,
+  "verifiedFiles": [
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE",
+    "assets/suira-icon.png",
+    "docs/product/README.md",
+    "docs/product/panel.png",
+    "docs/product/keyboard-menu.png",
+    "docs/product/apps.png",
+    "docs/product/workbench.png",
+    "docs/product/markdown.png",
+    "docs/product/calendar.png",
+    "docs/product/notes.png",
+    "docs/product/toolbox.png",
+    "docs/product/clipboard.png",
+    "docs/product/trace.png"
+  ],
+  "anonymousReadmeAndTraceBytesMatch": true,
+  "noSourceHistoryMirrored": true
+}

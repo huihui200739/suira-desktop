@@ -93,9 +93,9 @@ window.addEventListener('load', function () {
         const b = document.getElementById('maximize');
         return b ? b.innerHTML.length : 0;
       })(),
-      trailRows: document.querySelectorAll('.trail-row').length,
-      summaryCards: document.querySelectorAll('.summary-card').length,
-      failedRows: document.querySelectorAll('.trail-row.is-failed').length,
+      trailRows: document.querySelectorAll('.trace-group').length,
+      summaryCards: document.querySelectorAll('.trace-metric').length,
+      failedRows: document.querySelectorAll('.trace-group.is-failed').length,
       navActive: document.querySelectorAll('.nav-item.is-active').length,
       bodyOverflowX: document.documentElement.scrollWidth - document.documentElement.clientWidth,
       visiblePageCount: document.querySelectorAll('.page.is-active').length,
@@ -104,8 +104,8 @@ window.addEventListener('load', function () {
       pasteButtons: document.querySelectorAll('[data-paste]').length,
       pasteButtonTexts: Array.from(document.querySelectorAll('[data-paste]')).map((b) => b.textContent.trim()),
       revealButtons: document.querySelectorAll('[data-reveal]').length,
-      retryButtons: document.querySelectorAll('[data-retry]').length,
-      retryButtonTexts: Array.from(document.querySelectorAll('[data-retry]')).map((b) => b.textContent.trim()),
+      retryButtons: document.querySelectorAll('[data-trace-retry]').length,
+      retryButtonTexts: Array.from(document.querySelectorAll('[data-trace-retry]')).map((b) => b.textContent.trim()),
       previewOverlay: !!document.getElementById('preview'),
       previewHidden: !!(document.getElementById('preview') || {}).hidden,
       previewBody: !!document.getElementById('preview-body'),
@@ -236,12 +236,12 @@ window.addEventListener('load', function () {
     }, 1200);
   } else if (page === 'trail') {
     setTimeout(function () {
-      var retry = document.querySelector('[data-retry]');
+      var group=document.querySelector('.trace-group.is-failed .trace-group-toggle');if(group)group.click();var failedStep=document.querySelector('.trace-group.is-failed .trace-step:has([data-trace-retry])');if(failedStep)failedStep.open=true;var retry = document.querySelector('[data-trace-retry]');
       if (retry) retry.click();
       setTimeout(function () {
         out.retryToast = (document.getElementById('global-toast') || {}).textContent || '';
         out.retriedId = window.__lastRetry || '';
-        out.rowsAfterRetry = document.querySelectorAll('.trail-row').length;
+        out.rowsAfterRetry = document.querySelectorAll('.trace-group').length;
         emit();
       }, 300);
     }, 1200);
@@ -487,12 +487,12 @@ try {
   });
 
   const trail = probe(runChrome('__fx_main.html', [], '?page=trail'), 'P');
-  t('处理轨迹：4 条记录', () => assert.strictEqual(trail.trailRows, 4));
-  t('处理轨迹：4 张统计卡', () => assert.strictEqual(trail.summaryCards, 4));
+  t('处理轨迹：4 次处理按来源归为 2 组', () => assert.strictEqual(trail.trailRows, 2));
+  t('处理轨迹：4 项紧凑统计', () => assert.strictEqual(trail.summaryCards, 4));
   t('处理轨迹：失败记录有独立样式', () => assert.strictEqual(trail.failedRows, 1));
   t('处理轨迹：只有失败行带「重试」按钮', () => {
     assert.strictEqual(trail.retryButtons, 1);
-    assert.deepStrictEqual(trail.retryButtonTexts, ['重试']);
+    assert.deepStrictEqual(trail.retryButtonTexts, ['重试这一步']);
   });
 
   console.log('\n== 内容库预览 / 粘贴 / 轨迹重试交互断言 ==');
@@ -526,10 +526,10 @@ try {
   });
 
   const trailFlow = probe(runChrome('__fx_main.html', [], '?page=trail'), 'L');
-  t('处理轨迹：点重试调用 executions.retry 并提示「已重试」', () => {
+  t('处理轨迹：展开步骤后重试调用 executions.retry 并反馈结果', () => {
     assert.strictEqual(trailFlow.retriedId, 'e4');
-    assert.strictEqual(trailFlow.retryToast, '已重试');
-    assert.strictEqual(trailFlow.rowsAfterRetry, 4);
+    assert.strictEqual(trailFlow.retryToast, '这一步已重新处理');
+    assert.strictEqual(trailFlow.rowsAfterRetry, 2);
   });
 
   const set = probe(runChrome('__fx_main.html', [], '?page=settings'), 'P');

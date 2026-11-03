@@ -11,7 +11,7 @@
   <link rel="stylesheet" href="tool-art.css"><link rel="stylesheet" href="tool-surfaces.css">
   <link rel="stylesheet" href="liquid-glass.css">
   <link rel="stylesheet" href="workbench-surface.css">
-  <link rel="stylesheet" href="document-editor.css">
+  <link rel="stylesheet" href="document-editor.css"><link rel="stylesheet" href="trail.css">
 </head>
 <body>
   <div class="app-shell">
@@ -108,12 +108,13 @@
         <section class="page" id="page-trail" aria-label="处理轨迹">
           <div class="page-head">
             <div>
-              <h1>处理轨迹</h1>
+              <h1>处理轨迹</h1><p class="page-description">看清每份内容经过的处理，接着完成下一步</p>
             </div>
             <button class="quiet-btn" id="trail-refresh" type="button">刷新</button>
           </div>
           <div class="trail-summary" id="trail-summary"></div>
-          <div class="workspace-toolbar"><input id="trail-search" class="text-input" type="search" placeholder="搜索动作或错误原因"><select id="trail-filter" aria-label="筛选处理状态"><option value="">全部状态</option><option value="done">已完成</option><option value="failed">失败</option><option value="running">进行中</option></select></div><div class="trail-list" id="trail-list"></div>
+          <div class="trace-toolbar"><div class="trace-filters" id="trail-filter" role="group" aria-label="筛选处理状态"></div><label class="trace-search"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6"/><path d="m15 15 5 5"/></svg><input id="trail-search" type="search" placeholder="搜索内容、动作或错误" aria-label="搜索处理轨迹" autocomplete="off"></label></div>
+          <p class="trace-match-count" id="trail-match-count" role="status" aria-live="polite"></p><div class="trail-list" id="trail-list"></div><button type="button" class="quiet-btn" id="trail-more" hidden>显示更多</button>
         </section>
 
         <section class="page" id="page-calendar" aria-label="日历">
@@ -286,7 +287,7 @@
     </div>
   </div>
   <script src="ui-motion.js"></script>
-  <script src="vendor/marked.js"></script><script src="vendor/purify.js"></script><script src="markdown-format.js"></script><script src="vendor/document-editor.js"></script><script src="calendar-data.js"></script><script src="tool-art.js"></script><script src="workspace.js"></script><script src="text-spacing.js"></script><script src="app.js"></script>
+  <script src="vendor/marked.js"></script><script src="vendor/purify.js"></script><script src="markdown-format.js"></script><script src="vendor/document-editor.js"></script><script src="calendar-data.js"></script><script src="tool-art.js"></script><script src="workspace.js"></script><script src="text-spacing.js"></script><script src="trail-model.js"></script><script src="trail-view.js"></script><script src="app.js"></script>
   <script src="liquid-glass.js"></script>
 </body>
 </html>

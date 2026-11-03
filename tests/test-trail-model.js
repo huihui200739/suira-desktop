@@ -1,0 +1,18 @@
+'use strict';
+const assert=require('node:assert/strict'),{build,matches,duration,formatDuration}=require('../src/trail-model');
+const items=[{id:'image',title:'屏幕截图',kind:'image',createdAt:1000},{id:'text',title:'识别文字',parentIds:['image'],createdAt:1100},{id:'clean',title:'整理后',parentIds:['text'],createdAt:1200},{id:'other',title:'屏幕截图',createdAt:1300}];
+const record=(id,actionId,inputIds,outputIds,status,startedAt,error='')=>({id,actionId,inputIds,outputIds,status,startedAt,finishedAt:status==='running'?0:startedAt+100,error});
+const records=[record('ocr','ocr.local',['image'],['text'],'done',1000),record('clean','text.clean',['text'],['clean'],'done',1200),record('tr1','translate',['clean'],[],'failed',1400,'服务暂时不可用'),record('tr2','translate',['clean'],[],'failed',1600,'服务暂时不可用'),record('copy','output.copy',['clean'],[],'done',1800),record('other','output.copy',['other'],[],'done',2000)];
+const before=JSON.stringify({records,items}),result=build(records,items),group=result.groups.find(g=>g.rootId==='image');
+assert.equal(result.groups.length,2,'Same titles must not merge unrelated content');assert.equal(group.entries.length,5);assert.equal(group.steps.length,4);assert.equal(group.steps.find(s=>s.latest.actionId==='translate').attempts.length,2);assert.equal(group.status,'failed','A later copy cannot hide an unresolved translation failure');assert.equal(group.duration,500);
+assert.equal(JSON.stringify({records,items}),before,'Grouping is read-only');
+const success=record('tr3','translate',['clean'],[],'done',2200);const recovered=build([...records,success],items).groups.find(g=>g.rootId==='image');assert.equal(recovered.status,'done');assert.equal(recovered.steps.find(s=>s.latest.actionId==='translate').attempts.length,3);assert.equal(recovered.failedAttempts,2,'Past failures remain in attempt history');
+assert.equal(matches(group,{query:'服务 提取',labels:{'ocr.local':'提取文字'},itemMap:result.itemMap}),true);assert.equal(matches(group,{query:'不存在',itemMap:result.itemMap}),false);assert.equal(matches(group,{status:'done'}),false);
+const deleted=build(records,[]).groups.find(g=>g.rootId==='image');assert.ok(deleted);assert.equal(deleted.title,'来源内容已清理');assert.equal(deleted.steps.length,4);
+const unlinked=build([record('x','x',[],[],'done',1000),record('y','x',[],[],'done',1001)],[]);assert.equal(unlinked.groups.length,2,'Unlinked records cannot be merged by action name');
+assert.equal(build([record('join','text.clean',['a','b'],['c'],'done',1000)],[]).groups.length,1);
+assert.equal(build([record('cycle','x',['a'],['b'],'done',1000)],[{id:'a',parentIds:['b']},{id:'b',parentIds:['a']}]).groups.length,1,'Malformed cycles cannot hang the view');
+assert.equal(build([records[0],records[0]],items).total,1);assert.equal(build([record('run','x',['clean'],[],'running',2500)],items,3000).groups[0].status,'running');
+assert.equal(duration({status:'done',startedAt:1000,finishedAt:0}),null);assert.equal(duration({status:'done',startedAt:1000,finishedAt:900}),null);assert.equal(duration({status:'running',startedAt:1000},1500),500);
+assert.equal(formatDuration(null),'—');assert.equal(formatDuration(25),'<0.1 秒');assert.equal(formatDuration(1250),'1.3 秒');assert.equal(formatDuration(65000),'1 分 5 秒');
+console.log('PASS trace grouping: lineage, same-title isolation, retries, unresolved failures, deletion, cycles, durations and read-only input');

@@ -1,0 +1,15 @@
+{
+  "version": "0.2.31",
+  "source": "isolated real Electron profile and real local text action",
+  "contentLineageGrouping": true,
+  "retryAttemptsCollapsed": true,
+  "searchAndStatusFilters": true,
+  "inputPreview": true,
+  "adjustTranslation": true,
+  "stepDurations": true,
+  "expandedStateRetained": true,
+  "missingContentHonest": true,
+  "realRetryRecoversWithoutDuplicateGroup": true,
+  "originalTextPreserved": true,
+  "lightDarkAndNarrowLayout": true
+}

@@ -567,65 +567,24 @@ async function pasteItemToTarget(itemId) {
 
 /* ---------- trail ---------- */
 
+let trailView,trailRevision=0;
 async function refreshTrail() {
-  state.executions = (await window.suira.executions.list(200)) || [];
-  renderTrail();
+  const revision=++trailRevision;
+  try {
+    const [executions,items]=await Promise.all([window.suira.executions.list(500),window.suira.content.list({limit:500})]);
+    if(revision!==trailRevision)return;
+    state.executions=executions||[];state.items=items||[];renderTrail();
+  } catch(error){showGlobalToast(error.message||'处理轨迹暂时无法加载','error');}
 }
-
 function renderTrail() {
-  const summary = $('#trail-summary');
-  const list = $('#trail-list');
-  const done = state.executions.filter((execution) => execution.status === 'done').length;
-  const failed = state.executions.filter((execution) => execution.status === 'failed').length;
-  const ocrCount = state.executions.filter((execution) => execution.actionId === 'ocr.local').length;
-  summary.innerHTML = `
-    <div class="summary-card"><b>${state.executions.length}</b><span>总动作数</span></div>
-    <div class="summary-card"><b>${done}</b><span>成功</span></div>
-    <div class="summary-card ${failed ? 'is-warn' : ''}"><b>${failed}</b><span>失败</span></div>
-    <div class="summary-card"><b>${ocrCount}</b><span>文字识别</span></div>
-  `;
-  if (!state.executions.length) {
-    list.innerHTML = '<div class="library-empty">还没有动作记录。截图提字、合并换行后，这里会出现完整轨迹。</div>';
-    return;
-  }
-  const trailFilter=$('#trail-filter').value;
-  const trailQuery=$('#trail-search').value.trim().toLowerCase();
-  const visible=state.executions.filter(e=>(!trailFilter||e.status===trailFilter)&&(!trailQuery||((ACTION_LABELS[e.actionId]||e.actionId)+' '+e.error).toLowerCase().includes(trailQuery)));
-  list.innerHTML = visible.map((execution) => {
-    const statusLabel = { done: '完成', failed: '失败', running: '进行中', queued: '排队', cancelled: '已取消' }[execution.status] || execution.status;
-    const inputNames = execution.inputIds.map((id) => state.items.find((item) => item.id === id)?.title).filter(Boolean);
-    return `
-    <div class="trail-row ${execution.status === 'failed' ? 'is-failed' : ''}">
-      <span class="trail-status ${execution.status}">${statusLabel}</span>
-      <div class="trail-main">
-        <b>${escapeHtml(ACTION_LABELS[execution.actionId] || execution.actionId)}</b>
-        <small>${escapeHtml(inputNames.join('、') || '本地内容')}${execution.error ? `，${escapeHtml(execution.error)}` : ''}</small>
-      </div>
-      ${execution.status === 'failed' ? `<button class="trail-retry" type="button" data-retry="${escapeHtml(execution.id)}">重试</button>` : ''}
-      <time>${relativeTime(execution.startedAt)}</time>
-    </div>`;
-  }).join('');
-
-  // 失败步骤可以重跑一次：主进程负责复用原始输入重新执行
-  $$('[data-retry]', list).forEach((button) => button.addEventListener('click', async () => {
-    const executionId = button.dataset.retry;
-    if (!executionId) return;
-    button.disabled = true;
-    const label = button.textContent;
-    button.textContent = '重试中…';
-    try {
-      const result = await window.suira.executions.retry(executionId);
-      if (!result?.ok) throw new Error(result?.error || '重试失败');
-      showGlobalToast('已重试', 'success');
-      await refreshTrail();
-    } catch (error) {
-      showGlobalToast(error.message || '重试失败', 'error');
-      if (button.isConnected) {
-        button.disabled = false;
-        button.textContent = label;
-      }
-    }
-  }));
+  if(!trailView)trailView=window.SuiraTrailView.create({
+    element:$('#page-trail'),escapeHtml,labels:ACTION_LABELS,relativeTime,compactText:window.SuiraTextSpacing.compactCapture,
+    onPreview:openPreview,onLibrary:()=>navigate('library'),notify:showGlobalToast,
+    onConfigure:()=>{navigate('settings');document.querySelector('[data-setting-tab="translation"]')?.click();},
+    onTranslate:async item=>{const result=await window.suira.textTools.open({mode:'translate',text:item.text});if(!result?.ok)throw Error(result?.error||'无法打开翻译');},
+    onRetry:async id=>{const result=await window.suira.executions.retry(id);await refreshTrail();if(!result?.ok)throw Error(result?.error||'重试失败');showGlobalToast('这一步已重新处理','success');}
+  });
+  trailView.render(state.executions,state.items);
 }
 
 /* ---------- settings ---------- */
@@ -1057,8 +1016,6 @@ function closeModal() {
 function installEvents() {
   $$('.nav-item').forEach((item) => item.addEventListener('click', () => navigate(item.dataset.page)));
 
-  $('#trail-filter').addEventListener('change',renderTrail);
-  $('#trail-search').addEventListener('input',renderTrail);
   $('#shelf-first').addEventListener('click',()=>$('#shelf-new').click());
   window.suira.textTools?.onConfigure?.(()=>{document.querySelector('[data-page=settings]').click();document.querySelector('[data-setting-tab=translation]').click();});
   $('#task-search').addEventListener('input',event=>{state.taskQuery=event.target.value;renderTaskList();renderTaskDetail();});
@@ -1205,6 +1162,7 @@ function installEvents() {
   window.suira.content.onChanged(() => {
     if (state.page === 'shelf') refreshShelf();
     if (state.page === 'library') refreshLibrary();
+    if (state.page === 'trail') refreshTrail();
   });
   window.suira.tasks.onChanged(() => {
     if (state.page === 'shelf') refreshShelf();

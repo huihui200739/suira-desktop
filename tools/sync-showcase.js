@@ -3,7 +3,7 @@
 const fs=require('node:fs'),path=require('node:path'),assert=require('node:assert/strict'),crypto=require('node:crypto'),{execFileSync}=require('node:child_process');
 const root=path.resolve(__dirname,'..'),version=require('../package.json').version;
 const description='随序 SUIRA · Windows 随手工作台｜截图、剪贴板、日历与 Markdown，让零散内容接着走';
-const images=['panel','keyboard-menu','apps','workbench','markdown','calendar','notes','toolbox','clipboard'];
+const images=['panel','keyboard-menu','apps','workbench','markdown','calendar','notes','toolbox','clipboard','trace'];
 const files=['README.md','CHANGELOG.md','LICENSE','assets/suira-icon.png','docs/product/README.md',...images.map(name=>'docs/product/'+name+'.png')];
 function generate(){
  const intro=fs.readFileSync(path.join(root,'docs/product/INTRO.md'),'utf8').replaceAll('{{version}}',version).trimEnd();
