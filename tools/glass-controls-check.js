@@ -28,10 +28,10 @@ const contrast=(a,b)=>{const x=luminance(a),y=luminance(b);return (Math.max(x,y)
  await prepare(main,'light');
  assert.equal((await style(main,'#task-detail')).image,'none','Empty task view has no giant white plate');
  assert.equal((await style(main,'#shelf-first')).display,'none','One primary task creation action');
- assert.ok(parse((await style(main,'.sidebar')).background)[3]<.15,'Navigation keeps the actual backdrop');
+ assert.equal(parse((await style(main,'.sidebar')).background)[3],1,'Workbench navigation has a stable matte backing');
  await shot(main,'workbench');
  const secondary=(await style(main,'#shelf-import')).image;
- assert.ok(secondary.includes('linear-gradient'),'Secondary actions have the shared thin material');
+ assert.equal(secondary,'none','Workbench actions use the shared paper surface');
  const task=await main.evaluate('window.suira.tasks.create("周末拍摄").then(r=>r.task)');
  await main.evaluate(`window.suira.tasks.addItem({taskId:${JSON.stringify(task.id)},itemId:${JSON.stringify(item.id)}})`);
  await until(()=>main.evaluate('Boolean(document.querySelector(".shelf-card-actions button"))'));
@@ -46,7 +46,7 @@ const contrast=(a,b)=>{const x=luminance(a),y=luminance(b);return (Math.max(x,y)
  for(const theme of ['light','dark']){
   await prepare(md,theme);
   const primary=await style(md,'#welcome-open'),other=await style(main,'#shelf-new');
-  if(theme==='light')assert.equal(primary.image,other.image,'Markdown and workbench primary actions share the same finish');
+  if(theme==='light')assert.ok(primary.image.includes('linear-gradient')&&other.image.includes('linear-gradient'),'Primary actions keep their blue hierarchy');
   const floor=await style(md,'.glass-scene'),back=blend(parse(floor.background),theme==='light'?[0,0,0,1]:[255,255,255,1]);
   // The veil alone is the minimum reading background; local films only improve it.
   for(const selector of ['#md-empty>b','#md-empty>p','#md-paste','.document-sidebar h3','.workspace-empty']){
@@ -58,8 +58,8 @@ const contrast=(a,b)=>{const x=luminance(a),y=luminance(b);return (Math.max(x,y)
   await shot(md,'markdown-'+theme);
  }
  await main.evaluate('window.suira.workspace.open("calendar")');const calendar=await page('tool=calendar');await until(()=>calendar.evaluate('Boolean(document.querySelector(".agenda-tabs"))'));
- await prepare(calendar,'light');assert.equal((await style(calendar,'#calendar-new')).image,secondary,'Calendar add action matches secondary controls');
- assert.equal((await style(calendar,'.agenda-tabs .is-active')).image,secondary,'Selected segmented control has the same highlight');
+ await prepare(calendar,'light');const calendarMaterial=(await style(calendar,'#calendar-new')).image;assert.ok(calendarMaterial.includes('linear-gradient'),'Calendar retains its glass controls');
+ assert.equal((await style(calendar,'.agenda-tabs .is-active')).image,calendarMaterial,'Selected segmented control has the same highlight');
  proof.checks.push('Markdown primary/secondary/text actions','Light-on-dark and dark-on-light reading contrast','Keyboard focus','Calendar add and segmented actions');
  await main.evaluate('window.suira.clipboardBar.show()');const clipboard=await page('/clipboardbar.html');
  await main.evaluate('window.suira.notes.create()');const note=await page('/notes.html');

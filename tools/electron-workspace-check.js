@@ -78,12 +78,12 @@ async function until(fn){let error;for(let n=0;n<140;n++){try{const value=await 
   assert.ok(await main.evaluate('document.documentElement.scrollWidth<=innerWidth'), 'Compact document window must not overflow');
   assert.ok(await main.evaluate('document.querySelector(".window-actions").getBoundingClientRect().right<=innerWidth'), 'Window controls remain reachable');
   await main.send('Emulation.clearDeviceMetricsOverride');
-  assert.equal(await main.evaluate('document.getElementById("md-outline").hidden'),true);
-  await main.evaluate('document.querySelector("[aria-controls=md-outline]").click();true');
   assert.equal(await main.evaluate('document.getElementById("md-outline").hidden'),false);
+  await main.evaluate('document.querySelector("[aria-controls=md-outline]").click();true');
+  assert.equal(await main.evaluate('document.getElementById("md-outline").hidden'),true);
   assert.ok(await main.evaluate('document.querySelectorAll("#md-outline button").length>=2'));
   await main.evaluate('document.querySelector("[aria-controls=md-outline]").click();true');
-  assert.equal(await main.evaluate('document.querySelector("[aria-controls=md-outline]").getAttribute("aria-expanded")'),'false');
+  assert.equal(await main.evaluate('document.querySelector("[aria-controls=md-outline]").getAttribute("aria-expanded")'),'true');
   assert.notEqual(markdownClient,calendarClient);
   assert.equal(await workbench.evaluate('document.querySelector(".page.is-active").id'),'page-shelf');
   for(const view of ['preview','edit','split']){

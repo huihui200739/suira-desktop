@@ -1,0 +1,22 @@
+{
+  "version": "0.2.26",
+  "artifact": "Suira-0.2.26-x64.exe",
+  "bytes": 156819286,
+  "sha256": "8EA0E701478727001F2D46DCBE82F6F4F1DD158AF7BC567622EB55254A6B9A5A",
+  "sha512": "NfWLfXP1veeLdMLNChBzZMRRo0bCnpLBbZ4z6r6mC9lAYGAjPHJvQb+Wgk+m3uuvYz/9Gxah78DvBjJUG5hNoQ==",
+  "platform": "win32",
+  "arch": "x64",
+  "electron": "45.0.0",
+  "checkedSourceFiles": 112,
+  "checks": [
+    "source-payload-byte-match",
+    "no-test-profile-or-obsolete-key-hook",
+    "installer-archive-crc",
+    "updater-feed-and-sha512-match"
+  ],
+  "signature": "unsigned",
+  "published": true,
+  "releaseUrl": "https://github.com/huihui200739/suira-updates/releases/tag/v0.2.26",
+  "payloadSha256": "5C956D1D0BBE3C166EF0496EE0CEE2C192D2C3CFE2733AD53008B78146F23AED",
+  "executableSha256": "1B1139D730143022F3C19134A5423642EE1839E1C56B798E3A0E10A9437B4DAB"
+}

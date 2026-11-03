@@ -619,7 +619,7 @@ function renderTrail() {
 
 async function refreshSettings() {
   const info = await window.suira.app.info();
-  $('#app-version').textContent = `版本 ${info?.version || '—'}，${info?.runtime || ''}`;
+  $('#app-version').textContent = `版本 ${info?.version || '—'}`;
   $('#side-version').textContent = info?.version || '—';
   $('#user-data-path').textContent = info?.dataPath || info?.userData || '';
   const settings = await window.suira.settings.get();
@@ -652,7 +652,7 @@ function bindSettings() {
     const input=event.target, enabled=input.checked;
     if(enabled && !confirm('开启后，随序会在其他应用中响应已注册的组合键，Alt+字母可能覆盖它们的菜单快捷键。已被系统或其他程序占用的按键不会被抢占。是否开启？')){input.checked=false;return;}
     input.disabled=true;
-    try{const result=await window.suira.settings.update({globalShortcutsEnabled:enabled});if(!result.ok)throw Error(result.error||'设置失败');await refreshShortcuts();await syncShortcutPills();}
+    try{const result=await window.suira.settings.update({globalShortcutsEnabled:enabled});if(!result.ok)throw Error(result.error||'设置失败');await refreshShortcuts();}
     catch(error){input.checked=!enabled;showGlobalToast(error.message,'error');}finally{input.disabled=false;}
   });
   $('#shortcut-check').addEventListener('click',async event=>{
@@ -1047,11 +1047,6 @@ function installEvents() {
   $('#trail-filter').addEventListener('change',renderTrail);
   $('#trail-search').addEventListener('input',renderTrail);
   $('#shelf-first').addEventListener('click',()=>$('#shelf-new').click());
-  $('#show-quick').addEventListener('click', () => window.suira.quick.show());
-  $('#title-capture').addEventListener('click', async () => {
-    const result = await window.suira.capture.start();
-    if (!result?.ok) showGlobalToast(result?.error || '暂时无法开始截图', 'error');
-  });
   $('#minimize').addEventListener('click', () => window.suira.window.minimize());
   $('#maximize').addEventListener('click', async () => {
     const maximized = await window.suira.window.maximize();
@@ -1199,8 +1194,8 @@ function installEvents() {
   });
   window.suira.app.onToast((payload) => showGlobalToast(payload.message || '', payload.type || ''));
   window.suira.app.onNavigate((page) => {if(page==='settings:shortcuts'){navigate('settings');document.querySelector('[data-setting-tab="shortcuts"]')?.click();}else navigate(page);});
-  // 改键后顶栏提示同步刷新
-  window.suira.shortcuts.onChanged(() => { syncShortcutPills(); refreshShortcuts(); });
+  // 外部改键同步到设置页。
+  window.suira.shortcuts.onChanged(() => { refreshShortcuts(); });
   window.suira.ocr.onProgress((payload) => {
     if (payload?.status === 'recognizing text' && state.page !== 'trail') {
       showGlobalToast(`正在识别文字 ${Math.round((payload.progress || 0) * 100)}%`);
@@ -1210,34 +1205,12 @@ function installEvents() {
 
 /* ---------- init ---------- */
 
-/** 顶栏快捷键提示跟随真实键位：用户改过键后不再显示写死的组合。 */
-async function syncShortcutPills() {
-  try {
-    const snapshot = await window.suira.shortcuts.get();
-    const render = (name, elId) => {
-      const host = document.getElementById(elId);
-      if (!host) return;
-      const accelerator = String(snapshot?.bindings?.[name] || '');
-      if(snapshot.globalEnabled===false){host.innerHTML='<kbd>面板内</kbd>';return;}
-      host.innerHTML = accelerator
-        ? accelerator.replace(/CommandOrControl/gi, 'Ctrl').split('+')
-          .map((part) => `<kbd>${escapeHtml(part)}</kbd>`).join('<span>+</span>')
-        : '<kbd>未绑定</kbd>';
-    };
-    render('quick', 'pill-quick-keys');
-    render('capture', 'pill-capture-keys');
-  } catch {
-    /* 读不到键位时保留页面里的默认提示 */
-  }
-}
-
 async function init() {
   installEvents();
   if (standaloneTool) { navigate(standaloneTool); return; }
-  syncShortcutPills();
   const info = await window.suira.app.info();
   if (info?.version) {
-    $('#app-version').textContent = `版本 ${info.version}，${info.runtime || ''}`;
+    $('#app-version').textContent = `版本 ${info.version}`;
     $('#side-version').textContent = info.version;
   }
   state.executions = (await window.suira.executions.list(200)) || [];

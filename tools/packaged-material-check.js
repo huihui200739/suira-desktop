@@ -50,6 +50,7 @@ async function until(fn){let last;for(let i=0;i<180;i++){try{const value=await f
   assert.equal((await panel.evaluate('window.suira.app.info()')).nativeBlur,true);
   assert.equal(await panel.evaluate('document.documentElement.dataset.glassBackend'),'native');
   assert.equal(await panel.evaluate('document.querySelector(".glass-scene").children.length'),0,'No wallpaper background');
+  await main.evaluate('window.suira.workspace.save("markdown",{title:"打包验证文档",text:"# 打包验证文档\\n\\n可视化编辑与目录。"})');
   for(const tool of ['calendar','markdown']){
     await main.evaluate(`window.suira.workspace.open(${JSON.stringify(tool)})`);
     const client=await page('tool='+tool);
@@ -58,6 +59,9 @@ async function until(fn){let last;for(let i=0;i<180;i++){try{const value=await f
     await until(()=>client.evaluate('Boolean(document.querySelector(".tool-kind .suira-art.vivid"))'));
     if(tool==='calendar')assert.equal(await client.evaluate('document.querySelector(".tool-kind .calendar-page").getBoundingClientRect().height>0'),true,'Calendar icon content must not match the hidden page selector');
     else {
+      await until(()=>client.evaluate('Boolean(window.WorkspaceUI?.documentEditor)'));
+      assert.equal(await client.evaluate('document.getElementById("md-split").dataset.view'),'write','Packaged visual editor is active');
+      assert.equal(await client.evaluate('Boolean(document.querySelector("#md-outline [data-heading]"))'),true,'Packaged outline loads');
       await until(()=>client.evaluate('Boolean(document.querySelector("#md-empty .suira-art.vivid"))'));
       assert.equal(await client.evaluate('getComputedStyle(document.querySelector("#md-empty .art-object")).backgroundColor'),'rgba(0, 0, 0, 0)','Empty-state styling must not leak into the object layers');
     }
