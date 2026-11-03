@@ -1,0 +1,24 @@
+{
+  "version": "0.2.27",
+  "source": "real DWM compositor over synthetic windows; no user screen content",
+  "results": [
+    {
+      "name": "panel",
+      "red": [
+        198,
+        124,
+        133
+      ],
+      "blue": [
+        123,
+        149,
+        200
+      ],
+      "cornerMean": 12.289473684210526,
+      "cornerMax": 38,
+      "cornerSamples": 228,
+      "blurEnergy": 0.62,
+      "bareEnergy": 85
+    }
+  ]
+}

@@ -89,6 +89,7 @@
 .md-menu-format button { justify-content:center; padding:5px; }
 .md-menu-label { color:var(--menu-muted); font-size:11px; padding:6px 10px; }
 .md-menu-empty { padding:12px; color:var(--menu-muted); }
+.md-command-query { width:calc(100% - 8px); margin:4px; padding:8px; background:var(--menu-bg); color:var(--menu-ink); border:1px solid #6b7e9445; border-radius:6px; font:inherit; }
 .md-context-menu .md-color-grid { display:grid; grid-template-columns:1fr 1fr; gap:4px; }
 .md-context-menu .md-color-grid button { justify-content:flex-start; gap:8px; }
 .md-swatch { width:18px; height:18px; flex:none; border:1px solid #697b8d40; border-radius:4px; }

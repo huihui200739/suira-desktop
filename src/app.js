@@ -21,6 +21,8 @@ const state = {
   page: 'shelf',
   tasks: [],
   selectedTaskId: '',
+  taskQuery: '',
+  taskFilter: 'all',
   items: [],
   executions: [],
   filter: 'all',
@@ -104,13 +106,16 @@ async function refreshShelf() {
 function renderTaskList() {
   const list = $('#task-list');
   $('#task-count').textContent = `${state.tasks.length} 个`;
+  const visible=state.tasks.filter(task=>(state.taskFilter==='all'||(task.progress==='done')===(state.taskFilter==='done'))&&task.title.toLowerCase().includes(state.taskQuery.toLowerCase()));
+  if(!visible.some(task=>task.id===state.selectedTaskId))state.selectedTaskId=visible[0]?.id||'';
   if (!state.tasks.length) {
     list.innerHTML = '<div class="task-list-empty">还没有任务，点「新建任务」开始收集。</div>';
     return;
   }
-  list.innerHTML = state.tasks.map((task) => `
+  if(!visible.length){list.innerHTML='<div class="task-list-empty">没有匹配的任务</div>';return;}
+  list.innerHTML = visible.map((task) => `
     <button class="task-row ${task.id === state.selectedTaskId ? 'is-active' : ''}" type="button" data-id="${escapeHtml(task.id)}">
-      <span class="task-row-mark"></span>
+      <span class="task-row-mark ${task.progress==='done'?'is-done':''}" aria-label="${task.progress==='done'?'已完成':'进行中'}"></span>
       <span class="task-row-body"><b>${escapeHtml(task.title)}</b><small>${task.progress==='done'?'已完成 · ':''}${task.items.length} 项，${relativeTime(task.updatedAt)}</small></span>
     </button>
   `).join('');
@@ -145,22 +150,29 @@ function renderTaskDetail() {
   if (!task) {
     empty.hidden = false;
     body.hidden = true;
+    $('#task-empty b').textContent=state.tasks.length?'没有匹配的任务':'从一件事开始收集';
+    $('#task-empty p').textContent=state.tasks.length?'试试其他关键词，或切换任务状态':'截图、文字和链接，可以在这里接成一件完整的事';
     return;
   }
   empty.hidden = true;
   body.hidden = false;
   $('#task-title').textContent = task.title;
   $('#task-done').textContent=task.progress==='done'?'重新打开':'标记完成';
-  $('#task-subtitle').textContent = `${task.items.length} 项内容，创建于 ${relativeTime(task.createdAt)}`;
+  $('#task-subtitle').textContent = `${task.progress==='done'?'已完成':'进行中'} · 更新于 ${relativeTime(task.updatedAt)}`;
+  $('#task-content-count').textContent = `${task.items.length} 项`;
+  $('#task-detail').dataset.empty=String(!task.items.length);
 
   const chips = taskStepChips(task);
   $('#task-timeline').innerHTML = chips.length ? chips.map((chip, index) => `
     <span class="trail-step"><b>${index + 1}</b>${escapeHtml(chip)}</span>
-  `).join('<span class="trail-arrow">→</span>') : '<span class="trail-step is-muted">先加入内容，动作轨迹会显示在这里</span>';
+  `).join('<span class="trail-arrow">→</span>') : '';
+  $('#task-timeline').hidden=!chips.length;
 
   const container = $('#task-items');
   if (!task.items.length) {
-    container.innerHTML = '<div class="detail-placeholder">复制文字或截图后，用随手面板的「加入任务匣」把它们放进来。</div>';
+    container.innerHTML = '<div class="collection-start"><span class="collection-mark" aria-hidden="true"><svg viewBox="0 0 32 32"><path d="M7 5h13l5 5v17H7zM20 5v6h5M12 17h8M12 22h5"/></svg></span><h3>给这件事，放进第一份内容</h3><p>复制一段文字，或从内容库挑一张截图</p><div><button type="button" class="primary-btn" data-collect-clipboard>加入剪贴板内容</button><button type="button" class="quiet-btn" data-collect-library>去内容库挑选</button></div><small>之后可按顺序复制，或整理成 Markdown 文档</small></div>';
+    container.querySelector('[data-collect-clipboard]').onclick=()=>$('#shelf-import').click();
+    container.querySelector('[data-collect-library]').onclick=()=>navigate('library');
   } else {
     container.innerHTML = task.items.map((item) => taskItemCard(item)).join('');
     bindItemCardActions(container, task);
@@ -1047,6 +1059,12 @@ function installEvents() {
   $('#trail-filter').addEventListener('change',renderTrail);
   $('#trail-search').addEventListener('input',renderTrail);
   $('#shelf-first').addEventListener('click',()=>$('#shelf-new').click());
+  $('#task-search').addEventListener('input',event=>{state.taskQuery=event.target.value;renderTaskList();renderTaskDetail();});
+  $$('[data-task-filter]').forEach(button=>button.onclick=()=>{state.taskFilter=button.dataset.taskFilter;$$('[data-task-filter]').forEach(b=>b.setAttribute('aria-pressed',String(b===button)));renderTaskList();renderTaskDetail();});
+  const taskMenu=$('#task-more'),taskMore=$('#task-more-toggle');
+  taskMenu.addEventListener('beforetoggle',event=>{const open=event.newState==='open';taskMore.setAttribute('aria-expanded',String(open));if(open){const r=taskMore.getBoundingClientRect();taskMenu.style.left=Math.max(8,Math.min(r.right-196,innerWidth-204))+'px';taskMenu.style.top=Math.min(r.bottom+6,innerHeight-196)+'px';}});
+  taskMenu.addEventListener('click',event=>{if(event.target.closest('button'))taskMenu.hidePopover();});
+  taskMenu.addEventListener('keydown',event=>{if(!['ArrowDown','ArrowUp','Home','End'].includes(event.key))return;event.preventDefault();const buttons=$$('button',taskMenu),index=buttons.indexOf(document.activeElement);buttons[event.key==='Home'?0:event.key==='End'?buttons.length-1:(index+(event.key==='ArrowDown'?1:-1)+buttons.length)%buttons.length]?.focus();});
   $('#minimize').addEventListener('click', () => window.suira.window.minimize());
   $('#maximize').addEventListener('click', async () => {
     const maximized = await window.suira.window.maximize();
@@ -1058,6 +1076,7 @@ function installEvents() {
     const result = await window.suira.tasks.create(title);
     if (result?.ok) {
       state.selectedTaskId = result.task.id;
+      state.taskFilter='all';state.taskQuery='';$('#task-search').value='';$$('[data-task-filter]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.taskFilter==='all')));
       showGlobalToast('任务已创建', 'success');
       await refreshShelf();
     }

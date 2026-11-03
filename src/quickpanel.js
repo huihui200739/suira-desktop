@@ -1365,9 +1365,10 @@ function installEvents() {
     clearSearch();
     setMode(mode);
   });
-  window.suira.quick.onShown(async () => {
+  window.suira.quick.onPrepare(async ({token}) => {
+    await initialPanelLoad;
     closeMoreMenu(false);
-    window.suira.quick.presentation?.().then(syncPresentation).catch(()=>{});
+    await window.suira.quick.presentation?.().then(syncPresentation).catch(()=>{});
     cancelKeyDrag();
     closeBindingEditor(false);
     clearTimeout(state.toastTimer);
@@ -1380,15 +1381,18 @@ function installEvents() {
     closeTranslate();
     state.appPage = 0;
     await loadState();
-    await showGuideIfNeeded();
-    loadRecent();
+    await loadRecent();
+    await document.fonts.ready;
+    await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
+    document.documentElement.dataset.panelPrepared=String(token);
+    window.suira.quick.prepared(token);
   });
+  window.suira.quick.onShown(() => showGuideIfNeeded());
 }
 
 keyMotion=window.SuiraKeycapMotion?.attach($('#key-grid'),{
   suspended:() => dragState.active || bindingState.busy || bindingEditorOpen() || state.mode !== 'actions' || Boolean(state.query)
 });
 installEvents();
-loadState();
-loadRecent();
 setMode('actions');
+const initialPanelLoad=Promise.all([loadState(),loadRecent()]);

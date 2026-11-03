@@ -44,7 +44,7 @@ const handlers = {};
 const on = (ch) => (cb) => { (handlers[ch] = handlers[ch] || []).push(cb); return () => {}; };
 window.__handlers = handlers;
 window.suira = {
-  quick:{ hide:async()=>({ok:true}), show:async()=>({ok:true}), showMain:async()=>({ok:true}), openApp:async(p)=>({ok:true,path:p}), openMain:async()=>({ok:true}), onShown:on('quick:shown'), onMode:on('quick:mode') },
+  quick:{ hide:async()=>({ok:true}), show:async()=>({ok:true}), showMain:async()=>({ok:true}), openApp:async(p)=>({ok:true,path:p}), openMain:async()=>({ok:true}), onShown:on('quick:shown'), onPrepare:on('quick:prepare'),prepared:()=>{},onMode:on('quick:mode') },
   // 面板点「浮引岛」工具时会调它；缺了会让 init 直接抛异常，整块键位不渲染
   island:{ toggle: async()=>({ok:true, visible:true}), getState: async()=>({ok:true, items:[], policy:'copy', mode:'sleep', maxItems:24}), addPaths: async()=>({ok:true}), setMode: async()=>({ok:true}), onState:on('island:state'), onMode:on('island:mode'), onExpanded:on('island:expanded') },
   // 翻译结果区：语言下拉与重翻都走这里

@@ -7,7 +7,7 @@
   const lunarFormatter = new Intl.DateTimeFormat('zh-CN-u-ca-chinese',{day:'numeric'});
   const lunarDays = ['初一','初二','初三','初四','初五','初六','初七','初八','初九','初十','十一','十二','十三','十四','十五','十六','十七','十八','十九','二十','廿一','廿二','廿三','廿四','廿五','廿六','廿七','廿八','廿九','三十'];
   const lunar = day => lunarDays[Number(lunarFormatter.formatToParts(day).find(p=>p.type==='day')?.value)-1] || lunarFormatter.format(day);
-  let previewTimer, richDocument=null, richText='', richKey='', requestedView='write';
+  let previewTimer, richDocument=null, sourceDocument=null, richText='', richKey='', requestedView='write';
   let outlineCollapsed=false, outlineItems=[], activeHeading=-1;
   const foldedHeadings=new Set();
   function documentIdentity(item) {
@@ -139,12 +139,13 @@
     if(richText!==text||richKey!==current){richDocument.load(text);richText=text;richKey=current;}
   }
   function setDocumentView(view,automatic=false){
+    sourceDocument?.close();richDocument?.closeMenu();
     if(!automatic)requestedView=view;
     if(view==='write'&&current&&!supportsVisualEditing($('md-editor').value)){view='edit';notify('这篇文档包含扩展语法，使用源码模式可保持内容完整');}
-    $('md-split').dataset.view=view;document.querySelector('.markdown-toolbar').hidden=view==='preview';
+    $('md-split').dataset.view=view;document.querySelector('.markdown-toolbar').hidden=false;
     document.querySelectorAll('[data-md-view]').forEach(b=>{b.classList.toggle('is-active',b.dataset.mdView===view);b.setAttribute('aria-pressed',String(b.dataset.mdView===view));});
     $('md-sync-scroll').closest('label').hidden=view!=='split';
-    document.querySelectorAll('[data-document-menu],[data-rich-format]').forEach(b=>b.hidden=view!=='write');
+    document.querySelectorAll('[data-document-menu],[data-rich-format]').forEach(b=>b.hidden=false);
     syncRichDocument();
   }
   function syncDocumentNavigation(){
@@ -294,8 +295,10 @@
   const visual=document.createElement('div');visual.id='md-rich';visual.className='md-rich';$('md-split').prepend(visual);
   const writeButton=document.createElement('button');writeButton.type='button';writeButton.dataset.mdView='write';writeButton.textContent='写作';writeButton.title='可视化写作';writeButton.setAttribute('aria-label','可视化写作');writeButton.innerHTML='<svg viewBox="0 0 24 24"><path d="M4 20l4-1L20 7l-3-3L5 16z"/></svg>';writeButton.onclick=()=>setDocumentView('write');document.querySelector('[data-md-view]').parentElement.prepend(writeButton);
   document.querySelector('[data-md-view="edit"]').setAttribute('aria-label','Markdown 源码');document.querySelector('[data-md-view="edit"]').setAttribute('title','Markdown 源码');
-  const documentMenus=document.createElement('div');documentMenus.className='md-format-menus';documentMenus.innerHTML=[['style','正文与标题'],['color','文字颜色'],['highlight','高亮'],['size','字号'],['insert','插入']].map(([kind,label])=>`<button type="button" data-document-menu="${kind}">${label}<span aria-hidden="true">⌄</span></button>`).join('');document.querySelector('.markdown-toolbar').prepend(documentMenus);documentMenus.querySelectorAll('button').forEach(button=>button.onclick=()=>richDocument?.openMenu(button.dataset.documentMenu,button));
-  const richFormats=document.createElement('div');richFormats.className='md-rich-formats';richFormats.innerHTML=[['bold','加粗','<b>B</b>'],['italic','斜体','<i>I</i>'],['underline','下划线','<u>U</u>'],['strike','删除线','<s>S</s>'],['inlineCode','行内代码','&lt;/&gt;']].map(([command,label,icon])=>`<button type="button" data-rich-format="${command}" aria-label="${label}" title="${label}">${icon}</button>`).join('');documentMenus.after(richFormats);richFormats.querySelectorAll('button').forEach(button=>button.onclick=()=>richDocument?.apply(button.dataset.richFormat));
+  sourceDocument=window.SuiraSourceDocument.create({element:$('md-editor'),preview:$('md-preview'),enabled:()=>Boolean(current&&document.querySelector('#page-markdown.is-active')&&$('md-split').dataset.view!=='write'),readOnly:()=>$('md-split').dataset.view==='preview',activate:()=>{if($('md-split').dataset.view==='preview')setDocumentView('edit');},onChange:dirty,notify,readClipboard:()=>checked(api.clipboard())});
+  const editingController=()=>$('md-split').dataset.view==='write'?richDocument:sourceDocument;
+  const documentMenus=document.createElement('div');documentMenus.className='md-format-menus';documentMenus.innerHTML=[['style','正文与标题'],['color','文字颜色'],['highlight','高亮'],['size','字号'],['insert','插入']].map(([kind,label])=>`<button type="button" data-document-menu="${kind}">${label}<span aria-hidden="true">⌄</span></button>`).join('');document.querySelector('.markdown-toolbar').prepend(documentMenus);documentMenus.querySelectorAll('button').forEach(button=>{button.onmousedown=e=>e.preventDefault();button.onclick=()=>editingController()?.openMenu(button.dataset.documentMenu,button);});
+  const richFormats=document.createElement('div');richFormats.className='md-rich-formats';richFormats.innerHTML=[['bold','加粗','<b>B</b>'],['italic','斜体','<i>I</i>'],['underline','下划线','<u>U</u>'],['strike','删除线','<s>S</s>'],['inlineCode','行内代码','&lt;/&gt;']].map(([command,label,icon])=>`<button type="button" data-rich-format="${command}" aria-label="${label}" title="${label}">${icon}</button>`).join('');documentMenus.after(richFormats);richFormats.querySelectorAll('button').forEach(button=>{button.onmousedown=e=>e.preventDefault();button.onclick=()=>editingController()?.apply(button.dataset.richFormat);});
   document.querySelector('.document-sidebar').append($('md-outline'));
   window.SuiraToolArt?.mount();
   window.WorkspaceUI={open:safe(async type=>{if(type==='calendar')await loadCalendar();else await loadDocs();}),flush,get documentEditor(){return richDocument;},

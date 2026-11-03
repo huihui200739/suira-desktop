@@ -913,7 +913,8 @@ function positionQuickPanel(win,mode=store?.getSettings().panelPresentation||'wi
   // Electron's thickFrame:false Windows path only changes bounds; its
   // isFullScreen() remains false. Track this borderless launchpad explicitly.
   win.__launchpadFullscreen=fullscreen;
-  win.setBounds(fullscreen?display.bounds:quickPanelBounds(display.workArea));
+  const next=fullscreen?display.bounds:quickPanelBounds(display.workArea),previous=win.getBounds();
+  if(['x','y','width','height'].some(key=>next[key]!==previous[key]))win.setBounds(next);
   win.webContents.send('quick:presentation-changed',{mode:fullscreen?'fullscreen':'window'});
   clearTimeout(win.__presentationTimer);
   win.__presentationTimer=setTimeout(()=>{
@@ -969,10 +970,19 @@ function prepareFloatingSurface(win, radius = 24, blur = false) {
   clipFloatingSurface(win);
   if (!win.__surfaceClippingBound) {
     win.__surfaceClippingBound = true;
-    const refresh=()=>{if(win.__systemGlass)windowMaterial.invalidate(win);clipFloatingSurface(win);};
+    if(win.__systemGlass){
+      // Windows may retain the old backdrop across Hide/Show. Refresh once
+      // before the native reveal, never on focus or in a delayed visible pass.
+      for(const method of ['show','showInactive']){
+        const reveal=win[method].bind(win);
+        win[method]=(...args)=>{windowMaterial.invalidate(win);clipFloatingSurface(win);return reveal(...args);};
+      }
+    }
+    // The HWND does not change on focus/show. Reapplying the accent after show
+    // makes DWM briefly composite a different rectangle over the first frame.
+    const refresh=()=>clipFloatingSurface(win);
     win.webContents.on('did-finish-load',refresh);
-    for(const event of ['show','focus','always-on-top-changed'])win.on(event,refresh);
-    if(win.__systemGlass){let readyTimer;const settle=()=>{clearTimeout(readyTimer);readyTimer=setTimeout(()=>{if(!win.isDestroyed())refresh();},80);};win.on('show',settle);win.webContents.on('did-finish-load',settle);win.on('closed',()=>clearTimeout(readyTimer));}
+    win.on('always-on-top-changed',refresh);
     for (const event of ['resize', 'restore', 'maximize', 'unmaximize']) {
       win.on(event, () => clipFloatingSurface(win));
     }
@@ -1039,7 +1049,6 @@ function createQuickWindow() {
     frame: false,
     thickFrame: SYSTEM_GLASS,
     transparent: true,
-    backgroundMaterial: SYSTEM_GLASS?'acrylic':undefined,
     backgroundColor: '#00000000',
     hasShadow: SYSTEM_GLASS,
     resizable: SYSTEM_GLASS,
@@ -1057,7 +1066,9 @@ function createQuickWindow() {
       nodeIntegration: false,
       sandbox: false,
       // 面板不需要拼写检查：关掉可以省下一个常驻的拼写服务进程
-      spellcheck: false
+      spellcheck: false,
+      // Hidden preparation must produce a fresh compositor frame before show.
+      backgroundThrottling: false
     }
   });
   quickWindow.setAlwaysOnTop(true, 'floating');
@@ -1076,9 +1087,8 @@ function createQuickWindow() {
   });
   quickWindow.on('show', () => {
     cancelIdleTeardown(quickWindow);
-    quickWindow.webContents.send('quick:shown');
   });
-  quickWindow.on('closed', () => { quickWindow = null; quickReady = false; });
+  quickWindow.on('closed', () => { quickWindow?.__prepareShow?.cancel();quickWindow = null; quickReady = false; });
   quickWindow.webContents.setWindowOpenHandler(({ url }) => {
     if (isSafeHttpUrl(url)) shell.openExternal(url);
     return { action: 'deny' };
@@ -1138,27 +1148,44 @@ async function showQuickPanel() {
   if (!quickWindow || quickWindow.isDestroyed()) createQuickWindow();
   const win = quickWindow;
   const revision = ++quickShowRevision;
-  cancelIdleTeardown(quickWindow);
-  // 先记录目标，再显示窗口——顺序不能反
-  quickInvocationTarget=clipboardTarget(await queryForeground(),process.pid);
-  returnTarget=quickInvocationTarget;
-  if (revision !== quickShowRevision || win.isDestroyed()) return;
-  positionQuickPanel(quickWindow);
-  quickWindow.show();
-  quickWindow.focus();
-  if (quickReady) quickWindow.webContents.send('quick:shown');
+  try {
+    cancelIdleTeardown(win);
+    // 先记录目标，再显示窗口——顺序不能反
+    quickInvocationTarget=clipboardTarget(await queryForeground(),process.pid);
+    returnTarget=quickInvocationTarget;
+    if (revision !== quickShowRevision || win.isDestroyed()) return;
+    await win.__loaded;
+    if (revision !== quickShowRevision || win.isDestroyed()) return;
+    positionQuickPanel(win);
+    // Prepare state and layout while hidden. Acknowledge only this invocation;
+    // a cancelled/hide request must never resurrect an obsolete reveal.
+    await new Promise((resolve,reject)=>{
+      win.__prepareShow?.cancel();
+      const timer=setTimeout(()=>{win.__prepareShow=null;reject(Error('面板准备超时'));},5000);
+      const finish=()=>{clearTimeout(timer);win.__prepareShow=null;resolve();};
+      win.__prepareShow={token:revision,finish,cancel:finish};
+      win.webContents.send('quick:prepare',{token:revision});
+    });
+    if (revision !== quickShowRevision || win.isDestroyed()) return;
+    win.show();
+    win.focus();
+    win.webContents.send('quick:shown');
+  } catch(error) {
+    if(!win.isDestroyed()&&revision===quickShowRevision)console.warn('面板显示失败:',error.message);
+  }
 }
 
 function hideQuickPanel() {
   quickShowRevision++;
   if (quickWindow && !quickWindow.isDestroyed()) {
+    quickWindow.__prepareShow?.cancel();
     quickWindow.hide();
     scheduleIdleTeardown(quickWindow, '动作面板', HOT_WINDOW_IDLE_MS);
   }
 }
 
 function toggleQuickPanel() {
-  if (quickWindow && quickWindow.isVisible() && quickWindow.isFocused()) hideQuickPanel();
+  if (quickWindow && (quickWindow.__prepareShow || (quickWindow.isVisible() && quickWindow.isFocused()))) hideQuickPanel();
   else showQuickPanel();
 }
 
@@ -2524,8 +2551,7 @@ async function startLongCapture(selection,fromPicker=false) {
     win.setBounds(hud);
     session={win,preview:null,outline:null,worker,rect,physical,target:null,model:null,finishing:false,canceled:false,controller:null,previewAt:0};
     longCapture=session;
-    win.on('closed',()=>{if(longCapture===session)cancelLongCapture();});
-    await win.__loaded;
+    win.on('closed',()=>{if(longCapture===session)cancelLongCapture();});await win.__loaded;
     await win.__painted;
     if(session.canceled)return {ok:true,canceled:true};
     win.showInactive();
@@ -3191,6 +3217,10 @@ function registerIpc() {
     return {nativeGlass:Boolean(win.__systemGlass),reducedTransparency:Boolean(nativeTheme.prefersReducedTransparency),highContrast:Boolean(nativeTheme.shouldUseHighContrastColors)};
   });
   ipcMain.handle('quick:background',()=>({dataUrl:'',source:'native'}));
+  ipcMain.on('quick:prepared',(event,token)=>{
+    const pending=quickWindow?.__prepareShow;
+    if(event.sender===quickWindow?.webContents&&pending?.token===token)pending.finish();
+  });
   ipcMain.handle('quick:presentation:set',async(event,mode,options)=>{
     if(event.sender!==quickWindow?.webContents||!['window','fullscreen'].includes(mode))return {ok:false,error:'无效的显示模式'};
     if(options?.remember!==false)await store.updateSettings({panelPresentation:mode});

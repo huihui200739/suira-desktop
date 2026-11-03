@@ -43,7 +43,7 @@ class Pixels{
  const command=request;
  const capture=(file,rect)=>{execFileSync(pixels,[file,...rect.slice(0,4).map(String)],{windowsHide:true,timeout:5000});return PNG.sync.read(fs.readFileSync(file));};
  const results=[];
- for(const [name,suffix,open] of [['panel','/quickpanel.html','window.suira.quick.show()'],['workbench','/index.html',null],['calendar','tool=calendar',"window.suira.workspace.open('calendar')"],['markdown-home','tool=markdown',"window.suira.workspace.open('markdown')"]]){
+ for(const [name,suffix,open] of [['panel','/quickpanel.html','window.suira.quick.show()'],['workbench','/index.html',null],['calendar','tool=calendar',"window.suira.workspace.open('calendar')"],['markdown-home','tool=markdown',"window.suira.workspace.open('markdown')"]].filter(([name])=>!process.argv.includes('--panel-only')||name==='panel')){
   if(open)await main.evaluate(open);const client=await page(suffix);await until(()=>client.evaluate('document.documentElement.dataset.glassBackend==="native"'));
   if(name==='panel')await client.evaluate('document.getElementById("guide-close").click();true');
   const snapshots=[];let rect,info;

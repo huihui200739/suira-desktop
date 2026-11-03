@@ -51,7 +51,9 @@ foreach ($name in @('edge-profile','edge-profile2','mem','probe-app','probe-app2
                     'keycaps-production-light.png','keycaps-production-dark.png','keycaps-production-tools.png',
                     'native-frost-probe.js','native-frost-probe-app.js','native-frost-probe.png','native-frost-ready.json','native-frost-probe-profile',
                     'native-live-probe.js','native-live-probe-app.js','native-live-probe.png','native-live-probe-profile',
-                    'native-glass-failure.png','native-minimal.png','replace-unpublished-24.js')) {
+                    'native-glass-failure.png','native-minimal.png','replace-unpublished-24.js',
+                    'video-review-27','inspect-panel-video.py','inspect-reveal27.js','refactor-document-menu27.py','replace-draft27.js',
+                    'verify-installed-profile27.js')) {
   Add-Target (Join-Path $repoRoot ('.workbuddy\' + $name)) $repoRoot 'workspace-test-artifacts'
 }
 if (Test-Path -LiteralPath (Join-Path $repoRoot '.workbuddy')) {

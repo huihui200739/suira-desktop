@@ -56,7 +56,7 @@ const handlers = {};
 const on = (ch) => (cb) => { (handlers[ch] = handlers[ch] || []).push(cb); return () => {}; };
 window.suira = {
   window:{ minimize(){}, maximize(){}, close(){}, hide(){}, isMaximized:async()=>false },
-  quick:{ hide:async()=>({ok:true}), show:async()=>({ok:true}), toggle:async()=>({ok:true}), capture:async()=>({ok:true}), openMain:async()=>({ok:true}), showMain:async()=>({ok:true}), onShown:on('quick:shown'), onMode:on('quick:mode') },
+  quick:{ hide:async()=>({ok:true}), show:async()=>({ok:true}), toggle:async()=>({ok:true}), capture:async()=>({ok:true}), openMain:async()=>({ok:true}), showMain:async()=>({ok:true}), onShown:on('quick:shown'), onPrepare:on('quick:prepare'),prepared:()=>{},onMode:on('quick:mode') },
   island:{ toggle:async()=>({ok:true}), getState:async()=>({items:[],expanded:false}), onState:on('island:state'), onExpanded:on('island:expanded') },
   app:{ info:async()=>({name:'随序 SUIRA',version:'0.2.0',userData:'C:\\\\demo\\\\Suira',dataPath:'C:\\\\demo\\\\Suira\\\\suira-data.json',runtime:'test'}), openDataDir:async()=>{}, onNavigate:on('app:navigate'), onToast:on('app:toast') },
   capture:{ start:async()=>({ok:true}), getData:async()=>null, finish:async()=>({ok:true}), cancel:async()=>({ok:true}) },

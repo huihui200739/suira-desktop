@@ -34,7 +34,8 @@ kbd { font-family: var(--font-ui); font-size: var(--text-1); font-weight: 600; }
   background: radial-gradient(ellipse at 0 0, var(--floating-light), transparent 58%), var(--floating-surface);
   border: 1px solid var(--floating-edge);
   box-shadow: inset 0 1px 0 var(--floating-edge), inset 0 -1px 0 var(--control-shade);
-  animation: panel-in var(--dur-base) var(--ease-out);
+  /* The complete frame is prepared before the native window becomes visible. */
+  animation: none;
 }
 @keyframes panel-in { from { opacity: 0; } to { opacity: 1; } }
 @media (prefers-reduced-motion: reduce) { .panel { animation: none; } }
