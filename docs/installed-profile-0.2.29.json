@@ -1,0 +1,12 @@
+{
+  "version": "0.2.29",
+  "installedPayloadMatchesRelease": true,
+  "installedExecutableMatchesRelease": true,
+  "existingKeyUnchanged": true,
+  "existingKeyDecrypts": true,
+  "retainedRecords": 46,
+  "unchangedTextRecords": 46,
+  "userEditedRecords": 0,
+  "customBindingsUnchanged": true,
+  "readOnly": true
+}
