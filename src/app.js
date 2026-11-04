@@ -158,7 +158,7 @@ function renderTaskDetail() {
   body.hidden = false;
   $('#task-title').textContent = task.title;
   $('#task-done').textContent=task.progress==='done'?'重新打开':'标记完成';
-  $('#task-subtitle').textContent = `${task.progress==='done'?'已完成':'进行中'} · 更新于 ${relativeTime(task.updatedAt)}`;
+  $('#task-subtitle').innerHTML = `<span class="task-state ${task.progress==='done'?'is-done':''}">${task.progress==='done'?'已完成':'进行中'}</span><span>更新于 ${escapeHtml(relativeTime(task.updatedAt))}</span>`;
   $('#task-content-count').textContent = `${task.items.length} 项`;
   $('#task-detail').dataset.empty=String(!task.items.length);
 
