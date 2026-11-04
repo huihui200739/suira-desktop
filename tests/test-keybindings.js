@@ -13,7 +13,7 @@ const {
   DEFAULT_KEY_BINDINGS,
   TOOLBOX_TOOLS,
   normalizeKey,
-  keyLayout
+  keyLayout, implementedPanelActions
 } = require('../lib/keybindings');
 
 let pass = 0, fail = 0;
@@ -61,11 +61,17 @@ t('默认截图位于 C，与 Alt+C 的主键一致；提取文字在 O', () => 
   assert.strictEqual(DEFAULT_KEY_BINDINGS.P, 'pin');
 });
 
-t('默认 V=剪贴板与 Alt+V 一致，X=文本转换、B=标注、L=锁屏', () => {
+t('默认 V=剪贴板与 Alt+V 一致，X=文本转换、B=截图翻译、L=锁屏', () => {
   assert.strictEqual(DEFAULT_KEY_BINDINGS.V, 'clipboard');
   assert.strictEqual(DEFAULT_KEY_BINDINGS.X, 'text-clean');
-  assert.strictEqual(DEFAULT_KEY_BINDINGS.B, 'annotate');
+  assert.strictEqual(DEFAULT_KEY_BINDINGS.B, 'capture-translate');
   assert.strictEqual(DEFAULT_KEY_BINDINGS.L, 'lock');
+});
+
+t('annotate 仍然可以绑定，但不占默认键位', () => {
+  assert.ok(implementedPanelActions().some(action => action.id === 'annotate'));
+  assert.ok(!Object.values(DEFAULT_KEY_BINDINGS).includes('annotate'));
+  assert.strictEqual(keyLayout(null, {Q:{type:'action',id:'annotate'}}).keys.find(k=>k.key==='Q').actionId,'annotate');
 });
 
 console.log('\n== 布局与可用状态 ==');
@@ -77,13 +83,13 @@ t('布局同样返回 4 行', () => assert.strictEqual(layout.rows.length, 4));
 
 t('已实现动作标记为 bound', () => {
   const bound = layout.keys.filter((k) => k.state === 'bound');
-  assert.strictEqual(bound.length, Object.values(PANEL_ACTIONS).filter((a) => a.implemented).length);
+  assert.strictEqual(bound.length, Object.values(PANEL_ACTIONS).filter((a) => a.implemented && a.key).length);
 });
 
 t('未绑定键显示 unbound（渲染层据此显示「绑定」）', () => {
   const unbound = layout.keys.filter((k) => k.state === 'unbound');
   // 38 键 - 已登记动作（含未实现占位）
-  assert.strictEqual(unbound.length, 38 - Object.keys(PANEL_ACTIONS).length);
+  assert.strictEqual(unbound.length, 38 - Object.keys(DEFAULT_KEY_BINDINGS).length);
   assert.ok(unbound.every((k) => k.label === '' && k.actionId === ''));
 });
 

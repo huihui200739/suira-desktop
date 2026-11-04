@@ -98,7 +98,7 @@ t('OCR 结果面板元素齐备', () => {
 });
 t('OCR 面板样式已定义', () => {
   const css = read('src/overlay.css');
-  for (const sel of ['.ocr-result', '.ocr-result-actions', '#ocr-result-text']) {
+  for (const sel of ['.ocr-result', '.ocr-result-actions', '.ocr-result-columns textarea']) {
     if (!css.includes(sel)) throw new Error('缺少样式 ' + sel);
   }
 });

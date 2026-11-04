@@ -206,6 +206,7 @@ contextBridge.exposeInMainWorld('suira', {
     initial: () => ipcRenderer.invoke('text-tools:initial'),
     transform: (text,operation) => ipcRenderer.invoke('text-tools:transform',text,operation),
     configure: () => ipcRenderer.invoke('text-tools:configure'),
+    capture: () => ipcRenderer.invoke('text-tools:capture'),
     onInput: callback => subscribe('text-tools:input',callback),
     onConfigure: callback => subscribe('settings:translation',callback)
   },

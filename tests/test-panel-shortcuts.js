@@ -49,7 +49,7 @@ const active=new Map(), blocked=new Set();
 const api={register:(key,fn)=>{if(blocked.has(key)||active.has(key))return false;active.set(key,fn);return true;},unregister:key=>active.delete(key)};
 check('所有已实现键位与自定义内容都派生 Alt 直达，未绑定和未实现不抢键',()=>{
   const bindings=panelGlobalBindings({Q:{type:'url',target:'https://example.com',name:'测试'}},DEFAULT_BINDINGS);
-  for(const action of Object.values(PANEL_ACTIONS).filter(a=>a.implemented))assert.ok(Object.values(bindings).includes('Alt+'+action.key),action.label);
+  for(const action of Object.values(PANEL_ACTIONS).filter(a=>a.implemented&&a.key))assert.ok(Object.values(bindings).includes('Alt+'+action.key),action.label);
   assert.equal(bindings['panelKey:Q'],'Alt+Q');assert.equal(bindings['panelKey:W'],'');assert.equal(bindings['panelKey:M'],'Alt+M');
   assert.equal(new Set(Object.values(bindings).filter(Boolean)).size,Object.values(bindings).filter(Boolean).length);
   const equals=assignPanelBinding({},'=',{type:'action',id:'capture'}).bindings;

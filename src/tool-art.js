@@ -15,6 +15,7 @@
   Object.assign(objects,{
     'long-capture':object('scroll',sheet+'<span class="scroll-top"></span><span class="scroll-bottom"></span><span class="scroll-arrow"></span>'),
     annotate:object('annotation',sheet+pencil),
+    'capture-translate':object('capture-translation','<span class="translation-frame"></span><span class="translation-letter">A</span>'),
     'edit-image':objects.capture.replace('suira-art capture','suira-art capture image-edit').replace(/<\/span>$/,pencil+'</span>'),
     ocr:object('recognition',sheet+'<span class="scan-corner tl"></span><span class="scan-corner tr"></span><span class="scan-corner bl"></span><span class="scan-corner br"></span><span class="scan-beam"></span>'),
     pin:object('pinned',sheet+'<span class="pin-needle"></span><span class="pin-head"></span><span class="pin-top"></span>'),
@@ -34,7 +35,7 @@
   // The desktop action is a fan of collapsing windows, rather than a monitor.
   objects.desktop=object('desktop window-deck','<span class="deck-window back"></span><span class="deck-window middle"></span><span class="deck-window front"><span class="deck-pane"></span></span><span class="deck-base"></span>');
   const families={
-    capture:'sky','long-capture':'sky',ocr:'sky',pin:'sky',
+    capture:'sky','capture-translate':'sky','long-capture':'sky',ocr:'sky',pin:'sky',
     clipboard:'amber',note:'amber',markdown:'amber',folder:'amber',
     translate:'coral',calendar:'coral',
     'edit-image':'iris',desktop:'iris',lock:'iris',

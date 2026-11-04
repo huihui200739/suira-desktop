@@ -85,6 +85,9 @@ const MOCK = `
       list: async function(){ return []; }
     },
     actions: { run: async function(){ return { ok:true }; } },
+    translate: { status: async function(){ return {configured:window.__configured!==false}; }, run: async function(p){ window.__translated=p; return {ok:true,text:'译文：'+p.text}; } },
+    returnTo: {commit: async function(p){window.__committed=p;return {ok:true,pasted:true};}},
+    textTools: {configure: async function(){window.__configuredOpened=true;return {ok:true};}},
     quick: { hide: async function(){ return {ok:true}; } }
   };
   window.__shownCount = 0;
@@ -162,7 +165,7 @@ const check = (name, cond, detail) => {
     .replace('<script src="overlay.js"></script>', '<script src="__mock.js"></script><script src="overlay.js"></script>');
   fs.writeFileSync(path.join(TMP, '__mock.js'), MOCK, 'utf8');
   fs.writeFileSync(path.join(TMP, 'overlay.html'), html, 'utf8');
-  for (const asset of ['theme.css', 'ui-motion.css', 'ui-motion.js', 'overlay.css', 'overlay.js', 'image-editor.css', 'image-editor.js']) {
+  for (const asset of ['text-spacing.js', 'theme.css', 'ui-motion.css', 'ui-motion.js', 'overlay.css', 'overlay.js', 'image-editor.css', 'image-editor.js']) {
     fs.copyFileSync(path.join(ROOT, 'src', asset), path.join(TMP, asset));
   }
 
@@ -576,6 +579,47 @@ const check = (name, cond, detail) => {
     const closed = await evaluate(send, `JSON.stringify({ hidden: document.getElementById('original-viewer').hidden })`);
     check('原图层可关闭并回到 OCR 结果', JSON.parse(closed).hidden === true, closed);
 
+    console.log('\n== 截图翻译入口、输出与窄选区 ==');
+    const translated = await evaluate(send, `(async()=>{
+      const pause=()=>new Promise(r=>setTimeout(r,80));
+      document.getElementById('ocr-result-close').click();document.activeElement.blur();
+      const originalFinish=window.suira.capture.finish;
+      window.suira.capture.finish=async p=>({ok:true,item:{id:'image-en'},output:{text:'Hello world'}});
+      try {
+        document.dispatchEvent(new KeyboardEvent('keydown',{key:'y',bubbles:true,cancelable:true}));await pause();
+        const y=window.__translated?.text==='Hello world'&&window.__translated?.target==='zh'&&document.getElementById('ocr-translation-text').value==='译文：Hello world';
+        const narrow=document.querySelector('.ocr-result-columns'),labels=[...narrow.children];
+        const stacked=labels[1].getBoundingClientRect().top>labels[0].getBoundingClientRect().bottom;
+        document.getElementById('ocr-translation-copy').click();await pause();
+        const copied=window.__added?.text==='译文：Hello world'&&window.__added?.source==='translate';
+        document.getElementById('ocr-translation-paste').click();await pause();
+        const pasted=window.__committed?.itemId==='txt2'&&window.__committed?.intent==='return-and-paste';
+        document.getElementById('ocr-result-close').click();window.__translated=null;
+        document.querySelector('[data-action="translate"]').click();await pause();
+        const clicked=window.__translated?.text==='Hello world';
+        state.selection.w=650;layoutOcrResult();
+        const wide=labels[0].getBoundingClientRect().top===labels[1].getBoundingClientRect().top&&labels[1].getBoundingClientRect().left>labels[0].getBoundingClientRect().left;
+        const noOverflow=ocrResult.scrollWidth<=ocrResult.clientWidth&&ocrResult.getBoundingClientRect().right<=innerWidth;
+        window.__configured=false;document.getElementById('ocr-result-translate').click();await pause();
+        const unconfigured=document.getElementById('ocr-status').textContent==='还没有设置翻译服务'&&!document.getElementById('ocr-configure').hidden&&ocrText.value==='Hello world'&&!document.getElementById('ocr-result-copy').disabled&&document.getElementById('ocr-translation-copy').disabled;
+        document.getElementById('ocr-result-copy').click();await pause();const sourceCopy=window.__added?.text==='Hello world';
+        window.__configured=true;ocrText.value='中文原文';ocrText.dispatchEvent(new Event('input'));document.getElementById('ocr-result-translate').click();await pause();
+        const chineseTarget=window.__translated?.target==='en'&&document.getElementById('ocr-languages').textContent==='自动 → 英文';
+        const run=window.suira.translate.run;
+        let finishOld;window.suira.translate.run=p=>p.text==='old'?new Promise(r=>{finishOld=r;}):run(p);
+        ocrText.value='old';ocrText.dispatchEvent(new Event('input'));startTranslate();await pause();
+        ocrText.value='new';ocrText.dispatchEvent(new Event('input'));await startTranslate();finishOld({ok:true,text:'stale'});await pause();
+        const staleIgnored=translationText.value==='译文：new';
+        document.getElementById('ocr-result-close').click();
+        state.intentAutoDone=false;applyIntent('translate');autoAdvanceForIntent();await pause();
+        const intent=window.__translated?.text==='Hello world';
+        let finishClosed;window.suira.translate.run=()=>new Promise(r=>{finishClosed=r;});startTranslate();await pause();closeOcrResult();finishClosed({ok:true,text:'closed'});await pause();
+        const closedSafe=translationText.value==='';window.suira.translate.run=run;
+        return {y,stacked,copied,pasted,clicked,wide,noOverflow,unconfigured,sourceCopy,chineseTarget,staleIgnored,intent,closedSafe};
+      } finally { window.suira.capture.finish=originalFinish;window.__configured=true;state.selection.w=300;state.intent='';state.intentAutoDone=false;closeOcrResult(); }
+    })()`);
+    for(const [name,passed] of Object.entries(translated))check('截图翻译 '+name,passed,JSON.stringify(translated));
+
     console.log('\n== 马赛克 / 标注仍能真的画出来（去掉 getImageData 热点后）==');
 
     const annotationPixels = () => evaluate(send, `(function(){
@@ -627,8 +671,8 @@ const check = (name, cond, detail) => {
     })()`);
     const bd = JSON.parse(bindings);
     // undo / cancel / pin / save / ocr（.token-button）/ copy（.complete-button）
-    check('工具栏带 data-action 的按钮数量完整', bd.total === 7, bindings);
-    const buttonsWithAction = ['undo', 'cancel', 'pin', 'save', 'ocr', 'copy','long'];
+    check('工具栏带 data-action 的按钮数量完整', bd.total === 8, bindings);
+    const buttonsWithAction = ['undo', 'cancel', 'pin', 'save', 'ocr', 'translate', 'copy','long'];
     const wired = bd.classes.map((c) => String(c).split('|')[1]);
     for (const action of buttonsWithAction) {
       check('按钮 ' + action + ' 已绑定', wired.includes(action), JSON.stringify(wired));

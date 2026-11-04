@@ -677,36 +677,114 @@ async function startLongSelection() {
 
 const ocrResult = $('#ocr-result');
 const ocrText = $('#ocr-result-text');
+const translationText = $('#ocr-translation-text');
+let ocrRevision = 0, ocrBusy = false, translationCurrent = false;
 
+function updateOcrButtons() {
+  const hasText = Boolean(ocrText.value.trim());
+  $('#ocr-result-copy').disabled = $('#ocr-result-shelf').disabled = !hasText;
+  $('#ocr-result-translate').disabled = ocrBusy || !hasText;
+  $('#ocr-translation-copy').disabled = $('#ocr-translation-paste').disabled = !translationCurrent || !translationText.value.trim();
+}
+function resetTranslation() {
+  ++ocrRevision;
+  ocrBusy = false;
+  translationCurrent = false;
+  translationText.value = '';
+  $('#ocr-configure').hidden = true;
+  $('#ocr-status').textContent = '';
+  $('#ocr-languages').textContent = '自动 → ' + (/[\u3400-\u9fff]/.test(ocrText.value) ? '英文' : '中文');
+  updateOcrButtons();
+}
 function closeOcrResult() {
+  resetTranslation();
   ocrResult.hidden = true;
   state.ocrItemId = '';
 }
-
+function layoutOcrResult() {
+  const width = Math.min(880, Math.max(320, state.selection?.w || 320), window.innerWidth - 48);
+  ocrResult.style.width = width + 'px';
+  ocrResult.classList.toggle('is-stacked', width < 600);
+}
 async function startOcr() {
   const output = compositeSelection();
-  if (!output) {
-    showAction('请先拖拽选择一个区域', 'error');
-    return;
-  }
-  ocrResult.hidden = false;
+  if (!output) { showAction('请先拖拽选择一个区域', 'error'); return null; }
   ocrText.value = '';
+  resetTranslation();
+  const token = ocrRevision;
+  ocrBusy = true;
+  updateOcrButtons();
+  ocrResult.hidden = false;
+  layoutOcrResult();
   ocrText.placeholder = '正在准备本地识别…';
+  $('#ocr-status').textContent = '正在识别…';
   try {
-    const dataUrl = output.toDataURL('image/png');
-    const result = await captureApi.finish({ dataUrl, action: 'ocr' });
+    const result = await captureApi.finish({ dataUrl: output.toDataURL('image/png'), action: 'ocr' });
+    if (token !== ocrRevision) return null;
     if (!result?.ok) throw new Error(result?.error || '识别失败');
     state.ocrItemId = result.item?.id || result.output?.id || '';
     const text = SuiraTextSpacing.compactCapture(result.output?.text || '');
     ocrText.value = text;
     ocrText.placeholder = text ? '' : '没有识别到文字，可以重新框选或换一张更清晰的图片';
-    showAction(text ? '识别完成' : '没有识别到文字');
+    $('#ocr-languages').textContent = '自动 → ' + (/[\u3400-\u9fff]/.test(text) ? '英文' : '中文');
+    $('#ocr-status').textContent = text ? '识别完成' : '没有识别到文字';
     ocrText.focus();
     ocrText.select();
+    return text;
   } catch (error) {
-    ocrText.placeholder = error.message || '识别失败';
-    showAction(error.message || '识别失败', 'error');
+    if (token === ocrRevision) {
+      ocrText.placeholder = error.message || '识别失败';
+      $('#ocr-status').textContent = error.message || '识别失败';
+      showAction(error.message || '识别失败', 'error');
+    }
+    return null;
+  } finally {
+    if (token === ocrRevision) { ocrBusy = false; updateOcrButtons(); }
   }
+}
+async function startTranslate() {
+  if (ocrResult.hidden || !ocrText.value.trim()) {
+    const text = await startOcr();
+    if (!text?.trim()) return;
+  }
+  const text = ocrText.value, target = /[\u3400-\u9fff]/.test(text) ? 'en' : 'zh';
+  resetTranslation();
+  const token = ocrRevision;
+  ocrBusy = true;
+  updateOcrButtons();
+  $('#ocr-status').textContent = '正在翻译…';
+  try {
+    const status = await window.suira.translate.status();
+    if (token !== ocrRevision) return;
+    if (!status.configured) {
+      $('#ocr-status').textContent = '还没有设置翻译服务';
+      $('#ocr-configure').hidden = false;
+      return;
+    }
+    const result = await window.suira.translate.run({ text, source: 'auto', target });
+    if (token !== ocrRevision) return;
+    if (!result?.ok) throw new Error(result?.error || '翻译失败');
+    translationText.value = result.text || '';
+    translationCurrent = true;
+    $('#ocr-status').textContent = '翻译完成';
+  } catch (error) {
+    if (token === ocrRevision) $('#ocr-status').textContent = error.message || '翻译失败';
+  } finally {
+    if (token === ocrRevision) { ocrBusy = false; updateOcrButtons(); }
+  }
+}
+async function copyOcrText(translated = false, paste = false) {
+  const text = translated ? translationText.value : ocrText.value;
+  if (!text.trim() || (translated && !translationCurrent)) return;
+  try {
+    const saved = await window.suira.content.addText({ text, title: translated ? '译文' : '识别文字', source: translated ? 'translate' : 'ocr' });
+    if (!saved?.ok) throw new Error(saved?.error || '保存失败');
+    const result = paste
+      ? await window.suira.returnTo.commit({ itemId: saved.item.id, intent: 'return-and-paste' })
+      : await window.suira.actions.run(saved.item.id, 'output.copy');
+    if (!result?.ok) throw new Error(result?.error || '复制失败');
+    showAction(result.message || (translated ? '译文已复制' : '原文已复制'));
+  } catch (error) { showAction(error.message || '复制失败', 'error'); }
 }
 
 function beginDrag(event) {
@@ -1035,6 +1113,7 @@ function setupEvents() {
       else if (action === 'pin') finish('pin');
       else if (action === 'copy') finish('copy');
       else if (action === 'ocr') startOcr();
+      else if (action === 'translate') startTranslate();
       else if (action === 'long') startLongSelection();
     });
   });
@@ -1059,21 +1138,13 @@ function setupEvents() {
   $('#original-viewer').addEventListener('click', (event) => {
     if (event.target === $('#original-viewer')) $('#original-viewer').hidden = true;
   });
-  $('#ocr-result-copy').addEventListener('click', async () => {
-    const text = ocrText.value.trim();
-    if (!text) { showAction('没有可复制的文字', 'error'); return; }
-    try {
-      const saved = await window.suira.content.addText({ text, title: '识别文字', source: 'ocr' });
-      if (!saved?.ok) throw new Error(saved?.error || '保存失败');
-      const result = await window.suira.actions.run(saved.item.id, 'output.copy');
-      if (!result?.ok) throw new Error(result?.error || '复制失败');
-      showAction('识别文字已复制');
-      closeOcrResult();
-      window.suira.capture.cancel();
-    } catch (error) {
-      showAction(error.message || '复制失败', 'error');
-    }
-  });
+  ocrText.addEventListener('input', resetTranslation);
+  translationText.addEventListener('input', () => { ++ocrRevision; ocrBusy = false; translationCurrent = true; updateOcrButtons(); });
+  $('#ocr-result-translate').addEventListener('click', startTranslate);
+  $('#ocr-configure').addEventListener('click', async () => { await window.suira.capture.cancel(); window.suira.textTools.configure(); });
+  $('#ocr-result-copy').addEventListener('click', () => copyOcrText());
+  $('#ocr-translation-copy').addEventListener('click', () => copyOcrText(true));
+  $('#ocr-translation-paste').addEventListener('click', () => copyOcrText(true, true));
   $('#ocr-result-shelf').addEventListener('click', async () => {
     const text = ocrText.value.trim();
     if (!text) { showAction('没有可加入的文字', 'error'); return; }
@@ -1304,6 +1375,7 @@ function resetOverlay() {
   textInput.value = '';
   ocrText.value = '';
   ocrText.placeholder = '正在识别…';
+  resetTranslation();
   root.dataset.tool = 'select';
   root.style.cursor = '';
   $$('.tool-button[data-tool]').forEach((button) => {
@@ -1328,6 +1400,7 @@ function resetOverlay() {
  * 放大镜画布很小，保持不动，避免下次显示时没有恢复尺寸的路径。
  */
 function releaseOverlay() {
+  closeOcrResult();
   if (state.image instanceof HTMLCanvasElement) state.image.width = state.image.height = 0;
   showSeq += 1; // 作废还在进行中的 loadCapture
   state.payload = null;
@@ -1441,10 +1514,13 @@ async function handleShown() {
 function applyIntent(intent) {
   if (!intent || intent === 'copy' || intent === 'save' || intent === 'shelf') return;
   state.intent = intent;
-  if (intent === 'ocr') {
+  if (intent === 'ocr' || intent === 'ocr-return') {
     // 提示用户这一趟是要提字的，不必再找工具栏
     if (hintBrand) hintBrand.textContent = '截图提字';
     showAction('框选要识别的区域，完成后自动识别');
+  } else if (intent === 'translate') {
+    if (hintBrand) hintBrand.textContent = '截图翻译';
+    showAction('框选要翻译的区域，完成后自动识别并翻译');
   } else if (intent === 'pin') {
     if (hintBrand) hintBrand.textContent = '截图钉图';
     showAction('框选要钉住的区域，完成后直接钉在桌面');
@@ -1463,7 +1539,8 @@ function autoAdvanceForIntent() {
   if (!hasSelection()) return;
   state.intentAutoDone = true;
   const intent = state.intent;
-  if (intent === 'ocr') startOcr();
+  if (intent === 'ocr' || intent === 'ocr-return') startOcr();
+  else if (intent === 'translate') startTranslate();
   else if (intent === 'pin') finish('pin');
   else if (intent === 'long') startLongSelection();
 }

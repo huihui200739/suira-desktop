@@ -21,7 +21,7 @@ require(${JSON.stringify(path.join(root,'main.js'))});`);
   const main=await until(()=>connect(port,t=>t.url.endsWith('/index.html')));ws=main.ws;await until(()=>main.evaluate('Boolean(window.suira?.panel)'));await main.evaluate('window.suira.settings.update({globalShortcutsEnabled:true})');await wait(500);
   async function press(key){const current=++seq;update({seq:current,key});await until(()=>records().find(r=>r.type==='invoked'&&r.seq===current));}
   const snapshot=await main.evaluate('window.suira.shortcuts.get()');
-  for(const [action,meta] of Object.entries(PANEL_ACTIONS).filter(([,m])=>m.implemented)) {
+  for(const [action,meta] of Object.entries(PANEL_ACTIONS).filter(([,m])=>m.implemented&&m.key)) {
     assert.ok(Object.values(snapshot.bindings).includes('Alt+'+meta.key),action);
     if(['capture','clipboard'].includes(action))continue;
     await press('Alt+'+meta.key);assert.equal(records().filter(r=>r.type==='action').at(-1).action,action);

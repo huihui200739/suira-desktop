@@ -53,6 +53,7 @@ function makePanel(overrides = {}) {
     // 速记：打开最近一条（没有才新建），窗口由主进程负责
     openNote: async () => { calls.note.push('open'); return { ok: true, id: 'note-1' }; },
     openImageEditor: async () => ({ok:true}),
+    openTextTools: async mode => { calls.textTool = mode; return {ok:true}; },
     ...overrides
   });
 }
@@ -66,7 +67,7 @@ function makePanel(overrides = {}) {
       .map(([id]) => id);
     const bound = new Set(Object.values(DEFAULT_KEY_BINDINGS));
     for (const id of implemented) {
-      if (!bound.has(id)) throw new Error(`${id} 已实现但没有键位`);
+      if (PANEL_ACTIONS[id].key && !bound.has(id)) throw new Error(`${id} 已实现但没有键位`);
     }
     assert.ok(implemented.length >= 8, '已实现动作少于 8 个');
   });
@@ -90,7 +91,7 @@ function makePanel(overrides = {}) {
     assert.strictEqual(calls.capture.at(-1), 'copy');
   });
 
-  await ta('B 标注：走同一个覆盖层，不另开一套界面', async () => {
+  await ta('自定义标注：走同一个覆盖层，不另开一套界面', async () => {
     const r = await panel.run('annotate');
     assert.strictEqual(r.ok, true);
     assert.strictEqual(r.closePanel, true);
@@ -184,7 +185,7 @@ function makePanel(overrides = {}) {
 
   await ta('V 文本转换：真实生成整理结果并带用户看结果', async () => {
     store.addItem({ kind: 'text', title: '断行文字', text: '第一行\n第二行\n\n第三段' });
-    const r = await panel.run('text-clean');
+    const r = await makePanel({openTextTools:undefined}).run('text-clean');
     assert.strictEqual(r.ok, true);
     assert.ok(r.outputId, '没有返回生成结果的 id，用户看不到成果');
     assert.strictEqual(r.openPage, 'library', '生成结果后没有带用户去内容库');
@@ -208,87 +209,41 @@ function makePanel(overrides = {}) {
     assert.match(r.error, /还没有文字内容/);
   });
 
-  console.log('\n== 翻译链路（图片取词翻译）==');
-
-  await ta('T 翻译：有文字就翻文字，结果回填到面板', async () => {
-    const textItem = store.addItem({ kind: 'text', title: '英文句子', text: 'Hello world' });
-    const r = await panel.run('translate');
-    assert.strictEqual(r.ok, true);
-    assert.ok(r.translate, '没有返回翻译结果，面板拿不到回填数据');
-    assert.strictEqual(r.translate.text, '【译】Hello world');
-    assert.strictEqual(r.translate.source, 'Hello world');
-    assert.strictEqual(r.translate.itemId, textItem.id);
-    assert.strictEqual(r.translate.hasImage, false, '文字来源不该出现「查看原图」');
-    // 译文作为派生内容落盘，指回原文
-    const output = store.getItem(r.translate.outputId);
-    assert.ok(output, '译文没有落盘');
-    assert.strictEqual(output.meta.derivedBy, 'text.translate');
-    assert.strictEqual(output.meta.originItemId, textItem.id);
+  console.log('\n== 翻译与截图翻译链路 ==');
+  await ta('T 翻译只打开翻译窗口，不执行最近内容翻译', async () => {
+    store.addItem({kind:'text', text:'Hello world', title:'英文'});
+    const count = store.data.items.length;
+    const r = await makePanel({actions:{execute:()=>{throw Error('不应执行最近内容翻译');}}}).run('translate');
+    assert.deepStrictEqual(r, {ok:true,closePanel:true});
+    assert.equal(calls.textTool, 'translate');
+    assert.equal(store.data.items.length, count);
   });
-
-  await ta('T 翻译：没有文字时翻最近一张图，先取词再翻译', async () => {
-    const bare = new SuiraStore(path.join(tmp, 'translate-img.json'));
-    const img = bare.addItem({ kind: 'image', title: '英文截图', filePath: path.join(tmp, 'shot.png'), text: '' });
-    const flows = createPanelActions({
-      store: bare,
-      actions: createActionRegistry({
-        store: bare,
-        ocr: { recognizeFile: async () => ({ text: 'Text in image', confidence: 88, blocks: [], engine: 'test', cached: false }) },
-        translate: async (text) => ({ ok: true, text: '【译】' + text, provider: 'openai', from: 'en', to: 'zh' }),
-        clipboard: { writeText: async () => {}, writeImage: async () => {} },
-        shell: { showItemInFolder: () => {}, openExternal: async () => {} },
-        nativeImage: { createFromBuffer: () => ({ getSize: () => ({ width: 1, height: 1 }) }) },
-        openPath: async () => '',
-        pinImage: async () => {},
-        broadcast: () => {},
-        assetPath: () => '',
-        capturesDir: () => tmp,
-        makeId: (p) => p + '-tr'
-      }),
-      capture: async () => ({ ok: true }),
-      pin: () => {},
-      switchToDesktop: () => ({ ok: true }),
-      lockWorkstation: () => ({ ok: true })
-    });
-    const r = await flows.run('translate');
-    assert.strictEqual(r.ok, true);
-    assert.strictEqual(r.translate.source, 'Text in image', '没有把 OCR 取到的词当原文');
-    assert.strictEqual(r.translate.hasImage, true, '图片来源应提供「查看原图」');
-    assert.strictEqual(r.translate.itemId, img.id, '原图入口应指向那张图片，而不是 OCR 派生条目');
-    // 取词结果单独留一条内容，处理轨迹里能看出"译文来自哪张图"
-    const ocrItem = bare.data.items.find((item) => item.meta?.derivedBy === 'ocr.local');
-    assert.ok(ocrItem, '图片取词没有留下识别结果');
-    assert.strictEqual(ocrItem.meta.originItemId, img.id);
+  await ta('T 翻译无最近文字或图片也能打开窗口', async () => {
+    const bare = new SuiraStore(path.join(tmp, 'translate-empty.json'));
+    assert.equal((await makePanel({store:bare}).run('translate')).ok, true);
   });
-
-  await ta('T 翻译：引擎未配置时给出可读原因，不产出假译文', async () => {
-    const bare = new SuiraStore(path.join(tmp, 'translate-none.json'));
-    bare.addItem({ kind: 'text', title: '待翻译', text: 'Hello' });
-    const flows = createPanelActions({
-      store: bare,
-      actions: createActionRegistry({
-        store: bare,
-        ocr: { recognizeFile: async () => ({ text: '', confidence: 0, blocks: [], engine: 'test', cached: false }) },
-        translate: async () => ({ ok: false, error: '还没有配置翻译引擎：到设置 → 翻译里选择一个引擎并填入密钥' }),
-        clipboard: { writeText: async () => {}, writeImage: async () => {} },
-        shell: { showItemInFolder: () => {}, openExternal: async () => {} },
-        nativeImage: { createFromBuffer: () => ({ getSize: () => ({ width: 1, height: 1 }) }) },
-        openPath: async () => '',
-        pinImage: async () => {},
-        broadcast: () => {},
-        assetPath: () => '',
-        capturesDir: () => tmp,
-        makeId: (p) => p + '-none'
-      }),
-      capture: async () => ({ ok: true }),
-      pin: () => {},
-      switchToDesktop: () => ({ ok: true }),
-      lockWorkstation: () => ({ ok: true })
-    });
-    const r = await flows.run('translate');
-    assert.strictEqual(r.ok, false);
-    assert.match(r.error, /设置/);
-    assert.ok(!r.translate, '失败时不该返回翻译结果');
+  await ta('T 翻译打开失败时返回错误', async () => {
+    const r=await makePanel({openTextTools:async()=>({ok:false,error:'无法打开翻译窗口'})}).run('translate');
+    assert.equal(r.ok,false);assert.match(r.error,/无法打开/);
+  });
+  await ta('B 截图翻译进入 translate 意图并收起面板', async () => {
+    assert.equal(DEFAULT_KEY_BINDINGS.B,'capture-translate');
+    const r=await panel.run('capture-translate');
+    assert.deepStrictEqual(r,{ok:true,closePanel:true});
+    assert.equal(calls.capture.at(-1),'translate');
+    assert.equal((await makePanel({capture:async()=>({ok:false,error:'截图失败'})}).run('capture-translate')).ok,false);
+  });
+  t('旧 B 为出厂标注时迁移，用户自定义 B 不迁移，重启不再迁移', () => {
+    const {migrateLegacyPanelBindings,panelGlobalBindings}=require('../lib/panel-shortcuts');
+    assert.equal(migrateLegacyPanelBindings({},1).B.id,'capture-translate');
+    assert.equal(migrateLegacyPanelBindings({B:{type:'action',id:'annotate'}},1).B.id,'capture-translate');
+    assert.equal(migrateLegacyPanelBindings({}).B.id,'capture-translate');
+    for(const binding of [{type:'none'},{type:'action',id:'note'},{type:'file',target:'C:\\demo.txt',name:'文件'},{type:'url',target:'https://example.com'}]) {
+      for(const version of [0,1,2]) assert.deepStrictEqual(migrateLegacyPanelBindings({B:binding},version).B,binding);
+    }
+    const custom={B:{type:'action',id:'annotate'}};
+    assert.deepStrictEqual(migrateLegacyPanelBindings(custom,2),custom);
+    assert.equal(panelGlobalBindings(migrateLegacyPanelBindings({},1),{})['panelKey:B'],'Alt+B');
   });
 
   console.log('\n== 系统动作链路 ==');

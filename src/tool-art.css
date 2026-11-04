@@ -152,3 +152,6 @@
 .suira-art.window-deck .front { background:linear-gradient(145deg,#f7f0ff,#d8c2f4); transform:translate(0,calc(6 * var(--art-unit, 1px))); }
 .suira-art.window-deck .deck-pane { inset:calc(11 * var(--art-unit, 1px)) calc(6 * var(--art-unit, 1px)) calc(5 * var(--art-unit, 1px)); border-radius:calc(2 * var(--art-unit, 1px)); background:linear-gradient(135deg,#9470d2,#b28fdf); }
 .suira-art.window-deck .deck-base { left:calc(12 * var(--art-unit, 1px)); right:calc(12 * var(--art-unit, 1px)); bottom:calc(9 * var(--art-unit, 1px)); height:calc(3 * var(--art-unit, 1px)); border-radius:calc(2 * var(--art-unit, 1px)); background:#f2e3ff; }
+
+.suira-art.capture-translation .translation-frame { inset:calc(12 * var(--art-unit, 1px)); border:calc(5 * var(--art-unit, 1px)) solid #1688ed; border-radius:calc(9 * var(--art-unit, 1px)); background:#d7edff; box-shadow:inset 0 0 0 calc(2 * var(--art-unit, 1px)) #fff9; }
+.suira-art.capture-translation .translation-letter { right:calc(4 * var(--art-unit, 1px)); bottom:calc(1 * var(--art-unit, 1px)); width:calc(35 * var(--art-unit, 1px)); height:calc(40 * var(--art-unit, 1px)); color:#e34d4d; font:bold calc(39 * var(--art-unit, 1px))/1 Arial,sans-serif; text-shadow:0 calc(2 * var(--art-unit, 1px)) #fff; }

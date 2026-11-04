@@ -299,7 +299,7 @@ window.suira.panel = {
       ['A','S','D','F','G','H','J','K','L'],
       ['Z','X','C','V','B','N','M']
     ];
-    var bound = { O:'ocr', P:'pin', D:'desktop', L:'lock', Z:'capture', X:'clipboard', V:'text-clean', B:'annotate' };
+    var bound = { O:'ocr', P:'pin', D:'desktop', L:'lock', Z:'capture', X:'clipboard', V:'text-clean', B:'capture-translate' };
     var planned = { S:'录屏', G:'长截图', T:'文本翻译', W:'壁纸', I:'改图', F:'日历', N:'速记', M:'Markdown' };
     var keys = [];
     rows.forEach(function (row, rowIndex) {

@@ -1779,13 +1779,14 @@ async function tryReturnToTarget(item, intent = 'return-and-paste', options = {}
   // 提交时前台通常是自己的浮层，校验原目标实例，而不是拿浮层与目标比较。
   if (current && Number(current.pid) === process.pid && target) current = await foregroundProbe.query(target.hwnd);
   const decision = decideCommit({ target, current, intent,
-    pasteAfterCopy: options.clipboardBar || Boolean(settings.pasteAfterCopy) });
+    pasteAfterCopy: options.clipboardBar || options.explicitPaste || Boolean(settings.pasteAfterCopy) });
 
   if (!decision.canPaste) {
     // 校验未通过（目标已关闭 / 用户切换了窗口 / 权限不匹配），或用户只要复制
     return { ...decision, canPaste: false, copied: true, message: options.clipboardBar&&intent!=='copy-only'?'已复制，请在当前输入框按 Ctrl+V 粘贴':decision.message };
   }
 
+  if (options.captureOverlay) { mainWasVisible = false; hideOverlayWindow({ restoreMain: false }); }
   const nativePaste = await foregroundProbe.pasteTo(target);
   if (!nativePaste.unsupported) return { ...decision, canPaste: nativePaste.ok, pasted: nativePaste.ok,
     message: nativePaste.ok ? (options.clipboardBar?'已粘贴到当前窗口':'已粘贴到原窗口') : '已复制，请按 Ctrl+V 粘贴' };
@@ -2013,8 +2014,10 @@ async function rememberMainWindowState() {
 }
 
 const textToolWindows=new Map();
+let textCaptureWindow = null;
 async function openTextTools(mode='convert',input,operation='compact'){
   if(!['translate','convert'].includes(mode))return {ok:false,error:'未知文字工具'};
+  await rememberReturnTarget('text-tools');
   let win=textToolWindows.get(mode),fresh=!win||win.isDestroyed();
   const text=typeof input==='string'?input.slice(0,200000):(await readClipboardText()).slice(0,200000);
   if(fresh){
@@ -2163,6 +2166,16 @@ function hideOverlayWindow(options = {}) {
     if (options.release !== false) scheduleIdleTeardown(overlayWindow, '截图', HOT_WINDOW_IDLE_MS);
   }
   if(options.restoreMain!==false)restoreMainAfterCapture();
+  const textWindow = textCaptureWindow;
+  textCaptureWindow = null;
+  if (textWindow && !textWindow.isDestroyed()) {
+    if (typeof options.textToolInput === 'string') {
+      textWindow.__textTool = { ...textWindow.__textTool, text: options.textToolInput };
+      textWindow.webContents.send('text-tools:input', textWindow.__textTool);
+    }
+    textWindow.show();
+    textWindow.focus();
+  }
 }
 
 async function beginScreenCapture(source = 'panel', options = {}) {
@@ -2170,10 +2183,11 @@ async function beginScreenCapture(source = 'panel', options = {}) {
   if (captureBusy) return { ok: true };
   // 入口意图：从 38 键面板按 O 进来，框完直接进识别；按 P 进来直接钉图。
   // 意图随 payload 交给覆盖层，覆盖层据此预选工具或自动完成。
-  const intent = ['ocr', 'pin', 'copy', 'save', 'shelf','long'].includes(options?.intent) ? options.intent : 'copy';
+  const intent = ['ocr', 'translate', 'ocr-return', 'pin', 'copy', 'save', 'shelf','long'].includes(options?.intent) ? options.intent : 'copy';
   if(intent==='long')return beginLongPicker(source);
   captureBusy = true;
   try {
+    if (source !== 'text-tools') await rememberReturnTarget('capture');
     // 页面加载与屏幕采集并行；启动预热尚未完成时也不串行冷建。
     createOverlayWindow();
     const hidingSurface = [quickWindow, clipboardBarWindow, mainWindow].some(win => win && !win.isDestroyed() && win.isVisible());
@@ -3402,7 +3416,11 @@ function registerIpc() {
   });
   ipcMain.handle('capture:finish', async (_event, payload) => {
     try {
+      const session = capturePayload;
       const result = await completeCapture(payload?.dataUrl, payload?.action || 'copy');
+      if (result.ok && payload?.action === 'ocr' && session === capturePayload && session?.intent === 'ocr-return') {
+        hideOverlayWindow({ textToolInput: require('./src/text-spacing').compactCapture(result.output?.text || '') });
+      }
       // OCR 结果面板还要留在覆盖层里让用户编辑，其它动作成功即收起
       if (result.ok && payload?.action !== 'ocr') hideOverlayWindow();
       return result;
@@ -3802,7 +3820,9 @@ function registerIpc() {
     const fromClipboardBar = clipboardBarWindow && !clipboardBarWindow.isDestroyed() && event.sender === clipboardBarWindow.webContents;
     const revision=clipboardShowRevision;
     const target=fromClipboardBar?currentPasteTarget(await queryForeground(),process.pid,clipboardSessionTarget,clipboardBarWindow.isVisible()):null;
-    const decision = await tryReturnToTarget(item, intent, { clipboardBar: fromClipboardBar,target,revision });
+    const fromOverlay = overlayWindow && event.sender === overlayWindow.webContents;
+    const fromTextTool = [...textToolWindows.values()].some(win => !win.isDestroyed() && event.sender === win.webContents);
+    const decision = await tryReturnToTarget(item, intent, { clipboardBar: fromClipboardBar, target, revision, captureOverlay: fromOverlay, explicitPaste: fromOverlay || fromTextTool });
     if (decision.copyFailed) {
       // 复制失败是真正的失败：给渲染层 ok:false，才能显示错误而不是成功提示
       return { ok: false, error: decision.message || '复制失败', ...decision };
@@ -3840,6 +3860,22 @@ function registerIpc() {
     await store.save();return {ok:true};
   });
   ipcMain.handle('text-tools:open',(_event,payload)=>openTextTools(payload?.mode,payload?.text,require('./lib/text-tools').OPERATIONS.has(payload?.operation)?payload.operation:'compact'));
+  ipcMain.handle('text-tools:capture', async event => {
+    const win = BrowserWindow.fromWebContents(event.sender);
+    if (!win || ![...textToolWindows.values()].includes(win)) return { ok: false, error: '请从文字工具窗口截图' };
+    if (captureBusy || longCapture || longCaptureStarting) return { ok: false, error: '请先完成当前截图' };
+    await rememberReturnTarget('text-tools-capture');
+    textCaptureWindow = win;
+    win.hide();
+    // 给桌面合成器一帧移除文字工具窗口，避免把工具本身截进去。
+    await new Promise(resolve => setTimeout(resolve, 40));
+    const result = await beginScreenCapture('text-tools', { intent: 'ocr-return' });
+    if (!result.ok) {
+      textCaptureWindow = null;
+      if (!win.isDestroyed()) { win.show(); win.focus(); }
+    }
+    return result;
+  });
   ipcMain.handle('text-tools:initial',event=>BrowserWindow.fromWebContents(event.sender)?.__textTool||{mode:'convert',text:''});
   ipcMain.handle('text-tools:transform',(_event,text,operation)=>{try{return {ok:true,text:require('./lib/text-tools').transformText(text,operation)};}catch(error){return {ok:false,error:error.message};}});
   ipcMain.handle('text-tools:configure',()=>{showMain('settings');const send=()=>mainWindow?.webContents.send('settings:translation');if(mainWindow?.webContents.isLoading())mainWindow.webContents.once('did-finish-load',send);else send();return {ok:true};});
@@ -4185,10 +4221,10 @@ async function initialize() {
   // 旧版三键默认键位迁移到两键组合；改过键的用户不受影响
   await migrateShortcutDefaults();
   // 老版本覆盖表基于 Z/X/V。先还原旧有效绑定，再按实际保存的组合键对齐。
-  const currentPanel = store.data.panelShortcutVersion >= 1 ? store.getPanelBindings() : migrateLegacyPanelBindings(store.getPanelBindings());
+  const currentPanel = migrateLegacyPanelBindings(store.getPanelBindings(), store.data.panelShortcutVersion);
   const alignedPanel = alignPanelShortcuts(currentPanel, shortcutBindings());
   if (!alignedPanel.ok) console.warn(`面板键位无法自动对齐：${alignedPanel.error}`);
-  await store.setPanelConfiguration(alignedPanel.ok ? alignedPanel.bindings : currentPanel, {}, 1);
+  await store.setPanelConfiguration(alignedPanel.ok ? alignedPanel.bindings : currentPanel, {}, 2);
   // 全局关掉拼写检查：各窗口已经传了 spellcheck:false，这里再兜一层底，
   // 避免任何渲染进程加载/初始化系统拼写词典（一个常驻的词库 + 后台线程）。
   try { session.defaultSession.setSpellCheckerEnabled(false); } catch { /* 会话未就绪时忽略 */ }

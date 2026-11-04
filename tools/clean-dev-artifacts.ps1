@@ -43,7 +43,7 @@ function Add-Target([string]$candidate, [string]$owner, [string]$group) {
   $targets.Add([pscustomobject]@{ Path=$absolute; Root=$owner; Group=$group; Bytes=[long]$bytes; Directory=[bool]$item.PSIsContainer })
 }
 
-foreach ($name in @('edge-profile','edge-profile2','mem','probe-app','probe-app2','udata-copy','udata-default','udata-test',
+foreach ($name in @('capture32-app.js','capture32-english.html','capture32-profile','edge-profile','edge-profile2','mem','probe-app','probe-app2','udata-copy','udata-default','udata-test',
                     'launch-suira.cmd','run-app.cmd','run-app2.cmd','run-probe.cmd','release-edit.py','release-ui-edit.py','update-repo.py','repo-info.json','latest-release.json',
                     'cleanup-protected.json','installer-lifecycle-result.json','release-audit.json','coco-probe.js','coco-electron-probe.js',
                     'process-probe.exe','process-probe.nsi','process-probe.txt','context-guard-probe.exe','context-guard-probe.nsi',
