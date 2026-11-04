@@ -43,7 +43,7 @@ function Add-Target([string]$candidate, [string]$owner, [string]$group) {
   $targets.Add([pscustomobject]@{ Path=$absolute; Root=$owner; Group=$group; Bytes=[long]$bytes; Directory=[bool]$item.PSIsContainer })
 }
 
-foreach ($name in @('capture32-app.js','capture32-english.html','capture32-profile','edge-profile','edge-profile2','mem','probe-app','probe-app2','udata-copy','udata-default','udata-test',
+foreach ($name in @('capture32-verify-app.js','capture32-verify-profile','capture32-token.cs','capture32-token.exe','capture32-launcher.cs','capture32-launcher.exe','capture32-focus-host.cs','capture32-focus-host.exe','capture32-children-host.cs','capture32-children-host.exe','capture32-proof.json','capture32-debug-host.cs','capture32-debug-host.exe','capture32-app.js','capture32-english.html','capture32-profile','edge-profile','edge-profile2','mem','probe-app','probe-app2','udata-copy','udata-default','udata-test',
                     'launch-suira.cmd','run-app.cmd','run-app2.cmd','run-probe.cmd','release-edit.py','release-ui-edit.py','update-repo.py','repo-info.json','latest-release.json',
                     'cleanup-protected.json','installer-lifecycle-result.json','release-audit.json','coco-probe.js','coco-electron-probe.js',
                     'process-probe.exe','process-probe.nsi','process-probe.txt','context-guard-probe.exe','context-guard-probe.nsi',

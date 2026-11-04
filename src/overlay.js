@@ -693,7 +693,7 @@ function resetTranslation() {
   translationText.value = '';
   $('#ocr-configure').hidden = true;
   $('#ocr-status').textContent = '';
-  $('#ocr-languages').textContent = '自动 → ' + (/[\u3400-\u9fff]/.test(ocrText.value) ? '英文' : '中文');
+  $('#ocr-languages').textContent = '自动 → ' + (SuiraTranslateLanguage.defaultTarget(ocrText.value) === 'en' ? '英文' : '中文');
   updateOcrButtons();
 }
 function closeOcrResult() {
@@ -726,7 +726,7 @@ async function startOcr() {
     const text = SuiraTextSpacing.compactCapture(result.output?.text || '');
     ocrText.value = text;
     ocrText.placeholder = text ? '' : '没有识别到文字，可以重新框选或换一张更清晰的图片';
-    $('#ocr-languages').textContent = '自动 → ' + (/[\u3400-\u9fff]/.test(text) ? '英文' : '中文');
+    $('#ocr-languages').textContent = '自动 → ' + (SuiraTranslateLanguage.defaultTarget(text) === 'en' ? '英文' : '中文');
     $('#ocr-status').textContent = text ? '识别完成' : '没有识别到文字';
     ocrText.focus();
     ocrText.select();
@@ -747,7 +747,7 @@ async function startTranslate() {
     const text = await startOcr();
     if (!text?.trim()) return;
   }
-  const text = ocrText.value, target = /[\u3400-\u9fff]/.test(text) ? 'en' : 'zh';
+  const text = ocrText.value, target = SuiraTranslateLanguage.defaultTarget(text);
   resetTranslation();
   const token = ocrRevision;
   ocrBusy = true;

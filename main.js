@@ -1786,10 +1786,20 @@ async function tryReturnToTarget(item, intent = 'return-and-paste', options = {}
     return { ...decision, canPaste: false, copied: true, message: options.clipboardBar&&intent!=='copy-only'?'已复制，请在当前输入框按 Ctrl+V 粘贴':decision.message };
   }
 
-  if (options.captureOverlay) { mainWasVisible = false; hideOverlayWindow({ restoreMain: false }); }
+  const hideCaptureAfterPaste = () => {
+    if (options.captureOverlay) { mainWasVisible = false; hideOverlayWindow({ restoreMain: false }); }
+  };
+  // 原生助手先验证前台仍是随序，再切回目标注入；提前隐藏会让底下的
+  // 其他窗口变成前台，被正确的焦点保护拒绝。成功后才收起截图层。
+  // 只有当前前台进程能把置前权限交给助手，权限限定到这一助手 PID。
+  await foregroundProbe.start();
+  panelNative.allowForeground(foregroundProbe.child?.pid);
   const nativePaste = await foregroundProbe.pasteTo(target);
-  if (!nativePaste.unsupported) return { ...decision, canPaste: nativePaste.ok, pasted: nativePaste.ok,
-    message: nativePaste.ok ? (options.clipboardBar?'已粘贴到当前窗口':'已粘贴到原窗口') : '已复制，请按 Ctrl+V 粘贴' };
+  if (!nativePaste.unsupported) {
+    if (nativePaste.ok) hideCaptureAfterPaste();
+    return { ...decision, canPaste: nativePaste.ok, pasted: nativePaste.ok,
+      message: nativePaste.ok ? (options.clipboardBar?'已粘贴到当前窗口':'已粘贴到原窗口') : '已复制，请按 Ctrl+V 粘贴' };
+  }
 
   const focused = await focusWindowForReturn(target);
   if (!focused) {
@@ -1807,6 +1817,7 @@ async function tryReturnToTarget(item, intent = 'return-and-paste', options = {}
       message: `已复制，请手动粘贴（${injected.error || '注入失败'}）`
     };
   }
+  hideCaptureAfterPaste();
   return { ...decision, canPaste: true, pasted: true, message: options.clipboardBar?'已粘贴到当前窗口':'已粘贴到原窗口' };
 }
 
@@ -4279,7 +4290,7 @@ async function initialize() {
     });
   }
   captureHost = prepareCaptureHost();
-  foregroundProbe.nativeHostReady = ensureNativeHost({ sourcePath: assetPath('foreground-host.cs'), targetPath: path.join(userRoot(), 'foreground-host-v4.exe'), references: ['System.Web.Extensions.dll'] });
+  foregroundProbe.nativeHostReady = ensureNativeHost({ sourcePath: assetPath('foreground-host.cs'), targetPath: path.join(userRoot(), 'foreground-host-v5.exe'), references: ['System.Web.Extensions.dll'] });
   foregroundProbe.start().catch(error => console.warn('前台助手预热失败:', error.message));
   armIsland();
   islandWakeReady = setupIslandPointer().catch(error => { islandWakeError = error.message; });

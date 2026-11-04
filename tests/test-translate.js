@@ -70,6 +70,16 @@ t('日文里混汉字仍判为日文（先看假名）', () => {
   assert.strictEqual(translate.detectLang('画面を保存する'), 'ja');
 });
 
+t('截图目标语言忽略英文中的零星 OCR 汉字，与服务端检测一致', () => {
+  const {defaultTarget,detectLang}=require('../src/translate-language');
+  const noisy='Hello world. Screenshot translation in one step) 一';
+  assert.equal(detectLang(noisy),'en');assert.equal(defaultTarget(noisy),'zh');
+  assert.equal(defaultTarget('这是一段中文原文'),'en');
+  assert.equal(defaultTarget('中文 English words 混排'),'en');
+  assert.equal(defaultTarget('画面を保存する'),'zh');
+  assert.equal(defaultTarget('中文原文','ja'),'ja');
+});
+
 console.log('\n== 长文本分块 ==');
 t('短文本不切', () => {
   assert.deepStrictEqual(translate.splitChunks('hello', 100), ['hello']);

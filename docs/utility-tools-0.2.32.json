@@ -1,5 +1,8 @@
 {
   "version": "0.2.32",
+  "translationProvider": "fixture",
+  "ocrProvider": "fixture",
+  "pasteTarget": "fixture",
   "captureReturnsToTranslation": true,
   "cancelRestoresTextTool": true,
   "captureTranslateIntent": true,
@@ -31,17 +34,5 @@
   "moreMenuClickStaysOpen": true,
   "dpiVirtualizedPointerSafe": true,
   "outsidePointerDismisses": true,
-  "outsideFocusDismisses": true,
-  "translationProvider": "fixture",
-  "ocrProvider": "fixture",
-  "pasteTarget": "fixture",
-  "fullNpmTestPassed": true,
-  "verifyCapturePassed": true,
-  "shortcutTestPassed": true,
-  "manualPanelBPassed": true,
-  "manualDesktopStoppedByUser": true,
-  "manualAltBVerified": false,
-  "manualAltBNote": "Running installed application occupies Alt+B",
-  "manualNotepadPasteVerified": false,
-  "manualEnglishWebpageVerified": false
+  "outsideFocusDismisses": true
 }

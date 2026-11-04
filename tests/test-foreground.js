@@ -124,6 +124,8 @@ const ta = async (n, f) => { try { await f(); console.log('  PASS  ' + n); pass+
         const started = Date.now();
         assert.ok(await probe.start());
         assert.ok(Date.now() - started < 1500, '不得固定等待 4 秒');
+        await new Promise(resolve => setTimeout(resolve, 2200));
+        assert.equal(probe.isReady(), true, 'parent watchdog must keep the native host alive');
         const snapshot = await probe.query();
         assert.ok(snapshot?.hwnd);
         const checked = await probe.query(snapshot.hwnd);
