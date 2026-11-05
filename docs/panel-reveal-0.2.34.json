@@ -1,0 +1,95 @@
+{
+  "version": "0.2.34",
+  "motion": {
+    "name": "panel-reveal",
+    "duration": "0.16s"
+  },
+  "paired": {
+    "enabled": [
+      3,
+      2,
+      3,
+      3
+    ],
+    "disabled": [
+      3,
+      3,
+      2,
+      2
+    ]
+  },
+  "pairedMedians": {
+    "enabled": 3,
+    "disabled": 2.5
+  },
+  "measured": [
+    {
+      "nativeMs": 1504,
+      "inspectedMs": 1615
+    },
+    {
+      "nativeMs": 2,
+      "inspectedMs": 53
+    },
+    {
+      "nativeMs": 2,
+      "inspectedMs": 62
+    },
+    {
+      "nativeMs": 4,
+      "inspectedMs": 53
+    },
+    {
+      "nativeMs": 220,
+      "inspectedMs": 292
+    },
+    {
+      "nativeMs": 3,
+      "inspectedMs": 54
+    },
+    {
+      "nativeMs": 3,
+      "inspectedMs": 51
+    },
+    {
+      "nativeMs": 2,
+      "inspectedMs": 52
+    },
+    {
+      "nativeMs": 3,
+      "inspectedMs": 53
+    },
+    {
+      "nativeMs": 2,
+      "inspectedMs": 54
+    },
+    {
+      "nativeMs": 3,
+      "inspectedMs": 63
+    },
+    {
+      "nativeMs": 3,
+      "inspectedMs": 51
+    },
+    {
+      "nativeMs": 2,
+      "inspectedMs": 56
+    }
+  ],
+  "coldReadyBeforeShow": true,
+  "warmReadyBeforeShow": true,
+  "oneShownEvent": true,
+  "cancelledRevealSuppressed": true,
+  "recreatedReadyBeforeShow": true,
+  "keys": 38,
+  "nativeBlur": true,
+  "nativeCorners": true,
+  "nonBlockingRevealMilliseconds": 160,
+  "coldMilliseconds": 1615,
+  "warmMilliseconds": [
+    53,
+    62,
+    53
+  ],
+  "recreatedMilliseconds": 292
+}

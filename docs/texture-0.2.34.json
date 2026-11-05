@@ -1,0 +1,87 @@
+{
+  "version": "0.2.34",
+  "checks": [
+    {
+      "command": "npm test",
+      "passed": true
+    },
+    {
+      "command": "npm run verify:composition",
+      "passed": true,
+      "scenes": 6
+    },
+    {
+      "command": "npm run verify:glass",
+      "passed": true
+    },
+    {
+      "command": "npm run test:surfaces",
+      "passed": true
+    },
+    {
+      "command": "node tools/confirm-check.js (also part of npm test)",
+      "passed": true,
+      "assertions": 34
+    },
+    {
+      "command": "npm run verify:panel-reveal",
+      "passed": true
+    },
+    {
+      "command": "npm run verify:utilities",
+      "passed": true,
+      "providers": "isolated translation/OCR/paste fixtures"
+    },
+    {
+      "command": "npm run screenshots",
+      "passed": true
+    }
+  ],
+  "nativeComboboxes": 13,
+  "nativeSelectContract": [
+    "programmatic value and selectedIndex",
+    "one input/change event per user commit",
+    "form reset",
+    "dynamic options and DOM moves",
+    "disabled states",
+    "Esc cancels menu before dialog"
+  ],
+  "checkboxPresentation": "CSS only; does not mutate editor-owned nodes; accent-9 in light and dark workbench",
+  "motion": {
+    "panelMilliseconds": 160,
+    "pressMilliseconds": 100,
+    "resultMilliseconds": 180,
+    "copyMilliseconds": 200,
+    "hoverMilliseconds": 120,
+    "reducedMotion": "shared stylesheet loaded by every window"
+  },
+  "reveal": {
+    "pairedNativeShowMediansMs": {
+      "enabled": 3,
+      "disabled": 2.5
+    },
+    "measurement": "Native show notification, paired animation enabled/disabled in the same isolated process; not physical hotkey-to-visible latency. Cold samples are recorded separately in panel-reveal JSON and are not a controlled before/after comparison."
+  },
+  "compositionProof": "composition-0.2.34.json",
+  "spacingPx": [
+    4,
+    8,
+    12,
+    16,
+    24,
+    32
+  ],
+  "reviewedScreenshots": [
+    "product/settings-controls.png",
+    "product/settings-controls-dark.png",
+    "product/composition-0.2.34-dark-light.png",
+    "product/composition-0.2.34-light-busy.png"
+  ],
+  "cleanup": {
+    "command": "npm run clean -- -IncludeObsoletePackages",
+    "removedTargets": 22,
+    "removedMB": 1019.8,
+    "failures": 0,
+    "retained": "current desktop installer, runtime, dependencies, user profiles and keys"
+  }
+}

@@ -1,0 +1,488 @@
+{
+  "version": "0.2.34",
+  "fontPolicy": "MiSans on main workbench only; system font on utility windows",
+  "checks": [
+    {
+      "scheme": "light",
+      "url": "index.html",
+      "main": true,
+      "font": "\"MiSans VF\", \"Segoe UI Variable Text\", \"Microsoft YaHei UI\", sans-serif",
+      "fontLoaded": true,
+      "accent": "#5b5bd6",
+      "focus": "#9b9ef0",
+      "buttons": [
+        {
+          "id": "shelf-first",
+          "label": "创建第一个任务",
+          "root": "workbench liquid-ui",
+          "primary": "#5b5bd6",
+          "background": "rgb(91, 91, 214)",
+          "ink": "rgb(255, 255, 255)"
+        },
+        {
+          "id": "shelf-import",
+          "label": "加入剪贴板内容",
+          "root": "workbench liquid-ui",
+          "primary": "#5b5bd6",
+          "background": "rgb(91, 91, 214)",
+          "ink": "rgb(255, 255, 255)"
+        },
+        {
+          "id": "library-capture",
+          "label": "截图",
+          "root": "workbench liquid-ui",
+          "primary": "#5b5bd6",
+          "background": "rgb(91, 91, 214)",
+          "ink": "rgb(255, 255, 255)"
+        },
+        {
+          "id": "calendar-new",
+          "label": "＋ 新建日程",
+          "root": "workbench liquid-ui",
+          "primary": "#5b5bd6",
+          "background": "rgb(91, 91, 214)",
+          "ink": "rgb(255, 255, 255)"
+        },
+        {
+          "id": "",
+          "label": "保存日程",
+          "root": "workbench liquid-ui",
+          "primary": "#5b5bd6",
+          "background": "rgb(91, 91, 214)",
+          "ink": "rgb(255, 255, 255)"
+        },
+        {
+          "id": "md-new",
+          "label": "＋ 新建文档",
+          "root": "workbench liquid-ui",
+          "primary": "#5b5bd6",
+          "background": "rgb(91, 91, 214)",
+          "ink": "rgb(255, 255, 255)"
+        },
+        {
+          "id": "modal-confirm",
+          "label": "创建",
+          "root": "workbench liquid-ui",
+          "primary": "#5b5bd6",
+          "background": "rgb(91, 91, 214)",
+          "ink": "rgb(255, 255, 255)"
+        }
+      ]
+    },
+    {
+      "scheme": "dark",
+      "url": "index.html",
+      "main": true,
+      "font": "\"MiSans VF\", \"Segoe UI Variable Text\", \"Microsoft YaHei UI\", sans-serif",
+      "fontLoaded": true,
+      "accent": "#b1a9ff",
+      "focus": "#5958b1",
+      "buttons": [
+        {
+          "id": "shelf-first",
+          "label": "创建第一个任务",
+          "root": "workbench liquid-ui",
+          "primary": "#5b5bd6",
+          "background": "rgb(91, 91, 214)",
+          "ink": "rgb(255, 255, 255)"
+        },
+        {
+          "id": "shelf-import",
+          "label": "加入剪贴板内容",
+          "root": "workbench liquid-ui",
+          "primary": "#5b5bd6",
+          "background": "rgb(91, 91, 214)",
+          "ink": "rgb(255, 255, 255)"
+        },
+        {
+          "id": "library-capture",
+          "label": "截图",
+          "root": "workbench liquid-ui",
+          "primary": "#5b5bd6",
+          "background": "rgb(91, 91, 214)",
+          "ink": "rgb(255, 255, 255)"
+        },
+        {
+          "id": "calendar-new",
+          "label": "＋ 新建日程",
+          "root": "workbench liquid-ui",
+          "primary": "#5b5bd6",
+          "background": "rgb(91, 91, 214)",
+          "ink": "rgb(255, 255, 255)"
+        },
+        {
+          "id": "",
+          "label": "保存日程",
+          "root": "workbench liquid-ui",
+          "primary": "#5b5bd6",
+          "background": "rgb(91, 91, 214)",
+          "ink": "rgb(255, 255, 255)"
+        },
+        {
+          "id": "md-new",
+          "label": "＋ 新建文档",
+          "root": "workbench liquid-ui",
+          "primary": "#5b5bd6",
+          "background": "rgb(91, 91, 214)",
+          "ink": "rgb(255, 255, 255)"
+        },
+        {
+          "id": "modal-confirm",
+          "label": "创建",
+          "root": "workbench liquid-ui",
+          "primary": "#5b5bd6",
+          "background": "rgb(91, 91, 214)",
+          "ink": "rgb(255, 255, 255)"
+        }
+      ]
+    },
+    {
+      "scheme": "light",
+      "url": "quickpanel.html",
+      "main": false,
+      "font": "\"Segoe UI Variable Text\", \"Microsoft YaHei UI\", sans-serif",
+      "fontLoaded": false,
+      "accent": "#5b5bd6",
+      "focus": "#9b9ef0",
+      "buttons": []
+    },
+    {
+      "scheme": "dark",
+      "url": "quickpanel.html",
+      "main": false,
+      "font": "\"Segoe UI Variable Text\", \"Microsoft YaHei UI\", sans-serif",
+      "fontLoaded": false,
+      "accent": "#b1a9ff",
+      "focus": "#5958b1",
+      "buttons": []
+    },
+    {
+      "scheme": "light",
+      "url": "clipboardbar.html",
+      "main": false,
+      "font": "\"Segoe UI Variable Text\", \"Microsoft YaHei UI\", sans-serif",
+      "fontLoaded": false,
+      "accent": "#5b5bd6",
+      "focus": "#9b9ef0",
+      "buttons": []
+    },
+    {
+      "scheme": "dark",
+      "url": "clipboardbar.html",
+      "main": false,
+      "font": "\"Segoe UI Variable Text\", \"Microsoft YaHei UI\", sans-serif",
+      "fontLoaded": false,
+      "accent": "#b1a9ff",
+      "focus": "#5958b1",
+      "buttons": []
+    },
+    {
+      "scheme": "light",
+      "url": "index.html",
+      "main": false,
+      "font": "\"Segoe UI Variable Text\", \"Microsoft YaHei UI\", sans-serif",
+      "fontLoaded": false,
+      "accent": "#5b5bd6",
+      "focus": "#9b9ef0",
+      "buttons": [
+        {
+          "id": "shelf-first",
+          "label": "创建第一个任务",
+          "root": "tool-window liquid-ui",
+          "primary": "#5b5bd6",
+          "background": "rgb(91, 91, 214)",
+          "ink": "rgb(255, 255, 255)"
+        },
+        {
+          "id": "shelf-import",
+          "label": "加入剪贴板内容",
+          "root": "tool-window liquid-ui",
+          "primary": "#5b5bd6",
+          "background": "rgb(91, 91, 214)",
+          "ink": "rgb(255, 255, 255)"
+        },
+        {
+          "id": "library-capture",
+          "label": "截图",
+          "root": "tool-window liquid-ui",
+          "primary": "#5b5bd6",
+          "background": "rgb(91, 91, 214)",
+          "ink": "rgb(255, 255, 255)"
+        },
+        {
+          "id": "calendar-new",
+          "label": "⊕ 添加倒数日",
+          "root": "tool-window liquid-ui",
+          "primary": "#5b5bd6",
+          "background": "rgb(91, 91, 214)",
+          "ink": "rgb(255, 255, 255)"
+        },
+        {
+          "id": "",
+          "label": "保存日程",
+          "root": "tool-window liquid-ui",
+          "primary": "#5b5bd6",
+          "background": "rgb(91, 91, 214)",
+          "ink": "rgb(255, 255, 255)"
+        },
+        {
+          "id": "md-new",
+          "label": "＋ 新建文档",
+          "root": "tool-window liquid-ui",
+          "primary": "#5b5bd6",
+          "background": "rgb(91, 91, 214)",
+          "ink": "rgb(255, 255, 255)"
+        },
+        {
+          "id": "modal-confirm",
+          "label": "创建",
+          "root": "tool-window liquid-ui",
+          "primary": "#5b5bd6",
+          "background": "rgb(91, 91, 214)",
+          "ink": "rgb(255, 255, 255)"
+        }
+      ]
+    },
+    {
+      "scheme": "dark",
+      "url": "index.html",
+      "main": false,
+      "font": "\"Segoe UI Variable Text\", \"Microsoft YaHei UI\", sans-serif",
+      "fontLoaded": false,
+      "accent": "#b1a9ff",
+      "focus": "#5958b1",
+      "buttons": [
+        {
+          "id": "shelf-first",
+          "label": "创建第一个任务",
+          "root": "tool-window liquid-ui",
+          "primary": "#5b5bd6",
+          "background": "rgb(91, 91, 214)",
+          "ink": "rgb(255, 255, 255)"
+        },
+        {
+          "id": "shelf-import",
+          "label": "加入剪贴板内容",
+          "root": "tool-window liquid-ui",
+          "primary": "#5b5bd6",
+          "background": "rgb(91, 91, 214)",
+          "ink": "rgb(255, 255, 255)"
+        },
+        {
+          "id": "library-capture",
+          "label": "截图",
+          "root": "tool-window liquid-ui",
+          "primary": "#5b5bd6",
+          "background": "rgb(91, 91, 214)",
+          "ink": "rgb(255, 255, 255)"
+        },
+        {
+          "id": "calendar-new",
+          "label": "⊕ 添加倒数日",
+          "root": "tool-window liquid-ui",
+          "primary": "#5b5bd6",
+          "background": "rgb(91, 91, 214)",
+          "ink": "rgb(255, 255, 255)"
+        },
+        {
+          "id": "",
+          "label": "保存日程",
+          "root": "tool-window liquid-ui",
+          "primary": "#5b5bd6",
+          "background": "rgb(91, 91, 214)",
+          "ink": "rgb(255, 255, 255)"
+        },
+        {
+          "id": "md-new",
+          "label": "＋ 新建文档",
+          "root": "tool-window liquid-ui",
+          "primary": "#5b5bd6",
+          "background": "rgb(91, 91, 214)",
+          "ink": "rgb(255, 255, 255)"
+        },
+        {
+          "id": "modal-confirm",
+          "label": "创建",
+          "root": "tool-window liquid-ui",
+          "primary": "#5b5bd6",
+          "background": "rgb(91, 91, 214)",
+          "ink": "rgb(255, 255, 255)"
+        }
+      ]
+    },
+    {
+      "scheme": "light",
+      "url": "index.html",
+      "main": false,
+      "font": "\"Segoe UI Variable Text\", \"Microsoft YaHei UI\", sans-serif",
+      "fontLoaded": false,
+      "accent": "#5b5bd6",
+      "focus": "#9b9ef0",
+      "buttons": [
+        {
+          "id": "shelf-first",
+          "label": "创建第一个任务",
+          "root": "tool-window liquid-ui",
+          "primary": "#5b5bd6",
+          "background": "rgb(91, 91, 214)",
+          "ink": "rgb(255, 255, 255)"
+        },
+        {
+          "id": "shelf-import",
+          "label": "加入剪贴板内容",
+          "root": "tool-window liquid-ui",
+          "primary": "#5b5bd6",
+          "background": "rgb(91, 91, 214)",
+          "ink": "rgb(255, 255, 255)"
+        },
+        {
+          "id": "library-capture",
+          "label": "截图",
+          "root": "tool-window liquid-ui",
+          "primary": "#5b5bd6",
+          "background": "rgb(91, 91, 214)",
+          "ink": "rgb(255, 255, 255)"
+        },
+        {
+          "id": "calendar-new",
+          "label": "＋ 新建日程",
+          "root": "tool-window liquid-ui",
+          "primary": "#5b5bd6",
+          "background": "rgb(91, 91, 214)",
+          "ink": "rgb(255, 255, 255)"
+        },
+        {
+          "id": "",
+          "label": "保存日程",
+          "root": "tool-window liquid-ui",
+          "primary": "#5b5bd6",
+          "background": "rgb(91, 91, 214)",
+          "ink": "rgb(255, 255, 255)"
+        },
+        {
+          "id": "welcome-open",
+          "label": "打开 Markdown",
+          "root": "tool-window liquid-ui",
+          "primary": "#5b5bd6",
+          "background": "rgb(91, 91, 214)",
+          "ink": "rgb(255, 255, 255)"
+        },
+        {
+          "id": "modal-confirm",
+          "label": "创建",
+          "root": "tool-window liquid-ui",
+          "primary": "#5b5bd6",
+          "background": "rgb(91, 91, 214)",
+          "ink": "rgb(255, 255, 255)"
+        }
+      ]
+    },
+    {
+      "scheme": "dark",
+      "url": "index.html",
+      "main": false,
+      "font": "\"Segoe UI Variable Text\", \"Microsoft YaHei UI\", sans-serif",
+      "fontLoaded": false,
+      "accent": "#b1a9ff",
+      "focus": "#5958b1",
+      "buttons": [
+        {
+          "id": "shelf-first",
+          "label": "创建第一个任务",
+          "root": "tool-window liquid-ui",
+          "primary": "#5b5bd6",
+          "background": "rgb(91, 91, 214)",
+          "ink": "rgb(255, 255, 255)"
+        },
+        {
+          "id": "shelf-import",
+          "label": "加入剪贴板内容",
+          "root": "tool-window liquid-ui",
+          "primary": "#5b5bd6",
+          "background": "rgb(91, 91, 214)",
+          "ink": "rgb(255, 255, 255)"
+        },
+        {
+          "id": "library-capture",
+          "label": "截图",
+          "root": "tool-window liquid-ui",
+          "primary": "#5b5bd6",
+          "background": "rgb(91, 91, 214)",
+          "ink": "rgb(255, 255, 255)"
+        },
+        {
+          "id": "calendar-new",
+          "label": "＋ 新建日程",
+          "root": "tool-window liquid-ui",
+          "primary": "#5b5bd6",
+          "background": "rgb(91, 91, 214)",
+          "ink": "rgb(255, 255, 255)"
+        },
+        {
+          "id": "",
+          "label": "保存日程",
+          "root": "tool-window liquid-ui",
+          "primary": "#5b5bd6",
+          "background": "rgb(91, 91, 214)",
+          "ink": "rgb(255, 255, 255)"
+        },
+        {
+          "id": "welcome-open",
+          "label": "打开 Markdown",
+          "root": "tool-window liquid-ui",
+          "primary": "#5b5bd6",
+          "background": "rgb(91, 91, 214)",
+          "ink": "rgb(255, 255, 255)"
+        },
+        {
+          "id": "modal-confirm",
+          "label": "创建",
+          "root": "tool-window liquid-ui",
+          "primary": "#5b5bd6",
+          "background": "rgb(91, 91, 214)",
+          "ink": "rgb(255, 255, 255)"
+        }
+      ]
+    },
+    {
+      "scheme": "light",
+      "url": "notes.html",
+      "main": false,
+      "font": "\"Segoe UI Variable Text\", \"Microsoft YaHei UI\", sans-serif",
+      "fontLoaded": false,
+      "accent": "#5b5bd6",
+      "focus": "#9b9ef0",
+      "buttons": []
+    },
+    {
+      "scheme": "dark",
+      "url": "notes.html",
+      "main": false,
+      "font": "\"Segoe UI Variable Text\", \"Microsoft YaHei UI\", sans-serif",
+      "fontLoaded": false,
+      "accent": "#b1a9ff",
+      "focus": "#5958b1",
+      "buttons": []
+    },
+    {
+      "scheme": "light",
+      "url": "overlay.html",
+      "main": false,
+      "font": "\"Segoe UI Variable Text\", \"Microsoft YaHei UI\", sans-serif",
+      "fontLoaded": false,
+      "accent": "#5b5bd6",
+      "focus": "#9b9ef0",
+      "buttons": []
+    },
+    {
+      "scheme": "dark",
+      "url": "overlay.html",
+      "main": false,
+      "font": "\"Segoe UI Variable Text\", \"Microsoft YaHei UI\", sans-serif",
+      "fontLoaded": false,
+      "accent": "#b1a9ff",
+      "focus": "#5958b1",
+      "buttons": []
+    }
+  ]
+}

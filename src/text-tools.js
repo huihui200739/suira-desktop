@@ -1,13 +1,13 @@
 'use strict';
 (()=>{
  const $=id=>document.getElementById(id),api=window.suira;let mode='convert',revision=0,busy=false,currentResult=false,providerReady=false;
- const message=(text,error=false)=>{$('tool-status').textContent=text;$('tool-status').dataset.error=String(error);};
+ const message=(text,error=false)=>{$('tool-status').textContent=text;$('tool-status').dataset.error=String(error);if(!error&&/复制/.test(text))window.SuiraUI?.copyFeedback($('tool-status'));};
  const counts=()=>{$('source-count').textContent=$('tool-source').value.length.toLocaleString()+' 字';$('result-count').textContent=$('tool-result').value.length.toLocaleString()+' 字';$('tool-copy').disabled=$('tool-paste').disabled=!currentResult||!$('tool-result').value.trim()||busy;$('tool-run').disabled=busy||!$('tool-source').value.trim()||(mode==='translate'&&!providerReady);};
  async function run(){
   const text=$('tool-source').value;if(!text.trim()||busy)return;
   const token=++revision;busy=true;message(mode==='translate'?'正在翻译…':'正在整理…');counts();
   try{const result=mode==='translate'?await api.translate.run({text,source:$('source-language').value,target:$('target-language').value}):await api.textTools.transform(text,$('operation').value);
-   if(token!==revision)return;if(!result?.ok)throw Error(result?.error||'处理失败');$('tool-result').value=result.text||'';currentResult=true;message(mode==='translate'?'翻译完成':'已整理，原文保持不变');
+   if(token!==revision)return;if(!result?.ok)throw Error(result?.error||'处理失败');$('tool-result').value=result.text||'';window.SuiraUI?.result($('tool-result').closest('section'));currentResult=true;message(mode==='translate'?'翻译完成':'已整理，原文保持不变');
   }catch(error){if(token===revision){currentResult=false;message(error.message,true);}}
   finally{if(token===revision){busy=false;counts();}}
  }

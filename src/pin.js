@@ -2,7 +2,7 @@
 (() => {
   const api=window.pinApi,$=id=>document.getElementById(id),menu=$('pin-menu');
   let baseW=300,baseH=200,scale=1,opacity=1,collapsed=false,drag=null,moveFrame=0,movePoint=null,noticeTimer,suppressRestore=false;
-  const notify=(message,error=false)=>{clearTimeout(noticeTimer);$('pin-notice').textContent=message;$('pin-notice').hidden=false;$('pin-notice').classList.toggle('is-error',error);noticeTimer=setTimeout(()=>$('pin-notice').hidden=true,2200);};
+  const notify=(message,error=false)=>{clearTimeout(noticeTimer);$('pin-notice').textContent=message;if(!error&&/复制/.test(message))window.SuiraUI?.copyFeedback($('pin-notice'));$('pin-notice').hidden=false;$('pin-notice').classList.toggle('is-error',error);noticeTimer=setTimeout(()=>$('pin-notice').hidden=true,2200);};
   const zoom=next=>{scale=Math.min(3, Math.max(0.25,next));$('zoom-val').textContent=Math.round(scale*100)+'%';api.resize(Math.round(baseW*scale),Math.round(baseH*scale));};
   const fade=next=>{opacity=Math.max(.25,Math.min(1,next));$('opacity-val').textContent=Math.round(opacity*100)+'%';api.setOpacity(opacity);};
   function collapse(){collapsed=!collapsed;api.collapse(collapsed);document.body.classList.toggle('is-collapsed',collapsed);$('restore').hidden=!collapsed;menu.hidden=true;}

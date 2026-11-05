@@ -160,6 +160,18 @@ class RegionCheck {
     }
     await main.evaluate(`window.suira.quick.showMain('shelf')`);
     await shot(main, 'workbench');
+    assert.notEqual(await main.evaluate('getComputedStyle(document.getElementById("task-detail")).boxShadow'),'none');
+    await main.evaluate(`document.querySelector('[data-page="settings"]').click();true`);
+    await until(()=>main.evaluate('document.getElementById("page-settings").classList.contains("is-active")'));
+    await main.evaluate('document.getElementById("setting-theme").nextElementSibling.querySelector("button").click();true');
+    assert.equal(await main.evaluate('SuiraGlassSelect.isOpen()'),true);
+    await shot(main,'settings-controls');
+    await main.evaluate('document.getElementById("setting-theme").value="dark";true');
+    await shot(main,'settings-controls-dark','dark');
+    assert.equal(await main.evaluate('(()=>{const c=document.getElementById("setting-record"),before=c.checked;c.checked=true;const color=getComputedStyle(c).backgroundColor;c.checked=before;return color;})()'),'rgb(91, 91, 214)','Workbench checkbox keeps accent-9 in dark mode');
+    await main.evaluate('document.getElementById("setting-theme").value="light";true');
+    await main.send('Emulation.setEmulatedMedia',{features:[{name:'prefers-color-scheme',value:'light'}]});
+    await main.evaluate(`SuiraGlassSelect.close();document.querySelector('[data-page="shelf"]').click();true`);
     await main.evaluate(`window.suira.quick.show()`);
     const panel = await page(t => t.url.endsWith('/quickpanel.html'));
     await until(() => panel.evaluate('document.querySelectorAll(".key").length===38'));

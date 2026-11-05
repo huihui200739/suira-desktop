@@ -6,6 +6,8 @@ const fs=require('node:fs'),path=require('node:path');
 // Called against the real quickpanel markup and renderer by panel-shot.js.
 async function checkKeycapMaterial({send,evaluate}) {
   const ev=source=>evaluate(send,source);
+  // Hover stability is measured after the separate 160ms panel reveal.
+  await ev('Promise.all(document.querySelector(".panel").getAnimations().map(animation=>animation.finished.catch(()=>{}))).then(()=>true)');
   const facts=await ev(`(()=>{
     const keys=[...document.querySelectorAll('.key.is-bound')];
     return {

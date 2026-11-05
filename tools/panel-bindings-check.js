@@ -49,6 +49,8 @@ async function checkBindings({ send, evaluate, capture }) {
   const state = key => ev(`document.querySelector(${JSON.stringify(query(key))}).dataset.state`);
   async function shown() {
     await ev(`(async()=>{for(const cb of window.__handlers['quick:prepare']||[])await cb({token:3});for(const cb of window.__handlers['quick:shown']||[])await cb();document.activeElement?.blur();document.getElementById('panel-body').scrollTop=0;return true;})()`);
+    // Drag geometry is tested independently of the entry scale animation.
+    await ev('Promise.all(document.getElementById("panel").getAnimations().map(animation=>animation.finished.catch(()=>{}))).then(()=>true)');
   }
   async function point(key) {
     return ev(`(()=>{const e=document.querySelector(${JSON.stringify(query(key))});e.scrollIntoView({block:'nearest'});const r=e.getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2};})()`);

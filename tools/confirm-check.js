@@ -34,8 +34,10 @@ if (modalStart < 0 || modalEnd < 0) throw new Error('无法从 app.js 抽取 ope
 const modalSrc = appJs.slice(modalStart, modalEnd);
 
 const PAGE = `<!doctype html><html><head><meta charset="utf-8">
+<link rel="stylesheet" href="theme.css">
 <link rel="stylesheet" href="styles.css">
 <link rel="stylesheet" href="ui-motion.css">
+<link rel="stylesheet" href="glass-select.css">
 </head><body>
 <div class="modal" id="modal" hidden>
   <div class="modal-card">
@@ -46,7 +48,9 @@ const PAGE = `<!doctype html><html><head><meta charset="utf-8">
   </div>
 </div>
 <script src="ui-motion.js"></script>
+<script src="icons.js"></script><script src="glass-select.js"></script>
 <button id="dialog-origin" type="button">打开确认</button>
+<form id="select-form"><label for="select-probe">测试选项</label><select id="select-probe"><option value="alpha">Alpha</option><option value="bravo" disabled>Bravo</option><option value="charlie">Charlie</option><option value="delta">Delta</option><option value="echo" hidden>Echo</option><optgroup label="Unavailable" disabled><option value="foxtrot">Foxtrot</option></optgroup></select><input id="checkbox-probe" type="checkbox" aria-label="测试复选框"></form><div id="select-destination"></div>
 <script>
 const $ = (s, r = document) => r.querySelector(s);
 ${modalSrc}
@@ -99,7 +103,7 @@ const check = (name, cond, detail) => {
   if (!CHROME) throw new Error('未找到 Chrome/Edge');
   fs.writeFileSync(path.join(TMP, 'confirm.html'), PAGE, 'utf8');
   fs.copyFileSync(path.join(ROOT, 'src', 'styles.css'), path.join(TMP, 'styles.css'));
-  for (const asset of ['ui-motion.css','ui-motion.js']) fs.copyFileSync(path.join(ROOT,'src',asset),path.join(TMP,asset));
+  for (const asset of ['theme.css','ui-motion.css','ui-motion.js','icons.js','glass-select.css','glass-select.js']) fs.copyFileSync(path.join(ROOT,'src',asset),path.join(TMP,asset));
 
   const userDataDir = path.join(TMP, 'profile-confirm');
   const child = spawn(CHROME, [
@@ -223,6 +227,36 @@ const check = (name, cond, detail) => {
     })()`);
     for(const [name,ok] of Object.entries(focus)) check('焦点 '+name,ok);
 
+    console.log('\n== 玻璃下拉框：真实键盘与原生值契约 ==');
+    const press=async key=>{const vk={ArrowDown:40,ArrowUp:38,Home:36,End:35,Enter:13,Escape:27,Tab:9}[key]||key.toUpperCase().charCodeAt(0);await send('Input.dispatchKeyEvent',{type:'keyDown',key,windowsVirtualKeyCode:vk});await send('Input.dispatchKeyEvent',{type:'keyUp',key,windowsVirtualKeyCode:vk});};
+    await evaluate(send, `(()=>{const s=document.getElementById('select-probe');window.__selectEvents={input:0,change:0};s.addEventListener('input',()=>__selectEvents.input++);s.addEventListener('change',()=>__selectEvents.change++);s.nextElementSibling.querySelector('button').focus();return true;})()`);
+    const selectState=()=>evaluate(send,`(()=>{const s=document.getElementById('select-probe'),b=s.nextElementSibling.querySelector('button');return {value:s.value,caption:b.textContent,open:b.getAttribute('aria-expanded')==='true',active:document.querySelector('.glass-select-menu:not([hidden]) .is-active')?.textContent,focus:document.activeElement===b,disabled:b.disabled,events:window.__selectEvents};})()`);
+    await press('ArrowDown');let combo=await selectState();
+    check('向下打开并跳过禁用项',combo.open&&combo.active==='Charlie'&&combo.value==='alpha',JSON.stringify(combo));
+    await press('Enter');combo=await selectState();
+    check('Enter 提交并保留焦点',!combo.open&&combo.value==='charlie'&&combo.focus,JSON.stringify(combo));
+    check('提交只触发一次 input/change',combo.events.input===1&&combo.events.change===1,JSON.stringify(combo.events));
+    await press('Home');combo=await selectState();check('Home 定位首项但尚不改值',combo.active==='Alpha'&&combo.value==='charlie');
+    await press('Escape');combo=await selectState();check('Esc 取消选择且关闭列表',!combo.open&&combo.value==='charlie'&&combo.events.change===1);
+    await press('End');combo=await selectState();check('End 跳过隐藏项和禁用分组',combo.active==='Delta');
+    await press('Enter');await press('ArrowUp');combo=await selectState();check('向上定位上一可选项',combo.active==='Charlie');await press('Escape');
+    await press('c');combo=await selectState();check('首字母定位选项',combo.open&&combo.active==='Charlie');await press('Enter');
+    const programmatic=await evaluate(send,`(()=>{const s=document.getElementById('select-probe'),before=__selectEvents.change;s.value='alpha';const first=s.nextElementSibling.textContent;s.selectedIndex=3;return {first,last:s.nextElementSibling.textContent,value:s.value,unchanged:before===__selectEvents.change};})()`);
+    check('程序赋 value/selectedIndex 同步且不发伪事件',programmatic.first.includes('Alpha')&&programmatic.last.includes('Delta')&&programmatic.value==='delta'&&programmatic.unchanged,JSON.stringify(programmatic));
+    await evaluate(send,`document.getElementById('select-form').reset();true`);await sleep(60);combo=await selectState();check('表单 reset 恢复原生默认值和显示',combo.value==='alpha'&&combo.caption.includes('Alpha'));
+    await evaluate(send,`document.getElementById('select-probe').disabled=true;true`);await sleep(30);combo=await selectState();check('禁用状态同步可见按钮',combo.disabled);
+    await evaluate(send,`document.getElementById('select-probe').disabled=false;document.getElementById('select-destination').append(document.getElementById('select-probe'));true`);await sleep(40);
+    check('原生控件移动后玻璃按钮一起移动',await evaluate(send,`document.getElementById('select-probe').nextElementSibling.classList.contains('glass-select')&&document.getElementById('select-destination').querySelectorAll('[role="combobox"]').length===1`));
+    await evaluate(send,`(()=>{const s=document.getElementById('select-probe');s.innerHTML='<option value="new">New option</option>';return true;})()`);await sleep(30);combo=await selectState();check('动态选项列表刷新',combo.value==='new'&&combo.caption.includes('New option'));
+    await evaluate(send,`(()=>{window.__openModal('下拉测试','',async()=>{});const s=document.createElement('select');s.id='modal-select';s.innerHTML='<option>A</option><option>B</option>';document.getElementById('modal-input').after(s);SuiraGlassSelect.mount(s);s.nextElementSibling.querySelector('button').focus();return true;})()`);
+    await press('Enter');await press('Escape');check('列表 Esc 不关闭所属对话框',await evaluate(send,`!SuiraGlassSelect.isOpen()&&!document.getElementById('modal').hidden`));await press('Escape');
+    await evaluate(send,`document.getElementById('checkbox-probe').click();true`);await sleep(160);
+    const checkbox=await evaluate(send,`(()=>{const c=document.getElementById('checkbox-probe'),s=getComputedStyle(c);return {checked:c.checked,background:s.backgroundColor,width:s.width,appearance:s.appearance};})()`);
+    check('复选框保留原生交互并使用 Iris 勾选面',checkbox.checked&&checkbox.background==='rgb(91, 91, 214)'&&checkbox.width==='16px'&&checkbox.appearance==='none',JSON.stringify(checkbox));
+    check('复选框样式不修改编辑器管理的 DOM',await evaluate(send,`(()=>{const c=document.getElementById('checkbox-probe'),before=c.outerHTML;SuiraGlassSelect.mount(c);return c.outerHTML===before&&!c.className;})()`));
+    await send('Emulation.setEmulatedMedia',{features:[{name:'prefers-reduced-motion',value:'reduce'}]});
+    const reduced=await evaluate(send,`(()=>{const box=document.createElement('div');box.className='panel is-revealing';document.body.append(box);const c=getComputedStyle(box);const result={animation:c.animationName,transition:getComputedStyle(document.querySelector('[role="combobox"]')).transitionDuration};box.remove();return result;})()`);
+    check('减少动态效果关闭动画与控件过渡',reduced.animation==='none'&&reduced.transition==='0s',JSON.stringify(reduced));
     console.log('\n========== ' + pass + ' 通过 / ' + fail + ' 失败 ==========');
     ws.close();
   } finally {

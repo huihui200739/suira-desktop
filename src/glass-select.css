@@ -1,0 +1,32 @@
+/* Native select stays in place as the value/form authority. */
+select.glass-select-native { position:absolute!important;width:1px!important;height:1px!important;padding:0!important;margin:0!important;clip-path:inset(50%);opacity:0;pointer-events:none; }
+.glass-select { display:inline-flex;vertical-align:middle;min-width:calc(var(--space-6) * 4);max-width:100%; }
+.glass-select[hidden] { display:none; }
+.glass-select-trigger { display:flex;align-items:center;justify-content:space-between;gap:var(--space-2);width:100%;min-height:var(--space-6);padding:var(--space-1) var(--space-3);border:1px solid var(--line-strong);border-radius:var(--radius-sm);background:var(--control-field);color:var(--ink);font:inherit;cursor:pointer;text-align:left;transition:background-color 120ms var(--ease-out),border-color 120ms var(--ease-out); }
+.glass-select-trigger:hover:not(:disabled) { background:var(--surface-hover); }
+.liquid-ui.workbench .glass-select-trigger { background:var(--wb-surface);color:var(--ink); }
+.liquid-ui.workbench .glass-select-trigger:hover:not(:disabled) { background:var(--wb-soft); }
+.glass-select-trigger:focus-visible { outline:2px solid var(--focus-ring);outline-offset:2px; }
+.glass-select-trigger:disabled { opacity:.5;cursor:default; }
+.glass-select-value { overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0; }
+.glass-select-arrow { display:flex;flex:none;color:var(--ink-muted); }
+.glass-select-arrow .fluent-icon { width:var(--space-4);height:var(--space-4); }
+.glass-select-arrow:empty { width:var(--space-2);height:var(--space-2);border-right:1.5px solid currentColor;border-bottom:1.5px solid currentColor;rotate:45deg;translate:0 -2px; }
+.glass-select-menu { position:fixed;z-index:2000;padding:var(--space-1);overflow:auto;overscroll-behavior:contain;border:1px solid var(--line-strong);border-radius:var(--radius-inner);background:var(--select-menu-surface);backdrop-filter:blur(24px) saturate(1.15);box-shadow:var(--shadow-float);color:var(--ink);font:var(--text-2)/1.5 var(--font-ui);font-variant-numeric:tabular-nums; }
+.glass-select-menu[hidden] { display:none; }
+.glass-select-option { min-height:var(--space-6);padding:var(--space-1) var(--space-2);border-radius:var(--radius-sm);cursor:pointer;overflow-wrap:anywhere; }
+.glass-select-option:hover:not([aria-disabled="true"]) { background:var(--accent-soft); }
+.glass-select-option.is-active,.glass-select-option.is-active:hover { background:var(--accent-9);color:var(--on-accent); }
+.glass-select-option[aria-selected="true"] { font-weight:500; }
+.glass-select-option[aria-disabled="true"] { opacity:.45;cursor:default; }
+.glass-select-group { padding:var(--space-2);font-size:var(--text-1);color:var(--ink-muted); }
+.setting-row > .glass-select { flex:0 1 calc(var(--space-6) * 7);width:calc(var(--space-6) * 7); }
+.text-tool-controls .glass-select { min-width:calc(var(--space-6) * 4); }
+.tool-action-group .glass-select { min-width:calc(var(--space-6) * 4);font-size:var(--text-1); }
+html:root input[type="checkbox"] { appearance:none;display:inline-block;flex:none;width:var(--space-4);height:var(--space-4);min-width:var(--space-4);margin:0;border:1px solid var(--line-strong);border-radius:var(--space-1);background:var(--paper-raised);background-position:center;background-size:var(--space-3) var(--space-3);background-repeat:no-repeat;vertical-align:middle;cursor:pointer;box-shadow:var(--shadow-inset-top);transition:background-color 120ms var(--ease-out),border-color 120ms var(--ease-out); }
+html:root input[type="checkbox"]:checked { background-color:var(--accent-9);border-color:var(--accent-9);background-image:var(--checkbox-check); }
+html:root input[type="checkbox"]:indeterminate { background-color:var(--accent-9);border-color:var(--accent-9);background-image:var(--checkbox-mixed); }
+html:root input[type="checkbox"]:focus-visible { outline:2px solid var(--focus-ring);outline-offset:2px; }
+html:root input[type="checkbox"]:disabled { opacity:.5;cursor:default; }
+@media(prefers-reduced-motion:reduce) { .glass-select-trigger,input[type="checkbox"] { transition:none!important; } }
+@media(forced-colors:active) { .glass-select-trigger,.glass-select-menu,.glass-select-option { forced-color-adjust:auto; } html:root input[type="checkbox"] { appearance:auto; } }

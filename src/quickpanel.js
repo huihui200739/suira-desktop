@@ -1345,6 +1345,8 @@ function installEvents() {
     setMode(mode);
   });
   window.suira.quick.onPrepare(async ({token}) => {
+    $('#panel').classList.remove('is-revealing');
+    window.SuiraGlassSelect?.close();
     await initialPanelLoad;
     closeMoreMenu(false);
     await window.suira.quick.presentation?.().then(syncPresentation).catch(()=>{});
@@ -1364,7 +1366,7 @@ function installEvents() {
     document.documentElement.dataset.panelPrepared=String(token);
     window.suira.quick.prepared(token);
   });
-  window.suira.quick.onShown(() => showGuideIfNeeded());
+  window.suira.quick.onShown(() => { window.SuiraUI?.reveal($('#panel')); showGuideIfNeeded(); });
 }
 
 keyMotion=window.SuiraKeycapMotion?.attach($('#key-grid'),{

@@ -94,7 +94,8 @@ const tokens = [
   /--text-1:\s*12px/,
   /Segoe UI/,
   /--radius-panel:\s*24px/,
-  /--gap:\s*8px/
+  /--gap:\s*var\(--space-2\)/,
+  /--space-2:\s*8px/
 ];
 check('设计令牌集中在 theme.css（与浮引岛 / 动作面板同一套）', tokens.every((pattern) => pattern.test(themeCss)));
 check('剪贴板条不写死色值（只消费令牌）', !/#[0-9a-f]{6}\b/i.test(barCss.replace(/rgba?\([^)]*\)/g, '')),

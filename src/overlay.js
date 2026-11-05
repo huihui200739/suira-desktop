@@ -283,6 +283,7 @@ function selectWholeScreen() {
 
 function showAction(message, type = '') {
   actionToast.textContent = message;
+  if (type !== 'error' && /复制/.test(message)) window.SuiraUI?.copyFeedback(actionToast);
   actionToast.className = `action-toast is-visible${type === 'error' ? ' is-error' : ''}`;
   clearTimeout(state.toastTimer);
   state.toastTimer = setTimeout(() => {

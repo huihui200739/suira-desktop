@@ -4,6 +4,27 @@
 (() => {
   const reduce = matchMedia('(prefers-reduced-motion: reduce)');
   const feedback = new WeakMap();
+  const animations = new WeakMap();
+  function animate(element, className) {
+    if (!element || reduce.matches) return;
+    const previous=animations.get(element);
+    if(previous) element.removeEventListener('animationend',previous);
+    const restarting=element.classList.contains(className);
+    element.classList.remove(className);
+    // Prepared reveals need no synchronous layout; only interrupted feedback restarts.
+    if(restarting) void element.offsetWidth;
+    element.classList.add(className);
+    const finish=()=>{element.classList.remove(className);animations.delete(element);};
+    animations.set(element,finish);element.addEventListener('animationend',finish,{once:true});
+  }
+  function copyFeedback(element) {
+    if (!element) return;
+    element.querySelector('.copy-check')?.remove();
+    const check=document.createElementNS('http://www.w3.org/2000/svg','svg');
+    check.setAttribute('viewBox','0 0 24 24');check.setAttribute('aria-hidden','true');check.classList.add('copy-check');
+    if(!reduce.matches){check.classList.add('is-drawing');check.addEventListener('animationend',()=>check.classList.remove('is-drawing'),{once:true});}
+    const path=document.createElementNS(check.namespaceURI,'path');path.setAttribute('d','M5 12l4 4L19 6');check.append(path);element.prepend(check);
+  }
 
   function selectionGroup(group) {
     const indicator = document.createElement('span');
@@ -46,7 +67,7 @@
     const background = Array.from(document.querySelectorAll('.titlebar, .app-body'));
     const inertBefore = background.map(node => node.inert);
     background.forEach(node => { node.inert = true; });
-    const focusable = () => Array.from(surface.querySelectorAll('button:not(:disabled), input:not(:disabled), textarea:not(:disabled), select:not(:disabled), a[href]')).filter(node => node.getClientRects().length);
+    const focusable = () => Array.from(surface.querySelectorAll('button:not(:disabled), input:not(:disabled), textarea:not(:disabled), select:not(:disabled), a[href]')).filter(node => node.getClientRects().length && !node.matches('.glass-select-native,[tabindex="-1"],[aria-hidden="true"]'));
     const focusFirst = () => (surface.querySelector('input:not(:disabled)') || focusable()[0])?.focus({ preventScroll: true });
     const onFocus = event => { if (!surface.contains(event.target)) focusFirst(); };
     const onKey = event => {
@@ -80,6 +101,7 @@
     const repeats = previous && element.classList.contains('is-visible') && previous.message === String(message) && previous.error === error ? previous.repeats + 1 : 1;
     clearTimeout(previous?.timer);
     element.textContent = String(message) + (repeats > 1 ? `（${repeats} 次）` : '');
+    if (!error && /复制|copied/i.test(String(message))) copyFeedback(element);
     element.classList.toggle('is-error', error);
     element.classList.toggle('error', error);
     element.setAttribute('role', 'status');
@@ -91,6 +113,13 @@
   }
 
   function init() {
+    const interruptReveal=event=>{
+      const panel=event.target.closest?.('.panel.is-revealing');
+      if(!panel)return;panel.classList.remove('is-revealing');
+      const finish=animations.get(panel);if(finish)panel.removeEventListener('animationend',finish);animations.delete(panel);
+    };
+    document.addEventListener('pointerdown',interruptReveal,true);
+    document.addEventListener('keydown',interruptReveal,true);
     document.querySelectorAll('button[title]').forEach(button => {
       const label = button.getAttribute('title');
       if (!button.dataset.hint) button.dataset.hint = label;
@@ -117,7 +146,7 @@
       hideHint(); if (!target?.dataset.hint) return;
       hintTarget = target; previousDescription = target.getAttribute('aria-describedby');
       hintTimer = setTimeout(() => {
-        if (!target.isConnected || !target.getClientRects().length || document.hidden) { hideHint(); return; }
+        if (!target.isConnected || !target.getClientRects().length || document.hidden || target.getAttribute('aria-expanded') === 'true') { hideHint(); return; }
         hint.textContent = target.dataset.hint; hint.hidden = false;
         target.setAttribute('aria-describedby',[previousDescription,hint.id].filter(Boolean).join(' '));
         const box = target.getBoundingClientRect(), size = hint.getBoundingClientRect();
@@ -166,9 +195,17 @@
     }, { passive: true });
     document.documentElement.addEventListener('pointerleave', clear);
     document.addEventListener('visibilitychange', () => { if (document.hidden) clear(); });
-    reduce.addEventListener('change', clear);
+    reduce.addEventListener('change', () => {
+      clear();
+      if(!reduce.matches) return;
+      document.querySelectorAll('.is-revealing,.is-result-new').forEach(element=>{
+        element.classList.remove('is-revealing','is-result-new');
+        const finish=animations.get(element);if(finish)element.removeEventListener('animationend',finish);animations.delete(element);
+      });
+      document.querySelectorAll('.copy-check.is-drawing').forEach(element=>element.classList.remove('is-drawing'));
+    });
   }
-  window.SuiraUI = { openDialog, notify };
+  window.SuiraUI = { openDialog, notify, copyFeedback, reveal:element=>animate(element,'is-revealing'), result:element=>animate(element,'is-result-new') };
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init, { once: true });
   else init();
 })();

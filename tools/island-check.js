@@ -85,7 +85,8 @@ const tokens = [
   /--text-1:\s*12px/i,
   /Segoe UI/,
   /--radius-panel:\s*24px/,
-  /--gap:\s*8px/
+  /--gap:\s*var\(--space-2\)/,
+  /--space-2:\s*8px/
 ];
 check('设计令牌集中在 theme.css（品牌基色 + 语义层）', tokens.every((pattern) => pattern.test(themeCss)));
 check('页面样式不再写死色值（只消费令牌）', !/#[0-9a-f]{6}\b/i.test(islandCss.replace(/rgba?\([^)]*\)/g, '')),

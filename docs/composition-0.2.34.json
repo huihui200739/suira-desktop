@@ -1,0 +1,289 @@
+{
+  "version": "0.2.34",
+  "surface": "panel",
+  "note": "Each wallpaper is committed behind a newly created native panel to avoid reusing a cached compositor backdrop. No desktop wallpaper setting or user profile is changed.",
+  "scenes": [
+    {
+      "theme": "light",
+      "wallpaper": "light",
+      "nativeBlur": true,
+      "pixels": {
+        "base": [
+          202,
+          206,
+          213
+        ],
+        "key": [
+          243,
+          245,
+          245
+        ],
+        "selected": [
+          91,
+          91,
+          214
+        ]
+      },
+      "brightness": {
+        "base": 0.6150326619579655,
+        "key": 0.9095207429495072,
+        "selected": 0.1456135698720715
+      },
+      "tokens": {
+        "width": 1160,
+        "base": {
+          "x": 12,
+          "y": 310
+        },
+        "key": {
+          "x": 505.29125,
+          "y": 271
+        },
+        "selected": {
+          "x": 920,
+          "y": 34.33333396911621
+        },
+        "floating": "color-mix(in srgb, #d9d9e0 42%, transparent)",
+        "accent": "#5b5bd6",
+        "capTop": "rgb(255 255 255 / .96)",
+        "capBottom": "rgb(237 242 244 / .88)"
+      },
+      "screenshot": "docs/product/composition-0.2.34-light-light.png"
+    },
+    {
+      "theme": "light",
+      "wallpaper": "dark",
+      "nativeBlur": true,
+      "pixels": {
+        "base": [
+          106,
+          111,
+          120
+        ],
+        "key": [
+          240,
+          243,
+          243
+        ],
+        "selected": [
+          91,
+          91,
+          214
+        ]
+      },
+      "brightness": {
+        "base": 0.15789116190007368,
+        "key": 0.8909751383885616,
+        "selected": 0.1456135698720715
+      },
+      "tokens": {
+        "width": 1160,
+        "base": {
+          "x": 12,
+          "y": 310
+        },
+        "key": {
+          "x": 505.29125,
+          "y": 271
+        },
+        "selected": {
+          "x": 920,
+          "y": 34.33333396911621
+        },
+        "floating": "color-mix(in srgb, #d9d9e0 42%, transparent)",
+        "accent": "#5b5bd6",
+        "capTop": "rgb(255 255 255 / .96)",
+        "capBottom": "rgb(237 242 244 / .88)"
+      },
+      "screenshot": "docs/product/composition-0.2.34-light-dark.png"
+    },
+    {
+      "theme": "light",
+      "wallpaper": "busy",
+      "nativeBlur": true,
+      "pixels": {
+        "base": [
+          134,
+          146,
+          165
+        ],
+        "key": [
+          243,
+          245,
+          245
+        ],
+        "selected": [
+          91,
+          91,
+          214
+        ]
+      },
+      "brightness": {
+        "base": 0.28342713661472363,
+        "key": 0.9095207429495072,
+        "selected": 0.1456135698720715
+      },
+      "tokens": {
+        "width": 1160,
+        "base": {
+          "x": 12,
+          "y": 310
+        },
+        "key": {
+          "x": 505.29125,
+          "y": 271
+        },
+        "selected": {
+          "x": 920,
+          "y": 34.33333396911621
+        },
+        "floating": "color-mix(in srgb, #d9d9e0 42%, transparent)",
+        "accent": "#5b5bd6",
+        "capTop": "rgb(255 255 255 / .96)",
+        "capBottom": "rgb(237 242 244 / .88)"
+      },
+      "screenshot": "docs/product/composition-0.2.34-light-busy.png"
+    },
+    {
+      "theme": "dark",
+      "wallpaper": "light",
+      "nativeBlur": true,
+      "pixels": {
+        "base": [
+          99,
+          106,
+          116
+        ],
+        "key": [
+          117,
+          135,
+          149
+        ],
+        "selected": [
+          91,
+          91,
+          214
+        ]
+      },
+      "brightness": {
+        "base": 0.1422167133150742,
+        "key": 0.23279779798230343,
+        "selected": 0.1456135698720715
+      },
+      "tokens": {
+        "width": 1160,
+        "base": {
+          "x": 12,
+          "y": 310
+        },
+        "key": {
+          "x": 505.29125,
+          "y": 271
+        },
+        "selected": {
+          "x": 920,
+          "y": 34.33333396911621
+        },
+        "floating": "color-mix(in srgb, #363a3f 42%, transparent)",
+        "accent": "#5b5bd6",
+        "capTop": "rgb(132 150 164 / .96)",
+        "capBottom": "rgb(106 125 140 / .88)"
+      },
+      "screenshot": "docs/product/composition-0.2.34-dark-light.png"
+    },
+    {
+      "theme": "dark",
+      "wallpaper": "dark",
+      "nativeBlur": true,
+      "pixels": {
+        "base": [
+          32,
+          40,
+          50
+        ],
+        "key": [
+          116,
+          134,
+          148
+        ],
+        "selected": [
+          91,
+          91,
+          214
+        ]
+      },
+      "brightness": {
+        "base": 0.020549490957318447,
+        "key": 0.22901316595935237,
+        "selected": 0.1456135698720715
+      },
+      "tokens": {
+        "width": 1160,
+        "base": {
+          "x": 12,
+          "y": 310
+        },
+        "key": {
+          "x": 505.29125,
+          "y": 271
+        },
+        "selected": {
+          "x": 920,
+          "y": 34.33333396911621
+        },
+        "floating": "color-mix(in srgb, #363a3f 42%, transparent)",
+        "accent": "#5b5bd6",
+        "capTop": "rgb(132 150 164 / .96)",
+        "capBottom": "rgb(106 125 140 / .88)"
+      },
+      "screenshot": "docs/product/composition-0.2.34-dark-dark.png"
+    },
+    {
+      "theme": "dark",
+      "wallpaper": "busy",
+      "nativeBlur": true,
+      "pixels": {
+        "base": [
+          51,
+          64,
+          82
+        ],
+        "key": [
+          117,
+          135,
+          149
+        ],
+        "selected": [
+          91,
+          91,
+          214
+        ]
+      },
+      "brightness": {
+        "base": 0.04979795247557343,
+        "key": 0.23279779798230343,
+        "selected": 0.1456135698720715
+      },
+      "tokens": {
+        "width": 1160,
+        "base": {
+          "x": 12,
+          "y": 310
+        },
+        "key": {
+          "x": 505.29125,
+          "y": 271
+        },
+        "selected": {
+          "x": 920,
+          "y": 34.33333396911621
+        },
+        "floating": "color-mix(in srgb, #363a3f 42%, transparent)",
+        "accent": "#5b5bd6",
+        "capTop": "rgb(132 150 164 / .96)",
+        "capBottom": "rgb(106 125 140 / .88)"
+      },
+      "screenshot": "docs/product/composition-0.2.34-dark-busy.png"
+    }
+  ]
+}

@@ -418,6 +418,7 @@
     const line = $('#bar-selection');
     if (!notice || !line) return;
     notice.textContent = String(message || '');
+    if (!isError && /复制/.test(String(message))) window.SuiraUI?.copyFeedback(notice);
     notice.hidden = false;
     notice.classList.toggle('is-error', Boolean(isError));
     line.hidden = true;
