@@ -1,0 +1,68 @@
+{
+  "version": "0.2.32",
+  "identicalIntroduction": true,
+  "publicAssetsLocal": true,
+  "allowlistedFiles": [
+    {
+      "file": "README.md",
+      "sha256": "edf6c6a060cc353eb17e193ced177b763225017946b4702d87ee674cf0420321"
+    },
+    {
+      "file": "CHANGELOG.md",
+      "sha256": "b4221c00e50aa5b1ece375309dd0bb31e0d02c3c6e398562451595bae425c248"
+    },
+    {
+      "file": "LICENSE",
+      "sha256": "430704288835844e2ad84146d06541666f2aefa754a0941c12bbbcea38922bad"
+    },
+    {
+      "file": "assets/suira-icon.png",
+      "sha256": "95487a79464553d1aa8de0df469b3a35259e4282dcd0af89e3ecd8968049f192"
+    },
+    {
+      "file": "docs/product/README.md",
+      "sha256": "2db4cec193b3b5f0001e90e3a660c726652a49f2513441c07a87d54de5558d3b"
+    },
+    {
+      "file": "docs/product/panel.png",
+      "sha256": "ccb2603e86f4267ca0d2e9e1e34af0f50df7acab433a3268b144a4f78412c99e"
+    },
+    {
+      "file": "docs/product/keyboard-menu.png",
+      "sha256": "b12270c6650cc36ce6fa49c62fb524ac30cd486cf75ef4173e5eff45c677178b"
+    },
+    {
+      "file": "docs/product/apps.png",
+      "sha256": "76c75e80c1fd575e6c1c3e5768c4719b1cf592648a8f03f962c7aaf34cc805c3"
+    },
+    {
+      "file": "docs/product/workbench.png",
+      "sha256": "f932567c5a2ddae41a7abf7900c5f7a5927ff6b3e25523037b8a9207ad698bf9"
+    },
+    {
+      "file": "docs/product/markdown.png",
+      "sha256": "97a48f4a091a0914c69281daa99882ebac4276c7497af5985da77418e9a69132"
+    },
+    {
+      "file": "docs/product/calendar.png",
+      "sha256": "5a562bf7d8e050368b56c82110580fe8b89b82e799c6822a3be2d954c56db4ab"
+    },
+    {
+      "file": "docs/product/notes.png",
+      "sha256": "98134c6419fc99cefa652f04df478026947db23aac51d41c5913aa88d8149bc0"
+    },
+    {
+      "file": "docs/product/toolbox.png",
+      "sha256": "3dd60cfc33dfd1f96b0e9a8478235bbe7592e14e134cce84f6e04f4f00adea4e"
+    },
+    {
+      "file": "docs/product/clipboard.png",
+      "sha256": "7c9b0dd55fdd103ea8d8e5c5d0373d8d8011a9aed0e03bdedf748955e3e99df1"
+    },
+    {
+      "file": "docs/product/trace.png",
+      "sha256": "ecb545a93b643dd5a64a16d0d4db9b839c7fd82220dfe32394ba77201c43b15c"
+    }
+  ],
+  "description": "随序 SUIRA · Windows 随手工作台｜截图、剪贴板、日历与 Markdown，让零散内容接着走"
+}
