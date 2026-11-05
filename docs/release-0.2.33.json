@@ -13,11 +13,15 @@
     "no-test-profile-or-obsolete-key-hook",
     "installer-archive-crc",
     "updater-feed-and-sha512-match",
-    "original-font-and-license-sha256-in-nsis-payload"
+    "original-font-and-license-sha256-in-nsis-payload",
+    "public-latest-and-remote-asset-digests-match",
+    "anonymous-updater-full-download-and-sha512-match",
+    "current-version-reports-latest"
   ],
   "fontSha256": "0ddef90648998900175cfdca9a6f087a2544c182f130b0ad4f7e94a03a115e79",
   "signature": "unsigned",
-  "published": false,
+  "published": true,
   "payloadSha256": "DA460310DA4DE605F5BE1931A5CD3AD26A7BC14478651207C0781FCC0CC20489",
-  "executableSha256": "B40A82A146563429452B9EC5BB59C72424EA7A28ACE82BFA6B655624821A2E81"
+  "executableSha256": "B40A82A146563429452B9EC5BB59C72424EA7A28ACE82BFA6B655624821A2E81",
+  "releaseUrl": "https://github.com/huihui200739/suira-updates/releases/tag/v0.2.33"
 }
