@@ -1,6 +1,6 @@
 'use strict';
 const assert=require('node:assert/strict');
-const {iconSources,createAppIconLoader}=require('../lib/app-icons');
+const {iconSources,createAppIconLoader,createSourceIconResolver}=require('../lib/app-icons');
 (async()=>{
   const links={
     'C:\\Apps\\Editor.lnk':{target:'C:\\Program Files\\Editor\\Editor.exe'},
@@ -39,4 +39,9 @@ const {iconSources,createAppIconLoader}=require('../lib/app-icons');
   await Promise.all([shared.getMany(['C:\\Apps\\Editor.lnk','C:\\Apps\\System.lnk']),shared.getMany(['C:\\Apps\\Editor.lnk'])]);
   assert.equal(extracted.filter(p=>p==='C:\\Program Files\\Editor\\Editor.exe').length,1);
   console.log('PASS 重叠图标请求按文件复用在途提取任务');
+  let sourceIndexCalls=0;
+  const sourceIcons=createSourceIconResolver({listApps:async()=>{sourceIndexCalls++;return [{name:'编辑器',filePath:'C:\\Apps\\Editor.lnk'}];},readShortcutLink,loadIcons:paths=>service.getMany(paths)});
+  const byProcess=await sourceIcons.getMany(['EDITOR.exe','编辑器','Unknown','C:\\private.exe','https://example.com']);
+  assert.equal(byProcess['EDITOR.exe'],result['C:\\Apps\\Editor.lnk']);assert.equal(byProcess['编辑器'],byProcess['EDITOR.exe']);assert.equal(byProcess.Unknown,'');assert.equal(Object.hasOwn(byProcess,'C:\\private.exe'),false);assert.equal(Object.hasOwn(byProcess,'https://example.com'),false);
+  await sourceIcons.getMany(['Editor']);assert.equal(sourceIndexCalls,1);console.log('PASS 剪贴板来源按进程名和中文名称匹配既有图标，不解析外部路径');
 })().catch(e=>{console.error(e);process.exitCode=1;});

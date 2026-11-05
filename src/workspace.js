@@ -111,7 +111,7 @@
   $('md-new').onclick=safe(async()=>{await flush();const result=await checked(api.save('markdown',{title:'未命名文档',text:'# 新的想法\n\n'}));docs.unshift(result.item);await selectDoc(result.item.id);$('md-title').focus();$('md-title').select();});
   $('md-import').onclick=safe(async()=>{await flush();const result=await api.import();if(result.canceled)return;await checked(Promise.resolve(result));docs=[result.item,...docs.filter(item=>item.id!==result.item.id)];await selectDoc(result.item.id);if(result.recovered)notify('已恢复尚未写回原文件的草稿，请检查后再保存');});
   $('md-export').onclick=safe(async()=>{await flush();const result=await api.export(current,$('md-export-format').value);if(result.canceled)return;await checked(Promise.resolve(result));notify('文档已导出');});
-  $('md-delete').onclick=safe(async()=>{if(!confirm('删除这篇文档？'))return;await flush();await checked(api.remove('markdown',current));current='';revision=savedRevision=0;await loadDocs();});
+  $('md-delete').onclick=safe(async()=>{const id=current;if(!id||!confirm('删除这篇文档？此操作会移除随序中的文档记录。'))return;await flush();await checked(api.remove('markdown',id));if(current===id){current='';revision=savedRevision=0;await loadDocs();}});
   function supportsVisualEditing(text){
     if(/^---\r?\n[\s\S]*?\n---(?:\r?\n|$)/.test(text)||/(?:^|\n)\[\^[^\]]+\]:/.test(text))return false;
     let safe=true;
@@ -264,14 +264,17 @@
       // Keep the original controls/listeners; title and save state each have one home.
       document.querySelector('.brand>div').append($('md-title'));
       $('md-words').after($('md-status'));
-      for(const [label,nodes] of [
-        ['文件',[$('md-import'),$('md-new')]],
-        ['文档视图',[top.querySelector('.view-switch'),outline]],
-        ['保存与导出',[$('md-save'),$('md-export-format'),$('md-export'),$('md-delete')]]
-      ]){
-        const group=document.createElement('div');group.className='tool-action-group';group.setAttribute('role','group');group.setAttribute('aria-label',label);
-        top.append(group);group.append(...nodes);
-      }
+      const more=document.createElement('button');more.id='md-more';more.type='button';more.className='quiet-btn tool-icon';more.setAttribute('aria-label','更多文档操作');more.setAttribute('aria-expanded','false');more.setAttribute('aria-controls','md-file-menu');more.innerHTML='<svg viewBox="0 0 24 24"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></svg>';
+      const menu=document.createElement('div');menu.id='md-file-menu';menu.className='md-file-menu';menu.hidden=true;menu.setAttribute('role','dialog');menu.setAttribute('aria-label','更多文档操作');document.body.append(menu);
+      const heading=text=>{const h=document.createElement('small');h.textContent=text;menu.append(h);};
+      heading('文件');menu.append($('md-new'),$('md-import'));heading('导出');menu.append($('md-export-format'),$('md-export'));heading('视图');menu.append(outline,theme,pin);heading('文档');menu.append($('md-delete'));
+      const view=top.querySelector('.view-switch');top.replaceChildren(search,home,view,$('md-save'),more);
+      const closeMenu=(focus=false)=>{menu.hidden=true;more.setAttribute('aria-expanded','false');window.SuiraGlassSelect?.close();if(focus)more.focus();};
+      more.onclick=()=>{if(!menu.hidden){closeMenu();return;}menu.hidden=false;more.setAttribute('aria-expanded','true');const r=more.getBoundingClientRect();menu.style.right=Math.max(8,innerWidth-r.right)+'px';menu.style.top=r.bottom+8+'px';menu.querySelector('button:not(:disabled)')?.focus();};
+      menu.addEventListener('click',event=>{if(event.target.closest('button')&&!event.target.closest('.glass-select'))closeMenu();});
+      document.addEventListener('pointerdown',event=>{if(!menu.hidden&&!menu.contains(event.target)&&!more.contains(event.target)&&!event.target.closest('.glass-select-menu'))closeMenu();},true);
+      document.addEventListener('keydown',event=>{if(menu.hidden||window.SuiraGlassSelect?.isOpen())return;if(event.key==='Escape'){event.preventDefault();event.stopImmediatePropagation();closeMenu(true);return;}if(!menu.contains(event.target)||event.target.closest('.glass-select'))return;if(!['ArrowDown','ArrowUp','Home','End'].includes(event.key))return;event.preventDefault();const list=[...menu.querySelectorAll('button:not(:disabled)')].filter(b=>b.checkVisibility()),index=list.indexOf(document.activeElement);list[event.key==='Home'?0:event.key==='End'?list.length-1:(index+(event.key==='ArrowDown'?1:-1)+list.length)%list.length]?.focus();},true);
+      window.addEventListener('resize',()=>closeMenu());window.addEventListener('blur',()=>closeMenu());
       const foot=document.querySelector('.document-foot>span:last-child');
       foot.innerHTML='<kbd>Ctrl</kbd> + <kbd>S</kbd> 保存';
       const label=document.createElement('h3');label.id='md-sidebar-label';label.textContent='最近打开';
@@ -280,7 +283,7 @@
     }else{
       top.append($('calendar-export'));
       const clock=document.createElement('time');clock.className='calendar-clock';top.append(clock);
-      let tick;const updateClock=()=>{clearTimeout(tick);if(document.hidden)return;clock.textContent=new Date().toLocaleTimeString('zh-CN',{hour12:false});tick=setTimeout(updateClock,1000);};document.addEventListener('visibilitychange',updateClock);updateClock();
+      let tick;const updateClock=()=>{clearTimeout(tick);if(document.hidden)return;clock.textContent=window.CalendarData.clock(new Date());tick=setTimeout(updateClock,60000-Date.now()%60000);};document.addEventListener('visibilitychange',updateClock);updateClock();
       const nav=document.querySelector('.calendar-month');nav.prepend($('calendar-prev'));nav.append($('calendar-next'),$('calendar-today'));
       const aside=document.querySelector('.agenda-card');aside.prepend($('calendar-new'));
       const tabs=document.createElement('div');tabs.className='agenda-tabs view-switch';tabs.innerHTML='<button data-agenda="countdown" class="is-active" aria-pressed="true"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 3h10 M7 21h10 M8 3v4l8 10v4 M16 3v4L8 17v4"/></svg>倒数日</button><button data-agenda="todo" aria-pressed="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m3 6 2 2 3-4 M11 6h10 M3 13h4 M11 13h10 M3 20h4 M11 20h10"/></svg>待办</button>';aside.prepend(tabs);

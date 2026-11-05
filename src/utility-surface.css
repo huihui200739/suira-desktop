@@ -18,3 +18,18 @@ button,input,select,textarea{font:inherit;font-variant-numeric:tabular-nums;colo
 .text-source-menu > div { position: absolute; right: 0; top: calc(var(--space-1) * 7); z-index: 5; width: max-content; padding: calc(var(--space-1) * 1.5); border: 1px solid var(--line); border-radius: 8px; background: var(--surface); box-shadow:var(--utility-text-source-menu-shadow); }
 
 .text-tool-split section:has(#tool-result) { box-shadow:var(--shadow-card); }
+.text-tool-content { display:flex;flex-direction:column;flex:1;min-height:0; }
+.text-tool-tabs { display:flex;gap:var(--space-1);margin:var(--space-3) var(--space-5) 0;padding:var(--space-1);align-self:flex-start;border:1px solid var(--line);border-radius:var(--radius-pill);background:var(--paper-soft); }
+.text-tool-tabs button { padding:var(--space-1) var(--space-4);border-radius:var(--radius-pill);color:var(--ink-soft); }
+.text-tool-tabs button[aria-selected="true"] { background:var(--accent-9);color:var(--on-accent); }
+.text-tool-controls { align-items:center;padding:var(--space-3) var(--space-5); }
+.language-capsule { display:flex;align-items:center;gap:var(--space-1);max-width:100%;padding:var(--space-1);border:1px solid var(--line-strong);border-radius:var(--radius-pill);background:var(--paper-soft); }
+.language-capsule .glass-select { min-width:0; }
+.language-capsule .glass-select-trigger { min-width:112px;border:0;border-radius:var(--radius-pill);background:transparent;box-shadow:none;padding:var(--space-1) var(--space-3); }
+.language-capsule .utility-icon { width:var(--space-6);height:var(--space-6);border-radius:var(--radius-pill); }
+.text-tool-split section:has(#tool-result) { background:var(--accent-soft); }
+.utility-window .utility-quiet { background:var(--paper-raised);color:var(--ink);border-color:var(--line-strong); }
+.utility-window .utility-quiet:hover { background:var(--surface-hover); }
+.text-tool-split header button { color:var(--accent); }
+#tool-next>div { min-width:128px; }
+@media(max-width:700px) { .text-tool-controls { gap:var(--space-2); } #tool-configure { max-width:100px;white-space:normal; } .text-tool-split { gap:var(--space-2);padding-inline:var(--space-3); } .text-tool-split section>header { padding:var(--space-2); } }

@@ -177,6 +177,7 @@ class RegionCheck {
     await until(() => panel.evaluate('document.querySelectorAll(".key").length===38'));
     await panel.evaluate(`document.getElementById('guide-close').click();true`);
     await check('/quickpanel.html'); await shot(panel, 'panel'); await shot(panel, 'panel-dark', 'dark');
+    await panel.evaluate('window.suira.settings.update({panelCompact:true})');await until(()=>panel.evaluate('document.getElementById("panel").dataset.compact==="true"'));await shot(panel,'panel-compact');await panel.evaluate('window.suira.settings.update({panelCompact:false})');await until(()=>panel.evaluate('document.querySelectorAll(".key").length===38'));
     await panel.evaluate(`window.suira.quick.setPresentation('fullscreen')`);
     await until(()=>panel.evaluate('document.getElementById("panel").dataset.mode==="actions"&&document.querySelector(".key-card").getBoundingClientRect().width>72')).catch(async error=>{console.error('Fullscreen state:',await panel.evaluate(`({mode:state.mode,presentation,scale:document.getElementById('panel').style.getPropertyValue('--keyboard-scale'),key:document.querySelector('.key-card').getBoundingClientRect().width,width:innerWidth,height:innerHeight})`));throw error;});
     await shot(panel,'keyboard-fullscreen');

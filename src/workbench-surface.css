@@ -227,5 +227,8 @@
 
 /* Card depth belongs to the content plane. */
 .liquid-ui.workbench .task-detail { box-shadow:var(--shadow-card); }
+.liquid-ui.workbench .shelf-card-actions,.liquid-ui.workbench .derived-actions { opacity:0;pointer-events:none;transition:opacity 120ms var(--ease-out); }
+.liquid-ui.workbench .shelf-card:is(:hover,:focus-within) .shelf-card-actions,.liquid-ui.workbench .derived-card:is(:hover,:focus-within) .derived-actions { opacity:1;pointer-events:auto; }
+@media(hover:none) { .liquid-ui.workbench .shelf-card-actions,.liquid-ui.workbench .derived-actions { opacity:1;pointer-events:auto; } }
 .liquid-ui.workbench .nav { --selection-fill:var(--accent-9);--selection-edge:var(--accent-9); }
 .liquid-ui.workbench .nav-item.is-active svg { color:var(--on-accent); }

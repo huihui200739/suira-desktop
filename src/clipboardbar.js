@@ -8,7 +8,7 @@
  *
  * 职责：
  * - 从 window.suira.content 拉取内容库列表，按类型渲染卡片：
- *   图片用 thumbnail 缩略图，文字用前 90 字摘要，files 用文件名 + 文件数，link 用域名；
+ *   图片用 thumbnail 缩略图，文字用前 180 字摘要，files 用文件名 + 文件数，link 用域名；
  * - 键盘（← → Home End Enter Esc）与滚轮横向浏览，单击复制并粘贴；
  * - Enter 调 window.suira.returnTo.commit({ itemId, intent: 'paste-current' })：
  *   直接粘回成功就关闭，只是复制兜底就在底部提示行显示原因并保留窗口；
@@ -23,7 +23,7 @@
 
   const KIND_LABELS = { text: '文字', link: '链接', image: '图片', files: '文件' };
   const NOTICE_DURATION = 2000;
-  const SUMMARY_LIMIT = 90;
+  const SUMMARY_LIMIT = 180;
   const EMPTY_COPY = '还没有剪贴板记录，复制一段文字或一张图再试';
 
   const GLYPHS = {
@@ -209,14 +209,23 @@
 
     const tooltip = [label, selectionTitle(item), time].filter(Boolean).join('，');
     return `<article class="bar-card" id="bar-card-${index}" role="option" aria-selected="false" tabindex="-1" data-index="${index}" data-id="${escapeHtml(item.id)}" data-kind="${escapeHtml(item.kind)}" title="${escapeHtml(tooltip)}">
-      <div class="card-head"><span class="card-type">${label}${item.pinned ? ' ★' : ''}</span>${item.kind==='image'&&window.suira?.imageEditor?'<button class="card-edit" type="button" data-edit-image aria-label="编辑这张图片">编辑</button>':''}<span class="card-index">${index + 1}</span></div>
+      <div class="card-head"><span class="card-type">${label}${item.pinned ? ' ★' : ''}</span>${item.kind==='image'&&window.suira?.imageEditor?'<button class="card-edit" type="button" data-edit-image aria-label="编辑这张图片">编辑</button>':''}<span class="card-index">${index + 1}</span><span class="card-time">${escapeHtml(time)}</span>${item.appName?`<span class="card-source-icon" data-source-app="${escapeHtml(item.appName)}" role="img" aria-label="来源：${escapeHtml(item.appName)}"><span>${escapeHtml(item.appName.slice(0,1).toUpperCase())}</span></span>`:''}</div>
       <div class="${visualClass}">${visual}</div>
-      <div class="card-caption">${escapeHtml(selectionTitle(item))}</div>
-      <div class="card-foot">
-        <span class="card-source">${escapeHtml(item.appName)}</span>
-        <span class="card-time">${escapeHtml(time)}</span>
-      </div>
     </article>`;
+  }
+
+  const sourceIcons=new Map();let iconsPending=null;
+  function loadSourceIcons(){
+    const nodes=$$('.card-source-icon'),names=[...new Set(nodes.map(node=>node.dataset.sourceApp))];
+    const paint=()=>nodes.forEach(node=>{const icon=sourceIcons.get(node.dataset.sourceApp);if(!icon||!node.isConnected||node.querySelector('img'))return;const img=document.createElement('img');img.alt='';img.src=icon;img.draggable=false;node.replaceChildren(img);});
+    paint();const missing=names.filter(name=>!sourceIcons.has(name));
+    if(!missing.length||!state.barApi?.sourceIcons)return;
+    // A later render may add another source while this request is in flight.
+    if(iconsPending){iconsPending.finally(loadSourceIcons);return;}
+    iconsPending=Promise.resolve(state.barApi.sourceIcons(missing)).then(result=>{
+      for(const name of missing){const data=result?.[name];sourceIcons.set(name,typeof data==='string'&&/^data:image\/(?:png|jpeg|webp|x-icon|vnd.microsoft.icon);base64,/.test(data)?data:'');}
+      paint();
+    }).catch(()=>{missing.forEach(name=>sourceIcons.set(name,''));}).finally(()=>{iconsPending=null;});
   }
 
   function bindImageFallbacks() {
@@ -356,6 +365,7 @@
       });
       existing.forEach(card => card.remove());
       bindImageFallbacks();
+      loadSourceIcons();
     } else {
       track.innerHTML = '';
     }

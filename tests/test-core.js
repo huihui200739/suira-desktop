@@ -166,6 +166,14 @@ console.log('\n== 落盘与重载 ==');
     console.log('  PASS  保留天数被夹紧'); pass++;
   } catch (e) { console.log('  FAIL  保留天数夹紧 -> ' + e.message); fail++; }
 
+  try {
+    assert.strictEqual(store.getSettings().panelCompact,false);
+    await store.updateSettings({panelCompact:true});await store.save();
+    const restored=new SuiraStore(dataFile);await restored.load();assert.strictEqual(restored.getSettings().panelCompact,true);
+    assert.strictEqual((await restored.updateSettings({panelCompact:'false'})).panelCompact,true);
+    await store.updateSettings({panelCompact:false});
+    console.log('  PASS  紧凑面板默认关闭、持久化并拒绝非布尔值');pass++;
+  } catch(e) {console.log('  FAIL  紧凑面板设置 -> '+e.message);fail++;}
   console.log('\n== 主窗口状态与剪贴板置顶 ==');
   try {
     assert.strictEqual(store.getWindowState(), null, '初始不应有窗口状态');

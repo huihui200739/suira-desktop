@@ -45,7 +45,7 @@ async function checkKeycapMaterial({send,evaluate}) {
   assert.equal(await ev('document.querySelector("[data-key=T]").classList.contains("is-key-near")'),true,'Entry must respond without a dwell timer');
   await wait(320);
   const hover=await ev(`(()=>{const key=document.querySelector('[data-key="T"]'),m=new DOMMatrix(getComputedStyle(key.querySelector('.key-card')).transform);return {hover:key.classList.contains('is-key-hover'),lift:m.m42,tilt:Math.abs(m.m13)+Math.abs(m.m23),labelY:key.querySelector('.key-name').getBoundingClientRect().y};})()`);
-  assert.equal(hover.hover,true);assert.ok(hover.lift< -2.5);assert.ok(hover.tilt>0);
+  assert.equal(await ev('getComputedStyle(document.querySelector("[data-key=T] .key-badge")).opacity'),'1','Hover reveals the direct-key badge');assert.equal(hover.hover,true);assert.ok(hover.lift< -2.5);assert.ok(hover.tilt>0);
   assert.equal(hover.labelY,point.labelY,'Tool name remains stationary');
   await wait(260);
   assert.equal(await ev('window.__keycapProbe.sweeps.length'),1,'A stationary hover plays exactly one reflection');
@@ -54,7 +54,7 @@ async function checkKeycapMaterial({send,evaluate}) {
   for(let n=0;n<4;n++){await send('Input.dispatchMouseEvent',{type:'mouseMoved',x:point.x+n,y:point.y+n});await wait(16);}
   assert.equal(await ev('window.__frameLayoutReads'),0,'Moving within a key never re-reads its layout');
   await ev('document.querySelector("[data-key=T]").getBoundingClientRect=window.__originalKeyBounds;true');
-  await send('Input.dispatchMouseEvent',{type:'mouseMoved',x:8,y:8});
+  await send('Input.dispatchMouseEvent',{type:'mouseMoved',x:8,y:8});await wait(140);assert.equal(await ev('getComputedStyle(document.querySelector("[data-key=T] .key-badge")).opacity'),'0','Leaving hides the badge');
   await send('Input.dispatchMouseEvent',{type:'mouseMoved',x:point.x,y:point.y});await wait(65);
   const sweepCount=await ev('window.__keycapProbe.admissions');
   await send('Input.dispatchMouseEvent',{type:'mouseMoved',x:8,y:8});

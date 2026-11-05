@@ -33,9 +33,9 @@ const CHROME_CANDIDATES = [
 ];
 const CHROME = CHROME_CANDIDATES.find((candidate) => fs.existsSync(candidate));
 
-const LONG_TEXT = '这是一段故意写得很长的剪贴板文本，用来验证摘要会被截断成前九十个字，卡片不会因为文字太长而把布局撑破。'
+const LONG_TEXT = ('这是一段故意写得很长的剪贴板文本，用来验证摘要会被截断成前九十个字，卡片不会因为文字太长而把布局撑破。'
   + '它会重复几遍，确保总长度明显超过九十字，从而让「前 90 字摘要」这条约束真正被检查到。'
-  + '第三遍继续补充内容，让超长文本在卡片里被可靠地截断。';
+  + '第三遍继续补充内容，让超长文本在卡片里被可靠地截断。').repeat(2);
 const THUMB = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
 
 let pass = 0, fail = 0;
@@ -180,6 +180,7 @@ const MOCK = `
     }
   };
   window.suira.clipboardBar = {
+    sourceIcons: function(names){ return Promise.resolve(Object.fromEntries(names.map(name=>[name,THUMB]))); },
     hide: function(){ calls.hide += 1; return Promise.resolve(); },
     onShown: function(callback){
       if (typeof callback === 'function') shownCallbacks.push(callback);
@@ -253,6 +254,8 @@ const PROBE = `
       imageCount: imgs.length,
       imageSrcs: imgs.map(function(img){ return img.getAttribute('src'); }),
       snippetLengths: snippets.map(function(text){ return text.length; }),
+      duplicateCaptions: document.querySelectorAll(".card-caption").length,
+      sourceIcons: document.querySelectorAll(".card-source-icon img").length,
       fileCountTexts: Array.prototype.slice.call(document.querySelectorAll('.card-count')).map(function(el){ return el.textContent; }),
       emptyHidden: empty ? empty.hidden : null,
       emptyMode: empty ? empty.dataset.mode : '',
@@ -549,9 +552,11 @@ async function runChecks(send) {
   check('files 卡片显示「N 个文件」', initial.fileCountTexts.length === 2
     && initial.fileCountTexts.includes('2 个文件') && initial.fileCountTexts.includes('1 个文件'),
     JSON.stringify(initial.fileCountTexts));
-  check('文字卡片摘要不超过 90 字', initial.snippetLengths.length === 3
-    && initial.snippetLengths.every((length) => length <= 90), JSON.stringify(initial.snippetLengths));
-  check('超长文本被截断到 90 字', initial.snippetLengths.includes(90), JSON.stringify(initial.snippetLengths));
+  check('文字卡片摘要不超过 180 字', initial.snippetLengths.length === 3
+    && initial.snippetLengths.every((length) => length <= 180), JSON.stringify(initial.snippetLengths));
+  check('卡片不重复显示标题',initial.duplicateCaptions===0);
+  check('来源应用图标按需显示',initial.sourceIcons>0);
+  check('超长文本被截断到 180 字', initial.snippetLengths.includes(180), JSON.stringify(initial.snippetLengths));
   check('默认选中第 1 条', initial.selectedIndex === 0 && initial.selectedId === 'img-1',
     initial.selectedIndex + ' / ' + initial.selectedId);
   check('底部显示类型 / 标题 / 来源应用 / 相对时间',

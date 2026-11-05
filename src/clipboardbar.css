@@ -1,5 +1,5 @@
 /* 与悬浮面板共用的主题玻璃内容架，不添加窗口外圈底板。
-   字号四档 12 / 13 / 15；边框 0.5px 发丝线；卡片描边不加影。 */
+   字号四档 12 / 13 / 15；边框 0.5px 发丝线；卡片使用共享浅阴影。 */
 * { box-sizing: border-box; }
 html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; background: transparent; }
 body { font-family: var(--font-ui); font-size: var(--text-2); color: var(--shelf-ink); }
@@ -106,3 +106,9 @@ kbd { font:inherit;font-variant-numeric:tabular-nums; font-size: var(--text-1); 
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; } }
 
 .bar-card { box-shadow:var(--shadow-card); }
+.bar-card { gap:var(--space-1); }
+.card-head { flex:0 0 var(--space-5);gap:var(--space-1); }
+.card-type { margin-right:auto; }
+.card-head .card-time { margin-left:0; }
+.card-source-icon { flex:none;display:grid;place-items:center;width:var(--space-5);height:var(--space-5);overflow:hidden;border-radius:var(--radius-sm);background:var(--paper-soft);font-size:var(--text-1);color:var(--ink-muted); }
+.card-source-icon img { width:100%;height:100%;object-fit:contain; }

@@ -40,17 +40,13 @@
           </button>
           <button class="nav-item" type="button" data-page="calendar"><span data-icon="calendar_ltr" aria-hidden="true"></span><span><b>日历</b></span></button>
           <button class="nav-item" type="button" data-page="markdown"><span data-icon="document" aria-hidden="true"></span><span><b>Markdown</b></span></button>
-          <button class="nav-item" type="button" data-page="trail">
-            <span data-icon="history" aria-hidden="true"></span>
-            <span><b>处理轨迹</b></span>
-          </button>
           <button class="nav-item" type="button" data-page="settings">
             <span data-icon="settings" aria-hidden="true"></span>
             <span><b>设置</b></span>
           </button>
         </nav>
 
-        <div class="sidebar-foot"><button class="side-link" id="setup-shortcuts" type="button"><span data-icon="keyboard" aria-hidden="true"></span><span>检查与配置快捷键</span></button><div class="side-status"><span class="live-dot" aria-hidden="true"></span><span>本地数据</span><b id="side-version">—</b></div></div>
+        <div class="sidebar-foot"><div class="side-status"><span class="live-dot" aria-hidden="true"></span><span>本地数据</span><b id="side-version">—</b></div></div>
       </aside>
 
       <main class="main-scroll" id="main-scroll">
@@ -104,18 +100,6 @@
           <div class="library-grid" id="library-grid"></div>
         </section>
 
-        <section class="page" id="page-trail" aria-label="处理轨迹">
-          <div class="page-head">
-            <div>
-              <h1>处理轨迹</h1><p class="page-description">看清每份内容经过的处理，接着完成下一步</p>
-            </div>
-            <button class="quiet-btn" id="trail-refresh" type="button">刷新</button>
-          </div>
-          <div class="trail-summary" id="trail-summary"></div>
-          <div class="trace-toolbar"><div class="trace-filters" id="trail-filter" role="group" aria-label="筛选处理状态"></div><label class="trace-search"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6"/><path d="m15 15 5 5"/></svg><input id="trail-search" type="search" placeholder="搜索内容、动作或错误" aria-label="搜索处理轨迹" autocomplete="off"></label></div>
-          <p class="trace-match-count" id="trail-match-count" role="status" aria-live="polite"></p><div class="trail-list" id="trail-list"></div><button type="button" class="quiet-btn" id="trail-more" hidden>显示更多</button>
-        </section>
-
         <section class="page" id="page-calendar" aria-label="日历">
           <div class="page-head"><div><p class="page-eyebrow">日历 / CALENDAR</p><h1><span class="tool-emblem page-emblem" data-tool-object="calendar" aria-hidden="true"></span>日历</h1><p class="page-description">给今天一点安排。</p></div><div class="page-actions"><button id="calendar-export" class="quiet-btn">导出日历</button><button id="calendar-today" class="quiet-btn" type="button">今天</button><button id="calendar-new" class="primary-btn" type="button">＋ 新建日程</button></div></div>
           <div class="calendar-stats" id="calendar-stats"></div><div class="calendar-controls"><div class="view-switch" aria-label="日历视图"><button data-calendar-view="month" class="is-active">月</button><button data-calendar-view="week">周</button><button data-calendar-view="agenda">日程列表</button></div><input id="calendar-search" class="text-input" type="search" placeholder="搜索日程或备注"><select id="calendar-category" aria-label="分类"><option value="">全部分类</option><option value="work">工作</option><option value="personal">生活</option><option value="study">学习</option></select><label class="completed-filter"><input id="calendar-hide-done" type="checkbox">隐藏已完成</label></div><div class="calendar-layout"><div class="calendar-card"><div class="calendar-month"><h2 id="calendar-month"></h2><div><button id="calendar-prev" class="quiet-btn" aria-label="上个月"><span data-icon="chevron_left" aria-hidden="true"></span></button><button id="calendar-next" class="quiet-btn" aria-label="下个月"><span data-icon="chevron_right" aria-hidden="true"></span></button></div></div><div class="calendar-week"><span>一</span><span>二</span><span>三</span><span>四</span><span>五</span><span>六</span><span>日</span></div><div id="calendar-grid" class="calendar-grid"></div><div id="calendar-agenda" hidden></div><div class="calendar-legend"><span>● 工作</span><span>● 生活</span><span>● 学习</span></div></div><aside class="agenda-card"><div class="setting-title"><b id="agenda-date">今天</b><small id="agenda-count"></small></div><div id="agenda-list"></div><form id="event-form" hidden><input id="event-title" class="text-input" placeholder="日程标题" maxlength="120" required><div class="event-fields"><input id="event-date" class="text-input" type="date" required><input id="event-time" class="text-input" type="time" aria-label="时间（留空为全天）"></div><div class="event-fields"><select id="event-category" aria-label="日程分类"><option value="work">工作</option><option value="personal">生活</option><option value="study">学习</option></select><select id="event-priority" aria-label="优先级"><option value="normal">普通</option><option value="high">重要</option></select></div><input id="event-location" class="text-input" placeholder="地点或会议链接（可选）" maxlength="200"><textarea id="event-notes" class="text-input" placeholder="备注（可选）" maxlength="200000"></textarea><div class="workspace-toolbar"><button class="primary-btn" type="submit">保存日程</button><button id="event-cancel" class="quiet-btn" type="button">取消</button></div></form></aside></div>
@@ -141,7 +125,9 @@
             <section class="setting-card">
               <div class="setting-title"><b>外观</b></div>
               <div class="setting-row"><span><b>主题</b><small>浮卡、浮引岛、剪贴板条同时生效</small></span><select id="setting-theme"><option value="light">浅色</option><option value="dark">深色</option><option value="system">跟随系统</option></select></div>
+              <label class="setting-row"><span><b>紧凑面板</b><small>只显示已绑定的键，保留字母键操作</small></span><input id="setting-panel-compact" type="checkbox"></label>
               <div class="setting-row"><span><b>工作台窗口</b><small>窗口被拉得过大时，恢复默认大小并回到当前屏幕中央</small></span><button class="quiet-btn" id="reset-window-size" type="button">恢复默认大小</button></div>
+              <div class="setting-row"><span><b>键位与快捷键</b><small>打开键位设置并检查当前冲突</small></span><button class="quiet-btn" id="setup-shortcuts" type="button"><span data-icon="keyboard" aria-hidden="true"></span><span>检查与配置快捷键</span></button></div>
             </section>
             <section class="setting-card">
               <div class="setting-title"><b>翻译</b></div>
@@ -282,6 +268,7 @@
           </div>
         </header>
         <div class="preview-body" id="preview-body"></div>
+        <details id="preview-trail" class="content-trail"><summary><span data-icon="history" aria-hidden="true"></span>处理轨迹</summary><div id="content-trail"><div class="trail-list"></div></div></details>
       </div>
     </div>
   </div>

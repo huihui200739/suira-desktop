@@ -72,6 +72,7 @@ const workspaceType=new URLSearchParams(location.search).get('tool');
 const standaloneTool=['calendar','markdown'].includes(workspaceType)?workspaceType:'';
 if(standaloneTool){document.documentElement.classList.add('tool-window');document.documentElement.dataset.tool=standaloneTool;document.querySelector('.brand b').textContent=standaloneTool==='markdown'?'Markdown':'日历';document.getElementById('close').setAttribute('aria-label','关闭窗口');}
 function navigate(page) {
+  if(page==='trail')page='library';
   if(!standaloneTool && ['calendar','markdown'].includes(page)){window.suira.workspace.open(page);return;}
   window.WorkspaceUI?.flush().catch(error=>showGlobalToast(error.message,'error'));
   state.page = page;
@@ -80,7 +81,7 @@ function navigate(page) {
   $('#main-scroll').scrollTo({ top: 0 });
   if (page === 'shelf') refreshShelf();
   if (page === 'library') refreshLibrary();
-  if (page === 'trail') refreshTrail();
+
   if (page === 'settings') refreshSettings();
   if (page === 'calendar' || page === 'markdown') window.WorkspaceUI.open(page);
 }
@@ -186,7 +187,7 @@ function taskItemCard(item) {
       <span class="derived-tag">${escapeHtml(SOURCE_LABELS[child.source?.type] || '整理')}</span>
       <p>${escapeHtml(SuiraTextSpacing.compactCapture(child.text || child.title || '').slice(0, 220))}</p>
       <div class="derived-actions">
-        <button type="button" data-copy="${escapeHtml(child.id)}">复制</button>
+        <button type="button" data-copy="${escapeHtml(child.id)}">复制</button><button type="button" data-preview-item="${escapeHtml(child.id)}">查看详情</button>
       </div>
     </div>
   `).join('');
@@ -201,7 +202,7 @@ function taskItemCard(item) {
         ? `<img class="shelf-thumb" src="${escapeHtml(item.thumbnail)}" alt="">`
         : `<p class="shelf-text">${escapeHtml(SuiraTextSpacing.compactCapture(item.text || item.filePath || '').slice(0, 300))}</p>`}
       ${childHtml ? `<div class="derived-wrap">${childHtml}</div>` : ''}
-      <footer class="shelf-card-actions">
+      <footer class="shelf-card-actions"><button type="button" data-preview-item="${escapeHtml(item.id)}">查看详情</button>
         <button type="button" data-copy="${escapeHtml(item.id)}">复制</button>
         ${item.kind === 'image' ? `<button type="button" data-edit-image="${escapeHtml(item.id)}">编辑图片</button>` : ''}
         ${item.kind === 'image' && !children.length ? `<button type="button" data-ocr="${escapeHtml(item.id)}">${state.ocrBusy.has(item.id) ? '识别中…' : '提取文字'}</button>` : ''}
@@ -225,6 +226,7 @@ function bindImageEditorButtons(root) {
 
 function bindItemCardActions(root, task) {
   bindImageEditorButtons(root);
+  $('[data-preview-item]',root).forEach(button=>button.addEventListener('click',()=>openPreview(button.dataset.previewItem)));
   $$('[data-copy]', root).forEach((button) => {
     button.addEventListener('click', async () => {
       const result = await window.suira.actions.run(button.dataset.copy, 'output.copy');
@@ -525,6 +527,8 @@ function openPreview(itemId) {
   }
 
   const cleanup=$('#preview-clean-spacing');cleanup.hidden=!['text','link'].includes(item.kind);cleanup.textContent='紧凑复制';$('#preview-copy').textContent=cleanup.hidden?'复制':'复制原文';cleanup.onclick=async()=>{try{const result=await window.suira.textTools.transform(String(item.text||''),'compact');if(!result?.ok)throw Error(result?.error||'整理失败');const saved=await window.suira.content.addText({text:result.text,title:'整理间距后的文字',source:'derived'});if(!saved?.ok)throw Error(saved?.error||'保存失败');const copied=await window.suira.actions.run(saved.item.id,'output.copy');if(!copied?.ok)throw Error(copied?.error||'复制失败');const content=$('.preview-text');if(content)content.textContent=result.text;showGlobalToast('已清理间距并复制，原文保持不变');}catch(error){showGlobalToast(error.message,'error');}};
+  $('#preview-trail').open=false;
+  renderTrail();
   preview.hidden = false;
   if (window.SuiraUI) window.SuiraUI.openDialog(preview, { close: closePreview });
   const closeButton = $('#preview-close');
@@ -569,22 +573,22 @@ async function pasteItemToTarget(itemId) {
 
 let trailView,trailRevision=0;
 async function refreshTrail() {
-  const revision=++trailRevision;
+  const revision=++trailRevision,itemId=state.previewId;
   try {
     const [executions,items]=await Promise.all([window.suira.executions.list(500),window.suira.content.list({limit:500})]);
-    if(revision!==trailRevision)return;
+    if(revision!==trailRevision||itemId!==state.previewId)return;
     state.executions=executions||[];state.items=items||[];renderTrail();
   } catch(error){showGlobalToast(error.message||'处理轨迹暂时无法加载','error');}
 }
 function renderTrail() {
   if(!trailView)trailView=window.SuiraTrailView.create({
-    element:$('#page-trail'),escapeHtml,labels:ACTION_LABELS,relativeTime,compactText:window.SuiraTextSpacing.compactCapture,
-    onPreview:openPreview,onLibrary:()=>navigate('library'),notify:showGlobalToast,
-    onConfigure:()=>{navigate('settings');document.querySelector('[data-setting-tab="translation"]')?.click();},
+    element:$('#content-trail'),escapeHtml,labels:ACTION_LABELS,relativeTime,compactText:window.SuiraTextSpacing.compactCapture,
+    onPreview:openPreview,notify:showGlobalToast,
+    onConfigure:()=>{closePreview();navigate('settings');document.querySelector('[data-setting-tab="translation"]')?.click();},
     onTranslate:async item=>{const result=await window.suira.textTools.open({mode:'translate',text:item.text});if(!result?.ok)throw Error(result?.error||'无法打开翻译');},
     onRetry:async id=>{const result=await window.suira.executions.retry(id);await refreshTrail();if(!result?.ok)throw Error(result?.error||'重试失败');showGlobalToast('这一步已重新处理','success');}
   });
-  trailView.render(state.executions,state.items);
+  trailView.render(state.executions,state.items,state.previewId);
 }
 
 /* ---------- settings ---------- */
@@ -604,6 +608,7 @@ async function refreshSettings() {
   $('#setting-max').value = settings.maxItems;
   $('#setting-langs').value = settings.ocrLangs;
   $('#setting-theme').value = settings.theme || 'light';
+  $('#setting-panel-compact').checked=settings.panelCompact===true;
   $('#setting-global-shortcuts').checked=settings.globalShortcutsEnabled===true;
   applyTranslateSettings(settings);
   await refreshShortcuts();
@@ -611,6 +616,7 @@ async function refreshSettings() {
 
 function bindSettings() {
   $('#reset-window-size')?.addEventListener('click',async()=>{try{const result=await window.suira.window.reset();if(!result.ok)throw Error('无法调整当前窗口');}catch(error){showGlobalToast(error.message,'error');}});
+  $('#setting-panel-compact').addEventListener('change', event => window.suira.settings.update({panelCompact:event.target.checked}));
   $('#setting-record').addEventListener('change', (event) => window.suira.settings.update({ recordClipboard: event.target.checked }));
   $('#setting-sensitive').addEventListener('change', (event) => window.suira.settings.update({ pauseSensitive: event.target.checked }));
   $('#setting-paste').addEventListener('change', (event) => window.suira.settings.update({ pasteAfterCopy: event.target.checked }));
@@ -1112,7 +1118,7 @@ function installEvents() {
     });
   });
 
-  $('#trail-refresh').addEventListener('click', refreshTrail);
+  $('#preview-trail').addEventListener('toggle',()=>{if($('#preview-trail').open)refreshTrail();});
 
   $('#open-data').addEventListener('click', () => window.suira.app.openDataDir());
   $('#open-font-license').addEventListener('click', event => { event.preventDefault(); window.suira.app.openFontLicense(); });
@@ -1163,13 +1169,13 @@ function installEvents() {
   window.suira.content.onChanged(() => {
     if (state.page === 'shelf') refreshShelf();
     if (state.page === 'library') refreshLibrary();
-    if (state.page === 'trail') refreshTrail();
+    if (!$('#preview').hidden && $('#preview-trail').open) refreshTrail();
   });
   window.suira.tasks.onChanged(() => {
     if (state.page === 'shelf') refreshShelf();
   });
   window.suira.executions.onChanged(() => {
-    if (state.page === 'trail') refreshTrail();
+    if (!$('#preview').hidden && $('#preview-trail').open) refreshTrail();
     if (state.page === 'shelf') refreshShelf();
   });
   window.suira.app.onToast((payload) => showGlobalToast(payload.message || '', payload.type || ''));
@@ -1177,7 +1183,7 @@ function installEvents() {
   // 外部改键同步到设置页。
   window.suira.shortcuts.onChanged(() => { refreshShortcuts(); });
   window.suira.ocr.onProgress((payload) => {
-    if (payload?.status === 'recognizing text' && state.page !== 'trail') {
+    if (payload?.status === 'recognizing text') {
       showGlobalToast(`正在识别文字 ${Math.round((payload.progress || 0) * 100)}%`);
     }
   });

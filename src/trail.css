@@ -1,4 +1,11 @@
 /* Suira's content-first trace view. Shared workbench tokens, no new UI runtime. */
+.content-trail { flex:none;border-top:1px solid var(--line);padding:var(--space-3) var(--space-5);color:var(--ink); }
+.content-trail>summary { cursor:pointer;font-size:var(--text-2);font-weight:500; }
+.content-trail>summary .fluent-icon { width:var(--space-4);height:var(--space-4);margin-right:var(--space-2);vertical-align:middle; }
+#content-trail { max-height:40vh;overflow:auto;margin-top:var(--space-3);overscroll-behavior:contain; }
+.trace-group:not(.show-timings) .trace-duration { display:none; }
+.content-trail .trace-group-tools>span { display:none; }
+.content-trail .trace-group-tools { justify-content:flex-end; }
 .liquid-ui.workbench #page-trail{max-width:1200px}
 #page-trail .page-description{font-size:13px;margin-top:8px}
 #page-trail .page-head{margin-bottom:24px}

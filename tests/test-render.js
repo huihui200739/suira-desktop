@@ -236,7 +236,7 @@ window.addEventListener('load', function () {
     }, 1200);
   } else if (page === 'trail') {
     setTimeout(function () {
-      var group=document.querySelector('.trace-group.is-failed .trace-group-toggle');if(group)group.click();var failedStep=document.querySelector('.trace-group.is-failed .trace-step:has([data-trace-retry])');if(failedStep)failedStep.open=true;var retry = document.querySelector('[data-trace-retry]');
+      var group=document.querySelector('.trace-group.is-failed .trace-group-toggle');if(group&&group.getAttribute('aria-expanded')!=='true')group.click();var failedStep=document.querySelector('.trace-group.is-failed .trace-step:has([data-trace-retry])');if(failedStep)failedStep.open=true;var retry = document.querySelector('[data-trace-retry]');
       if (retry) retry.click();
       setTimeout(function () {
         out.retryToast = (document.getElementById('global-toast') || {}).textContent || '';
@@ -262,6 +262,7 @@ window.addEventListener('DOMContentLoaded', function () {
   setTimeout(function () {
     var nav = document.querySelector('.nav-item[data-page="' + target + '"]');
     if (nav) nav.click();
+    if(target==='trail'){navigate('library');setTimeout(()=>{openPreview('i2');document.getElementById('preview-trail').open=true;},180);}
   }, 120);
 });
 </script>` + PROBE_MAIN + PROBE_FLOW + '</body>');
@@ -487,8 +488,8 @@ try {
   });
 
   const trail = probe(runChrome('__fx_main.html', [], '?page=trail'), 'P');
-  t('处理轨迹：4 次处理按来源归为 2 组', () => assert.strictEqual(trail.trailRows, 2));
-  t('处理轨迹：4 项紧凑统计', () => assert.strictEqual(trail.summaryCards, 4));
+  t('内容详情：只显示本条内容及派生结果的处理链', () => assert.strictEqual(trail.trailRows, 1));
+  t('内容详情：不再显示独立页面的统计区', () => assert.strictEqual(trail.summaryCards, 0));
   t('处理轨迹：失败记录有独立样式', () => assert.strictEqual(trail.failedRows, 1));
   t('处理轨迹：只有失败行带「重试」按钮', () => {
     assert.strictEqual(trail.retryButtons, 1);
@@ -529,7 +530,7 @@ try {
   t('处理轨迹：展开步骤后重试调用 executions.retry 并反馈结果', () => {
     assert.strictEqual(trailFlow.retriedId, 'e4');
     assert.strictEqual(trailFlow.retryToast, '这一步已重新处理');
-    assert.strictEqual(trailFlow.rowsAfterRetry, 2);
+    assert.strictEqual(trailFlow.rowsAfterRetry, 1);
   });
 
   const set = probe(runChrome('__fx_main.html', [], '?page=settings'), 'P');

@@ -1,0 +1,125 @@
+{
+  "version": "0.2.35",
+  "checks": [
+    {
+      "command": "npm test",
+      "passed": true
+    },
+    {
+      "command": "npm run verify:workspace",
+      "passed": true
+    },
+    {
+      "command": "npm run verify:documents",
+      "passed": true
+    },
+    {
+      "command": "npm run verify:utilities",
+      "passed": true
+    },
+    {
+      "command": "npm run verify:trail",
+      "passed": true
+    },
+    {
+      "command": "npm run test:clipboardbar",
+      "passed": true
+    },
+    {
+      "command": "npm run verify:launcher",
+      "passed": true
+    },
+    {
+      "command": "npm run verify:windows",
+      "passed": true
+    },
+    {
+      "command": "npm run screenshots",
+      "passed": true
+    }
+  ],
+  "panel": {
+    "compactDefault": false,
+    "compactPersists": true,
+    "fullBindingMapRetained": true,
+    "emptyKeysFlat": true,
+    "hoverAndKeyboardFocusRevealBadges": true,
+    "searchHint": "搜索工具、应用、内容"
+  },
+  "workbench": {
+    "itemActionsOnHoverOrFocus": true,
+    "shortcutsEntryInSettings": true,
+    "traceInsideContentDetails": true,
+    "durationsOptIn": true
+  },
+  "textTools": {
+    "oneSharedWindow": true,
+    "concurrentRequestsReuseWindow": true,
+    "latestOpenRequestWins": true,
+    "tabs": [
+      "translate",
+      "convert"
+    ],
+    "languageCapsule": true,
+    "automaticTranslationPauseMs": 500,
+    "imeCompositionDefersRequests": true,
+    "lateResultsIgnored": true,
+    "nextStepUsesResult": true,
+    "previousStepRestoresSource": true,
+    "providers": "translation, OCR and paste targets are isolated fixtures in acceptance"
+  },
+  "calendar": {
+    "selectionIsBackgroundOnly": true,
+    "clock": "HH:mm"
+  },
+  "markdown": {
+    "titlebar": [
+      "search",
+      "recent",
+      "mode",
+      "save",
+      "more"
+    ],
+    "fileActionsInMoreMenu": true,
+    "deleteRequiresConfirmation": true,
+    "cancelPreservesDocument": true
+  },
+  "clipboard": {
+    "duplicateTitlesRemoved": true,
+    "summaryCharacters": 180,
+    "sourceIconsUseExistingNativeLoader": true,
+    "unknownSourcesHaveFallback": true,
+    "browserAssertions": 123
+  },
+  "toolbox": {
+    "centered": true,
+    "columnsFitWidth": true
+  },
+  "screenshots": {
+    "reviewed": [
+      "panel.png",
+      "panel-dark.png",
+      "panel-compact.png",
+      "markdown.png",
+      "text-tools.png",
+      "text-tools-dark.png",
+      "trace.png",
+      "clipboard.png"
+    ],
+    "readmeUpdated": true
+  },
+  "reports": [
+    "document-editor-0.2.35.json",
+    "document-modes-0.2.35.json",
+    "utility-tools-0.2.35.json",
+    "trail-0.2.35.json",
+    "theme-foundation-0.2.35.json"
+  ],
+  "cleanup": {
+    "command": "npm run clean -- -IncludeObsoletePackages",
+    "removedTargets": 12,
+    "removedMB": 944.3,
+    "failures": 0,
+    "retained": "current desktop installer, runtime, dependencies, user profiles and keys"
+  }
+}

@@ -18,7 +18,7 @@
       <div class="panel-brand" aria-label="随序 随手工作台"><span class="brand-symbol" aria-hidden="true"><img src="../assets/suira-icon.png" alt="" width="44" height="44"></span><span><b>随序</b><small>随手工作台</small></span></div>
       <div class="search-slot"><div class="search-field" data-glass><button class="immersive-back" id="immersive-back" type="button" aria-label="切换到键位面板" title="切换应用与键位面板"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m14 6-6 6 6 6"/></svg></button><button class="search-toggle" id="search-toggle" type="button" aria-label="搜索" aria-expanded="false" aria-controls="search">
         <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m15.5 15.5 4 4"/></svg>
-        </button><input id="search" type="text" autocomplete="off" spellcheck="false" placeholder="按空格查看全部应用" aria-label="搜索命令、应用或内容">
+        </button><input id="search" type="text" autocomplete="off" spellcheck="false" placeholder="搜索工具、应用、内容" aria-label="搜索工具、应用、内容">
         <kbd class="search-mode" id="mode-chip">动作</kbd>
         <button id="panel-more" class="panel-more" type="button" aria-label="更多选项" aria-haspopup="menu" aria-expanded="false" aria-controls="panel-more-menu"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/></svg></button>
       </div></div>
@@ -38,7 +38,7 @@
       <div data-menu-group="display" hidden><button type="button" role="menuitemradio" data-display="window">窗口</button><button type="button" role="menuitemradio" data-display="fullscreen">全屏</button></div>
       <button type="button" role="menuitem" data-menu-action="shortcuts">键位与快捷键<span>›</span></button>
       <button type="button" role="menuitem" data-menu-section="layout" aria-expanded="false">布局<span>›</span></button>
-      <div data-menu-group="layout" hidden><button type="button" role="menuitemradio" data-layout="actions">动作面板</button><button type="button" role="menuitemradio" data-layout="apps">应用启动台</button><button type="button" role="menuitemradio" data-layout="toolbox">工具箱</button></div>
+      <div data-menu-group="layout" hidden><button id="panel-compact" type="button" role="menuitemcheckbox" aria-checked="false">只显示已绑定的键</button><hr><button type="button" role="menuitemradio" data-layout="actions">动作面板</button><button type="button" role="menuitemradio" data-layout="apps">应用启动台</button><button type="button" role="menuitemradio" data-layout="toolbox">工具箱</button></div>
       <button type="button" role="menuitem" data-menu-section="appearance" aria-expanded="false">外观<span>›</span></button>
       <div data-menu-group="appearance" hidden><button type="button" role="menuitemradio" data-theme="light">浅色</button><button type="button" role="menuitemradio" data-theme="dark">深色</button><button type="button" role="menuitemradio" data-theme="system">跟随系统</button><hr><button type="button" role="menuitemradio" data-material="liquid">实时玻璃（推荐）</button><button type="button" role="menuitemradio" data-material="soft">柔和磨砂</button><button type="button" role="menuitemradio" data-material="clear">轻透玻璃</button><button type="button" role="menuitemradio" data-material="solid">纯色</button></div>
       <hr><button type="button" role="menuitem" data-menu-action="guide">使用指南</button><button type="button" role="menuitem" data-menu-action="releases">检查更新</button>

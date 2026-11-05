@@ -769,5 +769,11 @@ kbd { font-family: var(--font-ui); font-size: var(--text-1); font-weight:600; }
 .panel .panel-more:hover,.panel .panel-more[aria-expanded="true"]{background:var(--glass-hover,var(--surface-hover));box-shadow:none}
 
 .panel .tool-item { box-shadow:var(--shadow-card); }
+
+/* Compact keeps binding authority in the full key map; only its presentation changes. */
+.panel[data-compact="true"] .keyboard { display:grid;grid-template-columns:repeat(auto-fit,var(--key-size));width:min(100%,calc(var(--key-unit) * 8));gap:var(--space-5) var(--key-gap);justify-content:center; }
+.compact-empty { grid-column:1/-1;margin:var(--space-6);color:var(--ink-muted);font-size:var(--text-2); }
+.panel .key .key-name { color:var(--ink); }
+.panel .tool-grid { width:100%;grid-template-columns:repeat(auto-fit,minmax(var(--space-6),var(--tool-size,96px)));justify-content:center;gap:var(--space-3);margin:auto; }
 .panel .panel-modes { --selection-fill:var(--accent-9);--selection-edge:var(--accent-9);--selection-light:transparent; }
 .panel .panel-modes button[aria-pressed="true"] { color:var(--on-accent); }

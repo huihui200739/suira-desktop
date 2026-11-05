@@ -2025,20 +2025,23 @@ async function rememberMainWindowState() {
 }
 
 const textToolWindows=new Map();
+let textToolRequest=0;
 let textCaptureWindow = null;
 async function openTextTools(mode='convert',input,operation='compact'){
   if(!['translate','convert'].includes(mode))return {ok:false,error:'未知文字工具'};
+  const request=++textToolRequest;
   await rememberReturnTarget('text-tools');
-  let win=textToolWindows.get(mode),fresh=!win||win.isDestroyed();
   const text=typeof input==='string'?input.slice(0,200000):(await readClipboardText()).slice(0,200000);
+  if(request!==textToolRequest)return {ok:true};
+  let win=textToolWindows.get('text'),fresh=!win||win.isDestroyed();
   if(fresh){
     win=new BrowserWindow({width:960,height:680,minWidth:640,minHeight:440,show:false,frame:false,thickFrame:SYSTEM_GLASS,transparent:true,backgroundColor:'#00000000',title:mode==='translate'?'随序 · 翻译':'随序 · 文本转换',icon:assetPath('suira-icon.png'),webPreferences:{preload:path.join(__dirname,'preload.js'),contextIsolation:true,nodeIntegration:false,sandbox:false,spellcheck:false}});
-    textToolWindows.set(mode,win);win.__textTool={mode,text,operation};
+    textToolWindows.set('text',win);win.__textTool={mode,text,operation};
     prepareFloatingSurface(win,24,true);prepareDesktopWindow(win);panelNative.disableTransitions(win);
-    win.__loaded=win.loadFile(path.join(__dirname,'src','text-tools.html'),{query:{mode}});win.on('closed',()=>textToolWindows.delete(mode));win.setMenuBarVisibility(false);
+    win.__loaded=win.loadFile(path.join(__dirname,'src','text-tools.html'),{query:{mode}});win.on('closed',()=>{if(textToolWindows.get('text')===win)textToolWindows.delete('text');});win.setMenuBarVisibility(false);
     await win.__loaded;
-  }else{win.__textTool={mode,text,operation};win.webContents.send('text-tools:input',win.__textTool);}
-  if(!win.isDestroyed()){win.show();win.focus();}return {ok:true};
+  }else{await win.__loaded;if(win.isDestroyed()||request!==textToolRequest)return {ok:true};win.__textTool={mode,text,operation};win.webContents.send('text-tools:input',{...win.__textTool,switchOnly:typeof input!=='string'});}
+  if(!win.isDestroyed()&&request===textToolRequest){win.show();win.focus();}return {ok:true};
 }
 
 function showMain(page = 'shelf') {
@@ -3721,6 +3724,8 @@ function registerIpc() {
     const list = Array.isArray(filePaths) ? filePaths.slice(0, 64) : [];
     return getAppIconLoader().getMany(list);
   });
+  const sourceIconResolver=require('./lib/app-icons').createSourceIconResolver({listApps:()=>appIndex.ensure(),readShortcutLink:filePath=>shell.readShortcutLink(filePath),loadIcons:paths=>getAppIconLoader().getMany(paths)});
+  ipcMain.handle('clipboardbar:source-icons',(_event,names)=>sourceIconResolver.getMany(names));
 
   /* ---- 快捷键：全局键位 + 按住型侦测 ---- */
   ipcMain.handle('shortcuts:get', () => {
@@ -3872,11 +3877,12 @@ function registerIpc() {
     await store.save();return {ok:true};
   });
   ipcMain.handle('text-tools:open',(_event,payload)=>openTextTools(payload?.mode,payload?.text,require('./lib/text-tools').OPERATIONS.has(payload?.operation)?payload.operation:'compact'));
-  ipcMain.handle('text-tools:capture', async event => {
+  ipcMain.handle('text-tools:capture', async (event, payload) => {
     const win = BrowserWindow.fromWebContents(event.sender);
     if (!win || ![...textToolWindows.values()].includes(win)) return { ok: false, error: '请从文字工具窗口截图' };
     if (captureBusy || longCapture || longCaptureStarting) return { ok: false, error: '请先完成当前截图' };
     await rememberReturnTarget('text-tools-capture');
+    if(payload && ['translate','convert'].includes(payload.mode))win.__textTool={mode:payload.mode,text:String(payload.text||'').slice(0,200000),operation:require('./lib/text-tools').OPERATIONS.has(payload.operation)?payload.operation:'compact'};
     textCaptureWindow = win;
     win.hide();
     // 给桌面合成器一帧移除文字工具窗口，避免把工具本身截进去。

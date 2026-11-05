@@ -22,10 +22,11 @@ t('app.js 引用的所有 ID 都存在于 HTML', () => {
 });
 
 const pageIds = [...htmlIds].filter((id) => id.startsWith('page-'));
-t('四个页面容器齐备', () => {
-  const want = ['page-shelf', 'page-library', 'page-trail', 'page-settings'];
+t('主工作台页面齐备，轨迹移入内容详情', () => {
+  const want = ['page-shelf', 'page-library', 'page-settings'];
   const miss = want.filter((p) => !pageIds.includes(p));
   if (miss.length) throw new Error('缺失: ' + miss.join(', '));
+  if(html.includes('data-page="trail"')||!htmlIds.has('preview-trail'))throw Error('轨迹应只在内容详情展开');
 });
 t('nav 的 data-page 与页面 ID 对应', () => {
   const navs = [...html.matchAll(/data-page="([^"]+)"/g)].map((m) => m[1]);

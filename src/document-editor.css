@@ -28,6 +28,13 @@
 .md-sidebar-head { display:flex; align-items:center; justify-content:space-between; gap:8px; min-height:28px; margin-bottom:12px; }
 .md-clear-recent{margin-left:auto;padding:4px 6px;border-radius:5px;font:11px/1.5 var(--font-ui);font-variant-numeric:tabular-nums;color:var(--md-muted,var(--ink-muted));white-space:nowrap}
 .md-clear-recent:hover{background:var(--md-hover,var(--surface-hover));color:var(--md-text,var(--ink))}
+.md-file-menu { position:fixed;z-index:100;display:flex;flex-direction:column;gap:var(--space-1);width:224px;max-height:calc(100vh - var(--space-6) * 2);overflow:auto;padding:var(--space-2);border:1px solid var(--line-strong);border-radius:var(--radius-inner);background:var(--tool-content);box-shadow:var(--shadow-float);-webkit-app-region:no-drag; }
+.md-file-menu[hidden] { display:none; }
+.md-file-menu>small { padding:var(--space-2) var(--space-2) var(--space-1);font-size:var(--text-1);color:var(--ink-muted); }
+.md-file-menu .tool-icon { width:100%;justify-content:flex-start;gap:var(--space-2); }
+.md-file-menu .tool-icon::after { content:attr(aria-label);font-size:var(--text-2); }
+.md-file-menu .glass-select { width:100%; }
+.md-file-menu #md-delete { color:var(--danger); }
 .md-home .md-sidebar-collapse{display:none}
 .tool-window .document-sidebar .md-sidebar-head h3 { margin:0; font-size:12px; font-weight:500; }
 .md-sidebar-collapse { width:28px; height:28px; padding:5px; border-radius:6px; color:var(--md-muted); }

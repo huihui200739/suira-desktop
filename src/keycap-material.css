@@ -10,6 +10,12 @@
 }
 .panel .key { perspective:650px; isolation:isolate; --key-lift:2.8px;  }
 .panel .key.is-unbound { --key-lift:1.5px; }
+.liquid-ui .panel[data-presentation] .key:is(.is-unbound,.is-unimplemented) .key-card { background:transparent;box-shadow:none; }
+.liquid-ui .panel[data-presentation] .key:is(.is-unbound,.is-unimplemented) .key-face { inset:0;border:1px solid var(--line-strong);background:var(--floating-key);box-shadow:none; }
+.liquid-ui .panel[data-presentation] .key:is(.is-unbound,.is-unimplemented) .key-contact { opacity:0; }
+.liquid-ui .panel[data-presentation] .key:is(.is-unbound,.is-unimplemented) .key-letter { color:var(--ink-soft); }
+.panel[data-presentation] .key .key-badge { opacity:0;transition:opacity 120ms var(--ease-out); }
+.panel[data-presentation] .key:is(:hover,:focus-visible) .key-badge { opacity:1; }
 .panel .key-contact {
   position:absolute; top:calc(var(--key-size) * .15); left:calc(var(--key-size) * .08);
   width:84%; height:calc(var(--key-size) * .88); border-radius:calc(var(--key-size) * .25);

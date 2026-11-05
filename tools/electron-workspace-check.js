@@ -58,7 +58,7 @@ async function until(fn){let error;for(let n=0;n<140;n++){try{const value=await 
   assert.equal(await main.evaluate(`window.CalendarData.day(new Date(2026,9,10)).work`),true);
   await shot('39-calendar-window.png');
   await go('markdown');
-  assert.equal(await main.evaluate(`document.getElementById('md-import').closest('.titlebar')!==null`),true);
+  assert.equal(await main.evaluate(`document.getElementById('md-import').closest('#md-file-menu')!==null`),true);
   await shot('41-markdown-welcome.png');
   await main.evaluate(`document.getElementById('md-new').click();true`);await until(()=>main.evaluate(`!document.getElementById('md-body').hidden`));
   await main.evaluate(`window.__parseCount=0;window.__previewObserver=new MutationObserver(records=>window.__parseCount+=records.length);window.__previewObserver.observe(document.getElementById('md-preview'),{childList:true});for(let i=0;i<20;i++){document.getElementById('md-editor').value='# burst '+i;document.getElementById('md-editor').dispatchEvent(new Event('input'));}true`);
@@ -73,7 +73,9 @@ async function until(fn){let error;for(let n=0;n<140;n++){try{const value=await 
   const markdownClient=main;
   assert.equal(await main.evaluate('document.getElementById("md-title").closest(".titlebar")!==null'),true);
   assert.equal(await main.evaluate('document.getElementById("md-status").closest(".document-foot")!==null'),true);
-  assert.equal(await main.evaluate('document.querySelectorAll(".tool-action-group").length'),3);
+  assert.equal(await main.evaluate('document.querySelector(".tool-top-actions").children.length'),5,"Markdown titlebar exposes only search, recent, mode, save and more");
+  await main.evaluate('document.getElementById("md-more").click();true');assert.equal(await main.evaluate('document.getElementById("md-file-menu").hidden'),false);
+  await main.evaluate('window.__confirm35=window.confirm;window.confirm=()=>false;document.getElementById("md-delete").click();true');await wait(80);assert.equal(await main.evaluate('document.getElementById("md-title").value'),"工作台计划","Canceling deletion preserves the current document");await main.evaluate('window.confirm=window.__confirm35;true');
   await main.send('Emulation.setDeviceMetricsOverride',{width:900,height:700,deviceScaleFactor:1,mobile:false});
   assert.ok(await main.evaluate('document.documentElement.scrollWidth<=innerWidth'), 'Compact document window must not overflow');
   assert.ok(await main.evaluate('document.querySelector(".window-actions").getBoundingClientRect().right<=innerWidth'), 'Window controls remain reachable');
@@ -89,7 +91,7 @@ async function until(fn){let error;for(let n=0;n<140;n++){try{const value=await 
   for(const view of ['preview','edit','split']){
     await main.evaluate(`document.querySelector('[data-md-view="${view}"]').click();true`);
     assert.equal(await main.evaluate('document.getElementById("md-split").dataset.view'),view);
-    assert.equal(await main.evaluate('document.querySelector(".markdown-toolbar").hidden'),view==='preview');
+    assert.equal(await main.evaluate('document.querySelector(".markdown-toolbar").hidden'),false,'All document modes keep the shared format toolbar');
   }
   assert.equal(await main.evaluate('getComputedStyle(document.querySelector(".sidebar")).display'),'none');
   const beforeFind=await main.evaluate(`document.getElementById('md-editor').value`);

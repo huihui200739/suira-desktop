@@ -48,8 +48,10 @@ const PLANNED_GLYPH = '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="7.5" 
 
 const appPageSize = () => document.getElementById('panel').dataset.presentation==='fullscreen'?35:28;
 
+let panelSettingsReady=Promise.resolve();
 const state = {
   mode: 'actions',
+  compact: false,
   rows: [],
   keys: [],
   count: 0,
@@ -124,10 +126,10 @@ function setMode(mode) {
   // 搜索条在应用面板里负责过滤，在动作面板里只在显式搜索时获得焦点
   const input = $('#search');
   if (mode === 'apps' || state.query) {
-    input.placeholder = mode === 'apps' ? '搜索应用' : '搜索命令、应用或内容';
+    input.placeholder = mode === 'apps' ? '搜索应用' : '搜索工具、应用、内容';
     input.focus();
   } else {
-    input.placeholder = '按空格查看全部应用';
+    input.placeholder = '搜索工具、应用、内容';
     input.blur();
   }
   if (mode === 'apps' && !state.appsLoaded) loadApps();
@@ -148,14 +150,18 @@ function renderKeys() {
   const grid = $('#key-grid');
   const rows = new Map();
   for (const key of state.keys) {
+    if (state.compact && !['bound','custom'].includes(key.state)) continue;
     if (!rows.has(key.row)) rows.set(key.row, []);
     rows.get(key.row).push(key);
   }
-  grid.innerHTML = [...rows.keys()].sort((a, b) => a - b).map((rowIndex) => `
+  $('#panel').dataset.compact=String(state.compact);
+  grid.setAttribute('aria-label',state.compact?'已绑定的动作':'38 键动作面板');
+  grid.innerHTML = state.compact ? state.keys.filter(key=>['bound','custom'].includes(key.state)).map(keyMarkup).join('') : [...rows.keys()].sort((a, b) => a - b).map((rowIndex) => `
     <div class="key-row" data-row="${rowIndex}">
       ${rows.get(rowIndex).map((key) => keyMarkup(key)).join('')}
     </div>
   `).join('');
+  if (!rows.size) grid.innerHTML='<p class="compact-empty">还没有绑定的键，可在设置中关闭紧凑面板后添加绑定。</p>';
   $$('.key', grid).forEach((button) => {
     button.addEventListener('click', () => {
       if (performance.now() < dragState.suppressClickUntil || bindingState.busy) return;
@@ -957,7 +963,7 @@ function syncPresentation(value){
   button.setAttribute('aria-label',full?'切换到窗口启动台':'切换到全屏启动台');
   if(full&&previous!==presentation){const mode=state.mode;state.appPage=0;clearSearch();setMode(mode);loadImmersiveBackground();}
   if(!full&&previous!==presentation){$('#launchpad-backdrop').style.backgroundImage='';renderApps();}
-  if(full){setSearchExpanded(true);$('#search').placeholder=state.mode==='apps'?'直接按首字母搜索':'搜索工具、应用或内容';renderApps();loadAppIcons();fitFullscreenKeys();}
+  if(full){setSearchExpanded(true);$('#search').placeholder=state.mode==='apps'?'直接按首字母搜索':'搜索工具、应用、内容';renderApps();loadAppIcons();fitFullscreenKeys();}
   button.title=full?'窗口模式 (F11 / Esc)':'全屏启动台 (F11)';button.querySelector('span').textContent=full?'窗口':'全屏';
 }
 async function changePresentation(mode=presentation==='fullscreen'?'window':'fullscreen',remember=true){
@@ -984,9 +990,10 @@ function installEvents() {
     const settings=await window.suira.settings?.get?.();
     if(!guideDismissed&&settings&&!settings.panelGuideSeen)$('#panel-guide').hidden=false;
   };
-  const syncMaterial=settings=>{const value=settings.panelMaterial||'soft';$('#panel').style.setProperty('--panel-opacity',({soft:.94,clear:.87,solid:.98})[value]||.94);$$('[data-material]').forEach(button=>button.setAttribute('aria-checked',String(button.dataset.material===value)));};
-  window.suira.settings?.get?.().then(syncMaterial).catch(()=>{});
+  const syncMaterial=settings=>{const value=settings.panelMaterial||'soft';$('#panel').style.setProperty('--panel-opacity',({soft:.94,clear:.87,solid:.98})[value]||.94);$$('[data-material]').forEach(button=>button.setAttribute('aria-checked',String(button.dataset.material===value)));const compact=settings.panelCompact===true;if(compact!==state.compact){state.compact=compact;renderKeys();}$('#panel-compact').setAttribute('aria-checked',String(compact));};
+  panelSettingsReady=window.suira.settings?.get?.().then(syncMaterial).catch(()=>{})||Promise.resolve();
   window.suira.settings?.onChanged?.(syncMaterial);
+  listen($('#panel-compact'),'click',async()=>{const result=await window.suira.settings.update({panelCompact:!state.compact});if(!result?.ok)throw Error(result?.error||'保存失败');syncMaterial(result.settings);closeMoreMenu(false);});
   $$('[data-material]').forEach(button=>listen(button,'click',async()=>{const result=await window.suira.settings.update({panelMaterial:button.dataset.material});if(!result?.ok)throw Error(result?.error||'保存失败');syncMaterial(result.settings);closeMoreMenu(false);}));
   $('#guide-close').onclick=async()=>{guideDismissed=true;$('#panel-guide').hidden=true;await window.suira.settings.update({panelGuideSeen:true});};
   // The first shown IPC can precede renderer event installation. Initialize the
@@ -1374,4 +1381,4 @@ keyMotion=window.SuiraKeycapMotion?.attach($('#key-grid'),{
 });
 installEvents();
 setMode('actions');
-const initialPanelLoad=Promise.all([loadState(),loadRecent()]);
+const initialPanelLoad=Promise.all([loadState(),loadRecent(),panelSettingsReady]);

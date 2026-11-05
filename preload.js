@@ -151,6 +151,7 @@ contextBridge.exposeInMainWorld('suira', {
   },
   // 剪贴板历史条（屏幕底部浮层）
   clipboardBar: {
+    sourceIcons: names => ipcRenderer.invoke('clipboardbar:source-icons', names),
     show: () => ipcRenderer.invoke('clipboard-bar:show'),
     hide: () => ipcRenderer.invoke('clipboard-bar:hide'),
     toggle: () => ipcRenderer.invoke('clipboard-bar:toggle'),
@@ -207,7 +208,7 @@ contextBridge.exposeInMainWorld('suira', {
     initial: () => ipcRenderer.invoke('text-tools:initial'),
     transform: (text,operation) => ipcRenderer.invoke('text-tools:transform',text,operation),
     configure: () => ipcRenderer.invoke('text-tools:configure'),
-    capture: () => ipcRenderer.invoke('text-tools:capture'),
+    capture: payload => ipcRenderer.invoke('text-tools:capture',payload),
     onInput: callback => subscribe('text-tools:input',callback),
     onConfigure: callback => subscribe('settings:translation',callback)
   },
