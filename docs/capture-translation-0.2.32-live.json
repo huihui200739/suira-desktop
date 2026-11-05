@@ -1,11 +1,11 @@
 {
   "version": "0.2.32",
   "date": "2026-11-04",
-  "scope": "real desktop acceptance in an isolated profile",
+  "scope": "real desktop acceptance with a user-launched instance and a normally created application-data profile",
   "realOcr": true,
-  "source": "Hello world. Screenshot translation in one step.",
+  "source": "This domain is for use in documentation examples without needing permission. This is not a service; avoid relying on it for testing and monitoring purposes.",
   "realTranslationProvider": "openai",
-  "translation": "你好，世界。一步完成截图翻译。",
+  "translation": "本域名供文档示例使用，无需许可。此非服务，请避免依赖它进行测试和监控。",
   "sourceCopyExact": true,
   "translationCopyExact": true,
   "manualCtrlVPasteVerified": true,
@@ -15,10 +15,8 @@
   "narrowStackedObserved": true,
   "notepadReturnTargetRecorded": true,
   "nativePasteApiAccepted": true,
-  "nativeNotepadReturnPasteVerified": false,
-  "nativePasteLimitation": "SendInput reported success but the Notepad editor did not receive the text. Manual Ctrl+V worked. Automatic return-and-paste remains unverified.",
-  "englishWebpageVerified": false,
-  "browserLimitation": "Browser controls could not reliably determine the current browser URL.",
+  "nativeNotepadReturnPasteVerified": true,
+  "englishWebpageVerified": true,
   "fixes": [
     "Share language detection with the translation service so isolated OCR Han characters in English do not switch the target to English.",
     "Use Win32 process handles for window identities and the parent watchdog.",
@@ -33,5 +31,19 @@
     "npm run test:shortcut": "12 passed",
     "node tests/test-foreground.js": "23 passed"
   },
-  "desktopLauncherAttempt": "Launcher rebuild was rejected by automatic approval review: blocked by policy. No further launcher attempts were made."
+  "completedDate": "2026-11-05",
+  "previousAttempt": {
+    "nativePasteLimitation": "SendInput reported success but the Notepad editor did not receive the text. Manual Ctrl+V worked. Automatic return-and-paste remains unverified.",
+    "browserLimitation": "Browser controls could not reliably determine the current browser URL.",
+    "desktopLauncherAttempt": "Launcher rebuild was rejected by automatic approval review: blocked by policy. No further launcher attempts were made."
+  },
+  "sourceUrl": "https://example.com/",
+  "notepadTextMatchesTranslation": true,
+  "pasteAction": "Clicked the overlay return-and-paste button and observed the complete translation in a newly created blank Notepad tab, without pressing Ctrl+V.",
+  "rootCause": "The earlier acceptance profile inherited the workspace Low Mandatory Level label, so its compiled native helper ran at low integrity (0x1000), below Notepad at medium integrity (0x2000). Creating the isolated profile through the desktop instance in the normal application-data directory produced a medium-integrity helper; the complete workflow then passed.",
+  "normalDesktopHelperIntegrity": "0x2000",
+  "windowsSecuritySettingsChanged": false,
+  "normalDesktopPanelBVerified": true,
+  "factoryBMigrationVerifiedOnDesktop": true,
+  "demonstrationTextLeftInNotepad": true
 }

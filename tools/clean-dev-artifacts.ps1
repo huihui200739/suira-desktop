@@ -43,7 +43,7 @@ function Add-Target([string]$candidate, [string]$owner, [string]$group) {
   $targets.Add([pscustomobject]@{ Path=$absolute; Root=$owner; Group=$group; Bytes=[long]$bytes; Directory=[bool]$item.PSIsContainer })
 }
 
-foreach ($name in @('capture32-verify-app.js','capture32-verify-profile','capture32-token.cs','capture32-token.exe','capture32-launcher.cs','capture32-launcher.exe','capture32-focus-host.cs','capture32-focus-host.exe','capture32-children-host.cs','capture32-children-host.exe','capture32-proof.json','capture32-debug-host.cs','capture32-debug-host.exe','capture32-app.js','capture32-english.html','capture32-profile','edge-profile','edge-profile2','mem','probe-app','probe-app2','udata-copy','udata-default','udata-test',
+foreach ($name in @('capture32-identity.cs','capture32-identity.exe','capture32-desktop-app.js','capture32-desktop-profile','capture32-verify-app.js','capture32-verify-profile','capture32-token.cs','capture32-token.exe','capture32-launcher.cs','capture32-launcher.exe','capture32-focus-host.cs','capture32-focus-host.exe','capture32-children-host.cs','capture32-children-host.exe','capture32-proof.json','capture32-debug-host.cs','capture32-debug-host.exe','capture32-app.js','capture32-english.html','capture32-profile','edge-profile','edge-profile2','mem','probe-app','probe-app2','udata-copy','udata-default','udata-test',
                     'launch-suira.cmd','run-app.cmd','run-app2.cmd','run-probe.cmd','release-edit.py','release-ui-edit.py','update-repo.py','repo-info.json','latest-release.json',
                     'cleanup-protected.json','installer-lifecycle-result.json','release-audit.json','coco-probe.js','coco-electron-probe.js',
                     'process-probe.exe','process-probe.nsi','process-probe.txt','context-guard-probe.exe','context-guard-probe.nsi',
@@ -56,6 +56,32 @@ foreach ($name in @('capture32-verify-app.js','capture32-verify-profile','captur
                     'verify-installed-profile27.js','distribution-sync31','distribution-sync30','refine29.py','implement28.py','panel-native28.js','verify-installed-profile28.js')) {
   Add-Target (Join-Path $repoRoot ('.workbuddy\' + $name)) $repoRoot 'workspace-test-artifacts'
 }
+# A desktop-launched acceptance profile must live outside the low-integrity workspace.
+# Trust only its exact test namespace directly under the current user's AppData.
+$acceptanceShortcutName = (-join ([char[]]@(0x542f,0x52a8,0x968f,0x5e8f,0x9a8c,0x6536))) + '.lnk'
+$acceptanceLocation = Join-Path $repoRoot '.workbuddy\capture32-desktop-location.json'
+if (Test-Path -LiteralPath $acceptanceLocation) {
+  try {
+    $acceptanceRecord = Get-Content -LiteralPath $acceptanceLocation -Raw -Encoding UTF8 | ConvertFrom-Json
+    $acceptanceProfile = [IO.Path]::GetFullPath([string]$acceptanceRecord.profile).TrimEnd('\')
+    $acceptanceOwner = [IO.Path]::GetFullPath($env:APPDATA).TrimEnd('\')
+    if ([IO.Path]::GetDirectoryName($acceptanceProfile) -ne $acceptanceOwner -or
+        [IO.Path]::GetFileName($acceptanceProfile) -notmatch '^SuiraAcceptance-0\.2\.32-\d{13}$') {
+      throw 'Unexpected acceptance profile path'
+    }
+    Add-Target $acceptanceProfile $acceptanceOwner 'desktop-acceptance-profile'
+    # Keep the location record and entry shortcut while this profile is in use.
+    if ($targets.Path -contains $acceptanceProfile -or -not (Test-Path -LiteralPath $acceptanceProfile)) {
+      Add-Target $acceptanceLocation $repoRoot 'desktop-acceptance-metadata'
+      Add-Target (Join-Path $repoRoot $acceptanceShortcutName) $repoRoot 'desktop-acceptance-shortcut'
+    }
+  } catch { $skipped.Add('Acceptance metadata preserved: ' + $_.Exception.Message) }
+}
+
+if (-not (Test-Path -LiteralPath $acceptanceLocation)) {
+  Add-Target (Join-Path $repoRoot $acceptanceShortcutName) $repoRoot 'desktop-acceptance-shortcut'
+}
+
 if (Test-Path -LiteralPath (Join-Path $repoRoot '.workbuddy')) {
   Get-ChildItem -LiteralPath (Join-Path $repoRoot '.workbuddy') -File -Filter '*.log' | ForEach-Object {
     Add-Target $_.FullName $repoRoot 'workspace-logs'
