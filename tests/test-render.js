@@ -629,7 +629,11 @@ try {
     assert.ok(html.indexOf('theme.css') < html.indexOf('styles.css'));
   });
   t('中性色：Radix slate 阶', () => assert.ok(/--slate-12: #1c2024/i.test(theme)));
-  t('强调色：Radix blue 阶', () => assert.ok(/--blue-9: #0090ff/i.test(theme)));
+  t('强调色：Radix Iris，blue 只保留分类色', () => {
+    assert.ok(/--accent-9:\s*#5b5bd6/i.test(theme));
+    assert.ok(/--accent:\s*var\(--accent-9\)/.test(theme));
+    assert.ok(/--kind-blue:\s*var\(--blue-11\)/.test(theme));
+  });
   t('styles.css 不再自带色板（引用语义令牌）', () => {
     assert.ok(!/--mist:/.test(css));
     assert.ok(/var\(--ink\)/.test(css));

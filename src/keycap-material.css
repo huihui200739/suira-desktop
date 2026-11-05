@@ -4,11 +4,11 @@
  * Surface is quiet; color and material belong to the actual tool objects.
  */
 .panel,.key-drag-preview {
-  --cap-top:#fffffff2; --cap-bottom:#edf2f4e6; --cap-side:#85939b8c;
-  --cap-edge:#ffffffcc; --cap-shadow:#1b2e3a29;
-  --cap-idle-top:#f6f8f9d9; --cap-idle-bottom:#e0e7ebc9;
+
+
+
 }
-.panel .key { perspective:650px; isolation:isolate; --key-lift:2.8px; --key-glint:#d9edff; }
+.panel .key { perspective:650px; isolation:isolate; --key-lift:2.8px;  }
 .panel .key.is-unbound { --key-lift:1.5px; }
 .panel .key-contact {
   position:absolute; top:calc(var(--key-size) * .15); left:calc(var(--key-size) * .08);
@@ -36,12 +36,12 @@
   transform-style:preserve-3d;
 }
 .panel .key.is-unbound .key-face,.panel .key.is-unimplemented .key-face {
-  border-color:#ffffff94;
+  border-color:var(--cap-key-is-unimplemented-key-face-edge);
   background:linear-gradient(145deg,var(--cap-idle-top),var(--cap-idle-bottom));
   box-shadow:inset 0 1px 0 var(--cap-edge);
 }
 .panel .key.is-unbound .key-card,.panel .key.is-unimplemented .key-card,
-.panel[data-presentation] .key.is-unbound .key-card,.panel[data-presentation] .key.is-unimplemented .key-card { box-shadow:0 1px 1px #263b4512; background:#9ba9b14d; }
+.panel[data-presentation] .key.is-unbound .key-card,.panel[data-presentation] .key.is-unimplemented .key-card { box-shadow:var(--cap-key-is-unimplemented-key-card-shadow); background:var(--cap-key-is-unimplemented-key-card-surface); }
 .panel .key.is-unbound .key-contact,.panel .key.is-unimplemented .key-contact { opacity:.22; }
 .panel .key-card::before,.panel .key-card::after { display:none !important; }
 .panel .key-face .key-glyph {
@@ -74,7 +74,7 @@
   transform:translateY(1px) rotateX(0deg) rotateY(0deg) scale(.98); transition-duration:75ms;
 }
 .panel .key.is-key-pressed .key-contact { opacity:.15; transform:none; }
-.panel .key:focus-visible .key-card { outline:2px solid var(--accent); outline-offset:4px; }
+.panel .key:focus-visible .key-card { outline:2px solid var(--focus-ring); outline-offset:4px; }
 .panel.is-key-dragging .key .key-card,.panel .key.is-drop-over .key-card,
 .panel[data-presentation].is-key-dragging .key .key-card,.panel[data-presentation] .key.is-drop-over .key-card { transform:none; }
 .panel .key.is-drop-over .key-face { outline:2px solid var(--accent); outline-offset:2px; background:var(--accent-soft); }
@@ -87,26 +87,26 @@
 .key-drag-preview .key-contact { display:none; }
 .panel .tool-mark { --art-unit:.72px; width:50px; height:50px; background:transparent !important; box-shadow:none; }
 .panel .brand-symbol,.panel .brand-symbol img { width:36px; height:36px; }
-.panel[data-presentation="window"] { background:linear-gradient(145deg,#ffffff0a,transparent 40%),rgba(177,190,199,var(--panel-opacity,.94)); border-color:#ffffff78; box-shadow:inset 0 1px 0 #ffffff66,inset 0 -1px 0 #3b4b5c0d; }
+.panel[data-presentation="window"] { background:var(--cap-panel-window-surface); border-color:var(--cap-panel-window-edge); box-shadow:var(--cap-panel-window-shadow); }
 .panel[data-mode="actions"] .keyboard { gap:20px; }
-.panel .key[data-action="translate"],.panel .key[data-action="calendar"] { --key-glint:#ff9f87; }
-.panel .key[data-action="markdown"],.panel .key[data-action="clipboard"],.panel .key[data-action="note"] { --key-glint:#ffd16b; }
-.panel .key[data-action="edit-image"],.panel .key[data-action="desktop"],.panel .key[data-action="lock"] { --key-glint:#c9a3ff; }
-.panel .key[data-action="text-clean"],.panel .key[data-action="annotate"] { --key-glint:#83e7bc; }
+.panel .key[data-action="translate"],.panel .key[data-action="calendar"] {  }
+.panel .key[data-action="markdown"],.panel .key[data-action="clipboard"],.panel .key[data-action="note"] {  }
+.panel .key[data-action="edit-image"],.panel .key[data-action="desktop"],.panel .key[data-action="lock"] {  }
+.panel .key[data-action="text-clean"],.panel .key[data-action="annotate"] {  }
 .panel .key-reflection { position:absolute; inset:1px; overflow:hidden; border-radius:inherit; z-index:3; pointer-events:none; transform:translateZ(10px); }
 .panel .key-reflection::after { content:""; position:absolute; inset:0; border-radius:inherit; background:linear-gradient(145deg,color-mix(in srgb,var(--key-glint) 12%,transparent),transparent 65%); opacity:0; transition:opacity 80ms var(--ease-out); }
 .panel .is-key-near .key-reflection::after { opacity:1; }
-.panel .key-sheen { position:absolute; width:24%; height:150%; left:-30%; top:-25%; background:linear-gradient(110deg,transparent 5%,color-mix(in srgb,var(--key-glint) 85%,transparent) 38%,#ffffffed 48%,color-mix(in srgb,var(--key-glint) 85%,transparent) 58%,transparent 95%); opacity:0; transform:translateX(0) skewX(-18deg); }
+.panel .key-sheen { position:absolute; width:24%; height:150%; left:-30%; top:-25%; background:var(--cap-panel-key-sheen-surface); opacity:0; transform:translateX(0) skewX(-18deg); }
 .panel .is-key-sheen .key-sheen { animation:keycap-sweep 240ms cubic-bezier(.22,1,.36,1) 1 both; }
 @keyframes keycap-sweep { 0% { opacity:0; transform:translateX(0) skewX(-18deg); } 20% { opacity:.9; } 65% { opacity:.75; } 100% { opacity:0; transform:translateX(620%) skewX(-18deg); } }
-.panel[data-presentation="fullscreen"] { --cap-idle-top:#ffffffe0; --cap-idle-bottom:#e4ebeed4; }
+.panel[data-presentation="fullscreen"] {   }
 .panel[data-presentation="fullscreen"] .key.is-bound .key-badge,
-.panel[data-presentation="fullscreen"] .key.is-custom .key-badge { color:#4b5d6a; }
+.panel[data-presentation="fullscreen"] .key.is-custom .key-badge { color:var(--cap-key-is-custom-key-badge-ink); }
 @media(prefers-color-scheme:dark) {
-  .panel,.key-drag-preview { --cap-top:#586875f2; --cap-bottom:#455560ed; --cap-side:#111d26c9; --cap-edge:#ffffff4d; --cap-shadow:#00000052; --cap-idle-top:#485661e6; --cap-idle-bottom:#374650db; }
-  .panel[data-presentation="window"] { background:linear-gradient(145deg,#ffffff05,transparent 40%),rgba(24,31,38,var(--panel-opacity,.94)); border-color:#ffffff24; }
-  .panel .key.is-unbound .key-face { border-color:#ffffff2e; }
-  .panel[data-presentation="fullscreen"] { --cap-idle-top:#485661e6; --cap-idle-bottom:#374650db; }
+  .panel,.key-drag-preview {        }
+  .panel[data-presentation="window"] { background:var(--cap-panel-window-surface); border-color:var(--cap-panel-window-edge); }
+  .panel .key.is-unbound .key-face { border-color:var(--cap-key-is-unbound-key-face-edge); }
+  .panel[data-presentation="fullscreen"] {   }
   .panel[data-presentation="fullscreen"] .key.is-bound .key-badge,
   .panel[data-presentation="fullscreen"] .key.is-custom .key-badge { color:var(--ink-soft); }
 }

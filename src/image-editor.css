@@ -10,7 +10,7 @@
 .editor-window-controls { display:flex; }
 .editor-window-controls button { width:34px;height:32px;border:0;border-radius:8px;background:transparent;cursor:pointer;color:var(--ink-soft);font-size:20px; }
 .editor-window-controls button:hover { background:var(--control-selected); }
-.editor-window-controls [data-window="close"]:hover { background:var(--red-3);color:var(--red-11); }
+.editor-window-controls [data-window="close"]:hover { background:var(--image-editor-editor-window-controls-close-hover-surface);color:var(--image-editor-editor-window-controls-close-hover-ink); }
 .editor-empty { position:absolute;inset:60px 0 40px;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:14px; }
 .editor-empty[hidden] { display:none; }
 .editor-empty svg { width:64px;height:64px;fill:none;stroke:var(--accent-deep);stroke-width:1.5;opacity:.7; }
@@ -19,10 +19,10 @@
 .editor-empty button { margin:8px 0; }
 .editor-empty small { font-size:var(--text-1);opacity:.7; }
 .editor-foot { position:fixed;inset:auto 0 0;display:flex;justify-content:space-between;gap:16px;padding:12px 22px;color:var(--ink-soft);font-size:var(--text-1);pointer-events:none; }
-.editor-foot .is-error { color:var(--red-11); }
+.editor-foot .is-error { color:var(--image-editor-editor-foot-is-error-ink); }
 .is-image-editor #capture-root { display:none;position:absolute;inset:auto;overflow:visible;isolation:auto; }
 .is-image-editor.editor-has-image #capture-root { display:block; }
-.is-image-editor #screen-canvas { background:repeating-conic-gradient(var(--slate-4) 0 25%,var(--paper-raised) 0 50%) 0 / 16px 16px;box-shadow:0 8px 36px rgba(0,0,0,.12); }
+.is-image-editor #screen-canvas { background:repeating-conic-gradient(var(--slate-4) 0 25%,var(--paper-raised) 0 50%) 0 / 16px 16px;box-shadow:var(--image-editor-is-image-editor-screen-canvas-shadow); }
 .is-image-editor .shade,.is-image-editor .dim,.is-image-editor .selection-grid,.is-image-editor .capture-hint,.is-image-editor .magnifier,.is-image-editor .loading-state { display:none!important; }
 .is-image-editor .tool-dock { transform:none; }
 .is-image-editor .size-badge { display:none; }

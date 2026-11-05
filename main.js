@@ -3355,6 +3355,7 @@ function registerIpc() {
     runtime: 'Electron prototype'
   }));
   ipcMain.handle('app:open-data-dir', () => shell.openPath(userRoot()));
+  ipcMain.handle('app:font-license', () => shell.openPath(assetPath('fonts', 'MiSans-LICENSE.pdf')));
   ipcMain.handle('app:restart', () => { restartApplication(); return {ok:true}; });
   ipcMain.handle('updates:state',()=>updates().snapshot());
   ipcMain.handle('updates:check',()=>updates().check());

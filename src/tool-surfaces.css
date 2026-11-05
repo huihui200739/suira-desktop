@@ -5,16 +5,16 @@
 .tool-window .brand .tool-kind { --art-unit:.4px; width:28px; height:28px; background:transparent; border-radius:0; }
 .tool-window .brand .tool-kind .suira-art { --art-unit:.4px; }
 .tool-window #md-empty .welcome-document,.detail-empty>.tool-emblem { --art-unit:1px; width:68px; height:68px; background:transparent; border-radius:0; }
-.tool-window[data-tool="calendar"] { --window-marker:#d55348; }
-.tool-window[data-tool="markdown"] { --window-marker:#bf790f; }
-.tool-window .titlebar { box-shadow:inset 0 1px 0 #ffffff3d; border-bottom-color:var(--tool-edge); }
+.tool-window[data-tool="calendar"] {  }
+.tool-window[data-tool="markdown"] {  }
+.tool-window .titlebar { box-shadow:var(--tool-surfaces-tool-window-titlebar-shadow); border-bottom-color:var(--tool-edge); }
 .tool-window .app-shell { border-color:var(--tool-edge); }
 .workspace-empty .tool-emblem { --art-unit:.7px; display:grid; margin:0 auto 12px; }
 .bar .bar-mark.tool-emblem { --art-unit:.4px; width:28px; height:28px; background:transparent; }
 .bar .clipboard-empty-emblem { --art-unit:.7px; width:48px; height:48px; margin:0; }
 .bar-empty:not([data-mode="empty"]) .clipboard-empty-emblem { display:none; }
 .bar .card-glyph:has(.suira-art) { --art-unit:.65px; display:grid; place-items:center; width:48px; height:48px; background:transparent; border:0; }
-.bar { box-shadow:inset 0 1px 0 #ffffff4d; }
+.bar { box-shadow:var(--tool-surfaces-bar-shadow); }
 @media(max-width:560px) {
   .bar .bar-mark.tool-emblem { display:none; }
   .tool-window #md-empty .welcome-document { --art-unit:.85px; width:58px; height:58px; }

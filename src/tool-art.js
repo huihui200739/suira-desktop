@@ -35,12 +35,12 @@
   // The desktop action is a fan of collapsing windows, rather than a monitor.
   objects.desktop=object('desktop window-deck','<span class="deck-window back"></span><span class="deck-window middle"></span><span class="deck-window front"><span class="deck-pane"></span></span><span class="deck-base"></span>');
   const families={
-    capture:'sky','capture-translate':'sky','long-capture':'sky',ocr:'sky',pin:'sky',
+    capture:'blue','capture-translate':'blue','long-capture':'blue',ocr:'jade',pin:'blue',
     clipboard:'amber',note:'amber',markdown:'amber',folder:'amber',
-    translate:'coral',calendar:'coral',
-    'edit-image':'iris',desktop:'iris',lock:'iris',
-    annotate:'jade','text-clean':'jade',island:'sky',shelf:'amber',library:'iris',settings:'slate',
-    url:'sky',file:'sky',app:'iris'
+    translate:'jade',calendar:'orange',
+    'edit-image':'blue',desktop:'slate',lock:'iris',
+    annotate:'blue','text-clean':'jade',island:'blue',shelf:'amber',library:'iris',settings:'slate',
+    url:'blue',file:'blue',app:'iris'
   };
   const api = {
     has: id => Object.prototype.hasOwnProperty.call(objects,id),

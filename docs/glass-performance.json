@@ -1,33 +1,33 @@
 {
   "note": "Single isolated Electron run; working set sums may include shared pages. Production idle timeout 60s shortened to 2s for lifecycle verification; timings are IPC-to-ready, not physical hotkey latency.",
-  "clipboardWarmMs": 11,
+  "clipboardWarmMs": 10,
   "clipboardBeforeIdle": {
-    "processes": 5,
-    "workingSetMB": 501
+    "processes": 7,
+    "workingSetMB": 851
   },
   "clipboardAfterIdle": {
     "processes": 4,
-    "workingSetMB": 396
+    "workingSetMB": 484
   },
-  "clipboardRecreatedMs": 265,
-  "panelWarmMs": 59,
+  "clipboardRecreatedMs": 163,
+  "panelWarmMs": 4,
   "panelBeforeIdle": {
     "processes": 5,
-    "workingSetMB": 537
+    "workingSetMB": 637
   },
   "panelAfterIdle": {
-    "processes": 4,
-    "workingSetMB": 419
-  },
-  "panelRecreatedMs": 217,
-  "captureWarmMs": 313,
-  "captureBeforeIdle": {
     "processes": 5,
-    "workingSetMB": 582
+    "workingSetMB": 637
+  },
+  "panelReusedAfterIdleMs": 5,
+  "captureWarmMs": 287,
+  "captureBeforeIdle": {
+    "processes": 6,
+    "workingSetMB": 787
   },
   "captureAfterIdle": {
-    "processes": 4,
-    "workingSetMB": 445
+    "processes": 5,
+    "workingSetMB": 645
   },
-  "captureRecreatedMs": 328
+  "captureRecreatedMs": 234
 }

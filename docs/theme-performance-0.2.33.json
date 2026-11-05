@@ -1,0 +1,99 @@
+{
+  "version": "0.2.33",
+  "baselineSource": "404f838294f23d508714a490c02c0ea8d0828f38",
+  "scope": "Isolated Electron 45 processes with fresh profiles; no user profile modified. One run per configuration.",
+  "memory": {
+    "startupSettleSeconds": 12,
+    "backgroundWaitSeconds": 20,
+    "unit": "MB",
+    "samples": {
+      "font33-all-windows": [
+        {
+          "stage": "startup-idle",
+          "workingSetMB": 789.3,
+          "privateMB": 900.7,
+          "processes": 10
+        },
+        {
+          "stage": "background-20s",
+          "workingSetMB": 798.1,
+          "privateMB": 868,
+          "processes": 10
+        }
+      ],
+      "font33-before": [
+        {
+          "stage": "startup-idle",
+          "workingSetMB": 704.9,
+          "privateMB": 732.8,
+          "processes": 10
+        },
+        {
+          "stage": "background-20s",
+          "workingSetMB": 714.2,
+          "privateMB": 707.3,
+          "processes": 10
+        }
+      ],
+      "font33-main-only": [
+        {
+          "stage": "startup-idle",
+          "workingSetMB": 820.9,
+          "privateMB": 768.6,
+          "processes": 10
+        },
+        {
+          "stage": "background-20s",
+          "workingSetMB": 807.9,
+          "privateMB": 741.2,
+          "processes": 10
+        }
+      ]
+    },
+    "policy": "Full-window MiSans exceeded 10%; load MiSans only on the main workbench.",
+    "notes": "Working-set sums include shared pages. Final private bytes rose 4.9% at startup and 4.8% after hiding; final working set rose 16.5% / 13.1%. The main workbench is still retained at the 20-second sample."
+  },
+  "latency": {
+    "before": {
+      "panelLoadedMs": 2005,
+      "quickReadyMs": [
+        22,
+        158,
+        14,
+        16,
+        13
+      ],
+      "firstPanelReadyMs": 22,
+      "font": "\"Segoe UI Variable Text\", \"Segoe UI\", \"Microsoft YaHei UI\", \"Microsoft YaHei\", sans-serif",
+      "panelAfterIdleMs": 22
+    },
+    "after": {
+      "panelLoadedMs": 2091,
+      "quickReadyMs": [
+        15,
+        161,
+        15,
+        13,
+        13
+      ],
+      "firstPanelReadyMs": 15,
+      "font": "\"Segoe UI Variable Text\", \"Microsoft YaHei UI\", sans-serif",
+      "panelAfterIdleMs": 18
+    }
+  },
+  "checks": {
+    "npmTest": "passed",
+    "surfaces": "passed",
+    "glass": "passed",
+    "latency": "passed",
+    "tokenLint": "passed"
+  },
+  "fontSource": {
+    "url": "https://hyperos.mi.com/font-download/MiSans.zip",
+    "archiveEntry": "MiSans/可变字体/MiSansVF.ttf",
+    "sha256": "0ddef90648998900175cfdca9a6f087a2544c182f130b0ad4f7e94a03a115e79",
+    "licenseUrl": "https://hyperos.mi.com/font-download/MiSans%E5%AD%97%E4%BD%93%E7%9F%A5%E8%AF%86%E4%BA%A7%E6%9D%83%E8%AE%B8%E5%8F%AF%E5%8D%8F%E8%AE%AE.pdf",
+    "licenseSha256": "4a93a27cd2bd81b3b5ecfd0a853144a876fa26938a93a68443c67d74172fcb86",
+    "unmodified": true
+  }
+}

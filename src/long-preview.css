@@ -3,11 +3,11 @@ html,body{margin:0;width:100%;height:100%;overflow:hidden;background:transparent
 .preview-card{height:100%;display:flex;flex-direction:column;gap:7px;padding:10px;overflow:hidden;
   border:1px solid var(--floating-edge);border-radius:14px;
   background:linear-gradient(150deg,var(--floating-light,transparent),transparent 65%),color-mix(in srgb,var(--paper-raised) 90%,transparent);
-  box-shadow:0 16px 38px #0b12202a,inset 0 1px 0 var(--floating-edge);
+  box-shadow:var(--long-preview-preview-card-shadow);
   backdrop-filter:blur(24px) saturate(140%)}
 .preview-head{display:flex;align-items:center;gap:6px;flex:none}
 .preview-head b{font-size:var(--text-1,12px);font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.preview-dot{width:6px;height:6px;border-radius:50%;background:var(--blue-9);flex:none;box-shadow:0 0 0 3px color-mix(in srgb,var(--blue-9) 15%,transparent)}
+.preview-dot{width:6px;height:6px;border-radius:50%;background:var(--accent-9);flex:none;box-shadow:0 0 0 3px color-mix(in srgb,var(--accent-9) 15%,transparent)}
 .preview-frame{position:relative;flex:1;min-height:0;border-radius:9px;overflow:hidden;
   background:color-mix(in srgb,var(--paper-raised) 70%,transparent);
   border:1px solid color-mix(in srgb,var(--floating-edge) 80%,transparent);

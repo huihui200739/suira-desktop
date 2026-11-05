@@ -19,7 +19,7 @@ async function checkKeycapMaterial({send,evaluate}) {
   assert.equal(facts.count,14);assert.equal(facts.objects,true);assert.equal(facts.inside,true);
   assert.equal(facts.faceColors,1,'All tool keys use one neutral surface');
   assert.equal(facts.borders,true,'Old colored key outlines must not leak through');
-  assert.equal(await ev('new Set([...document.querySelectorAll(".key.is-bound .suira-art")].map(n=>[...n.classList].find(c=>c.startsWith("family-")))).size'),5,'The full keyboard has five meaningful tool families');
+  assert.equal(await ev('new Set([...document.querySelectorAll(".key.is-bound .suira-art")].map(n=>[...n.classList].find(c=>c.startsWith("family-")))).size'),6,'The keyboard has Blue, Jade, Orange, Amber, Iris and Slate families');
   await ev(`(()=>{
     window.__keycapProbe={entries:[],paint:[],sweeps:[],admissions:0};
     const grid=document.getElementById('key-grid');

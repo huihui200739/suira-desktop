@@ -1,0 +1,133 @@
+{
+  "version": "0.2.33",
+  "baselineVersion": "0.2.32",
+  "source": "Real Electron screenshots using isolated fictional demo profiles. Trace baseline regenerated from the 0.2.32 source commit.",
+  "pages": [
+    {
+      "name": "workbench",
+      "beforeSha256": "72299be4ae21ed63ad15579ce3851d8cc04386b4a9ebae4366b827c1144fff25",
+      "afterSha256": "56aa9ebd6b1980f4ea953d7dd8ee7dba84f307ec53c1273f2d54081819524334",
+      "review": "Compared before/after layout, typography, control contrast and category colours; no clipping or missing controls observed."
+    },
+    {
+      "name": "panel",
+      "beforeSha256": "a9a5fb2cf71d09a16309d43ff0db8e033a17fafd496ac79f0486e4ef2c74340c",
+      "afterSha256": "76ec381e9e75925c2e9b87703eec64833b14cc2b1697f195d7e433666694021c",
+      "review": "Compared before/after layout, typography, control contrast and category colours; no clipping or missing controls observed."
+    },
+    {
+      "name": "panel-dark",
+      "beforeSha256": "a11da529699d5bc9de8076d54ed4b7aa632214252b7a00b1165e9f94f6e48882",
+      "afterSha256": "c2ccc8a8d372ab8bbc3655de2177e4755ecb74f57fae4811d3de6f53fb242d67",
+      "review": "Compared before/after layout, typography, control contrast and category colours; no clipping or missing controls observed."
+    },
+    {
+      "name": "keyboard-fullscreen",
+      "beforeSha256": "cd023a57ab8fe0273b2d2cdd2024212ee2cb89ac8e481e19370d7531f173dc79",
+      "afterSha256": "3242951e279579390530b112bce5c9ae78cbf55cceb5b82fc59101df2af21d94",
+      "review": "Compared before/after layout, typography, control contrast and category colours; no clipping or missing controls observed."
+    },
+    {
+      "name": "keyboard-menu",
+      "beforeSha256": "824d1d28df4e7521d8562bda5fb34c81e3ed60f2bdf17057aff25dea617c76e0",
+      "afterSha256": "e61def83cbb8485cead540b353d8f209f81bb072f1a7a7c31b4987e36aca25e2",
+      "review": "Compared before/after layout, typography, control contrast and category colours; no clipping or missing controls observed."
+    },
+    {
+      "name": "panel-menu",
+      "beforeSha256": "c9b7142e7fc93c045706b5decdc343bcd011b3fa606fd141f11bb9953e75a6a8",
+      "afterSha256": "3447fab70653092c6ce8691d153f79b4b79ba0e42077d3f6e910d973a9145769",
+      "review": "Compared before/after layout, typography, control contrast and category colours; no clipping or missing controls observed."
+    },
+    {
+      "name": "apps",
+      "beforeSha256": "de86132ea82f3e778f097b98b3245caeb8d64ebac523f25738cbccd9ccdddb6b",
+      "afterSha256": "c56ee731d00bccbb787b8b83b2055800ac7f5e06b625f5a2a4434ab6ca354d1d",
+      "review": "Compared before/after layout, typography, control contrast and category colours; no clipping or missing controls observed."
+    },
+    {
+      "name": "app-search",
+      "beforeSha256": "7b8cca47db54a97d81cbcd9f46cadfbbe6d99392260a9d7271424c6a43a9f89d",
+      "afterSha256": "f8cb3f506ae5e97f435f6a77dc08b1a2ae891f40175e24a89138ceb9086622df",
+      "review": "Compared before/after layout, typography, control contrast and category colours; no clipping or missing controls observed."
+    },
+    {
+      "name": "toolbox",
+      "beforeSha256": "28db1d3d5a63cdb678a9ab3e0e035755f7873b643c161abc3cfee9ce5d75e543",
+      "afterSha256": "dd0675b7635d3aa720deff73087a88c6a4ef74ab2dcb9bc8eb8aa299a26de1f7",
+      "review": "Compared before/after layout, typography, control contrast and category colours; no clipping or missing controls observed."
+    },
+    {
+      "name": "app-binding",
+      "beforeSha256": "a0f653c11ea0919ea0c9382de401700c27cee64f966a1815e724a8638e8dd7d4",
+      "afterSha256": "45f0f7ad1f2fda573b60fd1088cd90ddf53c94d472142dba604306b9660a55b7",
+      "review": "Compared before/after layout, typography, control contrast and category colours; no clipping or missing controls observed."
+    },
+    {
+      "name": "apps-fullscreen",
+      "beforeSha256": "d06a51321025cc11e730aaf155c92d4e8c66a96c8ba16f0d30c513224efdd11b",
+      "afterSha256": "91e6bd427cf22f76cc885bbf44197e5058f374a165ceabe8c7dd631e47295468",
+      "review": "Compared before/after layout, typography, control contrast and category colours; no clipping or missing controls observed."
+    },
+    {
+      "name": "fullscreen-menu",
+      "beforeSha256": "35399e200fa412cfc2d9eabeecea95a62cd24f50254c221a207f52b0d3446309",
+      "afterSha256": "bc7828825b1fe2cc350da2f65653ba725ef801879e2377095de2e5f6d531ea1c",
+      "review": "Compared before/after layout, typography, control contrast and category colours; no clipping or missing controls observed."
+    },
+    {
+      "name": "app-search-fullscreen",
+      "beforeSha256": "427188215e8313da69c7659676cadaad775b0b7712b487df3246a2fdf0987ce7",
+      "afterSha256": "cdb3b667760364cfc76d22ead550f3bed87d6f9b49670c34d2d309c9bbf01422",
+      "review": "Compared before/after layout, typography, control contrast and category colours; no clipping or missing controls observed."
+    },
+    {
+      "name": "clipboard",
+      "beforeSha256": "73ef9ba41c4c1ff0e68527698668d9b95593fff6eacfa64752b6e7fb085cf01f",
+      "afterSha256": "490159cc6cf2c24f4eb746ec2dbeac05d7347152ead26236158b4920a130e271",
+      "review": "Compared before/after layout, typography, control contrast and category colours; no clipping or missing controls observed."
+    },
+    {
+      "name": "calendar",
+      "beforeSha256": "c70f450ed099157898f5cd6e1e626f06140c66f4f8920c6bf3399a6edd20aaf8",
+      "afterSha256": "2efc92fa2ce54235cff8e7c685abcb5e9a15b31eb07846da287067278d4a5c4f",
+      "review": "Compared before/after layout, typography, control contrast and category colours; no clipping or missing controls observed."
+    },
+    {
+      "name": "markdown",
+      "beforeSha256": "97a48f4a091a0914c69281daa99882ebac4276c7497af5985da77418e9a69132",
+      "afterSha256": "9fa34a18e9660b837f93f7350facfbc13ba238f64146bc5f289a488d3cc2de4c",
+      "review": "Compared before/after layout, typography, control contrast and category colours; no clipping or missing controls observed."
+    },
+    {
+      "name": "markdown-dark",
+      "beforeSha256": "ea676a5287eea348fb4acd44dc6163a8e1a0882d766258568d727ca3e346833f",
+      "afterSha256": "658c0a6703f37b0230b4388111e4a09d323bc8c1d7f9a1c761de02986b4ca243",
+      "review": "Compared before/after layout, typography, control contrast and category colours; no clipping or missing controls observed."
+    },
+    {
+      "name": "markdown-home",
+      "beforeSha256": "1fa5f58d41963111dd70dfee9eca9a96e4f9075f93b3047abd4a6d3e8bfe95ed",
+      "afterSha256": "ad959a4959c2d94d3cb235e0bfb15392e9c58a8d3092ebffad0a62fa9e56d05a",
+      "review": "Compared before/after layout, typography, control contrast and category colours; no clipping or missing controls observed."
+    },
+    {
+      "name": "notes",
+      "beforeSha256": "88c7cdfeffd56b7f9c8db69e06e7e1c36d75eebefe6583f15414d03c323def73",
+      "afterSha256": "9949a780a962400d8f1d598d42182bf3ce9d29da03df4a4ce88d5fbfecc30745",
+      "review": "Compared before/after layout, typography, control contrast and category colours; no clipping or missing controls observed."
+    },
+    {
+      "name": "trace",
+      "beforeSha256": "c181fc35d8cddb4625ce760a5f9883cb80cf0b7f109edebe17311bd23d25f560",
+      "afterSha256": "abb666d455dc00c8971c2ea8604d4aa6c432d3ec16961d3e5ed4ceb83e62a8ba",
+      "review": "Compared before/after layout, typography, control contrast and category colours; no clipping or missing controls observed."
+    },
+    {
+      "name": "trace-overview",
+      "beforeSha256": "b6572743184722b992ab372a268ec769b7469a2680aa205412c86a6db6778d06",
+      "afterSha256": "f07e74ae1e9bfcdb950a236e64a8a6bc390fd17e1132ee2fbeb0a470b016cce9",
+      "review": "Compared before/after layout, typography, control contrast and category colours; no clipping or missing controls observed."
+    }
+  ]
+}

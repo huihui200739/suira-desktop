@@ -53,6 +53,8 @@
 
 从托盘双击打开面板。全局快捷键默认关闭，可在设置中主动开启并调整冲突键位。
 
+界面字体：MiSans（小米），原版字体用于主工作台；[MiSans 字体许可协议](https://hyperos.mi.com/font-download/MiSans%E5%AD%97%E4%BD%93%E7%9F%A5%E8%AF%86%E4%BA%A7%E6%9D%83%E8%AE%B8%E5%8F%AF%E5%8D%8F%E8%AE%AE.pdf)。
+
 | 开启后的预设快捷键 | 功能 |
 | --- | --- |
 | `Alt+S` | 随手面板 |

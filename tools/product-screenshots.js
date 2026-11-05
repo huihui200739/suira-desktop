@@ -22,6 +22,7 @@ async function until(fn) {
 async function run({ screenshots = false } = {}) {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'suira-doc-shots-'));
   const sockets = [];
+  const foundationResults=[];
   let child;
   try {
     const server = net.createServer();
@@ -56,7 +57,20 @@ require(${JSON.stringify(path.join(root, 'main.js'))});`);
     fs.closeSync(log);
     const page = async select => {
       const client = await until(() => connect(port, select)); sockets.push(client.ws);
-      await until(() => client.evaluate('Boolean(window.suira)')); return client;
+      await until(() => client.evaluate('Boolean(window.suira) && document.readyState === "complete"'));
+      const palettes=[];
+      for(const scheme of ['light','dark']){
+        await client.send('Emulation.setEmulatedMedia',{features:[{name:'prefers-color-scheme',value:scheme}]});
+        await wait(180);
+        const facts=await client.evaluate(`document.fonts.ready.then(()=>{const s=getComputedStyle(document.documentElement);return {url:location.pathname.split('/').pop(),main:document.documentElement.classList.contains('workbench'),font:getComputedStyle(document.body).fontFamily,fontLoaded:[...document.fonts].some(f=>f.family.replaceAll('"','')==='MiSans VF'&&f.status==='loaded'),accent:s.getPropertyValue('--accent').trim(),focus:s.getPropertyValue('--focus-ring').trim(),buttons:[...document.querySelectorAll('.primary-btn,.utility-primary')].filter(b=>!b.matches(':hover')).map(b=>({id:b.id,label:b.textContent,root:document.documentElement.className,primary:getComputedStyle(b).getPropertyValue('--glass-primary').trim(),background:getComputedStyle(b).backgroundColor,ink:getComputedStyle(b).color}))}})`);
+        assert.equal(facts.accent,scheme==='light'?'#5b5bd6':'#b1a9ff');
+        assert.equal(facts.focus,scheme==='light'?'#9b9ef0':'#5958b1');
+        assert.equal(facts.fontLoaded,facts.main,'VF must be decoded only by the main workbench');
+        for(const button of facts.buttons){assert.equal(button.background,'rgb(91, 91, 214)',JSON.stringify(button));assert.equal(button.ink,'rgb(255, 255, 255)');}
+        palettes.push({scheme,...facts});
+      }
+      await client.send('Emulation.setEmulatedMedia',{features:[]});
+      foundationResults.push(...palettes);return client;
     };
     const main = await page(t => t.url.endsWith('/index.html'));
     await until(() => main.evaluate('Boolean(window.WorkspaceUI)'));
@@ -233,6 +247,7 @@ class RegionCheck {
     await main.evaluate(`window.suira.capture.finish({dataUrl:${JSON.stringify(demo)},action:'pin'})`);
     await check('/pin.html');
     console.log('PASS independent windows, real native corners, resize and maximize/restore');
+    if(screenshots)fs.writeFileSync(path.join(root,'docs/theme-foundation-'+require('../package.json').version+'.json'),JSON.stringify({version:require('../package.json').version,fontPolicy:'MiSans on main workbench only; system font on utility windows',checks:foundationResults},null,2)+'\n');
     if (process.argv.includes('--preview')) await wait(45000);
   } catch (error) {
     if (fs.existsSync(path.join(tmp, 'app.log'))) console.error(fs.readFileSync(path.join(tmp, 'app.log'), 'utf8').slice(-1800));

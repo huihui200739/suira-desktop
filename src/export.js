@@ -5,6 +5,9 @@ window.renderExport = async ({title,text}) => {
   content.innerHTML=SuiraMarkdown.safeHTML(marked.parse(text,{gfm:true}));
   content.querySelectorAll('input').forEach(input=>{if(input.type!=='checkbox')input.remove();else input.disabled=true;});
   const escape=value=>String(value).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-  const html=`<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'"><title>${escape(title)}</title><style>${document.getElementById('export-style').textContent}</style></head><body><article>${content.innerHTML}</article></body></html>`;
+  const computed=getComputedStyle(document.documentElement);
+  const tokens=['ink','paper-raised','paper-soft','line','line-strong','ink-soft','accent','font-ui'];
+  const exportedTheme=':root{'+tokens.map(name=>'--'+name+':'+computed.getPropertyValue('--'+name).trim()+';').join('')+'}';
+  const html=`<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'"><title>${escape(title)}</title><style>${exportedTheme}${document.getElementById('export-style').textContent}</style></head><body><article>${content.innerHTML}</article></body></html>`;
   await document.fonts.ready;return html;
 };

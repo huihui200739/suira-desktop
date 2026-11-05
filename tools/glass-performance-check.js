@@ -24,9 +24,15 @@ async function until(fn){let error;for(let i=0;i<160;i++){try{const v=await fn()
    await page.evaluate(hide);const start=performance.now();await main.evaluate(show);await until(()=>page.evaluate(name==='capture'?'document.visibilityState==="visible" && document.getElementById("screen-canvas").width>0 && document.getElementById("loading-state").hidden':'document.visibilityState==="visible"'));report[name+'WarmMs']=Math.round(performance.now()-start);
    // Visible surfaces must survive past the shortened idle interval.
    await wait(2200);assert.equal((await targets()).find(t=>t.url.endsWith(suffix))?.id,original);
-   await page.evaluate(hide);report[name+'BeforeIdle']=await metrics();await until(async()=>!(await targets()).some(t=>t.url.endsWith(suffix)));report[name+'AfterIdle']=await metrics();
+   await page.evaluate(hide);report[name+'BeforeIdle']=await metrics();
+   if(name==='panel'){
+     // The launcher intentionally remains warm; utilities still release idle renderers.
+     await wait(2200);assert.equal((await targets()).find(t=>t.url.endsWith(suffix))?.id,original);report.panelAfterIdle=await metrics();
+     const reused=performance.now();await main.evaluate(show);await until(()=>page.evaluate('document.visibilityState==="visible"'));report.panelReusedAfterIdleMs=Math.round(performance.now()-reused);await page.evaluate(hide);continue;
+   }
+   await until(async()=>!(await targets()).some(t=>t.url.endsWith(suffix)));report[name+'AfterIdle']=await metrics();
    const cold=performance.now();await main.evaluate(show);page=await get(suffix);await until(()=>page.evaluate(name==='capture'?'document.visibilityState==="visible" && document.getElementById("screen-canvas").width>0 && document.getElementById("loading-state").hidden':'document.visibilityState==="visible"'));report[name+'RecreatedMs']=Math.round(performance.now()-cold);assert.notEqual((await targets()).find(t=>t.url.endsWith(suffix)).id,original);await page.evaluate(hide);
  }
  fs.writeFileSync(path.join(root,'docs/glass-performance.json'),JSON.stringify({note:'Single isolated Electron run; working set sums may include shared pages. Production idle timeout 60s shortened to 2s for lifecycle verification; timings are IPC-to-ready, not physical hotkey latency.',...report},null,2)+'\n');
- console.log(JSON.stringify(report,null,2));console.log('PASS real idle teardown, visible-window protection, warm reopen and cold recreation');
+ console.log(JSON.stringify(report,null,2));console.log('PASS utility idle teardown, warm launcher reuse, visible-window protection and cold utility recreation');
 })().catch(e=>{console.error(e);process.exitCode=1;}).finally(()=>{for(const s of sockets)s.close();child?.kill();});

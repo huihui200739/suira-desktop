@@ -111,6 +111,7 @@ contextBridge.exposeInMainWorld('suira', {
   app: {
     info: () => ipcRenderer.invoke('app:info'),
     openDataDir: () => ipcRenderer.invoke('app:open-data-dir'),
+    openFontLicense: () => ipcRenderer.invoke('app:font-license'),
     restart: () => ipcRenderer.invoke('app:restart'),
     quit: () => ipcRenderer.invoke('app:quit'),
     releases: () => ipcRenderer.invoke('app:releases'),

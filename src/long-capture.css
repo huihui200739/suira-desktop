@@ -3,23 +3,23 @@ html,body{margin:0;width:100%;height:100%;overflow:hidden;background:transparent
 .hud{height:100%;padding:13px 15px;display:flex;flex-direction:column;justify-content:center;gap:9px;overflow:hidden;
   border:1px solid var(--floating-edge);border-radius:16px;
   background:linear-gradient(150deg,var(--floating-light,transparent),transparent 60%),color-mix(in srgb,var(--paper-raised) 88%,transparent);
-  box-shadow:0 14px 34px #0b122022,inset 0 1px 0 var(--floating-edge);
+  box-shadow:var(--long-capture-hud-shadow);
   backdrop-filter:blur(26px) saturate(150%)}
 .hud-row{display:flex;align-items:center;gap:12px}
 .hud-status{display:flex;align-items:center;gap:8px;min-width:0;flex:1}
 .hud-status b{font-size:var(--text-2,13px);font-weight:600;letter-spacing:.01em;white-space:nowrap}
 .hud-status #long-size{font-size:var(--text-1,12px);color:var(--ink-soft);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-variant-numeric:tabular-nums}
-.hud-dot{width:7px;height:7px;border-radius:50%;background:var(--blue-9);flex:none;box-shadow:0 0 0 3px color-mix(in srgb,var(--blue-9) 16%,transparent)}
+.hud-dot{width:7px;height:7px;border-radius:50%;background:var(--accent-9);flex:none;box-shadow:0 0 0 3px color-mix(in srgb,var(--accent-9) 16%,transparent)}
 .hud-actions{display:flex;align-items:center;gap:6px;flex:none}
 .hud-button{height:32px;padding:0 12px;border:1px solid color-mix(in srgb,var(--slate-12) 9%,transparent);border-radius:9px;
   background:color-mix(in srgb,var(--slate-12) 6%,transparent);color:var(--ink);
-  font:500 var(--text-1,12px) var(--font-ui);cursor:pointer;white-space:nowrap;display:inline-flex;align-items:center;gap:5px;
+  font:500 var(--text-1,12px) var(--font-ui);font-variant-numeric:tabular-nums;cursor:pointer;white-space:nowrap;display:inline-flex;align-items:center;gap:5px;
   transition:background 120ms var(--ease-out,ease),color 120ms var(--ease-out,ease),border-color 120ms var(--ease-out,ease)}
 .hud-button:hover{background:color-mix(in srgb,var(--slate-12) 11%,transparent);border-color:color-mix(in srgb,var(--slate-12) 16%,transparent)}
-.hud-button:focus-visible{outline:2px solid var(--accent-glow);outline-offset:1px}
-.hud-button kbd{font:11px var(--font-ui);opacity:.5;margin-left:2px}
-.hud-button.is-primary{background:var(--accent-soft);border-color:color-mix(in srgb,var(--blue-8) 45%,transparent);color:var(--accent-deep);font-weight:600}
-.hud-button.is-primary:hover{background:color-mix(in srgb,var(--accent-soft) 72%,var(--blue-4))}
+.hud-button:focus-visible{outline:2px solid var(--focus-ring);outline-offset:1px}
+.hud-button kbd{font:11px var(--font-ui);font-variant-numeric:tabular-nums;opacity:.5;margin-left:2px}
+.hud-button.is-primary{background:var(--accent-soft);border-color:color-mix(in srgb,var(--accent-8) 45%,transparent);color:var(--accent-deep);font-weight:600}
+.hud-button.is-primary:hover{background:color-mix(in srgb,var(--accent-soft) 72%,var(--accent-4))}
 .hud-button[disabled]{cursor:default;opacity:.6}
 p{margin:0;font-size:var(--text-1,12px);line-height:1.45;color:var(--ink-soft);
   white-space:normal;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}

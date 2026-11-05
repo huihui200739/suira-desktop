@@ -1,5 +1,5 @@
 /* Distinct window edges and focus, without changing the shared glass palette. */
-:root { --window-marker:var(--blue-11); }
+:root { --window-marker:var(--accent-11); }
 :root[data-tool="markdown"] { --window-marker:var(--violet-11); }
 .app-shell { position:relative; isolation:isolate; }
 .app-shell::after {

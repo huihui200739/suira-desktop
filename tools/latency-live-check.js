@@ -47,6 +47,39 @@ let editor, probe;
   const exe = [process.env.SUIRA_ELECTRON, 'C:\\suira-electron\\electron.exe', path.join(os.homedir(), 'suira-electron-dist', 'electron.exe'), path.join(ROOT, 'node_modules/electron/dist/electron.exe')].filter(Boolean).find(p => fs.existsSync(p));
   assert.ok(exe, '找不到 Electron');
   const appPort = await freePort(), editorPort = await freePort();
+  // Measure the actual panel paint without requiring OS foreground permission.
+  // Native paste remains covered by running this tool without --panel-only.
+  if (process.argv.includes('--panel-only')) {
+    const entry = path.join(TMP, 'panel.js');
+    fs.writeFileSync(entry, `const {app}=require('electron');app.setPath('userData',${JSON.stringify(path.join(TMP,'profile'))});require(${JSON.stringify(path.join(ROOT,'main.js'))});`);
+    const started = performance.now();
+    launch(exe, entry, appPort);
+    const main = await page(appPort, '/index.html');
+    const quick = await page(appPort, '/quickpanel.html');
+    await quick.evaluate('document.fonts.ready.then(()=>true)');
+    const panelLoadedMs = Math.round(performance.now()-started);
+    const firstPaint = () => quick.evaluate(`document.fonts.ready.then(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(()=>resolve(document.visibilityState==='visible')))))`);
+    const quickReadyMs=[];
+    for(let n=0;n<5;n++){
+      const start=performance.now();
+      await main.evaluate('window.suira.quick.show()');
+      assert.ok(await firstPaint());
+      quickReadyMs.push(Math.round(performance.now()-start));
+      await quick.evaluate('window.suira.quick.hide()');
+      await wait(150);
+    }
+    const report={panelLoadedMs,quickReadyMs,firstPanelReadyMs:quickReadyMs[0],font:await quick.evaluate('getComputedStyle(document.body).fontFamily')};
+    if(process.argv.includes('--idle')){
+      const before=(await (await fetch(`http://127.0.0.1:${appPort}/json/list`)).json()).find(t=>t.url.endsWith('/quickpanel.html')).id;
+      console.log('Waiting 65 seconds to verify idle panel reuse…');
+      await wait(65000);
+      const after=(await (await fetch(`http://127.0.0.1:${appPort}/json/list`)).json()).find(t=>t.url.endsWith('/quickpanel.html')).id;
+      assert.deepEqual(after,before);
+      const start=performance.now();await main.evaluate('window.suira.quick.show()');assert.ok(await firstPaint());report.panelAfterIdleMs=Math.round(performance.now()-start);
+    }
+    fs.writeFileSync(path.join(TMP,'result.json'),JSON.stringify(report,null,2));
+    console.log(JSON.stringify(report));console.log('PASS real panel font readiness, first paint and idle window reuse');return;
+  }
   const wrapper = path.join(TMP, 'app.js'), editorMain = path.join(TMP, 'editor.js'), html = path.join(TMP, 'editor.html');
   fs.writeFileSync(wrapper, `const {app,ipcMain}=require('electron');app.setPath('userData',${JSON.stringify(path.join(TMP, 'app-data'))});
     const handle=ipcMain.handle.bind(ipcMain);ipcMain.handle=(channel,callback)=>handle(channel,channel==='return:commit'?async(...args)=>{const result=await callback(...args);require('fs').writeFileSync(${JSON.stringify(path.join(TMP, 'commit.json'))},JSON.stringify(result));return result;}:callback);
@@ -73,8 +106,8 @@ let editor, probe;
       win=new BrowserWindow({width:650,height:320,webPreferences:{nodeIntegration:true,contextIsolation:false}});
       await win.loadFile(${JSON.stringify(html)});win.show();win.focus();
     });`);
-  launch(exe, wrapper, appPort, ['--background']);
-  const appPage = await page(appPort, '/island.html');
+  launch(exe, wrapper, appPort);
+  const appPage = await page(appPort, '/index.html');
   const bar = await page(appPort, '/clipboardbar.html');
   const overlay = await page(appPort, '/overlay.html');
   const quick = await page(appPort, '/quickpanel.html');

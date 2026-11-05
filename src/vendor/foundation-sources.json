@@ -1,0 +1,40 @@
+{
+  "radix": {
+    "package": "@radix-ui/colors",
+    "version": "3.0.0",
+    "url": "https://registry.npmjs.org/@radix-ui/colors/-/colors-3.0.0.tgz"
+  },
+  "fluent": {
+    "package": "@fluentui/svg-icons",
+    "version": "1.1.345",
+    "url": "https://registry.npmjs.org/@fluentui/svg-icons/-/svg-icons-1.1.345.tgz",
+    "icons": {
+      "subtract": "1681f591eb7e39eff10ca24f7083d2ca6c6248c11a1353078f9c46b2274a259d",
+      "add": "e5a1042750088527992b3396337a1962a36161ffe497dc9ac3cdac1a0b91ae91",
+      "dark_theme": "42ff9c046f670d9e7a68d893edf1896bf34d65cb94d1c83a05f3081aaf1e1a5c",
+      "circle_half_fill": "85a601cd06a912ba8c0ce094fcbf4fb6b2fdba9ae930cc169115846b4e3960aa",
+      "copy": "df92d70f05a1b0e771ad8fc2383c23d6ac7178bda3b4e7a57e5a03972fa9c1e8",
+      "more_horizontal": "b867db7b6a08e04fe34cdda325a1c300546c9cfc981cf1a75048643a70f36b6f",
+      "dismiss": "7cff7ed321daa78ab1e9346e182c5416d4f1ae88b3d9bf7742f2497be37a7cc5",
+      "arrow_expand": "fd4c13f353324108afd799a8de807d9bd6c68c4a7ef37d562aa3ce483f975df1",
+      "chevron_left": "77e1e747195d4693256808f4f2dfb528912906d093694b54764929a8d23f0475",
+      "chevron_right": "34fd96a5fdf562cdffba50de0b097a0bfaee5a21b54b789030901174ea9de7a1",
+      "chevron_down": "ee9fd7bce0165d8da4a34e6ec5056873e5eb55102d78321bfba858daff28a36e",
+      "archive": "9ff53ff5b658312674d176c15e82d3800cdc14a5eea96ccfe46475eb193dc89a",
+      "library": "dd28bbc9a6d40ce1133af651cb61481e692a117e0356501a286648ccc7442e61",
+      "calendar_ltr": "14532a4c17274355bb2689361ab070b79ad450febf489b796fd92bc18955f5ea",
+      "document": "04f02e5423bc939e9cf57475cd068aa30c97e2608e73c6a5b8e172f547851746",
+      "history": "e6c4c0ec931c23fe1ebc2f58d6949237ff0b9a08a1947b90cb840e38e353d69d",
+      "settings": "2d6d320d21346d519f87261c3ce941272b6f6bf54350ed3f00c5494e99f7804f",
+      "keyboard": "857b01bc0f8bfc6f54256f0e3274e40495f4b41718444005bdf175ebd8ccd774"
+    }
+  },
+  "misans": {
+    "url": "https://hyperos.mi.com/font-download/MiSans.zip",
+    "archiveEntry": "MiSans/可变字体/MiSansVF.ttf",
+    "sha256": "0ddef90648998900175cfdca9a6f087a2544c182f130b0ad4f7e94a03a115e79",
+    "licenseUrl": "https://hyperos.mi.com/font-download/MiSans%E5%AD%97%E4%BD%93%E7%9F%A5%E8%AF%86%E4%BA%A7%E6%9D%83%E8%AE%B8%E5%8F%AF%E5%8D%8F%E8%AE%AE.pdf",
+    "licenseSha256": "4a93a27cd2bd81b3b5ecfd0a853144a876fa26938a93a68443c67d74172fcb86",
+    "unmodified": true
+  }
+}

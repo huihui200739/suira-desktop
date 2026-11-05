@@ -1,3 +1,4 @@
+const themePaint = name => getComputedStyle(document.documentElement).getPropertyValue('--'+name).trim();
 const { $, $$ } = (() => ({
   $: (selector, root = document) => root.querySelector(selector),
   $$: (selector, root = document) => Array.from(root.querySelectorAll(selector))
@@ -47,7 +48,7 @@ const state = {
   selection: null,
   mode: 'select',
   tool: 'pen',
-  color: '#e5484d',
+  color: themePaint('drawing-red'),
   lineWidth: 4,
   drawing: null,
   annotations: [],
@@ -309,6 +310,7 @@ function setTool(tool) {
 }
 
 function setColor(color) {
+  if(color.startsWith('drawing-')) color=themePaint(color);
   state.color = color;
   colorDot.style.background = color;
   colorPopover.hidden = true;
@@ -371,7 +373,7 @@ function drawMagnifier(p) {
     const half = sampleSize / 2;
     magnifierCtx.imageSmoothingEnabled = false;
     magnifierCtx.clearRect(0, 0, magnifierCanvas.width, magnifierCanvas.height);
-    magnifierCtx.fillStyle = '#111113';
+    magnifierCtx.fillStyle = themePaint('magnifier-surface');
     magnifierCtx.fillRect(0, 0, magnifierCanvas.width, magnifierCanvas.height);
     magnifierCtx.drawImage(
       state.image,
@@ -384,7 +386,7 @@ function drawMagnifier(p) {
       magnifierCanvas.width,
       magnifierCanvas.height
     );
-    magnifierCtx.strokeStyle = 'rgba(119,173,255,0.9)';
+    magnifierCtx.strokeStyle = themePaint('magnifier-crosshair');
     magnifierCtx.lineWidth = 1;
     magnifierCtx.strokeRect(magnifierCanvas.width / 2 - 11, magnifierCanvas.height / 2 - 11, 22, 22);
     const coords = `${srcX}, ${srcY}`;
@@ -437,7 +439,7 @@ function drawAnnotation(item) {
     ctx.beginPath();
     ctx.arc(item.x, item.y, radius, 0, Math.PI * 2);
     ctx.fill();
-    ctx.fillStyle = '#fff';
+    ctx.fillStyle = themePaint('drawing-white');
     ctx.font = `600 ${14 * (item.unit || 1)}px "Segoe UI", sans-serif`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
@@ -622,7 +624,7 @@ function drawAnnotationToContext(ctx, item) {
     ctx.beginPath();
     ctx.arc(item.x, item.y, 14 * (item.unit || 1), 0, Math.PI * 2);
     ctx.fill();
-    ctx.fillStyle = '#fff';
+    ctx.fillStyle = themePaint('drawing-white');
     ctx.font = `600 ${14 * (item.unit || 1)}px "Segoe UI", sans-serif`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';

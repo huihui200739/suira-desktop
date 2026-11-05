@@ -3,14 +3,14 @@
 * { box-sizing:border-box; }
 html, body { width:100%; height:100%; margin:0; overflow:hidden; background:transparent; }
 body { font-size:12px; user-select:none; }
-button { font:inherit; color:inherit; border:0; padding:0; background:transparent; cursor:pointer; }
+button { font:inherit;font-variant-numeric:tabular-nums; color:inherit; border:0; padding:0; background:transparent; cursor:pointer; }
 [hidden] { display:none !important; }
 .island {
   --ink:var(--edge-ink); --ink-soft:var(--edge-muted); --ink-muted:var(--edge-muted);
-  --ink-faint:var(--edge-faint); --accent:var(--edge-accent);
+  --ink-faint:var(--edge-faint);
   position:relative; width:100%; height:100%; overflow:hidden; color:var(--edge-ink); background:transparent;
 }
-.island[data-mode="sleep"] { background:rgba(0,0,0,.004); }
+.island[data-mode="sleep"] { background:var(--island-island-sleep-surface); }
 .island[data-mode="sleep"] .sheet, .island[data-mode="sleep"] .toast { display:none !important; }
 .rail { display:none !important; }
 .sheet {
@@ -42,7 +42,7 @@ button { font:inherit; color:inherit; border:0; padding:0; background:transparen
 .drop-mark { display:grid; place-items:center; width:32px; height:32px; flex:0 0 auto; color:var(--edge-muted); }
 .drop-mark svg { width:27px; height:27px; fill:none; stroke:currentColor; stroke-width:1.45; stroke-linecap:round; stroke-linejoin:round; }
 .drop-copy { min-width:0; display:flex; flex-direction:column; gap:4px; }
-.empty b { font-size:12px; font-weight:550; color:var(--edge-ink); }
+.empty b { font-size:12px; font-weight:500; color:var(--edge-ink); }
 .empty p { margin:0; font-size:10.5px; line-height:1.4; color:var(--edge-muted); }
 .empty[data-mode="offline"] b, .empty[data-mode="error"] b { color:var(--edge-danger); }
 .retry-btn { padding:4px 8px; border-radius:5px; color:var(--edge-accent); background:var(--edge-item); font-size:10.5px; }
