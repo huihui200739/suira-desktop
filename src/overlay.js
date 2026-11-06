@@ -361,20 +361,15 @@ function setMagnifierVisible(visible) {
 
 function drawMagnifier(p) {
   if (!state.image || !state.payload) return;
-  // 放大镜挂在 #selection 内部，选区框不可见时它本来就看不见，不用画
-  if (selectionEl.hidden) {
-    setMagnifierVisible(false);
-    return;
-  }
   setMagnifierVisible(true);
-  const sampleSize = 22;
+  const sampleSize = 11;
   // 量化到源图像素：源像素没变就不重绘放大镜，坐标文本也一起跳过
-  const srcX = Math.round((p.x / metrics.width) * state.image.width);
-  const srcY = Math.round((p.y / metrics.height) * state.image.height);
+  const srcX = clamp(Math.round((p.x / metrics.width) * state.image.width), 0, state.image.width - 1);
+  const srcY = clamp(Math.round((p.y / metrics.height) * state.image.height), 0, state.image.height - 1);
   if (srcX !== lastMagnifierPx.x || srcY !== lastMagnifierPx.y) {
     lastMagnifierPx.x = srcX;
     lastMagnifierPx.y = srcY;
-    const half = sampleSize / 2;
+    const half = Math.floor(sampleSize / 2);
     magnifierCtx.imageSmoothingEnabled = false;
     magnifierCtx.clearRect(0, 0, magnifierCanvas.width, magnifierCanvas.height);
     magnifierCtx.fillStyle = themePaint('magnifier-surface');
@@ -390,21 +385,32 @@ function drawMagnifier(p) {
       magnifierCanvas.width,
       magnifierCanvas.height
     );
-    magnifierCtx.strokeStyle = themePaint('magnifier-crosshair');
+    magnifierCtx.strokeStyle = themePaint('accent-9');
     magnifierCtx.lineWidth = 1;
-    magnifierCtx.strokeRect(magnifierCanvas.width / 2 - 11, magnifierCanvas.height / 2 - 11, 22, 22);
+    const center = magnifierCanvas.width / 2, pixel = magnifierCanvas.width / sampleSize;
+    magnifierCtx.beginPath();
+    magnifierCtx.moveTo(center + .5, 0); magnifierCtx.lineTo(center + .5, magnifierCanvas.height);
+    magnifierCtx.moveTo(0, center + .5); magnifierCtx.lineTo(magnifierCanvas.width, center + .5);
+    magnifierCtx.stroke();
+    magnifierCtx.lineWidth = 2;
+    magnifierCtx.strokeRect(center - pixel / 2, center - pixel / 2, pixel, pixel);
     const coords = `${srcX}, ${srcY}`;
     if (magnifierCoords.textContent !== coords) magnifierCoords.textContent = coords;
-    const sampled=sampleColor(p);if(sampled)$('#magnifier-color').textContent=sampled.hex+'\nRGB '+sampled.rgb.join(', ');
+    const sampled=sampleColor(p);
+    if(sampled){
+      $('#magnifier-color').textContent=sampled.hex;
+      $('#magnifier-rgb').textContent=sampled.rgb.join(', ');
+      $('#magnifier-swatch').style.backgroundColor=sampled.hex;
+    }
   }
 
   const offset = 20;
   let left = p.x + offset;
   let top = p.y + offset;
-  if (left + 154 > metrics.width) left = p.x - 154 - offset;
-  if (top + 220 > metrics.height) top = p.y - 220 - offset;
-  left = clamp(left, 8, metrics.width - 152);
-  top = clamp(top, 8, Math.max(8,metrics.height - 220));
+  if (left + 194 > metrics.width) left = p.x - 194 - offset;
+  if (top + 292 > metrics.height) top = p.y - 292 - offset;
+  left = clamp(left, 8, Math.max(8, metrics.width - 202));
+  top = clamp(top, 8, Math.max(8,metrics.height - 300));
   if (lastMagnifierPos.left !== left) { magnifier.style.left = `${left}px`; lastMagnifierPos.left = left; }
   if (lastMagnifierPos.top !== top) { magnifier.style.top = `${top}px`; lastMagnifierPos.top = top; }
 }
@@ -960,9 +966,9 @@ function applyPendingPointer() {
     return;
   }
   if (type === 'select') { updateSelectionPreview(last); return; }
-  if (type === 'move') { updateMove(last); return; }
+  if (type === 'move') { updateMove(last); drawMagnifier(last); return; }
   if (type && ANNOTATION_TYPES.includes(type)) { updateAnnotation(last); return; }
-  if (!hasSelection()) drawMagnifier(last);
+  drawMagnifier(last);
 }
 
 /** 立即消化未成帧的点（松开鼠标前必须调用，否则最后一小段会丢） */
@@ -1034,12 +1040,13 @@ function setupEvents() {
   });
 
   // pointermove 只记点：一帧里来多少次都合并成一次应用。
-  // 没有拖拽时（只是划过覆盖层）什么都不用画——放大镜是 #selection 的子节点，
-  // 没有选区时本来就不可见，所以直接不排帧。
+  // 未拖拽时也更新取色预览；工具栏和结果框不参与采样。
   root.addEventListener('pointermove', (event) => {
+    if (editorMode || event.target.closest('button, textarea, .tool-dock, .ocr-result, .original-viewer, .text-editor, .color-popover, .capture-hint, .loading-state') || (state.drawing && ANNOTATION_TYPES.includes(state.drawing.type))) {
+      dropPendingPointer(); setMagnifierVisible(false); return;
+    }
     colorPoint=point(event);
-    if (!state.drawing) return;
-    queuePointer(point(event));
+    queuePointer(colorPoint);
   });
 
   root.addEventListener('pointerup', (event) => {

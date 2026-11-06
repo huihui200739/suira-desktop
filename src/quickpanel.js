@@ -104,11 +104,10 @@ function listen(target, type, handler) {
 /* ---------- 模式 ---------- */
 
 function fitFullscreenKeys(){
-  const fit=()=>{const context=$('#recent-context');if(state.mode!=='actions'||(presentation!=='fullscreen'&&context.hidden))return;const grid=$('#key-grid'),body=$('#panel-body');if(!grid.offsetWidth||!grid.offsetHeight)return;const used=context.hidden?0:context.offsetHeight+parseFloat(getComputedStyle(context).marginBottom);$('#panel').style.setProperty('--keyboard-scale',Math.min((body.clientWidth-16)/grid.offsetWidth,(body.clientHeight-used-16)/grid.offsetHeight));};
+  const fit=()=>{if(state.mode!=='actions'||presentation!=='fullscreen')return;const grid=$('#key-grid'),body=$('#panel-body');if(!grid.offsetWidth||!grid.offsetHeight)return;$('#panel').style.setProperty('--keyboard-scale',Math.min((body.clientWidth-16)/grid.offsetWidth,(body.clientHeight-16)/grid.offsetHeight));};
   fit();requestAnimationFrame(fit);
 }
 const contextSizeObserver=new ResizeObserver(fitFullscreenKeys);
-contextSizeObserver.observe($('#recent-context'));
 contextSizeObserver.observe($('#panel-body'));
 function setMode(mode) {
   keyMotion?.clear();
@@ -879,13 +878,38 @@ function closeTranslate() {
 /* ---------- 命令配方使用的最近内容 ---------- */
 
 let contextTimer,contextRevision=0,selectionContext=null,derivedContext=null,contextEnabled=true,currentContext=null;
-const contextStrip=window.SuiraActionStrip?.mount($('#recent-context-actions'),{getItem:()=>currentContext,onResult:result=>{if(result.output){derivedContext=result.output;renderRecentContext();}},onError:error=>toast(error,'error')});
+function positionRecentContext(){
+  const popup=$('#recent-context');if(!popup.matches(':popover-open'))return;
+  const anchor=$('#recent-context-trigger').getBoundingClientRect(),box=popup.getBoundingClientRect();
+  popup.style.left=Math.max(16,Math.min(innerWidth-box.width-16,anchor.right-box.width))+'px';
+  popup.style.top=(anchor.bottom+8)+'px';popup.style.maxHeight=Math.max(80,innerHeight-anchor.bottom-24)+'px';
+}
+function closeRecentContext(restore=false){
+  const popup=$('#recent-context');popup.querySelector('.action-strip-more')?.removeAttribute('open');
+  if(popup.matches(':popover-open'))popup.hidePopover();
+  $('#recent-context-trigger').setAttribute('aria-expanded','false');
+  if(restore&&!$('#recent-context-trigger').hidden)$('#recent-context-trigger').focus();
+}
+function openRecentContext(){
+  if(!currentContext)return;
+  closeMoreMenu(false);$('#recent-context').showPopover();
+  $('#recent-context-trigger').setAttribute('aria-expanded','true');positionRecentContext();
+}
+$('#recent-context-trigger').addEventListener('click',()=>{if($('#recent-context').matches(':popover-open'))closeRecentContext(true);else openRecentContext();});
+document.addEventListener('pointerdown',event=>{if(!event.target.closest('#recent-context,#recent-context-trigger'))closeRecentContext();});
+window.addEventListener('resize',positionRecentContext);
+const contextStrip=window.SuiraActionStrip?.mount($('#recent-context-actions'),{getItem:()=>currentContext,reveal:openRecentContext,onResult:result=>{if(result.output){derivedContext=result.output;renderRecentContext();}},onError:error=>toast(error,'error')});
+document.addEventListener('keydown',event=>{if(event.key==='Escape'&&$('#recent-context').matches(':popover-open')){event.preventDefault();event.stopImmediatePropagation();closeRecentContext(true);}},true);
 function renderRecentContext(){
   clearTimeout(contextTimer);const previous=currentContext,now=Date.now(),item=derivedContext&&now-derivedContext.createdAt<60000?derivedContext:selectionContext&&now-selectionContext.createdAt<60000?selectionContext:state.recentItem;
   currentContext=contextEnabled&&item&&now-Number(item.createdAt)>=0&&now-Number(item.createdAt)<60000?item:null;
-  $('#recent-context').hidden=!currentContext;fitFullscreenKeys();if(!currentContext){if(previous)contextStrip?.refresh();return;}
-  $('#recent-context-label').textContent=selectionContext===currentContext?'选中文字':'最近'+(currentContext.kind==='image'?'截图':'复制');
-  $('#recent-context-time').textContent=Math.max(1,Math.ceil((60000-(now-currentContext.createdAt))/1000))+' 秒内';
+  if(!currentContext)closeRecentContext();
+  $('#recent-context').hidden=!currentContext;$('#recent-context-trigger').hidden=!currentContext;
+  if(!currentContext){if(previous)contextStrip?.refresh();return;}
+  const selected=selectionContext===currentContext;
+  $('#recent-context-trigger span').textContent=selected?'选中文字':'最近';
+  $('#recent-context-label').textContent=selected?'选中文字':'最近'+(currentContext.kind==='image'?'图片':'复制');
+  const age=Math.floor((now-currentContext.createdAt)/1000);$('#recent-context-time').textContent=age<1?'刚刚':age+' 秒前';
   const image=$('#recent-context-image');image.hidden=currentContext.kind!=='image'||!currentContext.thumbnail;if(!image.hidden)image.src=currentContext.thumbnail;else image.removeAttribute('src');
   $('#recent-context-text').textContent=currentContext.text||currentContext.title||'图片';if(previous!==currentContext)contextStrip?.refresh();
   contextTimer=setTimeout(renderRecentContext,Math.min(1000,Math.max(1,60000-(now-currentContext.createdAt))));
@@ -1402,7 +1426,7 @@ function installEvents() {
     document.documentElement.dataset.panelPrepared=String(token);
     window.suira.quick.prepared(token);
   });
-  window.suira.quick.onShown(() => { selectionContext=null;derivedContext=null;loadRecent();window.SuiraUI?.reveal($('#panel')); showGuideIfNeeded(); });
+  window.suira.quick.onShown(() => { closeRecentContext();selectionContext=null;derivedContext=null;loadRecent();window.SuiraUI?.reveal($('#panel')); showGuideIfNeeded(); });
 }
 
 keyMotion=window.SuiraKeycapMotion?.attach($('#key-grid'),{

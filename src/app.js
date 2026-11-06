@@ -227,7 +227,7 @@ function bindImageEditorButtons(root) {
 
 function bindItemCardActions(root, task) {
   bindImageEditorButtons(root);
-  $('[data-preview-item]',root).forEach(button=>button.addEventListener('click',()=>openPreview(button.dataset.previewItem)));
+  $$('[data-preview-item]',root).forEach(button=>button.addEventListener('click',()=>openPreview(button.dataset.previewItem)));
   $$('[data-copy]', root).forEach((button) => {
     button.addEventListener('click', async () => {
       const result = await window.suira.actions.run(button.dataset.copy, 'output.copy');

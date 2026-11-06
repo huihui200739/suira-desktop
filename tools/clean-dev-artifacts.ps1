@@ -43,7 +43,7 @@ function Add-Target([string]$candidate, [string]$owner, [string]$group) {
   $targets.Add([pscustomobject]@{ Path=$absolute; Root=$owner; Group=$group; Bytes=[long]$bytes; Directory=[bool]$item.PSIsContainer })
 }
 
-foreach ($name in @('stage39','stage38','stage37','stage36','stage35','stage34','stage33-assets','stage33-before','stage33-review','stage33-baseline-source','capture32-identity.cs','capture32-identity.exe','capture32-desktop-app.js','capture32-desktop-profile','capture32-verify-app.js','capture32-verify-profile','capture32-token.cs','capture32-token.exe','capture32-launcher.cs','capture32-launcher.exe','capture32-focus-host.cs','capture32-focus-host.exe','capture32-children-host.cs','capture32-children-host.exe','capture32-proof.json','capture32-debug-host.cs','capture32-debug-host.exe','capture32-app.js','capture32-english.html','capture32-profile','edge-profile','edge-profile2','mem','probe-app','probe-app2','udata-copy','udata-default','udata-test',
+foreach ($name in @('stage40','stage39','stage38','stage37','stage36','stage35','stage34','stage33-assets','stage33-before','stage33-review','stage33-baseline-source','capture32-identity.cs','capture32-identity.exe','capture32-desktop-app.js','capture32-desktop-profile','capture32-verify-app.js','capture32-verify-profile','capture32-token.cs','capture32-token.exe','capture32-launcher.cs','capture32-launcher.exe','capture32-focus-host.cs','capture32-focus-host.exe','capture32-children-host.cs','capture32-children-host.exe','capture32-proof.json','capture32-debug-host.cs','capture32-debug-host.exe','capture32-app.js','capture32-english.html','capture32-profile','edge-profile','edge-profile2','mem','probe-app','probe-app2','udata-copy','udata-default','udata-test',
                     'launch-suira.cmd','run-app.cmd','run-app2.cmd','run-probe.cmd','release-edit.py','release-ui-edit.py','update-repo.py','repo-info.json','latest-release.json',
                     'cleanup-protected.json','installer-lifecycle-result.json','release-audit.json','coco-probe.js','coco-electron-probe.js',
                     'process-probe.exe','process-probe.nsi','process-probe.txt','context-guard-probe.exe','context-guard-probe.nsi',
@@ -96,7 +96,7 @@ Get-ChildItem -LiteralPath (Join-Path $repoRoot 'src') -File -Filter '__fx_*' | 
 
 # These names are created only by this repository's regression and benchmark tools.
 # In particular, suira-input (the running input helper) is intentionally excluded.
-$testDirectoryPattern = '^suira-(?:(?:clipboardbar|island|notes|island-wake|latency|record-writer|recorder-live|capture-bench|doc-shots|bindings|workspace|ui-polish|image-editor|long-capture)-[A-Za-z0-9]+|panel-\d+|core-e2e-\d+|ocr-probe-\d+|clipboardbar-shots|island-shots|probe)$'
+$testDirectoryPattern = '^suira-(?:(?:clipboardbar|island|notes|island-wake|latency|record-writer|recorder-live|capture-bench|doc-shots|bindings|workspace(?:-ui-fixes)?|ui-polish|image-editor|long-capture)-[A-Za-z0-9]+|panel-\d+|core-e2e-\d+|ocr-probe-\d+|clipboardbar-shots|island-shots|probe)$'
 Get-ChildItem -LiteralPath $tempRoot -Directory -Filter 'suira-*' | Where-Object { $_.Name -match $testDirectoryPattern } | ForEach-Object {
   Add-Target $_.FullName $tempRoot 'temporary-test-packages'
 }
@@ -106,6 +106,7 @@ foreach ($name in @('suira-installer-probe-561cfcfa6a95','suira-installer-probe-
   Add-Target (Join-Path $tempRoot ('Low\' + $name)) $tempRoot 'installer-test-fixtures'
 }
 Add-Target (Join-Path $tempRoot 'suira-workspace-buildruntime-a7658f29af61474aa39e9d67a8bc0fee') $tempRoot 'obsolete-build-runtime-copy'
+Add-Target (Join-Path $tempRoot 'suira-workspace-release40') $tempRoot 'published-distribution-checkout'
 Add-Target (Join-Path $tempRoot 'suira-workspace-release38') $tempRoot 'published-distribution-checkout'
 Add-Target (Join-Path $tempRoot 'suira-workspace-release39') $tempRoot 'published-distribution-checkout'
 Get-ChildItem -LiteralPath $tempRoot -Directory -Filter 'suira-workspace-tools-*' | Where-Object { $_.Name -match '^suira-workspace-tools-[A-Za-z0-9]+$' } | ForEach-Object { Add-Target $_.FullName $tempRoot 'isolated-new-tool-fixtures' }

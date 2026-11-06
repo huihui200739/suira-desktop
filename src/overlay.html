@@ -27,7 +27,13 @@
       <span class="handle e" data-handle="e"></span><span class="handle se" data-handle="se"></span><span class="handle s" data-handle="s"></span>
       <span class="handle sw" data-handle="sw"></span><span class="handle w" data-handle="w"></span>
       <div class="size-badge" id="size-badge">0 × 0</div>
-      <div class="magnifier" id="magnifier"><canvas id="magnifier-canvas" width="144" height="112"></canvas><span id="magnifier-coords">0, 0</span><span id="magnifier-color">HEX / RGB</span><span>Shift+C 复制颜色</span></div>
+    </div>
+    <div class="magnifier" id="magnifier" hidden aria-label="取色放大镜">
+      <canvas id="magnifier-canvas" width="176" height="176"></canvas>
+      <div class="magnifier-readout"><span>坐标</span><span id="magnifier-coords">0, 0</span></div>
+      <div class="magnifier-readout"><span>色值</span><span class="magnifier-value"><i id="magnifier-swatch"></i><b id="magnifier-color">HEX</b></span></div>
+      <div class="magnifier-readout magnifier-rgb"><span>RGB</span><span id="magnifier-rgb"></span></div>
+      <div class="magnifier-hint">Shift+C 复制颜色</div>
     </div>
 
     <div class="capture-hint" id="capture-hint">

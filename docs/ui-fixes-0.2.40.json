@@ -1,0 +1,22 @@
+{
+  "version": "0.2.40",
+  "isolatedFixture": true,
+  "actualPointerHitTests": true,
+  "idleMagnifier": true,
+  "sourcePixelAndDpiMapping": true,
+  "sourceEdgeClamped": true,
+  "crosshairAndHexRgb": true,
+  "renderedCrosshairPixels": true,
+  "shiftCCopiesAndKeepsCapture": true,
+  "toolbarHidesPreview": true,
+  "resetHidesPreview": true,
+  "allTaskButtons": true,
+  "multipleItemsAndDerivedButtons": true,
+  "removedItemRetained": true,
+  "compactCaptureButton": true,
+  "collapsedRecentEntry": true,
+  "recentDoesNotDisplaceKeyboard": true,
+  "popoverDismissal": true,
+  "ctrlKAndNestedEscape": true,
+  "noRendererErrors": true
+}
