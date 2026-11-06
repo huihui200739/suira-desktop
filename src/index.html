@@ -9,7 +9,7 @@
   <link rel="stylesheet" href="window-layers.css">
   <link rel="stylesheet" href="tool-art.css"><link rel="stylesheet" href="tool-surfaces.css">
   <link rel="stylesheet" href="liquid-glass.css">
-  <link rel="stylesheet" href="theme-settings.css"><link rel="stylesheet" href="panel-context.css">
+  <link rel="stylesheet" href="stage-tools.css"><link rel="stylesheet" href="theme-settings.css"><link rel="stylesheet" href="panel-context.css">
   <link rel="stylesheet" href="workbench-surface.css">
   <link rel="stylesheet" href="document-editor.css"><link rel="stylesheet" href="trail.css">
 <link rel="stylesheet" href="ui-motion.css"><link rel="stylesheet" href="glass-select.css">
@@ -115,7 +115,7 @@
               <h1>设置</h1>
             </div>
           </div>
-          <div class="settings-layout"><nav class="settings-nav" aria-label="设置分类"><button data-setting-tab="general" class="is-active">通用与外观</button><button data-setting-tab="translation">翻译服务</button><button data-setting-tab="shortcuts">快捷键</button><button data-setting-tab="storage">数据与隐私</button><button data-setting-tab="about">关于随序</button></nav><div class="settings-grid">
+          <div class="settings-layout"><nav class="settings-nav" aria-label="设置分类"><button data-setting-tab="general" class="is-active">通用与外观</button><button data-setting-tab="translation">翻译服务</button><button data-setting-tab="tools">工具与动作</button><button data-setting-tab="shortcuts">快捷键</button><button data-setting-tab="storage">数据与隐私</button><button data-setting-tab="about">关于随序</button></nav><div class="settings-grid">
             <section class="setting-card">
               <div class="setting-title"><b>剪贴板记录</b></div>
               <label class="setting-row"><span><b>记录剪贴板历史</b><small>复制文字或图片后自动接住</small></span><input type="checkbox" id="setting-record"></label>
@@ -141,6 +141,9 @@
               <div class="setting-row"><span><b>工作台窗口</b><small>窗口被拉得过大时，恢复默认大小并回到当前屏幕中央</small></span><button class="quiet-btn" id="reset-window-size" type="button">恢复默认大小</button></div>
               <div class="setting-row"><span><b>键位与快捷键</b><small>打开键位设置并检查当前冲突</small></span><button class="quiet-btn" id="setup-shortcuts" type="button"><span data-icon="keyboard" aria-hidden="true"></span><span>检查与配置快捷键</span></button></div>
             </section>
+            <section class="setting-card" id="recipe-settings"><div class="setting-title"><b>组合动作</b></div><p class="selection-settings-copy">按顺序处理当前选区或最近内容。1–12 步，可先预览再复制；识别图片必须放在第一步。翻译步骤在执行时发送文字到已配置的服务。AI 动作单独从“下一步”点击执行。</p><div class="recipe-fields"><label>已保存的组合动作<select id="recipe-existing"><option value="">新建组合动作</option></select></label><label>名称<input id="recipe-name" maxlength="60" placeholder="例如：提字、整理并转为简体"></label><div id="recipe-steps"></div><button id="recipe-add-step" class="quiet-btn" type="button">添加步骤</button><label>执行后<select id="recipe-commit"><option value="">预览结果</option><option value="output.copy">复制结果</option><option value="output.shelf">加入任务匣</option></select></label><div class="recipe-buttons"><button id="recipe-save" class="primary-btn" type="button">保存组合动作</button><button id="recipe-new" class="quiet-btn" type="button">新建</button><button id="recipe-delete" class="quiet-btn" type="button" disabled>删除</button></div><p id="recipe-status" role="status"></p></div></section>
+            <section class="setting-card"><div class="setting-title"><b>搜索命令</b></div><p class="selection-settings-copy">输入 2*(3+4) 计算；10 cm to m 换算单位；fy hello 打开翻译。计算结果按 Enter 复制，翻译在 Enter 后发送。</p><label class="setting-row"><span><b>联网查询汇率</b><small>默认关闭。输入 100 USD to CNY，按 Enter 后只向 Frankfurter 发送币种，显示日参考汇率日期并复制结果。</small></span><input id="setting-currency" type="checkbox"></label><p id="currency-status" role="status"></p></section>
+            <section class="setting-card"><div class="setting-title"><b>最近取色</b><button id="color-refresh" class="quiet-btn" type="button">刷新</button></div><div id="color-history" class="color-history"></div><p id="color-status" role="status"></p></section>
             <section class="setting-card" id="selection-settings"><div class="setting-title"><b>划词</b></div>
               <label class="setting-row"><span><b>唤起面板时读取选中文字</b><small>默认关闭。英文选区可按 T 翻译，结果就绪后按 Enter 粘回选区</small></span><input id="setting-selection" type="checkbox"></label>
               <p class="selection-settings-copy">开启后，随序先保存当前剪贴板的全部可读取格式，向前台应用发送一次 Ctrl+C，最多等待 250ms 读取选中文字，再还原剪贴板。临时复制不会进入随序的历史；只在你执行下一步动作后才保存内容。管理员窗口、不支持复制或超时的应用会安静跳过。</p>
@@ -148,7 +151,7 @@
               <label for="setting-selection-exclusions">不读取的应用（进程名，每行一个，可增加或删除）</label><textarea id="setting-selection-exclusions" class="selection-settings-list" spellcheck="false" maxlength="12000"></textarea><button id="save-selection-exclusions" class="quiet-btn" type="button">保存跳过名单</button><p id="selection-settings-status" role="status" class="selection-settings-copy"></p>
             </section>
             <section class="setting-card">
-              <div class="setting-title"><b>翻译</b></div>
+              <div class="setting-title"><b>翻译与 AI 动作</b></div><p class="selection-settings-copy">“下一步”提供 AI 总结、改写、解释和写回复。仅在你点击对应动作后，才将该份文字发送到这里配置的 OpenAI 兼容服务；输入与结果会在处理轨迹中关联，回复仅生成草稿，不自动发送。DeepL 与微软翻译不提供这些 AI 动作。</p>
               <div class="setting-row">
                 <span><b>翻译引擎</b><small>没有内置免费引擎，需要自己提供密钥</small></span>
                 <select id="setting-translate-provider">
@@ -293,6 +296,6 @@
   <script src="icons.js"></script><script src="ui-motion.js"></script>
   <script src="vendor/marked.js"></script><script src="vendor/purify.js"></script><script src="markdown-format.js"></script><script src="vendor/document-editor.js"></script><script src="calendar-data.js"></script><script src="tool-art.js"></script><script src="workspace.js"></script><script src="text-spacing.js"></script><script src="trail-model.js"></script><script src="trail-view.js"></script><script src="app.js"></script>
   <script src="liquid-glass.js"></script>
-  <script src="theme-settings.js"></script>
+  <script src="theme-settings.js"></script><script src="stage-tools.js"></script>
 <script src="glass-select.js"></script></body>
 </html>

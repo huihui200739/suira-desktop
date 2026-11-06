@@ -1,0 +1,17 @@
+{
+  "version": "0.2.39",
+  "source": "isolated real Electron profile and real local text action",
+  "embeddedInContentDetails": true,
+  "noStandaloneNavigation": true,
+  "contentLineageGrouping": true,
+  "retryAttemptsCollapsed": true,
+  "inputPreview": true,
+  "adjustTranslation": true,
+  "stepDurationsHiddenByDefault": true,
+  "optInLiveDurations": true,
+  "expandedStateRetained": true,
+  "missingContentHonest": true,
+  "realRetryRecoversWithoutDuplicateGroup": true,
+  "originalTextPreserved": true,
+  "lightDarkAndNarrowLayout": true
+}

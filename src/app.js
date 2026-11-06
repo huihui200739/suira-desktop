@@ -7,6 +7,7 @@ const KIND_LABELS = { text: '文字', link: '链接', image: '图片', files: '�
 const SOURCE_LABELS = { screenshot: '截图', clipboard: '剪贴板', ocr: '识别', user: '手动', derived: '整理', shelf: '任务匣' };
 const ACTION_LABELS = {
   'output.copy': '复制',
+  'ai.summarize':'AI 总结','ai.rewrite':'AI 改写','ai.explain':'AI 解释','ai.reply':'AI 写回复','qr.open':'打开二维码链接',
   'text.merge-lines': '合并换行',
   'text.clean': '清理文字',
   'text.translate': '翻译',
@@ -1183,7 +1184,7 @@ function installEvents() {
     if (state.page === 'shelf') refreshShelf();
   });
   window.suira.app.onToast((payload) => showGlobalToast(payload.message || '', payload.type || ''));
-  window.suira.app.onNavigate((page) => {if(page==='settings:shortcuts'){navigate('settings');document.querySelector('[data-setting-tab="shortcuts"]')?.click();}else navigate(page);});
+  window.suira.app.onNavigate((page) => {if(['settings:shortcuts','settings:tools'].includes(page)){navigate('settings');document.querySelector('[data-setting-tab="'+page.split(':')[1]+'"]')?.click();}else navigate(page);});
   // 外部改键同步到设置页。
   window.suira.shortcuts.onChanged(() => { refreshShortcuts(); });
   window.suira.ocr.onProgress((payload) => {

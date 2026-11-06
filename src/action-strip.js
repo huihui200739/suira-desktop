@@ -22,7 +22,7 @@
       catch(error){status.textContent=error.message||'操作失败';onError(status.textContent);}
       finally{busy=false;host.removeAttribute('aria-busy');}
     }
-    function button(action,index){const b=document.createElement('button');b.type='button';b.dataset.actionId=action.id;b.textContent=action.label;b.title=(action.hint||action.label)+' · '+(index+1);const k=document.createElement('kbd');k.textContent=String(index+1);b.append(k);b.onclick=()=>run(action);return b;}
+    function button(action,index){const b=document.createElement('button');b.type='button';b.dataset.actionId=action.id;b.textContent=action.label;b.title=(action.hint||action.label)+(index<9?' · '+(index+1):'');if(index<9){const k=document.createElement('kbd');k.textContent=String(index+1);b.append(k);}b.onclick=()=>run(action);return b;}
     function render(){direct.replaceChildren(...actions.slice(0,3).map(button));list.replaceChildren(...actions.map((action,i)=>({action,i})).filter(({action})=>(action.label+' '+action.hint).toLowerCase().includes(search.value.toLowerCase())).map(({action,i})=>button(action,i)));more.hidden=actions.length===0;}
     async function refresh(){const token=++revision;try{const item=await getItem();const values=item?await api.list(item.id||item):[];if(token!==revision||destroyed)return;actions=values||[];if(item?.kind==='image')actions.sort((a,b)=>(a.id==='ocr.local'?-1:0)-(b.id==='ocr.local'?-1:0));else if(/[A-Za-z]/.test(item?.text||'')&&!/[\u4e00-\u9fff]/.test(item.text))actions.sort((a,b)=>(a.id==='text.translate'?-1:0)-(b.id==='text.translate'?-1:0));render();}catch(error){if(token===revision){actions=[];render();status.textContent=error.message;}}}
     search.addEventListener('input',render);
@@ -32,7 +32,7 @@
       if(dialog&&event.key==='Escape'&&!more.open){event.preventDefault();event.stopImmediatePropagation();dialog.close();return;}
       const command=(event.ctrlKey||event.metaKey)&&event.key.toLowerCase()==='k';
       if(!host.isConnected||(!host.getClientRects().length&&!command))return;
-      if(command){event.preventDefault();event.stopImmediatePropagation();returnFocus=document.activeElement;reveal();more.open=true;refresh().then(()=>{if(more.open)search.focus();});return;}
+      if(command){reveal();if(!host.getClientRects().length)return;event.preventDefault();event.stopImmediatePropagation();returnFocus=document.activeElement;more.open=true;refresh().then(()=>{if(more.open)search.focus();});return;}
       if(event.key==='Escape'&&more.open){event.preventDefault();event.stopImmediatePropagation();close();return;}
       if(event.ctrlKey||event.metaKey||editing(event.target))return;
       const index=Number(event.key)-1;if(/^[1-9]$/.test(event.key)&&actions[index]){event.preventDefault();event.stopImmediatePropagation();run(actions[index]);}

@@ -236,8 +236,7 @@
   api.onClosing?.(safe(async()=>{await flush();const result=await api.confirmClose?.(current);if(result?.canceled)return;if(result && !result.ok)throw Error(result.error||'无法保存');await api.closeReady();}));
   window.addEventListener('blur',()=>flush().catch(()=>{}));
   // Preserve every original settings control and listener while changing the layout.
-  const categories=['storage','general','translation','storage','shortcuts','about'];
-  document.querySelectorAll('.settings-grid > .setting-card').forEach((card,index)=>card.dataset.category=categories[index]);
+  document.querySelectorAll('.settings-grid > .setting-card').forEach(card=>{card.dataset.category=card.querySelector('#recipe-name,#setting-currency,#color-history')?'tools':card.querySelector('#setting-translate-provider')?'translation':card.querySelector('#setting-key-longCapture')?'shortcuts':card.classList.contains('about-card')?'about':card.querySelector('#setting-record,#setting-days')?'storage':'general';});
   function settingTab(value){document.querySelectorAll('[data-setting-tab]').forEach(b=>{b.classList.toggle('is-active',b.dataset.settingTab===value);b.setAttribute('aria-pressed',String(b.dataset.settingTab===value));});document.querySelectorAll('[data-category]').forEach(card=>card.hidden=card.dataset.category!==value);}
   document.querySelectorAll('[data-setting-tab]').forEach(button=>button.onclick=()=>settingTab(button.dataset.settingTab));settingTab('general');
   const tool=document.documentElement.dataset.tool;

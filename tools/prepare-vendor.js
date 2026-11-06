@@ -4,6 +4,7 @@
 const fs=require('node:fs'),path=require('node:path');
 const root=path.resolve(__dirname,'..'),out=path.join(root,'src/vendor');fs.mkdirSync(out,{recursive:true});
 for(const [source,target] of [
+  ['jsqr/LICENSE','jsqr-Apache-2.0.txt'],['opencc-js/LICENSE','opencc-MIT.txt'],['opencc-js/LICENSES/Apache-2.0.txt','opencc-data-Apache-2.0.txt'],['opencc-js/THIRD_PARTY_LICENSES.md','opencc-THIRD-PARTY.md'],
   ['lunar-javascript/lunar.js','lunar.js'],['lunar-javascript/LICENSE','lunar-LICENSE.txt'],
   ['marked/lib/marked.umd.js','marked.js'],['marked/LICENSE','marked-LICENSE.txt'],
   ['dompurify/dist/purify.min.js','purify.js'],['dompurify/LICENSE','dompurify-LICENSE.txt']

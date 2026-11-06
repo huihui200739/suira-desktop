@@ -10,7 +10,7 @@
   <link rel="stylesheet" href="keycap-material.css">
   <link rel="stylesheet" href="liquid-glass.css">
 <link rel="stylesheet" href="ui-motion.css"><link rel="stylesheet" href="glass-select.css">
-<link rel="stylesheet" href="action-strip.css"><link rel="stylesheet" href="panel-context.css">
+<link rel="stylesheet" href="stage-tools.css"><link rel="stylesheet" href="action-strip.css"><link rel="stylesheet" href="panel-context.css">
 </head>
 <body>
   <main class="panel" id="panel" data-mode="actions" data-presentation="window" aria-label="随序动作面板">
@@ -146,6 +146,7 @@
           <button type="button" id="binding-file" data-binding-kind="file"><span class="binding-kind-icon"></span><span>文件</span><span class="binding-chevron">›</span></button>
           <button type="button" id="binding-folder" data-binding-kind="folder"><span class="binding-kind-icon"></span><span>文件夹</span><span class="binding-chevron">›</span></button>
           <button type="button" id="binding-url" data-binding-kind="url"><span class="binding-kind-icon"></span><span>网页</span><span class="binding-chevron">›</span></button>
+          <button type="button" id="binding-recipes" data-binding-kind="recipe"><span class="binding-kind-icon"></span><span>组合动作</span><span class="binding-chevron">›</span></button>
           <button type="button" id="binding-tools" data-binding-kind="tools"><span class="binding-kind-icon"></span><span>内置工具</span><span class="binding-chevron">›</span></button>
         </div>
         <div id="binding-apps-view" class="binding-apps-view" hidden>
@@ -159,6 +160,7 @@
           <div class="binding-action-grid" id="binding-action-list"></div>
           <p class="binding-section-title" id="binding-action-help"></p>
         </div>
+        <div class="binding-recipes-view" id="binding-recipes-view" hidden><div id="binding-recipe-list"></div><button id="binding-recipe-settings" type="button">编辑组合动作</button><p class="binding-section-title">执行最近的适用内容。翻译步骤仅在执行时发送。</p></div>
         <div class="binding-url-view" id="binding-url-row" hidden>
           <label for="binding-url-input">网页地址</label>
           <input id="binding-url-input" type="url" autocomplete="off" spellcheck="false" placeholder="https://example.com">
@@ -180,6 +182,6 @@
   <script src="tool-art.js"></script>
   <script src="keycap-motion.js"></script>
   <script src="action-strip.js"></script><script src="panel-context.js"></script><script src="quickpanel.js"></script>
-  <script src="liquid-glass.js"></script>
+  <script src="relay-surfaces.js"></script><script src="liquid-glass.js"></script>
 <script src="icons.js"></script><script src="glass-select.js"></script></body>
 </html>

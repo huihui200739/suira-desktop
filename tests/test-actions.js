@@ -41,7 +41,8 @@ const registry = createActionRegistry({
   t('文字条目动作集', () => {
     const list = registry.listForItem({ kind: 'text' });
     // 第三批：文字条目多了「翻译」，位置紧跟复制（最常用的排前面）
-    assert.deepStrictEqual(list, ['output.copy', 'text.translate', 'text.to-note', 'text.to-markdown', 'text.to-calendar', 'text.pin', 'text.merge-lines', 'text.clean', 'output.shelf']);
+    assert.deepStrictEqual(list.slice(0,9), ['output.copy', 'text.translate', 'text.to-note', 'text.to-markdown', 'text.to-calendar', 'text.pin', 'text.merge-lines', 'text.clean', 'output.shelf']);
+    for(const id of ['ai.summarize','ai.rewrite','ai.explain','ai.reply','text.convert.json','text.convert.traditional'])assert.ok(list.includes(id));
   });
   t('图片条目动作集', () => {
     const list = registry.listForItem({ kind: 'image' });

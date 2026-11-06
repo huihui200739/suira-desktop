@@ -1,0 +1,42 @@
+{
+  "version": "0.2.39",
+  "date": "2026-11-06",
+  "checks": [
+    "npm test",
+    "tests/test-new-tools.js: transforms, large integers, parsing, units, currency opt-in, recipe persistence, AI gating and real QR fixtures",
+    "tests/test-actions.js (22 cases)",
+    "tests/test-capabilities.js (48 cases)",
+    "tests/test-image-editor.js (17 cases)",
+    "npm run verify:tools -- --shots",
+    "npm run verify:utilities",
+    "npm run verify:relay",
+    "npm run screenshots",
+    "token lint",
+    "installer source-payload byte match (152 files)",
+    "installer archive CRC",
+    "original font and license SHA256 in installer",
+    "updater feed SHA512",
+    "QR worker and jsQR dependency from actual ASAR payload",
+    "OpenCC dictionary from actual ASAR payload",
+    "live Frankfurter endpoint connectivity with synthetic currency query",
+    "public latest and four remote asset digests",
+    "anonymous old-version discovery and installer SHA512 download",
+    "same-version updater reports latest"
+  ],
+  "serviceTests": {
+    "AI": "isolated fixture endpoint; request body, explicit trigger, output lineage and execution verified",
+    "translation": "isolated fixture endpoint",
+    "currency": "isolated fixture for enable/typing/Enter behavior; standalone live endpoint connectivity verified"
+  },
+  "desktopInstaller": "C:/Users/huihui/Desktop/Suira-0.2.39-Setup.exe",
+  "desktopInstallerSha256": "ECB245B64C33387EA7A426182D6E56200163F9AA8DA47A16D7F689E38C877145",
+  "publicCommit": "b934eafc67bdc8666a3963b0bc9b00349e5a46e8",
+  "releaseUrl": "https://github.com/huihui200739/suira-updates/releases/tag/v0.2.39",
+  "cleanup": {
+    "command": "npm run clean -- -IncludeObsoletePackages",
+    "removedTargets": 16,
+    "removedMB": 982.9,
+    "skipped": 0,
+    "failed": 0
+  }
+}

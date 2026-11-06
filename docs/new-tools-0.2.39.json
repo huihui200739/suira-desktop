@@ -1,0 +1,21 @@
+{
+  "version": "0.2.39",
+  "isolatedClipboard": true,
+  "service": "fixtures only",
+  "recipeEditor": true,
+  "recipeBinding": true,
+  "recipePreviewDoesNotCopy": true,
+  "AIListedWithoutRequests": true,
+  "AIClickRecordsLineageAndExecution": true,
+  "calculatorCopies": true,
+  "currencyDisabledByDefault": true,
+  "currencyTypingDoesNotFetch": true,
+  "currencyEnterFetches": true,
+  "fySeedsTranslation": true,
+  "colorHexAndRgb": true,
+  "shiftCCopiesAndPersists": true,
+  "QRDecodedInWorker": true,
+  "qrOnlyWithoutOcr": true,
+  "qrRelayLink": true,
+  "qrNeverAutoOpens": true
+}

@@ -176,11 +176,16 @@ contextBridge.exposeInMainWorld('suira', {
     list: (itemId) => ipcRenderer.invoke('actions:list', itemId),
     run: (itemId, actionId) => ipcRenderer.invoke('actions:run', typeof itemId==='object'?{item:itemId,actionId}:{itemId,actionId})
   },
+  colors:{pick:hex=>ipcRenderer.invoke('colors:pick',hex),list:()=>ipcRenderer.invoke('colors:list'),onChanged:callback=>subscribe('colors:changed',callback)},
   recipes: {
+    catalog:()=>ipcRenderer.invoke('recipes:catalog'),
+    save:recipe=>ipcRenderer.invoke('recipes:save',recipe),
+    remove:id=>ipcRenderer.invoke('recipes:remove',id),
     list: (kind) => ipcRenderer.invoke('recipes:list', kind),
     run: (payload) => ipcRenderer.invoke('recipes:run', payload)
   },
   search: {
+    execute:query=>ipcRenderer.invoke('search:execute',query),
     query: (query, options) => ipcRenderer.invoke('search:query', query, options)
   },
   returnTo: {

@@ -2401,7 +2401,7 @@ async function completeCapture(dataUrl, action) {
     const result = await actions.execute(item.id, 'ocr.local');
     if (!result.ok) throw new Error(result.error);
     broadcast('content:changed', { itemId: item.id, outputId: result.output?.id || '' });
-    return { ok: true, filePath, item, output: result.output, ocr: true };
+    return { ok: true, filePath, item, output: result.output, ocr: true,qr:result.qr };
   }
   // 收起（而不是销毁）预热覆盖层，下次唤起才快
   if(documentCapture&&capturePayload?.intent==='document-image'){
@@ -2917,6 +2917,15 @@ async function runBindingKey(key) {
   const binding = effectiveBinding(store.getPanelBindings(), key);
   if (!binding || binding.type === 'none') return { ok: false, error: '这个键还没有绑定内容' };
   if (binding.type === 'action') return runPanelAction(binding.id);
+  if(binding.type==='recipe'){
+    const recipe=getRecipe(binding.id,store.data.recipes||[]);if(!recipe)return {ok:false,error:'组合动作已被删除，请重新绑定'};
+    let item;
+    if(panelSelection&&store.getSettings().selectionEnabled&&quickWindow?.isVisible()&&Date.now()-panelSelection.createdAt<60000&&recipe.accepts.includes('text')){item=store.addItem({kind:'text',text:panelSelection.text,source:{type:'selection'},title:actions.safeTitle(panelSelection.text)});await store.save();}
+    else item=store.listItems({limit:100}).find(entry=>!entry.meta?.workspace&&recipe.accepts.includes(entry.kind));
+    if(!item)return {ok:false,error:'没有适合的内容，请先复制文字或截图'};
+    const result=await runRecipe({execute:(id,action)=>actions.execute(id,action),recipes:store.data.recipes||[]},item.id,binding.id,{commit:true});
+    return {...result,message:result.ok?'组合动作已完成'+(result.steps.some(step=>!step.ok)?'（已跳过失败步骤，请检查轨迹）':''):result.error};
+  }
   if (binding.type === 'url') {
     if (!isSafeHttpUrl(binding.target)) return { ok: false, error: '不是可打开的网址' };
     await shell.openExternal(binding.target);
@@ -2952,7 +2961,7 @@ async function runGlobalPanelKey(key) {
     const result=await runBindingKey(key);
     if(result?.openClipboardBar){await showClipboardBar();return;}
     if(result?.openPage){hideQuickPanel();showMain(result.openPage);return;}
-    if(result?.translate||result?.ocr||!result?.ok) {
+    if(result?.translate||result?.ocr||result?.output||!result?.ok) {
       await showQuickPanel();
       await quickWindow?.__loaded;
       quickWindow?.webContents.send('panel:result',result);
@@ -3568,7 +3577,7 @@ function registerIpc() {
   ipcMain.on('workspace:active-document',(event,id)=>{const win=BrowserWindow.fromWebContents(event.sender);if(id&&store.getItem(String(id))?.meta?.workspace==='markdown')activeDocuments.set(event.sender.id,{id:String(id),win,at:Date.now()});else activeDocuments.delete(event.sender.id);});
   ipcMain.handle('workspace:calendar-draft',event=>{const draft=calendarDrafts.get(event.sender.id)||null;calendarDrafts.delete(event.sender.id);return draft;});
   ipcMain.handle('actions:list', (_event, itemId) => {
-    const item = typeof itemId==='object'&&itemId?{kind:itemId.kind,text:String(itemId.text||'')}:store.getItem(String(itemId || ''));
+    const item = typeof itemId==='object'&&itemId?{kind:itemId.kind,text:String(itemId.text||''),qrUrl:String(itemId.qrUrl||'')}:store.getItem(String(itemId || ''));
     return actions.listForItem(item).map((id) => {
       const action = actions.actions.get(id) || {};
       return { id, label: action.label || id, hint: action.hint || '' };
@@ -3578,24 +3587,30 @@ function registerIpc() {
     let id=String(payload?.itemId||'');
     if(payload?.item&&!id){const value=payload.item,text=String(value.text||'');if(!['text','link'].includes(value.kind)||!text.trim()||text.length>200000)return {ok:false,error:'没有可接力的文字，或正文超过 20 万字符'};
       if(!actions.listForItem(value).includes(payload.actionId))return {ok:false,error:'不支持这个动作'};
-      const item=store.addItem({kind:value.kind,text,title:actions.safeTitle(text),source:{type:'derived',acquisitionMethod:'action-strip'},parentIds:(Array.isArray(value.parentIds)?value.parentIds:[]).filter(parent=>store.getItem(parent)).slice(0,10)});id=item.id;await store.save();}
+      const item=store.addItem({kind:value.kind,text,title:actions.safeTitle(text),meta:{qrUrl:String(value.qrUrl||'').slice(0,8192)},source:{type:'derived',acquisitionMethod:'action-strip'},parentIds:(Array.isArray(value.parentIds)?value.parentIds:[]).filter(parent=>store.getItem(parent)).slice(0,10)});id=item.id;await store.save();}
     if(['text.to-calendar','text.pin','image.pin'].includes(payload?.actionId)&&overlayWindow&&!overlayWindow.isDestroyed()&&event.sender.id===overlayWindow.webContents.id)hideOverlayWindow({restoreMain:false});
     return actions.execute(id,String(payload?.actionId||''));
   });
 
-  ipcMain.handle('recipes:list', (_event, kind) => listRecipes(kind ? String(kind) : undefined));
+  ipcMain.handle('colors:list',()=>store.data.colorHistory||[]);
+  ipcMain.handle('colors:pick',async(_event,value)=>{const hex=String(value||'').toUpperCase();if(!/^#[0-9A-F]{6}$/.test(hex))return {ok:false,error:'颜色格式无效'};await writeClipboardText(hex);const previous=store.data.items.find(item=>item.meta?.pickedColor===hex);if(previous)store.touchItem(previous.id);else store.addItem({kind:'text',text:hex,title:'颜色 '+hex,source:{type:'clipboard',acquisitionMethod:'color-picker'},meta:{pickedColor:hex}});broadcast('content:changed');store.data.colorHistory=[{hex,at:Date.now()},...(store.data.colorHistory||[]).filter(color=>color.hex!==hex)].slice(0,24);await store.save();broadcast('colors:changed');return {ok:true,hex};});
+  ipcMain.handle('recipes:catalog',()=>require('./lib/recipes').RECIPE_STEP_LABELS);
+  ipcMain.handle('recipes:save',async(_event,payload)=>{const recipe=require('./lib/recipes').cleanRecipe(payload);if(!recipe)return {ok:false,error:'组合动作无效：需要名称与 1–12 个有效步骤'};const values=store.data.recipes||[];if(values.length>=50&&!values.some(r=>r.id===recipe.id))return {ok:false,error:'最多保存 50 个组合动作'};const previous=values.find(r=>r.id===recipe.id);recipe.version=(previous?.version||0)+1;store.data.recipes=[...values.filter(r=>r.id!==recipe.id),recipe];for(const binding of Object.values(store.data.panelBindings))if(binding.type==='recipe'&&binding.id===recipe.id)binding.name=recipe.title;await store.save();broadcast('recipes:changed');broadcast('panel:changed');return {ok:true,recipe};});
+  ipcMain.handle('recipes:remove',async(_event,id)=>{store.data.recipes=(store.data.recipes||[]).filter(recipe=>recipe.id!==id);await store.save();broadcast('recipes:changed');return {ok:true};});
+  ipcMain.handle('recipes:list', (_event, kind) => listRecipes(kind ? String(kind) : undefined,store.data.recipes||[]));
   ipcMain.handle('recipes:run', async (_event, payload) => {
-    const itemId = String(payload?.itemId || '');
+    let itemId = String(payload?.itemId || '');
     const recipeId = String(payload?.recipeId || '');
-    const item = store.getItem(itemId);
-    if (!item) return { ok: false, error: '内容不存在或已被清理', steps: [] };
-    const recipe = getRecipe(recipeId);
+    const recipe = getRecipe(recipeId,store.data.recipes||[]);
     if (!recipe) return { ok: false, error: '配方不存在', steps: [] };
+    let item=store.getItem(itemId);
+    if(!item&&payload?.item){const value=payload.item,text=String(value.text||'');if(!['text','link'].includes(value.kind)||!text.trim()||text.length>200000||!recipe.accepts.includes(value.kind))return {ok:false,error:'组合动作的输入无效',steps:[]};item=store.addItem({kind:value.kind,text,title:actions.safeTitle(text),source:{type:'selection'}});itemId=item.id;await store.save();}
+    if (!item) return { ok: false, error: '内容不存在或已被清理', steps: [] };
     if (!recipe.accepts.includes(item.kind)) {
       return { ok: false, error: `「${recipe.title}」不接受${item.kind}类型的内容`, steps: [] };
     }
     const result = await runRecipe(
-      { execute: (id, actionId) => actions.execute(id, actionId) },
+      { execute: (id, actionId) => actions.execute(id, actionId),recipes:store.data.recipes||[] },
       itemId,
       recipeId,
       { commit: Boolean(payload?.commit) }
@@ -3605,9 +3620,15 @@ function registerIpc() {
     return result;
   });
 
+  const currencyService=require('./lib/search').createCurrencyService({fetchImpl:electron.net.fetch});
+  ipcMain.handle('search:execute',async(_event,query)=>{const command=require('./lib/search').searchCommand(query,{exchangeEnabled:store.getSettings().currencyEnabled===true});if(!command)return {ok:false,error:'没有可执行的搜索命令'};
+    if(command.type==='translate'){const result=await openTextTools('translate',command.text);if(result.ok)hideQuickPanel();return result;}
+    if(command.type==='currency'){const result=await currencyService.convert(command,store.getSettings().currencyEnabled===true);if(!result.ok)return result;if(!store.getSettings().currencyEnabled)return {ok:false,error:'已关闭汇率换算，结果已丢弃'};await writeClipboardText(result.text);return {...result,message:result.text+' 已复制 · '+result.date+' Frankfurter 日参考汇率'};}
+    if(command.type!=='copy')return {ok:false,error:command.title};await writeClipboardText(command.value);return {ok:true,text:command.value,message:command.value+' 已复制'};
+  });
   ipcMain.handle('search:query', async (_event, query, options) => {
     const value = String(query || '').trim();
-    if(options?.scope==='apps')return searchAppCandidates(value,await appIndex.candidates(),{limit:40});
+    if(options?.scope==='apps'){const apps=searchAppCandidates(value,await appIndex.candidates(),{limit:40}),command=require('./lib/search').commandCandidate(value,{exchangeEnabled:store.getSettings().currencyEnabled===true});return command?[command,...apps].slice(0,40):apps;}
     const candidates = [];
     for (const command of COMMANDS) candidates.push(command);
     // 应用搜索：开始菜单快捷方式（开发方案 5.1，不做全盘索引）
@@ -3630,7 +3651,9 @@ function registerIpc() {
     for (const task of store.listTasks({})) {
       candidates.push({ id: task.id, kind: 'task', title: task.title, subtitle: `${task.itemIds.length} 项内容`, taskId: task.id });
     }
-    return searchCandidates(value, candidates, { limit: 40 });
+    for(const recipe of store.data.recipes||[])candidates.push({id:'recipe:'+recipe.id,kind:'command',title:recipe.title,subtitle:recipe.description,action:'recipe:'+recipe.id});
+    const results=searchCandidates(value, candidates, { limit: 40 }),command=require('./lib/search').commandCandidate(value,{exchangeEnabled:store.getSettings().currencyEnabled===true});
+    return command?[command,...results].slice(0,40):results;
   });
 
   ipcMain.handle('quick:open-app', async (_event, filePath) => {
@@ -4348,6 +4371,7 @@ async function initialize() {
     ocr,
     // 翻译用当前设置里的引擎；未配置时返回可读原因，不产出假译文
     translate: (text) => runTranslation(text),
+    ai:(mode,text)=>require('./lib/ai-actions').runAi({mode,text,config:translateConfig(),fetchImpl:electron.net.fetch}),
     clipboard: {
       writeText: writeClipboardText,
       writeImage: writeClipboardImage

@@ -528,3 +528,6 @@ button { color: inherit; }
 }
 
 .ocr-result { box-shadow:var(--shadow-card); }
+
+.magnifier span { padding:var(--space-1); }
+#magnifier-color { white-space:pre-line;font-size:var(--text-1); }

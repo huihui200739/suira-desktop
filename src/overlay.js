@@ -30,6 +30,9 @@ const magnifier = $('#magnifier');
 const magnifierCanvas = $('#magnifier-canvas');
 const magnifierCtx = magnifierCanvas.getContext('2d');
 const magnifierCoords = $('#magnifier-coords');
+const colorSampleCanvas=document.createElement('canvas');colorSampleCanvas.width=colorSampleCanvas.height=1;
+const colorSampleCtx=colorSampleCanvas.getContext('2d',{willReadFrequently:true});let colorPoint=null;
+function sampleColor(p){if(!state.image||!p)return null;const x=clamp(Math.round(p.x/metrics.width*state.image.width),0,state.image.width-1),y=clamp(Math.round(p.y/metrics.height*state.image.height),0,state.image.height-1);colorSampleCtx.clearRect(0,0,1,1);colorSampleCtx.drawImage(state.image,x,y,1,1,0,0,1,1);const rgb=[...colorSampleCtx.getImageData(0,0,1,1).data].slice(0,3),hex='#'+rgb.map(v=>v.toString(16).padStart(2,'0')).join('').toUpperCase();return {hex,rgb};}
 const actionToast = $('#action-toast');
 const textEditor = $('#text-editor');
 const textInput = $('#text-input');
@@ -392,15 +395,16 @@ function drawMagnifier(p) {
     magnifierCtx.strokeRect(magnifierCanvas.width / 2 - 11, magnifierCanvas.height / 2 - 11, 22, 22);
     const coords = `${srcX}, ${srcY}`;
     if (magnifierCoords.textContent !== coords) magnifierCoords.textContent = coords;
+    const sampled=sampleColor(p);if(sampled)$('#magnifier-color').textContent=sampled.hex+'\nRGB '+sampled.rgb.join(', ');
   }
 
   const offset = 20;
   let left = p.x + offset;
   let top = p.y + offset;
   if (left + 154 > metrics.width) left = p.x - 154 - offset;
-  if (top + 140 > metrics.height) top = p.y - 140 - offset;
+  if (top + 220 > metrics.height) top = p.y - 220 - offset;
   left = clamp(left, 8, metrics.width - 152);
-  top = clamp(top, 8, metrics.height - 138);
+  top = clamp(top, 8, Math.max(8,metrics.height - 220));
   if (lastMagnifierPos.left !== left) { magnifier.style.left = `${left}px`; lastMagnifierPos.left = left; }
   if (lastMagnifierPos.top !== top) { magnifier.style.top = `${top}px`; lastMagnifierPos.top = top; }
 }
@@ -712,7 +716,7 @@ function layoutOcrResult() {
 async function startOcr() {
   const output = compositeSelection();
   if (!output) { showAction('请先拖拽选择一个区域', 'error'); return null; }
-  ocrText.value = '';
+  ocrText.value = '';ocrResult.dataset.qrUrl='';
   resetTranslation();
   const token = ocrRevision;
   ocrBusy = true;
@@ -726,6 +730,7 @@ async function startOcr() {
     if (token !== ocrRevision) return null;
     if (!result?.ok) throw new Error(result?.error || '识别失败');
     state.ocrItemId = result.item?.id || result.output?.id || '';
+    ocrResult.dataset.qrUrl=result.qr?.url||result.output?.meta?.qrUrl||'';
     const text = SuiraTextSpacing.compactCapture(result.output?.text || '');
     ocrText.value = text;
     ocrText.placeholder = text ? '' : '没有识别到文字，可以重新框选或换一张更清晰的图片';
@@ -1032,6 +1037,7 @@ function setupEvents() {
   // 没有拖拽时（只是划过覆盖层）什么都不用画——放大镜是 #selection 的子节点，
   // 没有选区时本来就不可见，所以直接不排帧。
   root.addEventListener('pointermove', (event) => {
+    colorPoint=point(event);
     if (!state.drawing) return;
     queuePointer(point(event));
   });
@@ -1206,6 +1212,10 @@ function setupEvents() {
       && (target.tagName === 'TEXTAREA' || target.tagName === 'INPUT' || target.isContentEditable);
     if (isTextInput) return;
     const key = event.key.toLowerCase();
+    if(event.shiftKey&&!event.ctrlKey&&!event.altKey&&!event.metaKey&&key==='c'){
+      event.preventDefault();if(event.repeat)return;const sampled=sampleColor(colorPoint);if(!sampled){showAction('请先把指针移到要取色的位置','error');return;}
+      window.suira.colors.pick(sampled.hex).then(result=>{if(!result?.ok)throw Error(result?.error||'取色失败');showAction(sampled.hex+' 已复制，已存入颜色历史');}).catch(error=>showAction(error.message,'error'));return;
+    }
     if (event.key === 'Escape') {
       event.preventDefault();
       if (!colorPopover.hidden) colorPopover.hidden = true;
@@ -1355,6 +1365,7 @@ function resetOverlay() {
   lastSelectionBox.h = NaN;
   lastSizeText = '';
   lastMagnifierPx.x = NaN;
+  colorPoint=null;ocrResult.dataset.qrUrl='';
   lastMagnifierPx.y = NaN;
   lastMagnifierPos.left = NaN;
   lastMagnifierPos.top = NaN;

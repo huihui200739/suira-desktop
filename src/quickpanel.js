@@ -44,6 +44,7 @@ const BINDING_GLYPHS = {
   file: '<svg viewBox="0 0 24 24"><path d="M6 4.8A1.8 1.8 0 0 1 7.8 3h6L19 8.2v10A1.8 1.8 0 0 1 17.2 20H7.8A1.8 1.8 0 0 1 6 18.2z"/><path d="M13.5 3v5.5H19"/></svg>'
 };
 
+BINDING_GLYPHS.recipe=GLYPHS.shelf;
 const PLANNED_GLYPH = '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="7.5" stroke-dasharray="3 3"/><path d="M12 8.5v4M12 15.2v.6"/></svg>';
 
 const appPageSize = () => document.getElementById('panel').dataset.presentation==='fullscreen'?35:28;
@@ -188,7 +189,7 @@ function keyMarkup(key) {
   let glyph = '';
   if (bound) glyph = window.SuiraToolArt?.render(key.actionId) || GLYPHS[key.actionId] || `<span class="glyph-text">${escapeHtml(key.label.slice(0, 1))}</span>`;
   else if (custom) {
-    const kind=key.hint === '打开网页' ? 'url' : key.hint === '打开文件夹' ? 'folder' : key.hint === '打开应用' ? 'app' : 'file';
+    const kind=key.hint==='执行组合动作'?'recipe':key.hint === '打开网页' ? 'url' : key.hint === '打开文件夹' ? 'folder' : key.hint === '打开应用' ? 'app' : 'file';
     glyph=window.SuiraToolArt?.render(kind) || BINDING_GLYPHS[kind] || '';
   }
   // 功能名放在键面下，键面只承载图标与直达键。
@@ -295,11 +296,12 @@ function showBindingView(view) {
   bindingState.view = view;
   $('#binding-categories').hidden = view !== 'categories';
   $('#binding-tools-view').hidden = view !== 'tools';
+  $('#binding-recipes-view').hidden=view!=='recipes';
   $('#binding-url-row').hidden = view !== 'url';
   $('#binding-apps-view').hidden = view !== 'apps';
   $('.binding-card').classList.toggle('is-app-picker',view==='apps');
   $('#binding-back').hidden = view === 'categories';
-  $('#binding-title').textContent = { categories: '绑定', tools: '内置工具', url: '绑定网页', apps:'绑定应用' }[view];
+  $('#binding-title').textContent = { categories: '绑定', tools: '内置工具', recipes:'组合动作', url: '绑定网页', apps:'绑定应用' }[view];
   positionBindingEditor();
   const focus = view === 'apps' ? $('#binding-app-search') : view === 'url' ? $('#binding-url-input') : view === 'tools'
     ? $('#binding-action-list button:not(:disabled)') : $('#binding-app');
@@ -735,6 +737,8 @@ async function runCommand(index) {
   if (kind === 'task') { window.suira.quick.showMain('shelf'); return; }
   if (kind === 'content') { window.suira.quick.showMain('library'); return; }
   const action = String(entry.action || '');
+  if(action==='search-error'){toast(entry.title,'error');return;}
+  if(action==='search-execute'){const result=await window.suira.search.execute(entry.query);if(!result?.ok)throw Error(result?.error||'命令执行失败');if(result.message)toast(result.message);return;}
   if (action === 'capture') { runAction('capture'); return; }
   if (action === 'quick') { clearSearch(); return; }
   if (action === 'note') { runAction('note'); return; }
@@ -744,16 +748,17 @@ async function runCommand(index) {
   if (action.startsWith('recipe:')) {
     // 配方需要一条具体内容作为输入：用最近内容，没有就直接说明白，
     // 不再拿空 itemId 去调主进程换回一句「内容不存在」。
-    const item = state.recentItem;
+    const item = currentContext||state.recentItem;
     if (!item) { toast('还没有内容可以整理，先截一张图或复制一段文字'); return; }
     const result = await window.suira.recipes.run({
-      itemId: item.id,
+      itemId: item.id,item:item.id?undefined:item,
       recipeId: action.slice('recipe:'.length),
       commit: false
     });
     if (!result?.ok) { toast(result?.error || '执行失败', 'error'); return; }
     const marks = (result.steps || []).map((step) => (step.ok ? '✓' : '✕')).join('');
     toast(`处理完成 ${marks}`);
+    if(result.output)window.SuiraRelay?.showResult(result.output);
     await loadRecent();
     return;
   }
@@ -773,6 +778,7 @@ async function runAction(actionId) {
 
 async function handleActionResult(result) {
     if (!result) return;
+    if(result.output)window.SuiraRelay?.showResult(result.output);
     if (result.ocr) { showOcr(result.ocr.text || '', result.ocr.itemId || ''); return; }
     if (result.translate) { await showTranslate(result.translate); return; }
     if (result.openClipboardBar) { await openClipboardBar(); return; }
@@ -1263,6 +1269,8 @@ function installEvents() {
     $('.binding-kind-icon', button).innerHTML = BINDING_GLYPHS[button.dataset.bindingKind] || GLYPHS.capture;
   });
   $('#binding-tools').addEventListener('click', () => showBindingView('tools'));
+  $('#binding-recipes').addEventListener('click',async()=>{showBindingView('recipes');const host=$('#binding-recipe-list');host.textContent='正在读取…';try{const recipes=await window.suira.recipes.list();if(bindingState.view!=='recipes')return;host.replaceChildren(...recipes.map(recipe=>{const button=document.createElement('button');button.type='button';button.textContent=recipe.title;button.title=recipe.description;button.onclick=()=>setKeyBinding({type:'recipe',id:recipe.id,name:recipe.title});return button;}));}catch(error){host.textContent=error.message;}});
+  $('#binding-recipe-settings').onclick=()=>window.suira.quick.showMain('settings:tools');
   $('#binding-url').addEventListener('click', () => {
     showBindingView('url');
   });

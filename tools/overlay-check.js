@@ -844,7 +844,7 @@ const check = (name, cond, detail) => {
 
     console.log('\n== 源码层性能约束（静态）==');
     check('主画布 getContext 不再传 willReadFrequently',
-      !/getContext\('2d',\s*\{\s*willReadFrequently/.test(overlaySource), '仍有软件 canvas');
+      !/screenCanvas\.getContext\('2d',\s*\{\s*willReadFrequently/.test(overlaySource), '主画布仍有软件 canvas');
     check('主画布不再用 getImageData 读回（screenCtx.getImageData 已移除）',
       !/screenCtx\.getImageData/.test(overlaySource));
     check('拖动路径不再逐帧 root.getBoundingClientRect（只剩 refreshMetrics 一处）',

@@ -13,7 +13,7 @@
   function mount(host,getItem,options={}){const instance=strip.mount(host,{getItem,onResult:result=>{if(result.output)showResult(result.output);},...options});mounts.push(instance);return instance;}
   if(document.getElementById('ocr-result')){
     const result=document.getElementById('ocr-result'),host=document.createElement('div');host.id='ocr-action-strip';result.append(host);
-    const getItem=()=>textItem(document.getElementById('ocr-translation-text').value.trim()?document.getElementById('ocr-translation-text').value:document.getElementById('ocr-result-text').value);
+    const getItem=()=>({...textItem(document.getElementById('ocr-translation-text').value.trim()?document.getElementById('ocr-translation-text').value:document.getElementById('ocr-result-text').value),qrUrl:result.dataset.qrUrl||''});
     mount(host,getItem,{onResult:result=>{if(result.output){const area=document.getElementById('ocr-translation-text');area.value=result.output.text;area.dispatchEvent(new Event('input'));}}});
   }
   if(document.getElementById('tool-result')){
@@ -41,6 +41,7 @@
     dateRefresh=parse;document.getElementById('note-body').addEventListener('input',parse);api.notes?.onChanged?.(parse);api.notes?.onOpened?.(parse);parse();
     api.relay?.onRequest?.(async request=>{if(request.kind!=='notes.flush')return;try{await window.NoteUI.flush();await api.relay.reply({token:request.token,ok:true});}catch(error){await api.relay.reply({token:request.token,ok:false,error:error.message});}});
   }
+  window.SuiraRelay={showResult};
   let refreshTimer;const refresh=()=>{clearTimeout(refreshTimer);refreshTimer=setTimeout(()=>{mounts.forEach(instance=>instance.refresh());dateRefresh();},100);};
   document.addEventListener('input',refresh);
   new MutationObserver(records=>{if(records.some(record=>!record.target.closest?.('.action-strip')&&!record.target.parentElement?.closest('.action-strip')))refresh();}).observe(document.body,{subtree:true,childList:true,characterData:true,attributes:true,attributeFilter:['hidden','aria-selected']});

@@ -931,7 +931,8 @@ t('截图工具栏在框选完成前不出现', () => {
 
 t('覆盖层 canvas 不再强制软件渲染', () => {
   const overlay = read('src/overlay.js');
-  if (overlay.includes('willReadFrequently')) throw new Error('canvas 仍用 willReadFrequently，会掉帧');
+  if(!/const screenCtx = screenCanvas\.getContext\('2d'\);/.test(overlay))throw new Error('主画布不能强制软件渲染');
+  if(!overlay.includes('colorSampleCanvas.width=colorSampleCanvas.height=1'))throw new Error('频繁读取的取色画布必须限制为 1 像素');
   if (!/requestAnimationFrame/.test(overlay)) throw new Error('pointermove 未做合帧');
 });
 
