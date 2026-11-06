@@ -3,8 +3,10 @@
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' file: data:; object-src 'none'; base-uri 'none'">
 <title>随序 · 钉图</title><link rel="stylesheet" href="theme.css"><link rel="stylesheet" href="pin.css">
 <link rel="stylesheet" href="ui-motion.css"><link rel="stylesheet" href="glass-select.css">
+<link rel="stylesheet" href="action-strip.css">
 </head><body>
 <main id="pin-surface" class="pin-surface"><img id="pin-image" alt="钉在桌面的图片" draggable="false">
+  <pre id="pin-text" class="pin-text" title="选中文字；按住 Ctrl 拖动窗口" hidden></pre>
   <div class="pin-bar" role="toolbar" aria-label="钉图工具">
     <button id="zoom-out" aria-label="缩小" title="缩小"><span data-icon="subtract" aria-hidden="true"></span></button><span id="zoom-val">100%</span><button id="zoom-in" aria-label="放大" title="放大"><span data-icon="add" aria-hidden="true"></span></button><i></i>
     <button id="opacity-down" aria-label="更透明" title="更透明"><span data-icon="dark_theme" aria-hidden="true"></span></button><span id="opacity-val">100%</span><button id="opacity-up" aria-label="更不透明" title="更不透明"><span data-icon="circle_half_fill" aria-hidden="true"></span></button><i></i>
@@ -20,4 +22,4 @@
     <button role="menuitem" data-command="close">关闭钉图 <kbd>Esc</kbd></button>
   </div>
   <span class="pin-notice" id="pin-notice" role="status" hidden></span>
-</main><script src="icons.js"></script><script src="ui-motion.js"></script><script src="pin.js"></script><script src="glass-select.js"></script></body></html>
+</main><script src="icons.js"></script><script src="ui-motion.js"></script><script src="pin.js"></script><script src="glass-select.js"></script><script src="action-strip.js"></script><script src="relay-surfaces.js"></script></body></html>

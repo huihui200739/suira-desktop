@@ -1,6 +1,7 @@
 <!doctype html>
 <html data-theme="mist" lang="zh-CN">
 <head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>随序 · 文字工具</title><link rel="stylesheet" href="theme.css"><link rel="stylesheet" href="tool-art.css"><link rel="stylesheet" href="utility-surface.css"><link rel="stylesheet" href="ui-motion.css"><link rel="stylesheet" href="glass-select.css">
+<link rel="stylesheet" href="action-strip.css">
 </head>
 <body>
 <main class="utility-window">
@@ -10,4 +11,4 @@
  <div class="text-tool-split"><section><header><label for="tool-source">原文</label><span id="source-count">0 字</span><button id="tool-clipboard">读取剪贴板</button><button id="tool-capture">截图提字</button><details class="text-source-menu"><summary aria-label="更多原文操作" title="更多原文操作">…</summary><div><button id="tool-image">最近图片提字</button></div></details><button id="tool-clear">清空</button></header><textarea id="tool-source" spellcheck="false" maxlength="200000" placeholder="粘贴或输入文字…"></textarea></section><section><header><label for="tool-result" id="result-label">结果</label><span id="result-count">0 字</span><button id="tool-back" hidden>上一步</button><details id="tool-next" class="text-source-menu" hidden><summary>接着处理</summary><div><button data-next-mode="translate">继续翻译</button><button data-next-mode="convert">继续转换</button></div></details></header><textarea id="tool-result" spellcheck="false" maxlength="200000" placeholder="处理结果会显示在这里"></textarea></section></div>
  </div><footer class="text-tool-foot"><div><p id="tool-status" role="status" aria-live="polite"></p><small id="tool-hint">Ctrl + Enter 处理 · 原文保持不变</small></div><button id="tool-run" class="utility-primary">处理</button><button id="tool-copy" class="utility-quiet" disabled>复制结果</button><button id="tool-paste" class="utility-quiet" disabled>粘回原处</button></footer>
 </main><script src="tool-art.js"></script><script src="translate-language.js"></script><script src="text-tools.js"></script>
-<script src="ui-motion.js"></script><script src="icons.js"></script><script src="glass-select.js"></script></body></html>
+<script src="ui-motion.js"></script><script src="icons.js"></script><script src="glass-select.js"></script><script src="action-strip.js"></script><script src="relay-surfaces.js"></script></body></html>

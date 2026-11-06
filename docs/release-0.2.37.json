@@ -1,0 +1,27 @@
+{
+  "version": "0.2.37",
+  "artifact": "Suira-0.2.37-x64.exe",
+  "bytes": 169990222,
+  "sha256": "CC3CA659B27BD70F035467D6E32130E31FD3BDCD8D22496BEA12683187EE12CA",
+  "sha512": "RKNgQu55r/9PUH2Iyn368iqXeYOx4EfD5qFa1ZueGj2GUQ8wymef+fqLFxGsfMXuWnSjAI83KEQUN+ms/Hs7vg==",
+  "platform": "win32",
+  "arch": "x64",
+  "electron": "45.0.0",
+  "checkedSourceFiles": 140,
+  "checks": [
+    "source-payload-byte-match",
+    "no-test-profile-or-obsolete-key-hook",
+    "installer-archive-crc",
+    "updater-feed-and-sha512-match",
+    "original-font-and-license-sha256-in-nsis-payload",
+    "public-latest-and-remote-asset-digests-match",
+    "anonymous-updater-full-download-and-sha512-match",
+    "current-version-reports-latest"
+  ],
+  "fontSha256": "0ddef90648998900175cfdca9a6f087a2544c182f130b0ad4f7e94a03a115e79",
+  "signature": "unsigned",
+  "published": true,
+  "payloadSha256": "3A644A66609C7B2FEEC3780D306D1FB4138F1EB4D7FFA97211364DE7C46E6788",
+  "executableSha256": "D91C22094ABD1DAC07D71D64E7D13EC52C385E399BF2D6A12BDF5099A40C4B39",
+  "releaseUrl": "https://github.com/huihui200739/suira-updates/releases/tag/v0.2.37"
+}

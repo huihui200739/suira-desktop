@@ -1,0 +1,33 @@
+{
+  "version": "0.2.37",
+  "date": "2026-11-06",
+  "checks": [
+    "npm test",
+    "tests/test-date-parse.js",
+    "tests/test-actions.js (22 cases)",
+    "npm run verify:notes (16 cases)",
+    "npm run verify:workspace",
+    "npm run test:clipboardbar (123 cases)",
+    "npm run verify:documents",
+    "npm run verify:relay with review screenshots",
+    "npm run screenshots",
+    "token lint",
+    "installer payload byte match and archive CRC",
+    "original font and license SHA256",
+    "updater feed SHA512",
+    "public latest and remote asset digests",
+    "anonymous updater download and SHA512",
+    "current installed version reports latest"
+  ],
+  "desktopInstaller": "C:/Users/huihui/Desktop/Suira-0.2.37-Setup.exe",
+  "publicCommit": "144310e06556794d683ffccfd98c579de4bdf72d",
+  "releaseUrl": "https://github.com/huihui200739/suira-updates/releases/tag/v0.2.37",
+  "desktopInstallerSha256": "CC3CA659B27BD70F035467D6E32130E31FD3BDCD8D22496BEA12683187EE12CA",
+  "cleanup": {
+    "command": "npm run clean -- -IncludeObsoletePackages",
+    "removedTargets": 14,
+    "removedMB": 939.1,
+    "skipped": 0,
+    "failed": 0
+  }
+}

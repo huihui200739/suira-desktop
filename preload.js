@@ -26,6 +26,8 @@ function pathForFile(file) {
 }
 
 contextBridge.exposeInMainWorld('suira', {
+  dates:{parse:text=>ipcRenderer.invoke('dates:parse',text)},
+  relay:{onRequest:callback=>subscribe('relay:request',callback),reply:payload=>ipcRenderer.invoke('relay:reply',payload)},
   theme: { state: () => ipcRenderer.invoke('theme:state'), onChanged: callback => subscribe('theme:changed', callback) },
   material:{preferences:()=>ipcRenderer.invoke('material:preferences')},
   updates:{state:()=>ipcRenderer.invoke('updates:state'),check:()=>ipcRenderer.invoke('updates:check'),download:()=>ipcRenderer.invoke('updates:download'),install:()=>ipcRenderer.invoke('updates:install'),onState:callback=>subscribe('updates:state',callback)},
@@ -171,7 +173,7 @@ contextBridge.exposeInMainWorld('suira', {
   },
   actions: {
     list: (itemId) => ipcRenderer.invoke('actions:list', itemId),
-    run: (itemId, actionId) => ipcRenderer.invoke('actions:run', { itemId, actionId })
+    run: (itemId, actionId) => ipcRenderer.invoke('actions:run', typeof itemId==='object'?{item:itemId,actionId}:{itemId,actionId})
   },
   recipes: {
     list: (kind) => ipcRenderer.invoke('recipes:list', kind),
@@ -215,6 +217,10 @@ contextBridge.exposeInMainWorld('suira', {
     onConfigure: callback => subscribe('settings:translation',callback)
   },
   workspace: {
+    capture:payload=>ipcRenderer.invoke('workspace:capture',payload),
+    activeDocument:id=>ipcRenderer.send('workspace:active-document',id),
+    calendarDraft:()=>ipcRenderer.invoke('workspace:calendar-draft'),
+    onCalendarDraft:callback=>subscribe('workspace:calendar-draft',callback),
     recent: (action,id) => ipcRenderer.invoke('workspace:recent',action,id),
     confirmClose: id => ipcRenderer.invoke('workspace:confirm-close',id),
     openedFile: () => ipcRenderer.invoke('workspace:opened-file'),

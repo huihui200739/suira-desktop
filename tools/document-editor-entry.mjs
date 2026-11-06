@@ -30,7 +30,7 @@ const ReferencedImage=Image.extend({
 });
 const icons={bold:'<b>B</b>',italic:'<i>I</i>',underline:'<u>U</u>',code:'&lt;/&gt;',link:'链接',color:'A',style:'正文⌄'};
 
-window.SuiraRichDocument={create({element,onChange,onSelection,notify,openLink,readClipboard}){
+window.SuiraRichDocument={create({element,onChange,onSelection,notify,openLink,readClipboard,capture}){
  let editor,menu,bubble,savedSelection,slashRange=null,menuKind='',suppress=false,compositionPending=false,disposed=false;
  const closeMenu=(restore=false)=>{if(menu)menu.remove();menu=null;menuKind='';slashRange=null;savedSelection=null;if(restore)editor.commands.focus();};
  const hideBubble=()=>{if(bubble)bubble.hidden=true;};
@@ -45,6 +45,10 @@ window.SuiraRichDocument={create({element,onChange,onSelection,notify,openLink,r
   onChange(text);onSelection?.();
  };
  function apply(command,value){
+  if(command==='capture'||command==='capture-text'){
+   const range=slashRange||savedSelection||selection(),before=editor.state.doc;closeMenu();
+   capture(command==='capture-text'?'text':'image').then(result=>{if(disposed||result.canceled)return;if(!result.ok)throw Error(result.error||'截图失败');if(editor.state.doc!==before)throw Error('截图期间文档发生变化，请重新插入');const chain=editor.chain().focus().setTextSelection(range);if(command==='capture-text'){const nodes=result.text.split('\n').map(line=>({type:'paragraph',content:line?[{type:'text',text:line}]:[]}));chain.insertContent(nodes).run();}else chain.setImage({src:result.url,alt:'截图'}).run();emit();}).catch(error=>notify(error.message));return;
+  }
   const chain=prepare();let result;
   switch(command){
    case 'bold':result=chain.toggleBold().run();break;

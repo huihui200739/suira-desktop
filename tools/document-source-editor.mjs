@@ -3,7 +3,7 @@ import {renderMenu,validURL,escape} from './document-menu.mjs';
 // The source, split and preview views share the visual editor's command model.
 // Source mutations stay in the native textarea undo history and never parse or
 // reserialize the rest of a document (including extension syntax/frontmatter).
-window.SuiraSourceDocument={create({element,preview,enabled,readOnly,activate,onChange,notify,readClipboard}){
+window.SuiraSourceDocument={create({element,preview,enabled,readOnly,activate,onChange,notify,readClipboard,capture}){
  let menu=null,saved=null,slash=null,composing=false;
  const selection=()=>({from:element.selectionStart,to:element.selectionEnd});
  const close=(focus=false)=>{menu?.remove();menu=null;slash=null;saved=null;if(focus&&!readOnly())element.focus();};
@@ -15,6 +15,9 @@ window.SuiraSourceDocument={create({element,preview,enabled,readOnly,activate,on
  };
  function apply(command,value=''){
   const target=saved||selection(),range=slash||target;
+  if(command==='capture'||command==='capture-text'){
+   const before=element.value;close();capture(command==='capture-text'?'text':'image').then(result=>{if(result.canceled)return;if(!result.ok)throw Error(result.error||'截图失败');if(element.value!==before||!enabled())throw Error('截图期间文档发生变化，请重新插入');replace(command==='capture-text'?result.text:'![截图]('+result.url+')',range.from,range.to);}).catch(error=>notify(error.message));return;
+  }
   if(command==='link'||command==='image'){openMenu(command);return;}
   if(command==='paste'){
    close();readClipboard().then(result=>{if(enabled())replace(result.text||'',range.from,range.to);}).catch(error=>notify(error.message));return;

@@ -27,6 +27,9 @@ const registry = createActionRegistry({
   nativeImage: { createFromBuffer: () => ({ getSize: () => ({ width: 100, height: 80 }) }) },
   openPath: async () => '',
   pinImage: async (p, w, h) => pinCalls.push({ p, w, h }),
+  pinText:async text=>pinCalls.push({text}),
+  appendMarkdown:async text=>({type:'markdown',id:'today',text}),
+  openCalendarDraft:async draft=>broadcasts.push({ch:'draft',draft}),
   broadcast: (ch, p) => broadcasts.push({ ch, p }),
   assetPath: () => '',
   capturesDir: () => tmp,
@@ -38,7 +41,7 @@ const registry = createActionRegistry({
   t('文字条目动作集', () => {
     const list = registry.listForItem({ kind: 'text' });
     // 第三批：文字条目多了「翻译」，位置紧跟复制（最常用的排前面）
-    assert.deepStrictEqual(list, ['output.copy', 'text.translate', 'text.merge-lines', 'text.clean', 'output.shelf']);
+    assert.deepStrictEqual(list, ['output.copy', 'text.translate', 'text.to-note', 'text.to-markdown', 'text.to-calendar', 'text.pin', 'text.merge-lines', 'text.clean', 'output.shelf']);
   });
   t('图片条目动作集', () => {
     const list = registry.listForItem({ kind: 'image' });
@@ -152,6 +155,12 @@ const registry = createActionRegistry({
     assert.ok(derived.length >= 2, '实际 ' + derived.length);
   });
 
+  await ta('追加最近速记保留原文和置顶状态',async()=>{const first=await registry.execute(textItem.id,'text.to-note');assert.ok(first.ok);const note=store.getNote(first.destination.id);assert.equal(note.text,textItem.text);store.toggleNotePin(note.id);const second=await registry.execute(textItem.id,'text.to-note');assert.ok(second.ok);assert.equal(store.getNote(note.id).text,textItem.text+'\n\n'+textItem.text);assert.equal(store.getNote(note.id).pinned,true);});
+  await ta('超长速记追加失败且原文不变',async()=>{const note=store.createNote({text:'x'.repeat(20000)});const result=await registry.execute(textItem.id,'text.to-note');assert.equal(result.ok,false);assert.equal(store.getNote(note.id).text.length,20000);});
+  await ta('Markdown 接力返回目标文档',async()=>{const result=await registry.execute(textItem.id,'text.to-markdown');assert.ok(result.ok);assert.equal(result.destination.id,'today');});
+  await ta('日历只产生草稿，不写入日程',async()=>{const input=store.addItem({kind:'text',text:'明天下午3点开会'}),count=store.data.items.length;const result=await registry.execute(input.id,'text.to-calendar');assert.ok(result.ok);assert.equal(result.draft.time,'15:00');assert.equal(result.draft.draft,true);assert.equal(store.data.items.length,count);assert.ok(broadcasts.some(e=>e.ch==='draft'));});
+  await ta('文字钉图传入文字不修改原内容',async()=>{const result=await registry.execute(textItem.id,'text.pin');assert.ok(result.ok);assert.equal(pinCalls.at(-1).text,textItem.text);});
+  await ta('图片不能直接作为文字追加',async()=>{const image=store.addItem({kind:'image',filePath:'example.png'});assert.equal((await registry.execute(image.id,'text.to-note')).ok,false);});
   fs.rmSync(tmp, { recursive: true, force: true });
   console.log('\n========== ' + pass + ' 通过 / ' + fail + ' 失败 ==========');
   process.exit(fail ? 1 : 0);

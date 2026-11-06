@@ -1883,6 +1883,29 @@ function queueMarkdownFiles(files) {
 }
 app.on('open-file',(event,file)=>{event.preventDefault();queueMarkdownFiles([file]);});
 const workspaceWindows=new Map();
+const relayRequests=new Map(),activeDocuments=new Map(),calendarDrafts=new Map();
+app.on('browser-window-focus',(_event,win)=>{const active=activeDocuments.get(win.webContents.id);if(active)active.at=Date.now();});
+app.on('browser-window-created',(_event,win)=>{const id=win.webContents.id;win.once('closed',()=>{activeDocuments.delete(id);calendarDrafts.delete(id);});});
+function requestRelay(win,payload){
+  return new Promise((resolve,reject)=>{
+    const token=makeId('relay'),timer=setTimeout(()=>{relayRequests.delete(token);reject(Error('目标窗口未响应，请稍后重试'));},8000);
+    relayRequests.set(token,{sender:win.webContents.id,resolve,reject,timer});
+    win.webContents.send('relay:request',{...payload,token});
+  });
+}
+async function appendRelayMarkdown(text){
+  const workspace=require('./lib/workspace').createWorkspace(store);
+  const current=[...activeDocuments.values()].filter(entry=>!entry.win.isDestroyed()&&store.getItem(entry.id)?.meta?.workspace==='markdown').sort((a,b)=>b.at-a.at)[0];
+  if(current){await requestRelay(current.win,{kind:'markdown.append',id:current.id,text});return {type:'markdown',id:current.id};}
+  const day=require('./lib/date-parse').dateKey(new Date()),title='今天 · '+day;
+  const previous=workspace.list('markdown').find(item=>item.title===title);
+  const item=workspace.save('markdown',{id:previous?.id,title,text:[previous?.text||'',text].filter(Boolean).join('\n\n')});
+  await store.save();broadcast('content:changed');broadcast('workspace:changed',{type:'markdown',id:item.id});return {type:'markdown',id:item.id};
+}
+function openRelayCalendar(draft){
+  const win=showWorkspaceWindow('calendar');calendarDrafts.set(win.webContents.id,draft);
+  win.webContents.send('workspace:calendar-draft',draft);
+}
 let workspaceQuitRequested=false;
 function showWorkspaceWindow(type) {
   let win=workspaceWindows.get(type);
@@ -2030,6 +2053,7 @@ async function rememberMainWindowState() {
 const textToolWindows=new Map();
 let textToolRequest=0;
 let textCaptureWindow = null;
+let documentCapture = null;
 async function openTextTools(mode='convert',input,operation='compact'){
   if(!['translate','convert'].includes(mode))return {ok:false,error:'未知文字工具'};
   const request=++textToolRequest;
@@ -2175,6 +2199,7 @@ async function showOverlayWindow(payload) {
  *   2. 保留空页面，不再在闲置后销毁，避免下一次截图重新加载页面。
  */
 function hideOverlayWindow(options = {}) {
+  if(documentCapture){const pending=documentCapture;documentCapture=null;pending.resolve(options.documentResult||{ok:false,canceled:true});if(!pending.win.isDestroyed()){pending.win.show();pending.win.focus();}}
   capturePayload = null;
   captureBusy = false;
   if (overlayWindow && !overlayWindow.isDestroyed()) {
@@ -2200,7 +2225,7 @@ async function beginScreenCapture(source = 'panel', options = {}) {
   if (captureBusy) return { ok: true };
   // 入口意图：从 38 键面板按 O 进来，框完直接进识别；按 P 进来直接钉图。
   // 意图随 payload 交给覆盖层，覆盖层据此预选工具或自动完成。
-  const intent = ['ocr', 'translate', 'ocr-return', 'pin', 'copy', 'save', 'shelf','long'].includes(options?.intent) ? options.intent : 'copy';
+  const intent = ['ocr', 'translate', 'ocr-return', 'document-image', 'document-text', 'pin', 'copy', 'save', 'shelf','long'].includes(options?.intent) ? options.intent : 'copy';
   if(intent==='long')return beginLongPicker(source);
   captureBusy = true;
   try {
@@ -2363,6 +2388,10 @@ async function completeCapture(dataUrl, action) {
     return { ok: true, filePath, item, output: result.output, ocr: true };
   }
   // 收起（而不是销毁）预热覆盖层，下次唤起才快
+  if(documentCapture&&capturePayload?.intent==='document-image'){
+    item.pinned=true;item.meta={...item.meta,documentAttachment:true};await store.save();
+    hideOverlayWindow({documentResult:{ok:true,itemId:item.id,url:'suira-image://'+item.id,text:''}});broadcast('content:changed');return {ok:true,item};
+  }
   hideOverlayWindow();
   broadcast('content:changed', { itemId: item?.id || '' });
   if (mainWindow && !mainWindow.isDestroyed()) {
@@ -2947,7 +2976,8 @@ function getAppIconLoader() {
 // 移动/缩放后按这里记录的期望值核对，发现漂移立即拉回。
 const pinExpectedSize = new WeakMap();
 
-function createPinWindow(dataUrl, size = {}) {
+function createPinWindow(dataUrl, size = {}, content = null) {
+  if(!content&&String(dataUrl||'').startsWith('file:')){try{content=store.data.items.find(item=>item.kind==='image'&&item.filePath===fileURLToPath(dataUrl));}catch{}}
   const display=screen.getDisplayNearestPoint(screen.getCursorScreenPoint());
   const ratio=(size.height||600)/Math.max(1,size.width||800);
   const width=Math.max(100,Math.min(560,size.width||800,display.workArea.width-40,(display.workArea.height-60)/ratio));
@@ -2960,7 +2990,7 @@ function createPinWindow(dataUrl, size = {}) {
     transparent:true,thickFrame:false,hasShadow:false,backgroundColor:'#00000000',title:'随序 · 钉图',
     webPreferences:{contextIsolation:true,nodeIntegration:false,sandbox:false,spellcheck:false,preload: path.join(__dirname, 'pin-preload.js')}
   });
-  pin.__pinData={url:String(dataUrl),width:Math.round(width),height};
+  pin.__pinData={url:String(dataUrl||''),width:Math.round(width),height,kind:content?.kind||'image',text:content?.text||'',itemId:content?.id||''};
   pinExpectedSize.set(pin,{width:Math.round(width),height});
   prepareFloatingSurface(pin);
   pin.loadFile(path.join(__dirname,'src','pin.html'));
@@ -3146,8 +3176,12 @@ function registerIpc() {
     if(image.isEmpty())throw Error('图片无法读取');return image;
   };
   ipcMain.handle('pin:data',pinOnly(win=>({ok:true,data:win.__pinData})));
-  ipcMain.handle('pin:copy',pinOnly(async win=>{await writeClipboardImage(pinImage(win));return {ok:true};}));
+  ipcMain.handle('pin:copy',pinOnly(async win=>{if(win.__pinData?.kind==='text')await writeClipboardText(win.__pinData.text);else await writeClipboardImage(pinImage(win));return {ok:true};}));
   ipcMain.handle('pin:save',pinOnly(async win=>{
+    if(win.__pinData?.kind==='text'){
+      const result=await dialog.showSaveDialog(win,{title:'保存文字',defaultPath:path.join(app.getPath('documents'),'随序文字.txt'),filters:[{name:'文字',extensions:['txt']}]});
+      if(result.canceled||!result.filePath)return {ok:false,canceled:true};await fsp.writeFile(result.filePath,win.__pinData.text,'utf8');return {ok:true};
+    }
     const image=pinImage(win);
     const result=await dialog.showSaveDialog(win,{title:'保存钉图',defaultPath:path.join(app.getPath('pictures'),'随序钉图.png'),filters:[{name:'PNG 图片',extensions:['png']}]});
     if(result.canceled||!result.filePath)return {ok:false,canceled:true};
@@ -3436,6 +3470,10 @@ function registerIpc() {
     try {
       const session = capturePayload;
       const result = await completeCapture(payload?.dataUrl, payload?.action || 'copy');
+      if(result.ok&&documentCapture&&session===capturePayload){
+        const item=session.intent==='document-text'?result.output:result.item;
+        if(item){hideOverlayWindow({documentResult:{ok:true,text:item.text||'',itemId:item.id,url:'suira-image://'+item.id}});return result;}
+      }
       if (result.ok && payload?.action === 'ocr' && session === capturePayload && session?.intent === 'ocr-return') {
         hideOverlayWindow({ textToolInput: require('./src/text-spacing').compactCapture(result.output?.text || '') });
       }
@@ -3509,14 +3547,25 @@ function registerIpc() {
     return { ok: true };
   });
 
+  ipcMain.handle('dates:parse',(_event,text)=>require('./lib/date-parse').parseDate(String(text||'').slice(0,200000)));
+  ipcMain.handle('relay:reply',(event,payload)=>{const pending=relayRequests.get(payload?.token);if(!pending||pending.sender!==event.sender.id)return {ok:false};relayRequests.delete(payload.token);clearTimeout(pending.timer);payload.ok?pending.resolve(payload):pending.reject(Error(payload.error||'接力失败'));return {ok:true};});
+  ipcMain.on('workspace:active-document',(event,id)=>{const win=BrowserWindow.fromWebContents(event.sender);if(id&&store.getItem(String(id))?.meta?.workspace==='markdown')activeDocuments.set(event.sender.id,{id:String(id),win,at:Date.now()});else activeDocuments.delete(event.sender.id);});
+  ipcMain.handle('workspace:calendar-draft',event=>{const draft=calendarDrafts.get(event.sender.id)||null;calendarDrafts.delete(event.sender.id);return draft;});
   ipcMain.handle('actions:list', (_event, itemId) => {
-    const item = store.getItem(String(itemId || ''));
+    const item = typeof itemId==='object'&&itemId?{kind:itemId.kind,text:String(itemId.text||'')}:store.getItem(String(itemId || ''));
     return actions.listForItem(item).map((id) => {
       const action = actions.actions.get(id) || {};
       return { id, label: action.label || id, hint: action.hint || '' };
     });
   });
-  ipcMain.handle('actions:run', async (_event, payload) => actions.execute(String(payload?.itemId || ''), String(payload?.actionId || '')));
+  ipcMain.handle('actions:run', async (event, payload) => {
+    let id=String(payload?.itemId||'');
+    if(payload?.item&&!id){const value=payload.item,text=String(value.text||'');if(!['text','link'].includes(value.kind)||!text.trim()||text.length>200000)return {ok:false,error:'没有可接力的文字，或正文超过 20 万字符'};
+      if(!actions.listForItem(value).includes(payload.actionId))return {ok:false,error:'不支持这个动作'};
+      const item=store.addItem({kind:value.kind,text,title:actions.safeTitle(text),source:{type:'derived',acquisitionMethod:'action-strip'},parentIds:(Array.isArray(value.parentIds)?value.parentIds:[]).filter(parent=>store.getItem(parent)).slice(0,10)});id=item.id;await store.save();}
+    if(['text.to-calendar','text.pin','image.pin'].includes(payload?.actionId)&&overlayWindow&&!overlayWindow.isDestroyed()&&event.sender.id===overlayWindow.webContents.id)hideOverlayWindow({restoreMain:false});
+    return actions.execute(id,String(payload?.actionId||''));
+  });
 
   ipcMain.handle('recipes:list', (_event, kind) => listRecipes(kind ? String(kind) : undefined));
   ipcMain.handle('recipes:run', async (_event, payload) => {
@@ -3868,8 +3917,19 @@ function registerIpc() {
   ipcMain.handle('workspace:opened-file',event=>{const win=BrowserWindow.fromWebContents(event.sender);const id=win?.__openedDoc||'';if(win)win.__openedDoc='';return id;});
   ipcMain.handle('workspace:save-file',async(_event,id)=>{try{return {ok:true,...await markdownFiles.save(String(id))};}catch(error){return {ok:false,error:error.message};}});
   ipcMain.handle('workspace:open-link', async (_event,url) => {
+    if(/^suira-image:\/\/[-\w]+$/.test(String(url))){const item=store.getItem(String(url).slice(14));if(item?.kind!=='image'||!item.filePath)return {ok:false,error:'截图已被清理'};const error=await shell.openPath(item.filePath);return error?{ok:false,error}:{ok:true};}
     if(!isSafeHttpUrl(url))return {ok:false,error:'只能打开 http(s) 链接'};
     await shell.openExternal(url);return {ok:true};
+  });
+  ipcMain.handle('workspace:capture',async(event,payload)=>{
+    const win=BrowserWindow.fromWebContents(event.sender);
+    if(!win||!activeDocuments.get(event.sender.id)||!['image','text'].includes(payload?.kind))return {ok:false,error:'请先打开 Markdown 文档'};
+    if(documentCapture||captureBusy||longCapture||longCaptureStarting)return {ok:false,error:'请先完成当前截图'};
+    let resolve;const result=new Promise(done=>{resolve=done;});documentCapture={win,resolve};win.hide();
+    const closed=()=>{if(documentCapture?.win===win)hideOverlayWindow();};win.once('closed',closed);
+    try{await new Promise(done=>setTimeout(done,40));const started=await beginScreenCapture('document',{intent:payload.kind==='text'?'document-text':'document-image'});if(!started.ok)hideOverlayWindow({documentResult:started});return await result;}
+    catch(error){hideOverlayWindow({documentResult:{ok:false,error:error.message}});return await result;}
+    finally{win.removeListener('closed',closed);}
   });
   ipcMain.handle('workspace:clipboard', async()=>({ok:true,text:(await readClipboardText()).slice(0,200000)}));
   ipcMain.handle('workspace:list', (_event,type) => workspace.list(type));
@@ -4279,6 +4339,10 @@ async function initialize() {
     nativeImage,
     openPath: (target) => shell.openPath(target),
     pinImage: (filePath, width, height) => createPinWindow(pathToFileURL(filePath).href, { width, height }),
+    pinText: (text,item) => createPinWindow('',{width:420,height:300},{...item,kind:'text',text}),
+    appendMarkdown:appendRelayMarkdown,
+    openCalendarDraft:openRelayCalendar,
+    prepareNotes:async()=>{for(const win of noteWindows.values())if(!win.isDestroyed())await requestRelay(win,{kind:'notes.flush'});},
     broadcast,
     assetPath,
     capturesDir,

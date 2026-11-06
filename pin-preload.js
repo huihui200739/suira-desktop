@@ -10,6 +10,7 @@ const { contextBridge, ipcRenderer } = require('electron');
 if (typeof document !== 'undefined' && typeof window !== 'undefined') require('./lib/theme-preload').installThemeBridge({ipcRenderer,document,window});
 
 contextBridge.exposeInMainWorld('pinApi', {
+  actions:{list:item=>ipcRenderer.invoke('actions:list',item),run:(item,actionId)=>ipcRenderer.invoke('actions:run',typeof item==='object'?{item,actionId}:{itemId:item,actionId})},
   getData: () => ipcRenderer.invoke('pin:data'),
   copy: () => ipcRenderer.invoke('pin:copy'),
   save: () => ipcRenderer.invoke('pin:save'),

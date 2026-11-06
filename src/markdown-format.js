@@ -5,7 +5,8 @@
  const sizes=new Set(['12px','14px','16px','18px','20px','24px','28px','32px']);
  const color=value=>/^(?:#[\da-f]{3,8}|rgba?\([\d\s.,%]+\)|[a-z]+)$/i.test(value)&&CSS.supports('color',value)?value:'';
  function safeHTML(html){
-  const fragment=DOMPurify.sanitize(html,{RETURN_DOM_FRAGMENT:true,USE_PROFILES:{html:true},FORBID_TAGS:['img','style','form','video','audio','iframe','svg','math'],FORBID_ATTR:['id','name']});
+  html=html.replace(/<img\b[^>]*\bsrc=[\"'](suira-image:\/\/[-\w]+)[\"'][^>]*>/gi,(_tag,url)=>'<a href="'+url+'">查看截图</a>');
+  const fragment=DOMPurify.sanitize(html,{RETURN_DOM_FRAGMENT:true,ALLOWED_URI_REGEXP:/^(?:https?:\/\/|mailto:|#|suira-image:\/\/[-\w]+$)/i,USE_PROFILES:{html:true},FORBID_TAGS:['img','style','form','video','audio','iframe','svg','math'],FORBID_ATTR:['id','name']});
   fragment.querySelectorAll('[style]').forEach(node=>{
    const declarations=[];
    if(node.tagName==='SPAN'){
@@ -14,7 +15,7 @@
    }
    node.removeAttribute('style');if(declarations.length)node.setAttribute('style',declarations.join(';'));
   });
-  fragment.querySelectorAll('a').forEach(link=>{if(!/^(?:https?:\/\/|mailto:|#)/i.test(link.getAttribute('href')||''))link.removeAttribute('href');link.removeAttribute('target');});
+  fragment.querySelectorAll('a').forEach(link=>{if(!/^(?:https?:\/\/|mailto:|#|suira-image:\/\/[-\w]+$)/i.test(link.getAttribute('href')||''))link.removeAttribute('href');link.removeAttribute('target');});
   const box=document.createElement('div');box.append(fragment);return box.innerHTML;
  }
  // Source offsets used by the outline; fenced code is deliberately excluded.

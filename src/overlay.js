@@ -1517,10 +1517,12 @@ async function handleShown() {
 function applyIntent(intent) {
   if (!intent || intent === 'copy' || intent === 'save' || intent === 'shelf') return;
   state.intent = intent;
-  if (intent === 'ocr' || intent === 'ocr-return') {
+  if (intent === 'ocr' || intent === 'ocr-return' || intent === 'document-text') {
     // 提示用户这一趟是要提字的，不必再找工具栏
     if (hintBrand) hintBrand.textContent = '截图提字';
     showAction('框选要识别的区域，完成后自动识别');
+  } else if (intent === 'document-image') {
+    if(hintBrand)hintBrand.textContent='插入截图';showAction('框选后插入 Markdown 光标位置');
   } else if (intent === 'translate') {
     if (hintBrand) hintBrand.textContent = '截图翻译';
     showAction('框选要翻译的区域，完成后自动识别并翻译');
@@ -1542,7 +1544,8 @@ function autoAdvanceForIntent() {
   if (!hasSelection()) return;
   state.intentAutoDone = true;
   const intent = state.intent;
-  if (intent === 'ocr' || intent === 'ocr-return') startOcr();
+  if (intent === 'ocr' || intent === 'ocr-return' || intent === 'document-text') startOcr();
+  else if(intent==='document-image')finish('insert');
   else if (intent === 'translate') startTranslate();
   else if (intent === 'pin') finish('pin');
   else if (intent === 'long') startLongSelection();
