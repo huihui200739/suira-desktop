@@ -114,7 +114,7 @@ function buildPage() {
   fs.writeFileSync(path.join(TMP, '__mock.js'), MOCK + bindingFixture, 'utf8');
   fs.writeFileSync(path.join(TMP, 'panel.html'), html, 'utf8');
   fs.copyFileSync(path.join(ROOT, 'assets', 'suira-icon.png'), path.join(TMP, 'suira-icon.png'));
-  for (const asset of ['theme.css', 'quickpanel.css', 'quickpanel.js', 'ui-motion.css', 'ui-motion.js', 'tool-art.css', 'tool-art.js', 'liquid-glass.js','liquid-glass.css','companion.js', 'companion.css', 'art/companion-courier.png', 'keycap-material.css', 'keycap-motion.js']) {
+  for (const asset of ['theme.css', 'quickpanel.css', 'quickpanel.js', 'ui-motion.css', 'ui-motion.js', 'tool-art.css', 'tool-art.js', 'icons.js','glass-select.js','glass-select.css','liquid-glass.js','liquid-glass.css','companion.js', 'companion.css', 'art/companion-courier.png', 'keycap-material.css', 'keycap-motion.js']) {
     fs.mkdirSync(path.dirname(path.join(TMP,asset)),{recursive:true});
     fs.copyFileSync(path.join(ROOT, 'src', asset), path.join(TMP, asset));
   }
@@ -496,6 +496,23 @@ async function capture(send, name) {
       if (width === QUICK_PANEL_SIZE.width && scheme === 'dark') await capture(send, '22-panel-actions-dark.png');
     }
     await checkBindings({ send, evaluate, capture });
+    console.log('\n== 六个主题预设 / 明暗模式 ==');
+    const {PRESET_NAMES,presetPalette,generatePalette}=require('../lib/palette');
+    // The binding regression changes keys deliberately. Preview a fresh default
+    // panel so the preset gallery contains no test bindings or leftover feedback.
+    await send('Page.reload',{ignoreCache:true});await sleep(1200);
+    await evaluate(send,`(async()=>{for(const cb of window.__handlers['quick:prepare']||[])await cb({token:1});for(const cb of window.__handlers['quick:shown']||[])cb();return true;})()`);
+    await send('Input.dispatchMouseEvent',{type:'mouseMoved',x:8,y:8});await sleep(350);
+    await send('Emulation.setDeviceMetricsOverride',{...QUICK_PANEL_SIZE,deviceScaleFactor:2,mobile:false});
+    for(const mode of ['light','dark'])for(const name of PRESET_NAMES){
+      await send('Emulation.setEmulatedMedia',{features:[{name:'prefers-color-scheme',value:mode}]});
+      const palette=(name==='wallpaper'?generatePalette('#478f80'):presetPalette(name))[mode];
+      await evaluate(send,`(()=>{const root=document.documentElement;root.dataset.theme=${JSON.stringify(name)};for(const scale of ['slate','accent'])for(let i=0;i<12;i++){const key='--'+scale+'-'+(i+1);root.style.removeProperty(key);if(${JSON.stringify(name)}==='wallpaper')root.style.setProperty(key,${JSON.stringify(palette)}[scale][i]);}document.getElementById('panel-body').scrollTop=0;return true;})()`);
+      await sleep(160);
+      assert.equal(await evaluate(send,'getComputedStyle(document.documentElement).getPropertyValue("--slate-2").trim()'),palette.slate[1]);
+      await capture(send,`theme-${name}-${mode}.png`);
+      console.log('  PASS '+name+' '+mode);
+    }
     console.log('\n面板交互、键位绑定、拖动、错误路径与四组显示条件全部通过。');
 
     ws.close();

@@ -1,0 +1,85 @@
+{
+  "version": "0.2.36",
+  "records": [
+    {
+      "preset": "mist",
+      "mode": "light",
+      "windows": 19,
+      "slate": "#f9f9fb"
+    },
+    {
+      "preset": "ink",
+      "mode": "light",
+      "windows": 19,
+      "slate": "#f7f7f8"
+    },
+    {
+      "preset": "paper",
+      "mode": "light",
+      "windows": 19,
+      "slate": "#f6f2ea"
+    },
+    {
+      "preset": "pine",
+      "mode": "light",
+      "windows": 19,
+      "slate": "#eef3f0"
+    },
+    {
+      "preset": "midnight",
+      "mode": "light",
+      "windows": 19,
+      "slate": "#f0f4fa"
+    },
+    {
+      "preset": "wallpaper",
+      "mode": "light",
+      "windows": 19,
+      "slate": "#f9f8f8"
+    },
+    {
+      "preset": "mist",
+      "mode": "dark",
+      "windows": 19,
+      "slate": "#18191b"
+    },
+    {
+      "preset": "ink",
+      "mode": "dark",
+      "windows": 19,
+      "slate": "#111113"
+    },
+    {
+      "preset": "paper",
+      "mode": "dark",
+      "windows": 19,
+      "slate": "#211c17"
+    },
+    {
+      "preset": "pine",
+      "mode": "dark",
+      "windows": 19,
+      "slate": "#141d19"
+    },
+    {
+      "preset": "midnight",
+      "mode": "dark",
+      "windows": 19,
+      "slate": "#0f1722"
+    },
+    {
+      "preset": "wallpaper",
+      "mode": "dark",
+      "windows": 19,
+      "slate": "#171212"
+    }
+  ],
+  "nativeWallpaperMax64": true,
+  "nativeBgraVerified": true,
+  "windowsAccentLive": true,
+  "wallpaperChangesLive": true,
+  "sharedPreloadsBeforeDomReady": true,
+  "primaryContrastAtLeast4_5": true,
+  "materialFourModes": true,
+  "settingsCardsWork": true
+}

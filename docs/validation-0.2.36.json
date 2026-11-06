@@ -1,0 +1,33 @@
+{
+  "version": "0.2.36",
+  "date": "2026-11-06",
+  "checks": [
+    "npm test (final run)",
+    "npm run verify:themes",
+    "node tools/panel-shot.js",
+    "npm run screenshots",
+    "npm run verify:glass",
+    "node tools/release-package-check.js",
+    "public latest and all remote asset digests",
+    "anonymous updater download and SHA512",
+    "current version reports latest"
+  ],
+  "nativeThemeWindows": 19,
+  "presetModeCombinations": 12,
+  "desktopInstaller": "C:/Users/huihui/Desktop/Suira-0.2.36-Setup.exe",
+  "desktopInstallerSha256": "E87265AC5930FDCD4EAC8C31254319D3D8D0F28D0CEB7EA1EDDF8B486AC68DBB",
+  "releaseUrl": "https://github.com/huihui200739/suira-updates/releases/tag/v0.2.36",
+  "publicCommit": "3328c24e8beb697549da3778d03c341ab92d4898",
+  "cleanup": {
+    "command": "npm run clean -- -IncludeObsoletePackages",
+    "removedTargets": 13,
+    "removedMB": 772.1,
+    "skipped": 0,
+    "failed": 0,
+    "preserved": [
+      "user data and keys",
+      "dependencies and live runtime",
+      "current desktop installer"
+    ]
+  }
+}

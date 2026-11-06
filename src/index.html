@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="zh-CN">
+<html data-theme="mist" lang="zh-CN">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -9,6 +9,7 @@
   <link rel="stylesheet" href="window-layers.css">
   <link rel="stylesheet" href="tool-art.css"><link rel="stylesheet" href="tool-surfaces.css">
   <link rel="stylesheet" href="liquid-glass.css">
+  <link rel="stylesheet" href="theme-settings.css">
   <link rel="stylesheet" href="workbench-surface.css">
   <link rel="stylesheet" href="document-editor.css"><link rel="stylesheet" href="trail.css">
 <link rel="stylesheet" href="ui-motion.css"><link rel="stylesheet" href="glass-select.css">
@@ -124,7 +125,17 @@
             </section>
             <section class="setting-card">
               <div class="setting-title"><b>外观</b></div>
-              <div class="setting-row"><span><b>主题</b><small>浮卡、浮引岛、剪贴板条同时生效</small></span><select id="setting-theme"><option value="light">浅色</option><option value="dark">深色</option><option value="system">跟随系统</option></select></div>
+              <div class="setting-row"><span><b>明暗模式</b><small>浮卡、浮引岛、剪贴板条同时生效</small></span><select id="setting-theme"><option value="light">浅色</option><option value="dark">深色</option><option value="system">跟随系统</option></select></div>
+              <div id="theme-presets" class="theme-presets" role="group" aria-label="主题预设">
+                <button type="button" data-preset="mist" aria-pressed="true"><span class="theme-swatch" data-theme="mist" aria-hidden="true">Aa</span>雾白</button>
+                <button type="button" data-preset="ink" aria-pressed="false"><span class="theme-swatch" data-theme="ink" aria-hidden="true">Aa</span>墨夜</button>
+                <button type="button" data-preset="paper" aria-pressed="false"><span class="theme-swatch" data-theme="paper" aria-hidden="true">Aa</span>暖纸</button>
+                <button type="button" data-preset="pine" aria-pressed="false"><span class="theme-swatch" data-theme="pine" aria-hidden="true">Aa</span>松绿</button>
+                <button type="button" data-preset="midnight" aria-pressed="false"><span class="theme-swatch" data-theme="midnight" aria-hidden="true">Aa</span>午夜蓝</button>
+                <button type="button" data-preset="wallpaper" aria-pressed="false"><span class="theme-swatch" data-theme="wallpaper" aria-hidden="true">Aa</span>跟随壁纸</button>
+              </div>
+              <label class="setting-row"><span><b>强调色来源</b><small>预设底色保持不变，可独立跟随系统或壁纸</small></span><select id="setting-accent-source"><option value="preset">主题预设</option><option value="windows">Windows 强调色</option><option value="wallpaper">桌面壁纸</option></select></label>
+              <p id="theme-status" class="theme-status" role="status">所有窗口即时生效，明暗模式保持当前选择。</p>
               <label class="setting-row"><span><b>紧凑面板</b><small>只显示已绑定的键，保留字母键操作</small></span><input id="setting-panel-compact" type="checkbox"></label>
               <div class="setting-row"><span><b>工作台窗口</b><small>窗口被拉得过大时，恢复默认大小并回到当前屏幕中央</small></span><button class="quiet-btn" id="reset-window-size" type="button">恢复默认大小</button></div>
               <div class="setting-row"><span><b>键位与快捷键</b><small>打开键位设置并检查当前冲突</small></span><button class="quiet-btn" id="setup-shortcuts" type="button"><span data-icon="keyboard" aria-hidden="true"></span><span>检查与配置快捷键</span></button></div>
@@ -275,5 +286,6 @@
   <script src="icons.js"></script><script src="ui-motion.js"></script>
   <script src="vendor/marked.js"></script><script src="vendor/purify.js"></script><script src="markdown-format.js"></script><script src="vendor/document-editor.js"></script><script src="calendar-data.js"></script><script src="tool-art.js"></script><script src="workspace.js"></script><script src="text-spacing.js"></script><script src="trail-model.js"></script><script src="trail-view.js"></script><script src="app.js"></script>
   <script src="liquid-glass.js"></script>
+  <script src="theme-settings.js"></script>
 <script src="glass-select.js"></script></body>
 </html>

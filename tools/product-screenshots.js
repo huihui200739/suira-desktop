@@ -60,7 +60,7 @@ require(${JSON.stringify(path.join(root, 'main.js'))});`);
       await until(() => client.evaluate('Boolean(window.suira) && document.readyState === "complete"'));
       const palettes=[];
       for(const scheme of ['light','dark']){
-        await client.send('Emulation.setEmulatedMedia',{features:[{name:'prefers-color-scheme',value:scheme}]});
+        await client.evaluate('window.suira.settings.update('+JSON.stringify({theme:scheme})+')');
         await wait(180);
         const facts=await client.evaluate(`document.fonts.ready.then(()=>{const s=getComputedStyle(document.documentElement);return {url:location.pathname.split('/').pop(),main:document.documentElement.classList.contains('workbench'),font:getComputedStyle(document.body).fontFamily,fontLoaded:[...document.fonts].some(f=>f.family.replaceAll('"','')==='MiSans VF'&&f.status==='loaded'),accent:s.getPropertyValue('--accent').trim(),focus:s.getPropertyValue('--focus-ring').trim(),buttons:[...document.querySelectorAll('.primary-btn,.utility-primary')].filter(b=>!b.matches(':hover')).map(b=>({id:b.id,label:b.textContent,root:document.documentElement.className,primary:getComputedStyle(b).getPropertyValue('--glass-primary').trim(),background:getComputedStyle(b).backgroundColor,ink:getComputedStyle(b).color}))}})`);
         assert.equal(facts.accent,scheme==='light'?'#5b5bd6':'#b1a9ff');
@@ -69,7 +69,7 @@ require(${JSON.stringify(path.join(root, 'main.js'))});`);
         for(const button of facts.buttons){assert.equal(button.background,'rgb(91, 91, 214)',JSON.stringify(button));assert.equal(button.ink,'rgb(255, 255, 255)');}
         palettes.push({scheme,...facts});
       }
-      await client.send('Emulation.setEmulatedMedia',{features:[]});
+      await client.evaluate('window.suira.settings.update({theme:"light"})');
       foundationResults.push(...palettes);return client;
     };
     const main = await page(t => t.url.endsWith('/index.html'));
@@ -129,7 +129,7 @@ class RegionCheck {
     const shot = async (client, name, theme = 'light') => {
       if (!screenshots) return;
       console.log('SHOT '+name);
-      await client.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: theme }] });
+      await client.evaluate('window.suira.settings.update('+JSON.stringify({theme})+')');
       await client.evaluate('document.fonts.ready'); await wait(350);
       const png = await client.send('Page.captureScreenshot', { format: 'png' });
       const dir = path.join(root, 'docs/product'); fs.mkdirSync(dir, { recursive: true });
@@ -170,7 +170,7 @@ class RegionCheck {
     await shot(main,'settings-controls-dark','dark');
     assert.equal(await main.evaluate('(()=>{const c=document.getElementById("setting-record"),before=c.checked;c.checked=true;const color=getComputedStyle(c).backgroundColor;c.checked=before;return color;})()'),'rgb(91, 91, 214)','Workbench checkbox keeps accent-9 in dark mode');
     await main.evaluate('document.getElementById("setting-theme").value="light";true');
-    await main.send('Emulation.setEmulatedMedia',{features:[{name:'prefers-color-scheme',value:'light'}]});
+    await main.evaluate('window.suira.settings.update({theme:"light"})');
     await main.evaluate(`SuiraGlassSelect.close();document.querySelector('[data-page="shelf"]').click();true`);
     await main.evaluate(`window.suira.quick.show()`);
     const panel = await page(t => t.url.endsWith('/quickpanel.html'));
@@ -183,7 +183,7 @@ class RegionCheck {
     await shot(panel,'keyboard-fullscreen');
     await panel.evaluate('document.getElementById("panel-more").click();true');await shot(panel,'keyboard-menu');await panel.evaluate('closeMoreMenu(false);true');
     await panel.evaluate(`window.suira.quick.setPresentation('window')`);
-    await panel.send('Emulation.setEmulatedMedia',{features:[{name:'prefers-color-scheme',value:'light'}]});
+    await panel.evaluate('window.suira.settings.update({theme:"light"})');
     await panel.evaluate(`document.getElementById('panel-more').click();true`);
     const hoverDisplay=async()=>{const point=await panel.evaluate(`(()=>{const r=document.querySelector('[data-menu-section="display"]').getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2};})()`);await panel.send('Input.dispatchMouseEvent',{type:'mouseMoved',...point});};
     await hoverDisplay();await shot(panel,'panel-menu');
@@ -207,7 +207,7 @@ class RegionCheck {
     await until(()=>panel.evaluate('document.getElementById("panel").dataset.presentation==="fullscreen"'));
     await until(()=>panel.evaluate('[...document.querySelectorAll(".app-icon img")].filter(image=>image.naturalWidth>0).length>=Math.min(32,document.querySelectorAll(".app-item").length)'));
     await shot(panel,'apps-fullscreen');
-    await panel.evaluate(`document.getElementById('panel-more').click();true`);await hoverDisplay();await shot(panel,'fullscreen-menu');const menuStyle=await panel.evaluate('(()=>{const m=getComputedStyle(document.getElementById("panel-more-menu")),s=getComputedStyle(document.querySelector(".search-field"));return {background:m.backgroundColor,ink:m.color,height:s.height}})()');assert.equal(menuStyle.height,'44px');assert.ok(menuStyle.background.startsWith('rgba(241, 245, 248'),'Fullscreen menu must share the light glass surface');assert.equal(await panel.evaluate('getComputedStyle(document.querySelector(".app-name")).textShadow'),'none');
+    await panel.evaluate(`document.getElementById('panel-more').click();true`);await hoverDisplay();await shot(panel,'fullscreen-menu');const menuStyle=await panel.evaluate('(()=>{const m=getComputedStyle(document.getElementById("panel-more-menu")),s=getComputedStyle(document.querySelector(".search-field"));return {background:m.backgroundColor,ink:m.color,height:s.height}})()');assert.equal(menuStyle.height,'44px');assert.equal(menuStyle.background,await panel.evaluate('(()=>{const n=document.createElement("i");n.style.backgroundColor="var(--tool-surface)";document.getElementById("panel").append(n);const c=getComputedStyle(n).backgroundColor;n.remove();return c;})()'),'Fullscreen menu must use the shared themed surface');assert.equal(await panel.evaluate('getComputedStyle(document.querySelector(".app-name")).textShadow'),'none');
     await panel.evaluate(`closeMoreMenu(false);true`);
     await panel.evaluate(`(()=>{const input=document.getElementById('search');input.focus();input.value='wei';input.dispatchEvent(new Event('input',{bubbles:true}));return true;})()`);
     await until(()=>panel.evaluate('document.querySelectorAll(".command-item").length>0'));
@@ -245,7 +245,7 @@ class RegionCheck {
     await until(() => markdown.evaluate('Boolean(document.querySelector("#md-preview h1"))'));
     await check('tool=markdown'); await shot(markdown, 'markdown');
     await shot(markdown, 'markdown-dark', 'dark');
-    await markdown.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: 'light' }] });
+    await markdown.evaluate('window.suira.settings.update({theme:"light"})');
     await markdown.evaluate('document.getElementById("md-home").click();true');
     await until(()=>markdown.evaluate('document.documentElement.classList.contains("md-home")'));
     await shot(markdown, 'markdown-home');

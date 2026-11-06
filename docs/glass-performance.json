@@ -3,31 +3,31 @@
   "clipboardWarmMs": 22,
   "clipboardBeforeIdle": {
     "processes": 7,
-    "workingSetMB": 843
+    "workingSetMB": 850
   },
   "clipboardAfterIdle": {
     "processes": 4,
-    "workingSetMB": 480
+    "workingSetMB": 489
   },
-  "clipboardRecreatedMs": 248,
-  "panelWarmMs": 58,
+  "clipboardRecreatedMs": 263,
+  "panelWarmMs": 50,
   "panelBeforeIdle": {
     "processes": 5,
-    "workingSetMB": 677
+    "workingSetMB": 649
   },
   "panelAfterIdle": {
     "processes": 5,
-    "workingSetMB": 659
+    "workingSetMB": 640
   },
-  "panelReusedAfterIdleMs": 21,
-  "captureWarmMs": 348,
+  "panelReusedAfterIdleMs": 23,
+  "captureWarmMs": 536,
   "captureBeforeIdle": {
     "processes": 6,
-    "workingSetMB": 827
+    "workingSetMB": 692
   },
   "captureAfterIdle": {
     "processes": 5,
-    "workingSetMB": 673
+    "workingSetMB": 521
   },
-  "captureRecreatedMs": 342
+  "captureRecreatedMs": 543
 }

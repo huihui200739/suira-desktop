@@ -29,7 +29,7 @@ if (!electron || typeof electron !== 'object' || !electron.app) {
 
 const {
   app, BrowserWindow, ipcMain, screen, desktopCapturer, clipboard,
-  nativeImage, ClipboardItem, globalShortcut, Tray, Menu, shell, dialog, nativeTheme, session
+  nativeImage, ClipboardItem, globalShortcut, Tray, Menu, shell, dialog, nativeTheme, systemPreferences, session
 } = electron;
 const path = require('node:path');
 const fs = require('node:fs');
@@ -129,6 +129,9 @@ let longPickerRevision = 0;
 let longPickerWorker = null;
 
 let store = null;
+let themeController = null;
+ipcMain.on('theme:initial', event => { event.returnValue = themeController?.snapshot() || null; });
+ipcMain.handle('theme:state', () => themeController?.snapshot() || null);
 let ocr = null;
 let actions = null;
 let mainWindow = null;
@@ -2441,9 +2444,9 @@ function createLongOutlineWindow() {
   if(longOutlineWindow&&!longOutlineWindow.isDestroyed())return longOutlineWindow;
   const win=longOutlineWindow=new BrowserWindow({width:200,height:200,show:false,frame:false,thickFrame:false,transparent:true,backgroundColor:'#00000000',
     alwaysOnTop:true,focusable:false,skipTaskbar:true,hasShadow:false,resizable:false,
-    title:'随序 · 采集区域',webPreferences:{contextIsolation:true,nodeIntegration:false,sandbox:true,backgroundThrottling:false}});
+    title:'随序 · 采集区域',webPreferences:{preload:path.join(__dirname,'theme-preload.js'),contextIsolation:true,nodeIntegration:false,sandbox:false,backgroundThrottling:false}});
   win.setAlwaysOnTop(true,'screen-saver');win.setIgnoreMouseEvents(true);win.setContentProtection(true);
-  win.__loaded=win.loadURL('data:text/html;charset=utf-8,'+encodeURIComponent('<!doctype html><style>html{box-sizing:border-box;width:100%;height:100%;border:3px solid #2486ff;background:transparent;pointer-events:none}body{margin:0}</style>'));
+  win.__loaded=win.loadFile(path.join(__dirname,'src/long-outline.html'));
   win.__loaded.catch(()=>{});
   win.on('closed',()=>{if(longOutlineWindow===win)longOutlineWindow=null;});
   return win;
@@ -3927,7 +3930,7 @@ function registerIpc() {
     try {
       let data=item.text;
       if(format!=='md'){
-        render=new BrowserWindow({show:false,webPreferences:{contextIsolation:true,nodeIntegration:false,sandbox:true}});
+        render=new BrowserWindow({show:false,webPreferences:{preload:path.join(__dirname,'theme-preload.js'),contextIsolation:true,nodeIntegration:false,sandbox:false}});
         await render.loadFile(path.join(__dirname,'src/export.html'));
         const html=await render.webContents.executeJavaScript(`window.renderExport(${JSON.stringify({title:item.title,text:item.text})})`);
         data=format==='pdf'?await render.webContents.printToPDF({printBackground:true,pageSize:'A4'}):html;
@@ -4061,6 +4064,7 @@ function registerIpc() {
     }
     // 换肤只改一处：nativeTheme 一变，所有窗口的 prefers-color-scheme 同时跟着变
     if (incoming.theme !== undefined) applyTheme();
+    if (['theme','themePreset','accentSource','panelMaterial'].some(key => incoming[key] !== undefined)) await themeController?.refresh();
     if (incoming.panelMaterial !== undefined) {
       for (const win of BrowserWindow.getAllWindows()) if (win.__allowNativeBlur && !win.isDestroyed()) updateWindowMaterial(win);
     }
@@ -4236,6 +4240,12 @@ async function initialize() {
   if(store.getSettings().glassSystemVersion!==1)await store.updateSettings({panelMaterial:'liquid',glassSystemVersion:1});
   // 主题要在建任何窗口之前定下来，否则首帧会闪一下系统默认色
   applyTheme();
+  themeController = require('./lib/theme-controller').createThemeController({
+    getSettings: () => store.getSettings(), nativeTheme, systemPreferences,
+    readWallpaper: () => require('./lib/launchpad-background').readWallpaperSample(nativeImage),
+    publish: state => broadcast('theme:changed', state)
+  });
+  await themeController.refresh();
   // 旧版三键默认键位迁移到两键组合；改过键的用户不受影响
   await migrateShortcutDefaults();
   // 老版本覆盖表基于 Z/X/V。先还原旧有效绑定，再按实际保存的组合键对齐。
@@ -4522,6 +4532,7 @@ app.on('before-quit', event => {
   isQuitting = true;
 });
 app.on('will-quit', () => {
+  themeController?.dispose();
   clearIslandRest();
   islandPointerProbe?.stop();
   clearInterval(clipboardTimer);

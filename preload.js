@@ -1,6 +1,7 @@
 'use strict';
 
 const { contextBridge, ipcRenderer, webUtils } = require('electron');
+if (typeof document !== 'undefined' && typeof window !== 'undefined') require('./lib/theme-preload').installThemeBridge({ipcRenderer,document,window});
 
 function subscribe(channel, callback) {
   const handler = (_event, value) => callback(value);
@@ -25,6 +26,7 @@ function pathForFile(file) {
 }
 
 contextBridge.exposeInMainWorld('suira', {
+  theme: { state: () => ipcRenderer.invoke('theme:state'), onChanged: callback => subscribe('theme:changed', callback) },
   material:{preferences:()=>ipcRenderer.invoke('material:preferences')},
   updates:{state:()=>ipcRenderer.invoke('updates:state'),check:()=>ipcRenderer.invoke('updates:check'),download:()=>ipcRenderer.invoke('updates:download'),install:()=>ipcRenderer.invoke('updates:install'),onState:callback=>subscribe('updates:state',callback)},
   window: {

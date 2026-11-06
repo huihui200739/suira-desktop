@@ -951,7 +951,7 @@ async function toggleMoreMenu(){
   $$('[data-display]').forEach(button=>button.setAttribute('aria-checked',String(button.dataset.display===presentation)));
   $$('[data-layout]').forEach(button=>button.setAttribute('aria-checked',String(button.dataset.layout===state.mode)));
   positionMoreMenu();menu.querySelector('button').focus();
-  try{const settings=await window.suira.settings.get();if(menu.hidden)return;$$('[data-theme]').forEach(button=>button.setAttribute('aria-checked',String(button.dataset.theme===settings.theme)));}catch{}
+  try{const settings=await window.suira.settings.get();if(menu.hidden)return;$$('#panel-more-menu [data-theme]').forEach(button=>button.setAttribute('aria-checked',String(button.dataset.theme===settings.theme)));}catch{}
 }
 let searchPointerNear = false;
 let presentation='window';
@@ -1028,7 +1028,7 @@ function installEvents() {
   });
   $$('[data-display]').forEach(button=>listen(button,'click',async()=>{closeMoreMenu(false);await changePresentation(button.dataset.display);}));
   $$('[data-layout]').forEach(button=>button.onclick=()=>{clearSearch();setMode(button.dataset.layout);closeMoreMenu(false);});
-  $$('[data-theme]').forEach(button=>listen(button,'click',async()=>{
+  $$('#panel-more-menu [data-theme]').forEach(button=>listen(button,'click',async()=>{
     const result=await window.suira.settings.update({theme:button.dataset.theme,themeChosen:true});
     if(!result?.ok)throw Error(result?.error||'外观保存失败');closeMoreMenu();
   }));

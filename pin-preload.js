@@ -3,11 +3,11 @@
 /**
  * 钉图窗口专用 preload。
  *
- * 钉图窗口的 HTML 是 data: URL 内联的，没有独立页面文件，
- * 因此需要单独的最小 preload 把窗口操作暴露给内联脚本。
+ * 只暴露钉图操作，主题桥接与其他窗口保持一致。
  */
 
 const { contextBridge, ipcRenderer } = require('electron');
+if (typeof document !== 'undefined' && typeof window !== 'undefined') require('./lib/theme-preload').installThemeBridge({ipcRenderer,document,window});
 
 contextBridge.exposeInMainWorld('pinApi', {
   getData: () => ipcRenderer.invoke('pin:data'),

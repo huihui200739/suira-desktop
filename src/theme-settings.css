@@ -1,0 +1,14 @@
+.theme-presets { display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:var(--space-2);padding:var(--space-3) 0; }
+.theme-presets button { display:flex;align-items:center;gap:var(--space-2);padding:var(--space-2);border:1px solid var(--line);border-radius:var(--radius-inner);background:var(--paper-raised);color:var(--ink);font:inherit;cursor:pointer; }
+.theme-presets button:hover { background:var(--surface-hover); }
+.theme-presets button[aria-pressed="true"] { border-color:var(--accent-9);box-shadow:0 0 0 1px var(--accent-9); }
+.theme-swatch { display:grid;place-items:center;width:var(--space-6);height:var(--space-6);border:1px solid var(--slate-7);border-radius:var(--radius-sm);background:var(--slate-2);color:var(--slate-12);font-weight:600;position:relative; }
+.theme-swatch::after { content:"";position:absolute;right:var(--space-1);bottom:var(--space-1);width:var(--space-2);height:var(--space-2);border-radius:var(--radius-pill);background:var(--accent-9); }
+.theme-status { color:var(--ink-soft);font-size:var(--text-1);margin:0 0 var(--space-3); }
+.glass-density { display:grid;gap:var(--space-1);width:min(240px,45%); }
+.glass-density input { width:100%;accent-color:var(--accent-9); }
+.glass-density output { text-align:right;color:var(--ink-soft);font-size:var(--text-1); }
+.liquid-ui.workbench .setting-row #setup-shortcuts { width:auto;max-width:55%;flex:none;color:var(--ink-soft); }
+.liquid-ui.workbench .setting-row #setup-shortcuts:hover { background:var(--surface-hover);color:var(--ink); }
+.setting-row .glass-density { flex:0 1 240px; }
+@media(max-width:680px) { .theme-presets { grid-template-columns:repeat(2,minmax(0,1fr)); } }
