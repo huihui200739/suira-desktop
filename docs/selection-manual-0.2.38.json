@@ -1,0 +1,29 @@
+{
+  "version": "0.2.38",
+  "translationService": "fixed response in isolated acceptance instance",
+  "nativeCopyAndPaste": true,
+  "apps": {
+    "Notepad": {
+      "selectedTextRead": true,
+      "TSeedsTranslation": true,
+      "EnterReplacesSelection": true
+    },
+    "Word": {
+      "selectedTextRead": true,
+      "TSeedsTranslation": true,
+      "EnterReplacesSelection": true
+    },
+    "Edge": {
+      "status": "unverified",
+      "reason": "Computer Use stopped because current browser URL could not be determined, including after user opened Example Domain"
+    },
+    "VSCode": {
+      "status": "unverified",
+      "reason": "Desktop input stopped after Computer Use block"
+    },
+    "terminals": {
+      "status": "automated-negative-only",
+      "reason": "Unit and Electron IPC fixtures verify exclusion before sending copy; no terminal UI automation"
+    }
+  }
+}

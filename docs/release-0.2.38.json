@@ -1,0 +1,27 @@
+{
+  "version": "0.2.38",
+  "artifact": "Suira-0.2.38-x64.exe",
+  "bytes": 169992564,
+  "sha256": "01437E3204833100BE6DB6BD0E599F9DBD40E18FE8EDE78D5436A71707860995",
+  "sha512": "dl7G2EDwZb/WD+3V9KbZpkqaDVOIfNcjm2Kt/F7EaO9CdFxQ4kglz2cDJ8kB2+z3vGZypVYXb7v322c7K3xtaQ==",
+  "platform": "win32",
+  "arch": "x64",
+  "electron": "45.0.0",
+  "checkedSourceFiles": 143,
+  "checks": [
+    "source-payload-byte-match",
+    "no-test-profile-or-obsolete-key-hook",
+    "installer-archive-crc",
+    "updater-feed-and-sha512-match",
+    "original-font-and-license-sha256-in-nsis-payload",
+    "public-latest-and-remote-asset-digests",
+    "anonymous-updater-download-sha512",
+    "current-version-reports-latest"
+  ],
+  "fontSha256": "0ddef90648998900175cfdca9a6f087a2544c182f130b0ad4f7e94a03a115e79",
+  "signature": "unsigned",
+  "published": true,
+  "payloadSha256": "7BC621CBECB0288AD177DB078B8F6DD7D3A1F9B2AF4BB398E66897C9FFBC9428",
+  "executableSha256": "F2C2889A18C7C126EE589C0A82F77082D95D93E4CE0D98952860C8F212A3D03E",
+  "releaseUrl": "https://github.com/huihui200739/suira-updates/releases/tag/v0.2.38"
+}

@@ -1,0 +1,25 @@
+'use strict';
+const assert=require('node:assert/strict'),{createSelectionReader,DEFAULT_SELECTION_EXCLUSIONS,cleanExclusions,shouldSkipSelection}=require('../lib/selection'),{ClipboardWriteLedger}=require('../lib/return-target'),{recentItem}=require('../src/panel-context'),{InputInjector,PS_SCRIPT}=require('../lib/input-injector');
+const target={hwnd:'123',pid:987654,processStartedAt:1,processName:'notepad'},settings={selectionEnabled:true};
+class Item{constructor(values){this.values=values;this.types=Object.keys(values);}async getType(type){const v=this.values[type];return typeof v==='string'?new Blob([v]):v;}}
+async function fixture(options={}){
+ let seq=1,time=0,copyCount=0,writes=0,paused=0,front=true;const ledger=new ClipboardWriteLedger(),original=[new Item({'text/plain':'原剪贴板','text/html':'<b>原剪贴板</b>','electron application/osclipboard;format="Custom"':new Blob([Buffer.from([0,1,255])])})];let items=original;
+ const clipboard={read:async()=>items,readText:async()=>options.delayedText&&seq>1&&time<40?'':items[0]?.types.includes('text/plain')?await(await items[0].getType('text/plain')).text():'',write:async data=>{if(options.restoreRetry&&writes++===0)throw Error('locked');items=data;seq++;}};
+ const reader=createSelectionReader({clipboard,ClipboardItem:Item,ledger,sequence:()=>seq,sendCopy:async()=>{copyCount++;if(options.timeout)return {ok:true};items=[new Item(options.image?{'image/png':new Blob(['image'])}:{'text/plain':options.text||'Selected English'})];seq++;assert.equal(ledger.shouldIgnore('Selected English'),true);if(options.focusChange)front=false;return {ok:!options.denied};},isCurrent:async()=>front,pause:()=>{paused++;return()=>paused--;},sleep:async ms=>{time+=ms;},now:()=>time});
+ const result=await reader.read({...target,...options.target},{...settings,...options.settings});return {result,items,original,copyCount,time,ledger,paused,writes};
+}
+(async()=>{
+ for(const processName of DEFAULT_SELECTION_EXCLUSIONS){assert.equal(shouldSkipSelection({...target,processName:processName+'.exe'},settings),true,processName);const f=await fixture({target:{processName}});assert.equal(f.copyCount,0);}
+ assert.equal(shouldSkipSelection(target,{}),true);assert.equal(shouldSkipSelection({...target,elevated:true},settings),true);assert.equal(shouldSkipSelection({...target,pid:process.pid},settings),true);
+ assert.equal(shouldSkipSelection({...target,processName:'cmd'}, {...settings,selectionExcludedApps:[]}),false);assert.deepEqual(cleanExclusions(['C:\\Tools\\APP.EXE','app','keepass.exe','']),['app','keepass']);
+ const selected=await fixture();assert.equal(selected.result.text,'Selected English');assert.equal(selected.copyCount,1);assert.equal(await(await selected.items[0].getType('text/html')).text(),'<b>原剪贴板</b>');assert.deepEqual(Buffer.from(await(await selected.items[0].getType('electron application/osclipboard;format="Custom"')).arrayBuffer()),Buffer.from([0,1,255]));assert.equal(selected.ledger.transientDepth,0);assert.equal(selected.paused,0);assert.equal(selected.ledger.shouldIgnore('原剪贴板'),true);
+ const timeout=await fixture({timeout:true});assert.equal(timeout.result,null);assert.equal(timeout.time,250);assert.equal(timeout.items,timeout.original);
+ const denied=await fixture({denied:true});assert.equal(denied.result,null);assert.equal(await(await denied.items[0].getType('text/plain')).text(),'原剪贴板');
+ const image=await fixture({image:true});assert.equal(image.result,null);assert.equal(await(await image.items[0].getType('text/plain')).text(),'原剪贴板');
+ const changed=await fixture({focusChange:true});assert.equal(changed.result,null);assert.equal(await(await changed.items[0].getType('text/plain')).text(),'原剪贴板','Restore our temporary copy even if foreground focus changes');
+ const retried=await fixture({restoreRetry:true});assert.equal(retried.result.text,'Selected English');assert.equal(retried.writes,2);
+ const delayed=await fixture({delayedText:true});assert.equal(delayed.result.text,'Selected English');assert.equal(delayed.time,40,'Wait for delayed text formats within the 250ms deadline');
+ const rows=[{id:'old',createdAt:1,source:{type:'clipboard'}},{id:'doc',createdAt:60001,source:{type:'clipboard'},meta:{workspace:'markdown'}},{id:'fresh',createdAt:59001,source:{type:'screenshot'}}];assert.equal(recentItem(rows,60001).id,'fresh');assert.equal(recentItem(rows,119001),null);
+ assert.match(PS_SCRIPT,/VK_C = 0x43/);assert.match(PS_SCRIPT,/SendCopy/);const injector=new InputInjector({copyInput:{foreground:()=>123,pid:(_h,p)=>p.writeUInt32LE(target.pid),held:()=>0,scan:key=>key,send:(count,bytes,stride)=>{assert.equal(count,4);assert.equal(stride,40);assert.equal(bytes.readUInt16LE(stride+8),0x43);return 4;},sequence:()=>42}});assert.equal((await injector.sendCopy(target)).ok,true);assert.equal(injector.clipboardSequence(),42);injector.dispose();assert.equal((await injector.sendCopy(target)).ok,false);
+ console.log('PASS default/custom exclusions, timeout, full-format restoration, injection failure, history suppression, race protection, recent expiry and native copy protocol');
+})().catch(error=>{console.error(error);process.exitCode=1;});

@@ -103,9 +103,12 @@ function listen(target, type, handler) {
 /* ---------- 模式 ---------- */
 
 function fitFullscreenKeys(){
-  const fit=()=>{if(presentation!=='fullscreen'||state.mode!=='actions')return;const grid=$('#key-grid'),body=$('#panel-body');if(!grid.offsetWidth||!grid.offsetHeight)return;$('#panel').style.setProperty('--keyboard-scale',Math.min((body.clientWidth-16)/grid.offsetWidth,(body.clientHeight-16)/grid.offsetHeight));};
+  const fit=()=>{const context=$('#recent-context');if(state.mode!=='actions'||(presentation!=='fullscreen'&&context.hidden))return;const grid=$('#key-grid'),body=$('#panel-body');if(!grid.offsetWidth||!grid.offsetHeight)return;const used=context.hidden?0:context.offsetHeight+parseFloat(getComputedStyle(context).marginBottom);$('#panel').style.setProperty('--keyboard-scale',Math.min((body.clientWidth-16)/grid.offsetWidth,(body.clientHeight-used-16)/grid.offsetHeight));};
   fit();requestAnimationFrame(fit);
 }
+const contextSizeObserver=new ResizeObserver(fitFullscreenKeys);
+contextSizeObserver.observe($('#recent-context'));
+contextSizeObserver.observe($('#panel-body'));
 function setMode(mode) {
   keyMotion?.clear();
   $('#mode-actions')?.setAttribute('aria-pressed', String(mode === 'actions'));
@@ -869,13 +872,31 @@ function closeTranslate() {
 
 /* ---------- 命令配方使用的最近内容 ---------- */
 
+let contextTimer,contextRevision=0,selectionContext=null,derivedContext=null,contextEnabled=true,currentContext=null;
+const contextStrip=window.SuiraActionStrip?.mount($('#recent-context-actions'),{getItem:()=>currentContext,onResult:result=>{if(result.output){derivedContext=result.output;renderRecentContext();}},onError:error=>toast(error,'error')});
+function renderRecentContext(){
+  clearTimeout(contextTimer);const previous=currentContext,now=Date.now(),item=derivedContext&&now-derivedContext.createdAt<60000?derivedContext:selectionContext&&now-selectionContext.createdAt<60000?selectionContext:state.recentItem;
+  currentContext=contextEnabled&&item&&now-Number(item.createdAt)>=0&&now-Number(item.createdAt)<60000?item:null;
+  $('#recent-context').hidden=!currentContext;fitFullscreenKeys();if(!currentContext){if(previous)contextStrip?.refresh();return;}
+  $('#recent-context-label').textContent=selectionContext===currentContext?'选中文字':'最近'+(currentContext.kind==='image'?'截图':'复制');
+  $('#recent-context-time').textContent=Math.max(1,Math.ceil((60000-(now-currentContext.createdAt))/1000))+' 秒内';
+  const image=$('#recent-context-image');image.hidden=currentContext.kind!=='image'||!currentContext.thumbnail;if(!image.hidden)image.src=currentContext.thumbnail;else image.removeAttribute('src');
+  $('#recent-context-text').textContent=currentContext.text||currentContext.title||'图片';if(previous!==currentContext)contextStrip?.refresh();
+  contextTimer=setTimeout(renderRecentContext,Math.min(1000,Math.max(1,60000-(now-currentContext.createdAt))));
+}
+window.suira.quick.onSelection?.(item=>{selectionContext=item;derivedContext=null;renderRecentContext();});
+window.suira.settings?.onChanged?.(settings=>{contextEnabled=settings.panelRecent!==false;if(settings.selectionEnabled===false)selectionContext=null;renderRecentContext();});
+window.suira.settings?.get?.().then(settings=>{contextEnabled=settings.panelRecent!==false;renderRecentContext();}).catch(()=>{});
 async function loadRecent() {
+  const token=++contextRevision;
   try {
-    const items = await window.suira.content.list({ limit: 1 });
-    state.recentItem = items?.[0] || null;
+    const items = await window.suira.content.list({ limit: 30 });
+    if(token!==contextRevision)return;
+    state.recentItem=window.SuiraPanelContext.recentItem(items);
   } catch {
-    state.recentItem = null;
+    if(token===contextRevision)state.recentItem = null;
   }
+  renderRecentContext();
 }
 
 /* ---------- 初始化 ---------- */
@@ -1373,7 +1394,7 @@ function installEvents() {
     document.documentElement.dataset.panelPrepared=String(token);
     window.suira.quick.prepared(token);
   });
-  window.suira.quick.onShown(() => { window.SuiraUI?.reveal($('#panel')); showGuideIfNeeded(); });
+  window.suira.quick.onShown(() => { selectionContext=null;derivedContext=null;loadRecent();window.SuiraUI?.reveal($('#panel')); showGuideIfNeeded(); });
 }
 
 keyMotion=window.SuiraKeycapMotion?.attach($('#key-grid'),{

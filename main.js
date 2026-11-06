@@ -821,13 +821,19 @@ async function writeClipboardImage(image) {
 }
 
 let clipboardPollBusy = false;
+let selectionPollingPaused=false,panelSelection=null;
+const selectionReader=require('./lib/selection').createSelectionReader({
+  clipboard,ClipboardItem,ledger:clipboardLedger,sequence:()=>inputInjector.clipboardSequence(),sendCopy:target=>inputInjector.sendCopy(target),
+  isCurrent:target=>{const current=panelNative.foreground();return Boolean(current&&String(current.hwnd)===String(target.hwnd)&&Number(current.pid)===Number(target.pid)&&Number(current.processStartedAt)===Number(target.processStartedAt));},
+  pause:()=>{selectionPollingPaused=true;++captureGeneration;return ()=>{++captureGeneration;selectionPollingPaused=false;};}
+});
 async function pollClipboard() {
-  if (clipboardPollBusy) return;
+  if (clipboardPollBusy||selectionPollingPaused||clipboardLedger.transientDepth) return;
   clipboardPollBusy = true;
   try {
     const generation = ++captureGeneration;
     const snapshot = await readClipboardSnapshot();
-    if (generation !== captureGeneration) return;
+    if (generation !== captureGeneration||selectionPollingPaused||clipboardLedger.transientDepth) return;
 
     const text = snapshot.text || '';
     const filesKey = snapshot.files.length ? snapshot.files.join('\n').toLowerCase() : '';
@@ -1107,9 +1113,9 @@ function createQuickWindow() {
  * 对应开发方案第 7 节：唤起前记录 HWND、PID、进程启动时间。
  * 必须在面板获得焦点之前调用，否则读到的会是自己。
  */
-async function rememberReturnTarget(selectionMethod = 'unknown') {
+async function rememberReturnTarget(selectionMethod = 'unknown',knownSnapshot) {
   try {
-    const snapshot = await queryForeground();
+    const snapshot = knownSnapshot !== undefined ? knownSnapshot : await queryForeground();
     // 从动作面板进入剪贴板时，延续面板打开前的输入框。
     if (snapshot && Number(snapshot.pid) !== process.pid) returnTarget = captureTarget(snapshot, { selectionMethod });
     else if (!snapshot) returnTarget = null;
@@ -1172,7 +1178,15 @@ async function showQuickPanel() {
     // Capture the exact pre-focus process identity without waiting on helper IO.
     let snapshot=panelNative.foreground();
     if(!snapshot)snapshot=await Promise.race([queryForeground(),new Promise(resolve=>setTimeout(()=>resolve(null),100))]);
-    quickInvocationTarget=clipboardTarget(snapshot,process.pid);returnTarget=quickInvocationTarget;
+    await rememberReturnTarget('panel',snapshot);quickInvocationTarget=clipboardTarget(snapshot,process.pid);returnTarget=quickInvocationTarget;panelSelection=null;
+    if(store?.getSettings().selectionEnabled&&snapshot&&Number(snapshot.pid)!==process.pid&&foregroundProbe.isReady()){
+      const identified=await foregroundProbe.query(snapshot.hwnd);
+      if(identified&&revision===quickShowRevision){
+        if(store.getSettings().recordClipboard)await pollClipboard();
+        panelSelection=await selectionReader.read(identified,store.getSettings());
+        if(panelSelection)panelSelection.returnTarget=quickInvocationTarget;
+      }
+    }
     if(revision!==quickShowRevision||win.isDestroyed())return;
     await win.__loaded;
     await win.__frameReady;
@@ -1181,6 +1195,7 @@ async function showQuickPanel() {
     if(revision!==quickShowRevision||win.isDestroyed())return;
     positionQuickPanel(win);win.show();win.focus();
     win.webContents.send('quick:shown');
+    win.webContents.send('quick:selection',panelSelection?{...panelSelection,returnTarget:undefined}:null);
   }catch(error){if(!win.isDestroyed())console.warn('面板显示失败:',error.message);}
   finally{if(!win.isDestroyed()&&revision===quickShowRevision)win.__showRequested=false;}
 }
@@ -2057,17 +2072,18 @@ let documentCapture = null;
 async function openTextTools(mode='convert',input,operation='compact'){
   if(!['translate','convert'].includes(mode))return {ok:false,error:'未知文字工具'};
   const request=++textToolRequest;
-  await rememberReturnTarget('text-tools');
-  const text=typeof input==='string'?input.slice(0,200000):(await readClipboardText()).slice(0,200000);
+  const selection=store?.getSettings().selectionEnabled&&typeof input!=='string'&&quickWindow?.isVisible()&&panelSelection&&Date.now()-panelSelection.createdAt<60000?panelSelection:null;
+  if(selection)returnTarget=selection.returnTarget;else await rememberReturnTarget('text-tools');
+  const text=typeof input==='string'?input.slice(0,200000):selection?.text||(await readClipboardText()).slice(0,200000);
   if(request!==textToolRequest)return {ok:true};
   let win=textToolWindows.get('text'),fresh=!win||win.isDestroyed();
   if(fresh){
     win=new BrowserWindow({width:960,height:680,minWidth:640,minHeight:440,show:false,frame:false,thickFrame:SYSTEM_GLASS,transparent:true,backgroundColor:'#00000000',title:mode==='translate'?'随序 · 翻译':'随序 · 文本转换',icon:assetPath('suira-icon.png'),webPreferences:{preload:path.join(__dirname,'preload.js'),contextIsolation:true,nodeIntegration:false,sandbox:false,spellcheck:false}});
-    textToolWindows.set('text',win);win.__textTool={mode,text,operation};
+    textToolWindows.set('text',win);win.__textTool={mode,text,operation,selectionPaste:Boolean(selection)};
     prepareFloatingSurface(win,24,true);prepareDesktopWindow(win);panelNative.disableTransitions(win);
     win.__loaded=win.loadFile(path.join(__dirname,'src','text-tools.html'),{query:{mode}});win.on('closed',()=>{if(textToolWindows.get('text')===win)textToolWindows.delete('text');});win.setMenuBarVisibility(false);
     await win.__loaded;
-  }else{await win.__loaded;if(win.isDestroyed()||request!==textToolRequest)return {ok:true};win.__textTool={mode,text,operation};win.webContents.send('text-tools:input',{...win.__textTool,switchOnly:typeof input!=='string'});}
+  }else{await win.__loaded;if(win.isDestroyed()||request!==textToolRequest)return {ok:true};win.__textTool={mode,text,operation,selectionPaste:Boolean(selection)};win.webContents.send('text-tools:input',{...win.__textTool,switchOnly:typeof input!=='string'&&!selection});}
   if(!win.isDestroyed()&&request===textToolRequest){win.show();win.focus();}return {ok:true};
 }
 
@@ -4116,6 +4132,7 @@ function registerIpc() {
       }
     }
     const settings = await store.updateSettings(incoming);
+    if(incoming.selectionEnabled===false){panelSelection=null;broadcast('quick:selection',null);}
     // 保留期/上限变小后要立刻生效，不能等下一次复制才清理
     if (incoming.retentionDays !== undefined || incoming.maxItems !== undefined) {
       store.prune();

@@ -9,7 +9,7 @@
   <link rel="stylesheet" href="window-layers.css">
   <link rel="stylesheet" href="tool-art.css"><link rel="stylesheet" href="tool-surfaces.css">
   <link rel="stylesheet" href="liquid-glass.css">
-  <link rel="stylesheet" href="theme-settings.css">
+  <link rel="stylesheet" href="theme-settings.css"><link rel="stylesheet" href="panel-context.css">
   <link rel="stylesheet" href="workbench-surface.css">
   <link rel="stylesheet" href="document-editor.css"><link rel="stylesheet" href="trail.css">
 <link rel="stylesheet" href="ui-motion.css"><link rel="stylesheet" href="glass-select.css">
@@ -137,8 +137,15 @@
               <label class="setting-row"><span><b>强调色来源</b><small>预设底色保持不变，可独立跟随系统或壁纸</small></span><select id="setting-accent-source"><option value="preset">主题预设</option><option value="windows">Windows 强调色</option><option value="wallpaper">桌面壁纸</option></select></label>
               <p id="theme-status" class="theme-status" role="status">所有窗口即时生效，明暗模式保持当前选择。</p>
               <label class="setting-row"><span><b>紧凑面板</b><small>只显示已绑定的键，保留字母键操作</small></span><input id="setting-panel-compact" type="checkbox"></label>
+              <label class="setting-row"><span><b>面板最近内容</b><small>显示最近 60 秒复制或截图的内容与下一步动作</small></span><input id="setting-panel-recent" type="checkbox" checked></label>
               <div class="setting-row"><span><b>工作台窗口</b><small>窗口被拉得过大时，恢复默认大小并回到当前屏幕中央</small></span><button class="quiet-btn" id="reset-window-size" type="button">恢复默认大小</button></div>
               <div class="setting-row"><span><b>键位与快捷键</b><small>打开键位设置并检查当前冲突</small></span><button class="quiet-btn" id="setup-shortcuts" type="button"><span data-icon="keyboard" aria-hidden="true"></span><span>检查与配置快捷键</span></button></div>
+            </section>
+            <section class="setting-card" id="selection-settings"><div class="setting-title"><b>划词</b></div>
+              <label class="setting-row"><span><b>唤起面板时读取选中文字</b><small>默认关闭。英文选区可按 T 翻译，结果就绪后按 Enter 粘回选区</small></span><input id="setting-selection" type="checkbox"></label>
+              <p class="selection-settings-copy">开启后，随序先保存当前剪贴板的全部可读取格式，向前台应用发送一次 Ctrl+C，最多等待 250ms 读取选中文字，再还原剪贴板。临时复制不会进入随序的历史；只在你执行下一步动作后才保存内容。管理员窗口、不支持复制或超时的应用会安静跳过。</p>
+              <p class="selection-settings-copy">风险：Ctrl+C 可能触发应用自身命令，因此默认跳过终端和密码管理器。其他剪贴板工具、Windows 剪贴板历史或云同步仍可能看到临时复制；特别慢的应用也可能延迟更新剪贴板。请按需要调整名单，处理敏感内容时保持关闭。</p>
+              <label for="setting-selection-exclusions">不读取的应用（进程名，每行一个，可增加或删除）</label><textarea id="setting-selection-exclusions" class="selection-settings-list" spellcheck="false" maxlength="12000"></textarea><button id="save-selection-exclusions" class="quiet-btn" type="button">保存跳过名单</button><p id="selection-settings-status" role="status" class="selection-settings-copy"></p>
             </section>
             <section class="setting-card">
               <div class="setting-title"><b>翻译</b></div>

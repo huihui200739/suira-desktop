@@ -609,12 +609,16 @@ async function refreshSettings() {
   $('#setting-langs').value = settings.ocrLangs;
   $('#setting-theme').value = settings.theme || 'light';
   $('#setting-panel-compact').checked=settings.panelCompact===true;
+  $('#setting-panel-recent').checked=settings.panelRecent!==false;$('#setting-selection').checked=settings.selectionEnabled===true;$('#setting-selection-exclusions').value=(settings.selectionExcludedApps||[]).join('\n');
   $('#setting-global-shortcuts').checked=settings.globalShortcutsEnabled===true;
   applyTranslateSettings(settings);
   await refreshShortcuts();
 }
 
 function bindSettings() {
+  $('#setting-panel-recent').onchange=event=>window.suira.settings.update({panelRecent:event.target.checked});
+  $('#setting-selection').onchange=event=>window.suira.settings.update({selectionEnabled:event.target.checked});
+  $('#save-selection-exclusions').onclick=async()=>{try{const result=await window.suira.settings.update({selectionExcludedApps:$('#setting-selection-exclusions').value.split(/[\n,;，；]+/)});if(!result?.ok)throw Error(result?.error||'保存失败');$('#setting-selection-exclusions').value=result.settings.selectionExcludedApps.join('\n');$('#selection-settings-status').textContent='名单已保存';}catch(error){$('#selection-settings-status').textContent=error.message;}};
   $('#reset-window-size')?.addEventListener('click',async()=>{try{const result=await window.suira.window.reset();if(!result.ok)throw Error('无法调整当前窗口');}catch(error){showGlobalToast(error.message,'error');}});
   $('#setting-panel-compact').addEventListener('change', event => window.suira.settings.update({panelCompact:event.target.checked}));
   $('#setting-record').addEventListener('change', (event) => window.suira.settings.update({ recordClipboard: event.target.checked }));

@@ -2,7 +2,7 @@
 (() => {
   const $ = id => document.getElementById(id), api = window.suira;
   let mode='convert',revision=0,modeRevision=0,busy=false,currentResult=false,providerReady=false;
-  let autoTimer,composing=false,preferredTarget='zh',targetChosen=false;
+  let autoTimer,composing=false,preferredTarget='zh',targetChosen=false,selectionPaste=false;
   const history=[];
   const message=(text,error=false)=>{$('tool-status').textContent=text;$('tool-status').dataset.error=String(error);if(!error&&/复制/.test(text))window.SuiraUI?.copyFeedback($('tool-status'));};
   function invalidate(){clearTimeout(autoTimer);++revision;busy=false;currentResult=false;}
@@ -18,7 +18,7 @@
     try{
       const result=mode==='translate'?await api.translate.run({text,source:$('source-language').value,target:$('target-language').value}):await api.textTools.transform(text,$('operation').value);
       if(token!==revision)return;if(!result?.ok)throw Error(result?.error||'处理失败');
-      $('tool-result').value=result.text||'';currentResult=true;window.SuiraUI?.result($('tool-result').closest('section'));message(mode==='translate'?'翻译完成':'已整理，原文保持不变');
+      $('tool-result').value=result.text||'';currentResult=true;window.SuiraUI?.result($('tool-result').closest('section'));message(selectionPaste?'结果已就绪 · Enter 替换原选区，Shift+Enter 换行':mode==='translate'?'翻译完成':'已整理，原文保持不变');
     }catch(error){if(token===revision)message(error.message,true);}finally{if(token===revision){busy=false;counts();}}
   }
   function schedule(){clearTimeout(autoTimer);if(mode==='translate'&&providerReady&&!composing&&$('tool-source').value.trim())autoTimer=setTimeout(run,500);}
@@ -41,6 +41,7 @@
     counts();if(process&&generation===modeRevision){if(token===revision)await run();else schedule();}
   }
   async function load(payload){
+    selectionPaste=payload.selectionPaste===true;
     if(payload.switchOnly){await setMode(payload.mode);return;}
     invalidate();history.length=0;targetChosen=false;$('tool-source').value=payload.text||'';$('operation').value=payload.operation||'compact';const job=setMode(payload.mode);$('tool-source').focus();await job;
   }
@@ -68,6 +69,6 @@
   $('tool-back').onclick=async()=>{const previous=history.pop();if(!previous)return;$('tool-source').value=previous.source;$('operation').value=previous.operation;const job=setMode(previous.mode,false),token=revision;await job;if(token!==revision)return;$('source-language').value=previous.sourceLang;$('target-language').value=previous.targetLang;$('tool-result').value=previous.result;currentResult=true;counts();message('已回到上一步');};
   async function copy(paste=false){const text=$('tool-result').value;if(!currentResult||!text.trim())return;try{const saved=await api.content.addText({text,title:mode==='translate'?'译文':'转换后的文字',source:mode==='translate'?'translate':'derived'});if(!saved?.ok)throw Error(saved?.error||'保存结果失败');const result=paste?await api.returnTo.commit({itemId:saved.item.id,intent:'return-and-paste'}):await api.actions.run(saved.item.id,'output.copy');if(!result?.ok)throw Error(result?.error||'复制失败');message(result.message||(paste?'已粘回原处':'结果已复制'));}catch(error){message(error.message,true);}}
   $('tool-copy').onclick=()=>copy();$('tool-paste').onclick=()=>copy(true);$('tool-configure').onclick=()=>api.textTools.configure();$('tool-min').onclick=()=>api.window.minimize();$('tool-max').onclick=()=>api.window.maximize();$('tool-close').onclick=()=>{clearTimeout(autoTimer);api.window.close();};
-  document.addEventListener('keydown',event=>{if(event.isComposing)return;if((event.ctrlKey||event.metaKey)&&event.key==='Enter'){event.preventDefault();run();}else if(event.key==='Escape')api.window.close();});window.addEventListener('pagehide',()=>clearTimeout(autoTimer));
+  document.addEventListener('keydown',event=>{if(event.isComposing)return;if((event.ctrlKey||event.metaKey)&&event.key==='Enter'){event.preventDefault();run();}else if(selectionPaste&&!event.target.closest('button,select,[role=combobox]')&&event.key==='Enter'&&!event.shiftKey&&!event.altKey&&currentResult&&!busy){event.preventDefault();copy(true);}else if(event.key==='Escape')api.window.close();});window.addEventListener('pagehide',()=>clearTimeout(autoTimer));
   api.textTools.onInput(payload=>load(payload).catch(error=>message(error.message,true)));api.textTools.initial().then(load).catch(error=>message(error.message,true));
 })();

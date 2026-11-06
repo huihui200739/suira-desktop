@@ -10,6 +10,7 @@
   <link rel="stylesheet" href="keycap-material.css">
   <link rel="stylesheet" href="liquid-glass.css">
 <link rel="stylesheet" href="ui-motion.css"><link rel="stylesheet" href="glass-select.css">
+<link rel="stylesheet" href="action-strip.css"><link rel="stylesheet" href="panel-context.css">
 </head>
 <body>
   <main class="panel" id="panel" data-mode="actions" data-presentation="window" aria-label="随序动作面板">
@@ -47,6 +48,7 @@
     </div>
 
     <section class="panel-body" id="panel-body">
+      <section id="recent-context" class="recent-context" aria-label="手上的内容" hidden><header><b id="recent-context-label">最近内容</b><span id="recent-context-time"></span></header><div class="recent-context-preview"><img id="recent-context-image" alt="最近截图" hidden><p id="recent-context-text"></p></div><div id="recent-context-actions"></div></section>
       <!-- 动作面板：38 键固定布局 -->
       <div class="keyboard" id="key-grid" aria-label="38 键动作面板"></div>
 
@@ -177,7 +179,7 @@
   <script src="ui-motion.js"></script>
   <script src="tool-art.js"></script>
   <script src="keycap-motion.js"></script>
-  <script src="quickpanel.js"></script>
+  <script src="action-strip.js"></script><script src="panel-context.js"></script><script src="quickpanel.js"></script>
   <script src="liquid-glass.js"></script>
 <script src="icons.js"></script><script src="glass-select.js"></script></body>
 </html>

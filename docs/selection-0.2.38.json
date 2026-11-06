@@ -1,0 +1,16 @@
+{
+  "version": "0.2.38",
+  "isolatedFixture": true,
+  "fullClipboardRestored": true,
+  "temporaryCopyAbsentFromHistory": true,
+  "panelSelectionCard": true,
+  "TSeedsTranslation": true,
+  "enterReturnsToOriginalTarget": true,
+  "recentToggle": true,
+  "selectionDisabledByDefault": true,
+  "windowCardFits": true,
+  "fullscreenCardFits": true,
+  "disableClearsSelection": true,
+  "recentExpiresAt60Seconds": true,
+  "terminalSkipped": true
+}

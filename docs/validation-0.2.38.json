@@ -1,0 +1,38 @@
+{
+  "version": "0.2.38",
+  "date": "2026-11-06",
+  "checks": [
+    "npm test",
+    "tests/test-selection.js: exclusions, timeout, full-format restore and history isolation",
+    "npm run test:inject (19 cases)",
+    "npm run test:foreground (23 cases)",
+    "npm run test:security (83 cases)",
+    "npm run test:panel",
+    "npm run verify:selection -- --shots",
+    "npm run screenshots",
+    "installer source payload byte match (143 files)",
+    "installer CRC, original font and license SHA256",
+    "updater feed SHA512",
+    "public latest and four remote asset digests",
+    "anonymous old-version update discovery and download SHA512",
+    "current version reports latest"
+  ],
+  "manual": {
+    "Notepad": "passed native copy, T seeded translation and Enter replacement",
+    "Word": "passed native copy, T seeded translation and Enter replacement",
+    "Edge": "not completed: Computer Use URL policy determination stopped desktop input",
+    "VSCode": "not completed after desktop input was stopped",
+    "terminals": "negative path verified by unit and Electron IPC fixtures; no terminal UI automation"
+  },
+  "desktopInstaller": "C:/Users/huihui/Desktop/Suira-0.2.38-Setup.exe",
+  "publicCommit": "4ab8b053682d8c3c12d85e313115f1e136bc6cf3",
+  "desktopInstallerSha256": "01437E3204833100BE6DB6BD0E599F9DBD40E18FE8EDE78D5436A71707860995",
+  "releaseUrl": "https://github.com/huihui200739/suira-updates/releases/tag/v0.2.38",
+  "cleanup": {
+    "command": "npm run clean -- -IncludeObsoletePackages",
+    "removedTargets": 17,
+    "removedMB": 958.8,
+    "skipped": 0,
+    "failed": 0
+  }
+}
