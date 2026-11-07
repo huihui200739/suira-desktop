@@ -1,0 +1,34 @@
+{
+  "version": "0.2.44",
+  "checkedAt": "2026-11-07T17:41:16.330Z",
+  "releaseUrl": "https://github.com/huihui200739/suira-updates/releases/tag/v0.2.44",
+  "anonymous": true,
+  "latestRelease": true,
+  "prerelease": false,
+  "assets": [
+    {
+      "name": "latest.yml",
+      "size": 338,
+      "digest": "sha256:ee55be9fcc32c53459c76afa3351c64f8751dc3338b2aeda1726d2d8e5c61e4c",
+      "url": "https://github.com/huihui200739/suira-updates/releases/download/v0.2.44/latest.yml"
+    },
+    {
+      "name": "SHA256SUMS.txt",
+      "size": 260,
+      "digest": "sha256:7fe87a04502bb31634d511a9d4f53a3ffeef42d3e43eee43e120302c51fedcf7",
+      "url": "https://github.com/huihui200739/suira-updates/releases/download/v0.2.44/SHA256SUMS.txt"
+    },
+    {
+      "name": "Suira-0.2.44-x64.exe",
+      "size": 171615286,
+      "digest": "sha256:e3800a05fc02750ed740e3c059bf6a81c612023d1a4d35bca8f82b7bd99b167d",
+      "url": "https://github.com/huihui200739/suira-updates/releases/download/v0.2.44/Suira-0.2.44-x64.exe"
+    },
+    {
+      "name": "Suira-0.2.44-x64.exe.blockmap",
+      "size": 181106,
+      "digest": "sha256:6ea915cb63c7644fa71c17318afa5124e9dab750e309413b53b8dc86612801a2",
+      "url": "https://github.com/huihui200739/suira-updates/releases/download/v0.2.44/Suira-0.2.44-x64.exe.blockmap"
+    }
+  ]
+}

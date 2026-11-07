@@ -13,11 +13,15 @@
     "no-test-profile-or-obsolete-key-hook",
     "installer-archive-crc",
     "updater-feed-and-sha512-match",
-    "original-font-and-license-sha256-in-nsis-payload"
+    "original-font-and-license-sha256-in-nsis-payload",
+    "anonymous-latest-and-four-remote-asset-digests",
+    "anonymous-0.2.43-to-0.2.44-download-sha512",
+    "same-version-reports-latest"
   ],
   "fontSha256": "0ddef90648998900175cfdca9a6f087a2544c182f130b0ad4f7e94a03a115e79",
   "signature": "unsigned",
-  "published": false,
+  "published": true,
+  "releaseUrl": "https://github.com/huihui200739/suira-updates/releases/tag/v0.2.44",
   "payloadSha256": "32ACC8D0ED53C45A4B79642C2A86F3CA12DF2F9B519F093C288D345BA94BCD14",
   "executableSha256": "0A9ACD5B03E375EFB4538EFEDFBC89512F8968DB3A6E074790CF3ED05EA19E5F"
 }
