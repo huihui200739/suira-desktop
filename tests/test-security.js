@@ -383,8 +383,9 @@ const waitSave = () => new Promise((r) => setTimeout(r, 120));
   });
 
   t('磁盘上保留元数据明文（便于列表）', () => {
-    const raw = fs.readFileSync(storePath, 'utf8');
-    assert.ok(raw.includes('"kind": "text"'), 'kind 应保持明文');
+    // 检查解析后的值，不要依赖 JSON 是否带缩进（落盘格式可压缩）
+    const parsed = JSON.parse(fs.readFileSync(storePath, 'utf8'));
+    assert.strictEqual(parsed.items[0].kind, 'text', 'kind 应保持明文');
   });
 
   t('磁盘上存在加密信封', () => {

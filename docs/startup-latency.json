@@ -1,61 +1,61 @@
 {
-  "version": "0.2.2",
+  "version": "0.2.43",
   "note": "Single cold-profile run, milliseconds since loading main module; native helpers compiled asynchronously.",
   "events": [
     {
       "name": "created",
       "url": "",
-      "ms": 1272
+      "ms": 593
     },
     {
       "name": "created",
       "url": "",
-      "ms": 1323
+      "ms": 665
     },
     {
       "name": "loaded",
       "url": "file:///C:/Users/huihui/Desktop/%E6%88%AA%E5%9B%BE%E5%B7%A5%E5%85%B7/src/island.html",
-      "ms": 1452
-    },
-    {
-      "name": "loaded",
-      "url": "file:///C:/Users/huihui/Desktop/%E6%88%AA%E5%9B%BE%E5%B7%A5%E5%85%B7/src/index.html",
-      "ms": 1605
+      "ms": 851
     },
     {
       "name": "show",
       "url": "file:///C:/Users/huihui/Desktop/%E6%88%AA%E5%9B%BE%E5%B7%A5%E5%85%B7/src/index.html",
-      "ms": 1610
+      "ms": 1657
+    },
+    {
+      "name": "loaded",
+      "url": "file:///C:/Users/huihui/Desktop/%E6%88%AA%E5%9B%BE%E5%B7%A5%E5%85%B7/src/index.html",
+      "ms": 1658
     },
     {
       "name": "created",
       "url": "",
-      "ms": 2559
+      "ms": 2257
+    },
+    {
+      "name": "created",
+      "url": "",
+      "ms": 2447
     },
     {
       "name": "loaded",
       "url": "file:///C:/Users/huihui/Desktop/%E6%88%AA%E5%9B%BE%E5%B7%A5%E5%85%B7/src/quickpanel.html",
-      "ms": 2751
-    },
-    {
-      "name": "created",
-      "url": "",
-      "ms": 3123
-    },
-    {
-      "name": "created",
-      "url": "",
-      "ms": 3723
+      "ms": 2457
     },
     {
       "name": "loaded",
       "url": "file:///C:/Users/huihui/Desktop/%E6%88%AA%E5%9B%BE%E5%B7%A5%E5%85%B7/src/clipboardbar.html",
-      "ms": 4311
+      "ms": 2715
+    },
+    {
+      "name": "created",
+      "url": "",
+      "ms": 3047
     },
     {
       "name": "loaded",
       "url": "file:///C:/Users/huihui/Desktop/%E6%88%AA%E5%9B%BE%E5%B7%A5%E5%85%B7/src/overlay.html",
-      "ms": 4321
+      "ms": 3209
     }
   ]
 }

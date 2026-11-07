@@ -1037,5 +1037,25 @@ t('纯逻辑回归：大整数、JSON 格式化、URL 编码、存储索引与�
   if (!dates.includes("/^\\d+$/.test(now)")) throw new Error('日期解析要接受数字字符串时间戳');
 });
 
+t('性能回归：标注历史层、主题缓存、临时画布与大文本热路径', () => {
+  const overlay = read('src/overlay.js'), actions = read('lib/actions.js');
+  const store = read('lib/store.js'), main = read('main.js');
+  const panel = read('src/quickpanel.js'), workspace = read('src/workspace.js');
+  const icons = read('lib/app-icons.js'), disk = read('lib/icon-disk-cache.js');
+  if (!overlay.includes('function drawHistoryLayer()') || !overlay.includes('releaseHistoryLayer()')) {
+    throw new Error('已提交标注必须缓存到离屏层并在拖拽结束释放');
+  }
+  if (!overlay.includes('function magnifierTheme()')) throw new Error('放大镜主题色不能每帧 getComputedStyle');
+  if (!overlay.includes('function closeOriginalViewer()') || !overlay.includes("removeAttribute('src')")) throw new Error('查看原图关闭后要释放 PNG 位图');
+  if (!overlay.includes('function resizeCanvases(force = false)')) throw new Error('尺寸未变时不应整屏重绘');
+  if (!overlay.includes('mosaicPaletteColors')) throw new Error('马赛克颜色不能逐格重新拼字符串');
+  if (!actions.includes("return parts.join('');")) throw new Error('mergeLines 不能用 O(n²) 字符串累加');
+  if (store.includes('}, null, 2)')) throw new Error('store 整库序列化不应带缩进');
+  if (!main.includes('imageBlobFingerprint')) throw new Error('剪贴板轮询要先比对轻量指纹');
+  if (!panel.includes("image.getAttribute('src')!==currentContext.thumbnail")) throw new Error('最近内容缩略图不能每秒重新解码');
+  if (!workspace.includes("if(agendaMode!=='countdown')$('agenda-list').innerHTML")) throw new Error('倒数日模式不应先建再丢弃待办 DOM');
+  if (!icons.includes('CACHE_LIMIT=512') || !disk.includes('entries=Object.fromEntries(rows)')) throw new Error('图标缓存要有上界并同步裁剪内存');
+});
+
 console.log('\n========== ' + pass + ' 通过 / ' + fail + ' 失败 ==========');
 process.exit(fail ? 1 : 0);

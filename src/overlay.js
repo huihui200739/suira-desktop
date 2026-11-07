@@ -321,12 +321,13 @@ function setColor(color) {
   renderAnnotations();
 }
 
-function resizeCanvases() {
+function resizeCanvases(force = false) {
   const width = metrics.width;
   const height = metrics.height;
   const dpr = metrics.dpr || 1;
   const pixelW = Math.max(1, Math.round(width * dpr));
   const pixelH = Math.max(1, Math.round(height * dpr));
+  let resized = false;
   for (const canvas of [screenCanvas, annotationCanvas]) {
     // 尺寸没变就不动后备缓冲：避免无谓的清屏 + 重新分配
     if (canvas.width === pixelW && canvas.height === pixelH) continue;
@@ -334,9 +335,15 @@ function resizeCanvases() {
     canvas.height = pixelH;
     canvas.style.width = `${width}px`;
     canvas.style.height = `${height}px`;
+    resized = true;
   }
-  screenCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  annotationCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  // 后备缓冲没重建时 transform 也保持不变；尺寸与画面都没变就不做整屏重绘，
+  // 4K 下每次 drawImage 高质量缩放都是几十毫秒级的浪费。
+  if (resized) {
+    screenCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    annotationCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+  if (!resized && !force) return;
   if (state.image) drawScreen();
   renderAnnotations();
 }
@@ -363,6 +370,18 @@ function setMagnifierVisible(visible) {
   if (!visible) colorPoint = null;
 }
 
+/* 放大镜每帧都要用 3 个主题色。getComputedStyle 会强制刷新挂起的样式计算，
+   放在指针热路径上很贵；主题只在每次唤起覆盖层时可能变化，缓存一次即可。 */
+let magnifierPaints = null;
+function magnifierTheme() {
+  if (!magnifierPaints) magnifierPaints = {
+    surface: themePaint('magnifier-surface'),
+    crosshair: themePaint('magnifier-crosshair'),
+    outline: themePaint('magnifier-center-outline')
+  };
+  return magnifierPaints;
+}
+
 /* 贴边避让用真实盒子尺寸：信息框行数、主题字号变化后也不会溢出屏幕。
    隐藏时读不到尺寸，所以只在显示之后量一次，resize / 重置时让缓存失效。 */
 function measureMagnifier() {
@@ -386,7 +405,8 @@ function drawMagnifier(p) {
     lastMagnifierPx.y = srcY;
     magnifierCtx.imageSmoothingEnabled = false;
     magnifierCtx.clearRect(0, 0, magnifierCanvas.width, magnifierCanvas.height);
-    magnifierCtx.fillStyle = themePaint('magnifier-surface');
+    const paints = magnifierTheme();
+    magnifierCtx.fillStyle = paints.surface;
     magnifierCtx.fillRect(0, 0, magnifierCanvas.width, magnifierCanvas.height);
     // 只绘制图像内的取样窗，并让中心像素始终落在画布中心。
     // 直接给 drawImage 传越界的源矩形，浏览器会按比例裁剪目标矩形，
@@ -404,7 +424,7 @@ function drawMagnifier(p) {
       );
     }
     // 微信式绿色十字线贯穿画面，中心小框标出正在取的那一像素；深色描边保证浅色画面上也看得见。
-    const crosshair = themePaint('magnifier-crosshair');
+    const crosshair = paints.crosshair;
     const center = magnifierCanvas.width / 2, pixel = magnifierCanvas.width / sampleSize;
     magnifierCtx.strokeStyle = crosshair;
     magnifierCtx.lineWidth = 1;
@@ -412,7 +432,7 @@ function drawMagnifier(p) {
     magnifierCtx.moveTo(center + .5, 0); magnifierCtx.lineTo(center + .5, magnifierCanvas.height);
     magnifierCtx.moveTo(0, center + .5); magnifierCtx.lineTo(magnifierCanvas.width, center + .5);
     magnifierCtx.stroke();
-    magnifierCtx.strokeStyle = themePaint('magnifier-center-outline');
+    magnifierCtx.strokeStyle = paints.outline;
     magnifierCtx.strokeRect(center - pixel / 2 - 1, center - pixel / 2 - 1, pixel + 2, pixel + 2);
     magnifierCtx.strokeStyle = crosshair;
     magnifierCtx.strokeRect(center - pixel / 2, center - pixel / 2, pixel, pixel);
@@ -437,18 +457,65 @@ function drawMagnifier(p) {
   if (lastMagnifierPos.top !== top) { magnifier.style.top = `${top}px`; lastMagnifierPos.top = top; }
 }
 
+/* 拖拽时每帧重画全部历史标注（画笔所有点、马赛克几万格）是最重的热路径。
+   已提交的标注缓存进一张离屏画布，拖拽帧只 blit 一次 + 画进行中的那一个对象。
+   离屏画布按需分配，拖拽结束立刻归零，不增加常驻内存。 */
+const historyCanvas = document.createElement('canvas');
+const historyCtx = historyCanvas.getContext('2d');
+let historyItems = [];
+let historyKey = '';
+
+function releaseHistoryLayer() {
+  if (historyCanvas.width || historyCanvas.height) historyCanvas.width = historyCanvas.height = 0;
+  historyItems = [];
+  historyKey = '';
+}
+
+function drawHistoryLayer() {
+  const dpr = metrics.dpr || 1;
+  const pixelW = Math.max(1, Math.round(metrics.width * dpr));
+  const pixelH = Math.max(1, Math.round(metrics.height * dpr));
+  const key = `${pixelW}x${pixelH}:${imageSerial}`;
+  const resized = historyCanvas.width !== pixelW || historyCanvas.height !== pixelH;
+  if (resized) { historyCanvas.width = pixelW; historyCanvas.height = pixelH; }
+  // 只比较对象引用：状态变化（增/删/撤销/换画面）都能被发现，成本远低于重绘
+  let same = !resized && key === historyKey && historyItems.length === state.annotations.length;
+  if (same) for (let i = 0; i < historyItems.length; i += 1) {
+    if (historyItems[i] !== state.annotations[i]) { same = false; break; }
+  }
+  if (!same) {
+    historyCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    historyCtx.clearRect(0, 0, metrics.width, metrics.height);
+    historyCtx.lineCap = 'round';
+    historyCtx.lineJoin = 'round';
+    for (const item of state.annotations) drawAnnotation(item, historyCtx);
+    historyItems = state.annotations.slice();
+    historyKey = key;
+  }
+  annotationCtx.clearRect(0, 0, metrics.width, metrics.height);
+  annotationCtx.lineCap = 'round';
+  annotationCtx.lineJoin = 'round';
+  annotationCtx.drawImage(historyCanvas, 0, 0, metrics.width, metrics.height);
+}
+
 function renderAnnotations() {
   const width = metrics.width;
   const height = metrics.height;
-  annotationCtx.clearRect(0, 0, width, height);
-  annotationCtx.lineCap = 'round';
-  annotationCtx.lineJoin = 'round';
-  for (const item of state.annotations) drawAnnotation(item);
-  if (state.drawing) drawAnnotation(state.drawing);
+  const annotating = state.drawing && ANNOTATION_TYPES.includes(state.drawing.type);
+  if (!annotating) {
+    releaseHistoryLayer();
+    annotationCtx.clearRect(0, 0, width, height);
+    annotationCtx.lineCap = 'round';
+    annotationCtx.lineJoin = 'round';
+    for (const item of state.annotations) drawAnnotation(item);
+    if (state.drawing) drawAnnotation(state.drawing);
+    return;
+  }
+  drawHistoryLayer();
+  drawAnnotation(state.drawing);
 }
 
-function drawAnnotation(item) {
-  const ctx = annotationCtx;
+function drawAnnotation(item, ctx = annotationCtx) {
   ctx.save();
   ctx.lineCap = 'round';
   ctx.lineJoin = 'round';
@@ -466,7 +533,7 @@ function drawAnnotation(item) {
   } else if (item.type === 'arrow') {
     if (item.from && item.to) drawArrow(ctx, item.from, item.to, item.width, item.unit || 1);
   } else if (item.type === 'mosaic') {
-    drawMosaic(item);
+    drawMosaic(item, ctx);
   } else if (item.type === 'steps') {
     const radius = 14 * (item.unit || 1);
     ctx.beginPath();
@@ -514,6 +581,7 @@ const mosaicPalette = document.createElement('canvas');
 const mosaicPaletteCtx = mosaicPalette.getContext('2d');
 let mosaicPaletteKey = '';
 let mosaicPaletteData = null;
+let mosaicPaletteColors = null;
 
 function ensureMosaicPalette() {
   if (!state.image) return false;
@@ -527,6 +595,7 @@ function ensureMosaicPalette() {
   mosaicPaletteCtx.clearRect(0, 0, cols, rows);
   mosaicPaletteCtx.drawImage(state.image, 0, 0, cols, rows);
   mosaicPaletteData = mosaicPaletteCtx.getImageData(0, 0, cols, rows).data;
+  mosaicPaletteColors = null; // 颜色字符串按首次需要时懒生成一次
   mosaicPaletteKey = key;
   return true;
 }
@@ -536,9 +605,17 @@ function mosaicColorAt(cssX, cssY) {
   const rows = mosaicPalette.height;
   const px = clamp(Math.floor(cssX / MOSAIC_CELL), 0, cols - 1);
   const py = clamp(Math.floor(cssY / MOSAIC_CELL), 0, rows - 1);
-  const index = (py * cols + px) * 4;
-  const data = mosaicPaletteData;
-  return `rgb(${data[index]},${data[index + 1]},${data[index + 2]})`;
+  const cell = py * cols + px;
+  if (!mosaicPaletteColors) {
+    // 全屏马赛克一帧要铺几万格：颜色字符串与 CSS 颜色解析不能每格重做一遍。
+    const data = mosaicPaletteData;
+    mosaicPaletteColors = new Array(cols * rows);
+    for (let index = 0; index < cols * rows; index += 1) {
+      const at = index * 4;
+      mosaicPaletteColors[index] = `rgb(${data[at]},${data[at + 1]},${data[at + 2]})`;
+    }
+  }
+  return mosaicPaletteColors[cell];
 }
 
 function drawMosaicCells(target, item) {
@@ -556,8 +633,8 @@ function drawMosaicCells(target, item) {
   }
 }
 
-function drawMosaic(item) {
-  drawMosaicCells(annotationCtx, item);
+function drawMosaic(item, target = annotationCtx) {
+  drawMosaicCells(target, item);
 }
 
 function addAnnotation(item) {
@@ -675,16 +752,31 @@ function drawMosaicToContext(ctx, item) {
   drawMosaicCells(ctx, item);
 }
 
+/** 关闭「查看原图」时同时丢掉整张 PNG data URI 与解码位图（近全屏约 33MB）。 */
+function closeOriginalViewer() {
+  $('#original-viewer').hidden = true;
+  $('#original-image').removeAttribute('src');
+}
+
+/** 临时合成画布一旦编码成 dataUrl 就立刻归还后备存储，不要跨 IPC 常驻。 */
+function dataUrlOfSelection(options) {
+  const output = compositeSelection(options);
+  if (!output) return null;
+  const dataUrl = output.toDataURL('image/png');
+  output.width = output.height = 0;
+  return dataUrl;
+}
+
 async function finish(action = 'copy') {
-  const output = compositeSelection();
-  if (!output) {
+  let dataUrl = dataUrlOfSelection();
+  if (!dataUrl) {
     showAction('请先拖拽选择一个区域', 'error');
     return;
   }
-  const dataUrl = output.toDataURL('image/png');
   const seq = showSeq;
   try {
     const result = await captureApi.finish({ dataUrl, action });
+    dataUrl = null;
     // 等待期间窗口可能已被收起并释放：迟到的结果不能再往旧 DOM 上弹提示
     if (seq !== showSeq) return;
     if (result?.canceled) showAction('已取消保存，可继续编辑或按 Esc 退出');
@@ -747,8 +839,8 @@ function layoutOcrResult() {
   ocrResult.classList.toggle('is-stacked', width < 600);
 }
 async function startOcr() {
-  const output = compositeSelection();
-  if (!output) { showAction('请先拖拽选择一个区域', 'error'); return null; }
+  const dataUrl = dataUrlOfSelection();
+  if (!dataUrl) { showAction('请先拖拽选择一个区域', 'error'); return null; }
   ocrText.value = '';ocrResult.dataset.qrUrl='';
   resetTranslation();
   const token = ocrRevision;
@@ -759,7 +851,7 @@ async function startOcr() {
   ocrText.placeholder = '正在准备本地识别…';
   $('#ocr-status').textContent = '正在识别…';
   try {
-    const result = await captureApi.finish({ dataUrl: output.toDataURL('image/png'), action: 'ocr' });
+    const result = await captureApi.finish({ dataUrl, action: 'ocr' });
     if (token !== ocrRevision) return null;
     if (!result?.ok) throw new Error(result?.error || '识别失败');
     state.ocrItemId = result.item?.id || result.output?.id || '';
@@ -956,10 +1048,8 @@ function updateAnnotation(p) {
 }
 
 function renderAnnotationsWithPreview(preview) {
-  const width = metrics.width;
-  const height = metrics.height;
-  annotationCtx.clearRect(0, 0, width, height);
-  for (const item of state.annotations) drawAnnotation(item);
+  // 预览只用于标注拖拽：复用历史层，不再把已提交标注整批重画一遍
+  drawHistoryLayer();
   drawAnnotation(preview);
 }
 
@@ -1195,15 +1285,14 @@ function setupEvents() {
   $('#ocr-result-original').addEventListener('click', () => {
     // 「查看原图」看的是框选区域未加标注的原始画面。
     // 之前这里没有按钮、也没有渲染目标，点了只会报错。
-    const output = compositeSelection({ withoutAnnotations: true });
-    if (!output) { showAction('请先拖拽选择一个区域', 'error'); return; }
-    const viewer = $('#original-viewer');
-    $('#original-image').src = output.toDataURL('image/png');
-    viewer.hidden = false;
+    const dataUrl = dataUrlOfSelection({ withoutAnnotations: true });
+    if (!dataUrl) { showAction('请先拖拽选择一个区域', 'error'); return; }
+    $('#original-image').src = dataUrl;
+    $('#original-viewer').hidden = false;
   });
-  $('#original-close').addEventListener('click', () => { $('#original-viewer').hidden = true; });
+  $('#original-close').addEventListener('click', closeOriginalViewer);
   $('#original-viewer').addEventListener('click', (event) => {
-    if (event.target === $('#original-viewer')) $('#original-viewer').hidden = true;
+    if (event.target === $('#original-viewer')) closeOriginalViewer();
   });
   ocrText.addEventListener('input', resetTranslation);
   translationText.addEventListener('input', () => { ++ocrRevision; ocrBusy = false; translationCurrent = true; updateOcrButtons(); });
@@ -1445,6 +1534,8 @@ function resetOverlay() {
   colorPoint=null;ocrResult.dataset.qrUrl='';
   lastMagnifierPx.y = NaN;
   magnifierBox = null;
+  magnifierPaints = null;
+  releaseHistoryLayer();
   lastMagnifierPos.left = NaN;
   lastMagnifierPos.top = NaN;
   lastDock.left = NaN;
@@ -1455,7 +1546,7 @@ function resetOverlay() {
   setHidden(toolDock, true);
   setHidden(magnifier, true);
   setHidden(ocrResult, true);
-  setHidden(originalViewer, true);
+  closeOriginalViewer();
   setHidden(textEditor, true);
   setHidden(colorPopover, true);
   setHidden(loadingState, false);
@@ -1493,6 +1584,7 @@ function resetOverlay() {
  */
 function releaseOverlay() {
   closeOcrResult();
+  releaseHistoryLayer();
   releaseImage();
   dropPendingPointer();
   clearTimeout(state.toastTimer);
@@ -1577,7 +1669,7 @@ async function loadCapture(seq) {
     state.scaleX=image.width/metrics.width;state.scaleY=image.height/metrics.height;
     state.selection={x:0,y:0,w:metrics.width,h:metrics.height};state.selectionReady=true;
   }
-  resizeCanvases();
+  resizeCanvases(true); // 新画面已就位，即使视口尺寸没变也要重绘一次
   if(editorMode){setTool('pen');renderSelection();}
   setHidden(loadingState, true);
   applyIntent(payload.intent);

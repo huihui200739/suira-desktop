@@ -15,7 +15,26 @@ async function until(fn){let last;for(let i=0;i<180;i++){try{const value=await f
 
  const main=await page('/index.html');
  const move=async(client,x,y)=>client.send('Input.dispatchMouseEvent',{type:'mouseMoved',x,y});
- const click=async(client,selector)=>{const box=await client.evaluate('(()=>{const e=document.querySelector('+JSON.stringify(selector)+');if(!e)throw Error("Missing "+'+JSON.stringify(selector)+');e.scrollIntoView({block:"nearest"});const r=e.getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2};})()');await move(client,box.x,box.y);await wait(150);assert.ok(await client.evaluate('(()=>{const e=document.querySelector('+JSON.stringify(selector)+');return e.contains(document.elementFromPoint('+box.x+','+box.y+'));})()'),'Hit target '+selector);await client.send('Input.dispatchMouseEvent',{type:'mousePressed',button:'left',clickCount:1,...box});await client.send('Input.dispatchMouseEvent',{type:'mouseReleased',button:'left',clickCount:1,...box});};
+ // CDP 合成的 mouseMoved 偶尔会被合并/丢失；重新派发到状态生效，别误判成功能回归。
+ const moveAndWait=async(client,x,y,expr,label)=>{
+  for(let attempt=0;attempt<6;attempt++){
+   await move(client,x,y);await wait(70);
+   try{if(await client.evaluate(expr))return;}catch{}
+  }
+  throw Error('Pointer move did not take effect: '+label);
+ };
+ // 数据广播会重建列表 DOM：坐标取到与实际命中之间可能刚好被刷新。
+ // 重新量一次再试，别把正常的界面刷新误判成功能回归。
+ const click=async(client,selector)=>{
+  for(let attempt=0;attempt<4;attempt++){
+   const box=await client.evaluate('(()=>{const e=document.querySelector('+JSON.stringify(selector)+');if(!e)throw Error("Missing "+'+JSON.stringify(selector)+');e.scrollIntoView({block:"nearest"});const r=e.getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2};})()');
+   await move(client,box.x,box.y);await wait(150);
+   const hit=await client.evaluate('(()=>{const e=document.querySelector('+JSON.stringify(selector)+');return Boolean(e&&e.contains(document.elementFromPoint('+box.x+','+box.y+')));})()');
+   if(hit){await client.send('Input.dispatchMouseEvent',{type:'mousePressed',button:'left',clickCount:1,...box});await client.send('Input.dispatchMouseEvent',{type:'mouseReleased',button:'left',clickCount:1,...box});return;}
+   await wait(150);
+  }
+  assert.fail('Hit target '+selector);
+ };
  const text='  First line\n\nSecond line  ',a=await main.evaluate('window.suira.content.addText('+JSON.stringify({text,title:'按钮验收 A',source:'clipboard'})+')'),b=await main.evaluate('window.suira.content.addText({text:"Second task item",title:"按钮验收 B",source:"clipboard"})'),task=await main.evaluate('window.suira.tasks.create("任务按钮验收")');
  for(const item of [a.item,b.item])assert.equal((await main.evaluate('window.suira.tasks.addItem('+JSON.stringify({taskId:task.task.id,itemId:item.id})+')')).ok,true);
  await main.evaluate('window.suira.quick.showMain("shelf")');await until(()=>main.evaluate('document.querySelectorAll("#task-items [data-copy]").length===2'));
@@ -36,20 +55,27 @@ async function until(fn){let last;for(let i=0;i<180;i++){try{const value=await f
  await click(panel,'#recent-context-trigger');await click(panel,'#mode-actions');assert.equal(await panel.evaluate('document.getElementById("recent-context").matches(":popover-open")'),false,'Outside click dismisses');await main.evaluate('window.suira.settings.update({panelRecent:false})');await until(()=>panel.evaluate('document.getElementById("recent-context-trigger").hidden'));await wait(100);assert.deepEqual(await keyBox(),before,'No recent entry has same keyboard geometry');
  const {PNG}=require('pngjs'),image=new PNG({width:800,height:600});for(let y=0;y<600;y++)for(let x=0;x<800;x++){const i=(y*800+x)*4;image.data[i]=x%256;image.data[i+1]=y%256;image.data[i+2]=0x56;image.data[i+3]=255;}
  const dataUrl='data:image/png;base64,'+PNG.sync.write(image).toString('base64'),payload={dataUrl,size:{width:800,height:600},bounds:{x:0,y:0,width:800,height:600},scaleFactor:1,intent:''};await rpc({overlay:payload});const overlay=await page('/overlay.html');await until(()=>overlay.evaluate('Boolean(state.image)'));
- await overlay.send('Emulation.setDeviceMetricsOverride',{width:1000,height:750,deviceScaleFactor:1,mobile:false});await wait(100);await move(overlay,300,250);await until(()=>overlay.evaluate('!document.getElementById("magnifier").hidden'));const sample=await overlay.evaluate('({coords:document.getElementById("magnifier-coords").textContent,hex:document.getElementById("magnifier-color").textContent,rgb:document.getElementById("magnifier-rgb").textContent,parent:document.getElementById("magnifier").parentElement.id,selectionHidden:document.getElementById("selection").hidden})');assert.deepEqual(sample,{coords:'240, 200',hex:'#F0C856',rgb:'240, 200, 86',parent:'capture-root',selectionHidden:true});
+ await overlay.send('Emulation.setDeviceMetricsOverride',{width:1000,height:750,deviceScaleFactor:1,mobile:false});await wait(100);await moveAndWait(overlay,300,250,'!document.getElementById("magnifier").hidden','magnifier after first move');const sample=await overlay.evaluate('({coords:document.getElementById("magnifier-coords").textContent,hex:document.getElementById("magnifier-color").textContent,rgb:document.getElementById("magnifier-rgb").textContent,parent:document.getElementById("magnifier").parentElement.id,selectionHidden:document.getElementById("selection").hidden})');assert.deepEqual(sample,{coords:'240, 200',hex:'#F0C856',rgb:'240, 200, 86',parent:'capture-root',selectionHidden:true});
  const style=await overlay.evaluate('(()=>{const c=document.getElementById("magnifier-canvas"),d=c.getContext("2d").getImageData(0,0,c.width,c.height).data;let green=0;for(let i=0;i<d.length;i+=4)if(d[i]<70&&d[i+1]>130&&d[i+2]<130&&d[i+1]>d[i]+70&&d[i+1]>d[i+2]+50)green++;return {green,hint:document.getElementById("magnifier-hint").textContent,readouts:document.querySelectorAll("#magnifier .magnifier-readout").length,crosshair:getComputedStyle(document.documentElement).getPropertyValue("--magnifier-crosshair").trim()};})()');assert.ok(style.green>150,'WeChat-style green crosshair is drawn on the magnifier canvas');assert.equal(style.hint,'按 Ctrl+C 复制色值');assert.equal(style.readouts,2,'WeChat-style readout has exactly coordinates and color rows');assert.equal(style.crosshair,'#00b050');
- await shot(overlay,'color-preview');await move(overlay,999,749);await until(()=>overlay.evaluate('document.getElementById("magnifier-coords").textContent==="799, 599"'));assert.equal(await overlay.evaluate('document.getElementById("magnifier-color").textContent'),'#1F5756');assert.ok(await overlay.evaluate('(()=>{const r=document.getElementById("magnifier").getBoundingClientRect();return r.right<=innerWidth&&r.bottom<=innerHeight&&r.x>=0&&r.y>=0;})()'),'Magnifier fits at screen edge');
+ await shot(overlay,'color-preview');await moveAndWait(overlay,999,749,'document.getElementById("magnifier-coords").textContent==="799, 599"','corner coords');assert.equal(await overlay.evaluate('document.getElementById("magnifier-color").textContent'),'#1F5756');assert.ok(await overlay.evaluate('(()=>{const r=document.getElementById("magnifier").getBoundingClientRect();return r.right<=innerWidth&&r.bottom<=innerHeight&&r.x>=0&&r.y>=0;})()'),'Magnifier fits at screen edge');
  await overlay.send('Input.dispatchKeyEvent',{type:'keyDown',key:'C',code:'KeyC',modifiers:8});await until(async()=>(await rpc()).copied==='#1F5756');assert.ok(await overlay.evaluate('Boolean(state.image)'),'Color copy keeps capture open');
- await move(overlay,120,90);await until(()=>overlay.evaluate('document.getElementById("magnifier-coords").textContent==="96, 72"'));await overlay.send('Input.dispatchKeyEvent',{type:'keyDown',key:'c',code:'KeyC',modifiers:2});await until(async()=>(await rpc()).copied==='#604856');assert.ok(await overlay.evaluate('Boolean(state.image)'),'Ctrl+C copies the sampled color without completing the capture');
+ await moveAndWait(overlay,120,90,'document.getElementById("magnifier-coords").textContent==="96, 72"','second coords');await overlay.send('Input.dispatchKeyEvent',{type:'keyDown',key:'c',code:'KeyC',modifiers:2});await until(async()=>(await rpc()).copied==='#604856');assert.ok(await overlay.evaluate('Boolean(state.image)'),'Ctrl+C copies the sampled color without completing the capture');
  await move(overlay,100,120);await overlay.send('Input.dispatchMouseEvent',{type:'mousePressed',button:'left',clickCount:1,x:100,y:120});await move(overlay,500,400);await wait(80);assert.equal(await overlay.evaluate('document.getElementById("magnifier").hidden'),false);await overlay.send('Input.dispatchMouseEvent',{type:'mouseReleased',button:'left',clickCount:1,x:500,y:400});
- await move(overlay,580,220);await until(()=>overlay.evaluate('!document.getElementById("magnifier").hidden'));const toolBox=await overlay.evaluate('(()=>{const r=document.querySelector("#tool-dock button").getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2};})()');await move(overlay,toolBox.x,toolBox.y);await until(()=>overlay.evaluate('document.getElementById("magnifier").hidden'));
+ await moveAndWait(overlay,580,220,'!document.getElementById("magnifier").hidden','magnifier after selection');const toolBox=await overlay.evaluate('(()=>{const r=document.querySelector("#tool-dock button").getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2};})()');await moveAndWait(overlay,toolBox.x,toolBox.y,'document.getElementById("magnifier").hidden','magnifier over toolbar');
  // 0.2.40 回归：标注拖拽期间 pointermove 被整段丢掉，画笔一笔都画不出来。
  // 这里用真实鼠标事件验证中间帧点和松开点都进入线条。
- await overlay.evaluate('setTool("pen");true');await move(overlay,200,300);
- await overlay.send('Input.dispatchMouseEvent',{type:'mousePressed',button:'left',clickCount:1,x:200,y:300});
- await move(overlay,240,330);await move(overlay,280,360);await move(overlay,320,390);await wait(80);
- await overlay.send('Input.dispatchMouseEvent',{type:'mouseReleased',button:'left',clickCount:1,x:330,y:400});
- await until(()=>overlay.evaluate('state.annotations.some(a=>a.type==="pen")'));
+ let penReady=false;
+ for(let attempt=0;attempt<3&&!penReady;attempt++){
+  await overlay.evaluate('setTool("pen");true');await move(overlay,180,280);await move(overlay,200,300);
+  await overlay.send('Input.dispatchMouseEvent',{type:'mousePressed',button:'left',clickCount:1,x:200,y:300});
+  await move(overlay,240,330);await move(overlay,280,360);await move(overlay,320,390);await wait(80);
+  await overlay.send('Input.dispatchMouseEvent',{type:'mouseReleased',button:'left',clickCount:1,x:330,y:400});
+  await wait(120);penReady=await overlay.evaluate('state.annotations.some(a=>a.type==="pen")');
+ }
+ if(!penReady){
+  const diag=await overlay.evaluate('({mode:state.mode,drawing:state.drawing&&state.drawing.type,annotations:state.annotations.length,tool:state.tool,selection:Boolean(state.selection),ready:state.selectionReady})');
+  throw Error('Pen drag produced no annotation: '+JSON.stringify(diag)+' rendererErrors='+JSON.stringify(errors.slice(-3)));
+ }
  const pen=await overlay.evaluate('(()=>{const a=state.annotations.find(a=>a.type==="pen");const last=a.points[a.points.length-1];return {count:a.points.length,x:last.x,y:last.y};})()');
  assert.ok(pen.count>=3,'Pen drag keeps intermediate pointermove points: '+JSON.stringify(pen));
  assert.ok(Math.abs(pen.x-330)<2&&Math.abs(pen.y-400)<2,'Pen includes the pointerup point: '+JSON.stringify(pen));

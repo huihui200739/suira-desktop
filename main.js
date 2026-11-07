@@ -148,6 +148,8 @@ let lastClipboardImageHash = '';
 // 上一次轮询拿到的图片原始字节：用来做"真的变了吗"的字节比较，
 // 避免剪贴板里放着一张 4K 截图时每 550ms 解码一次 + PNG 编码一次
 let lastClipboardImageRaw = null;
+let lastClipboardImageKey = '';
+let lastClipboardImageType = '';
 let lastClipboardFilesKey = '';
 let clipboardWriteGuard = '';
 let isQuitting = false;
@@ -737,12 +739,24 @@ async function readClipboardImage() {
  * 分三次读既慢又容易在锁竞争时读到不一致的状态。
  * 平台格式优先级：text/plain 可靠；复制文件时只有 text/uri-list（没有 text/plain）。
  */
+/** 只读 5 个 64 字节片段做指纹：剪贴板没变时就不必把整张 4K PNG 读进 JS 堆。 */
+async function imageBlobFingerprint(blob) {
+  const size = blob.size;
+  if (!size) return '';
+  const positions = [0, Math.floor(size / 4), Math.floor(size / 2), Math.floor(size * 3 / 4), Math.max(0, size - 64)];
+  const chunks = [];
+  for (const start of positions) {
+    chunks.push(Buffer.from(await blob.slice(start, Math.min(size, start + 64)).arrayBuffer()).toString('base64'));
+  }
+  return `${size}:${chunks.join('|')}`;
+}
+
 async function readClipboardSnapshot() {
-  const empty = { text: '', files: [], imageBuffer: null, imageType: '' };
+  const empty = { text: '', files: [], imageBuffer: null, imageType: '', imageKey: '' };
   const result = await readWithRetry(async () => {
     const items = await clipboard.read();
     if (!Array.isArray(items) || !items.length) return empty;
-    const snapshot = { text: '', files: [], imageBuffer: null, imageType: '' };
+    const snapshot = { text: '', files: [], imageBuffer: null, imageType: '', imageKey: '' };
 
     const textItem = items.find((item) => item.types?.includes('text/plain'));
     if (textItem) {
@@ -766,12 +780,19 @@ async function readClipboardSnapshot() {
       try {
         const type = imageItem.types.find((value) => value.startsWith('image/'));
         const blob = await imageItem.getType(type);
-        const buffer = Buffer.from(await blob.arrayBuffer());
-        // 这里只留原始字节，不在轮询里解码：解码 4K 截图要几十毫秒，
-        // 而绝大多数轮询的结果都是"没变"，白解码一次不如直接比字节
-        if (buffer.length) {
-          snapshot.imageBuffer = buffer;
-          snapshot.imageType = type;
+        const imageKey = await imageBlobFingerprint(blob);
+        snapshot.imageKey = imageKey;
+        if (imageKey && imageKey === lastClipboardImageKey && lastClipboardImageRaw) {
+          // 指纹一致：直接沿用上一次的原始字节，不再分配一整块 PNG Buffer
+          snapshot.imageBuffer = lastClipboardImageRaw;
+          snapshot.imageType = lastClipboardImageType;
+        } else {
+          const buffer = Buffer.from(await blob.arrayBuffer());
+          // 这里只留原始字节，不在轮询里解码：解码 4K 截图要几十毫秒
+          if (buffer.length) {
+            snapshot.imageBuffer = buffer;
+            snapshot.imageType = type;
+          }
         }
       } catch { /* 图片读取失败时忽略这一项 */ }
     }
@@ -803,6 +824,8 @@ async function writeClipboardText(text) {
   clipboardLedger.record(value);
   lastClipboardText = value;
   lastClipboardImageHash = '';
+  lastClipboardImageKey = '';
+  lastClipboardImageType = '';
   lastClipboardFilesKey = '';
   clipboardWriteGuard = '';
 }
@@ -813,6 +836,8 @@ async function writeClipboardImage(image) {
   lastClipboardImageHash = hashBuffer(png);
   // 自己的写入也记进字节缓存，下一趟轮询就不会再解一次
   lastClipboardImageRaw = png;
+  lastClipboardImageKey = ''; // 让下一趟重新取一次指纹，不与上一张图混淆
+  lastClipboardImageType = 'image/png';
   await clipboard.write([new ClipboardItem({ 'image/png': png })]);
   lastClipboardText = await readClipboardText();
   lastClipboardFilesKey = '';
@@ -839,7 +864,8 @@ async function pollClipboard() {
     const filesKey = snapshot.files.length ? snapshot.files.join('\n').toLowerCase() : '';
     const rawImage = snapshot.imageBuffer;
     // 字节相同 = 图片没变：这一趟不解码、不编码、不算哈希
-    const imageBytesChanged = Boolean(rawImage) && !sameBytes(lastClipboardImageRaw, rawImage);
+    // 命中指纹时复用的就是同一个 Buffer 引用，连逐字节比较都不必做
+    const imageBytesChanged = Boolean(rawImage) && rawImage !== lastClipboardImageRaw && !sameBytes(lastClipboardImageRaw, rawImage);
 
     let image = null;
     let imageHash = lastClipboardImageHash;
@@ -872,6 +898,8 @@ async function pollClipboard() {
     lastClipboardFilesKey = filesKey;
     // 图片被清空时同步清掉缓存，下次再遇到图片会重新解码
     lastClipboardImageRaw = rawImage || null;
+    lastClipboardImageKey = rawImage ? (snapshot.imageKey || '') : '';
+    lastClipboardImageType = rawImage ? snapshot.imageType : '';
     lastClipboardImageHash = rawImage ? imageHash : '';
     if (clipboardWriteGuard && text === clipboardWriteGuard) clipboardWriteGuard = '';
   } catch (error) {
@@ -885,6 +913,8 @@ async function startClipboardWatcher() {
   lastClipboardText = initial.text || '';
   lastClipboardFilesKey = initial.files.length ? initial.files.join('\n').toLowerCase() : '';
   lastClipboardImageRaw = initial.imageBuffer || null;
+  lastClipboardImageKey = initial.imageKey || '';
+  lastClipboardImageType = initial.imageType || '';
   lastClipboardImageHash = initial.imageBuffer ? hashBuffer(nativeImage.createFromBuffer(initial.imageBuffer).toPNG()) : '';
   clipboardTimer = setInterval(pollClipboard, 550);
   clipboardWatcherError = '';

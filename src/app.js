@@ -291,12 +291,19 @@ function bindItemCardActions(root, task) {
 /* ---------- library ---------- */
 
 let pinyinTimer = null;
+// 一次按键可能同时触发文本渲染与 90ms 后的拼音结果渲染；合并到同一帧只建一次 DOM。
+let libraryRenderQueued = false;
+function scheduleRenderLibrary() {
+  if (libraryRenderQueued) return;
+  libraryRenderQueued = true;
+  requestAnimationFrame(() => { libraryRenderQueued = false; renderLibrary(); });
+}
 function refreshPinyinMatches(query) {
   clearTimeout(pinyinTimer);
   if (!query) {
     if (state.pinyinMatches.size) {
       state.pinyinMatches.clear();
-      renderLibrary();
+      scheduleRenderLibrary();
     }
     return;
   }
@@ -306,7 +313,7 @@ function refreshPinyinMatches(query) {
       const next = new Set((results || []).filter((r) => r.kind === 'content').map((r) => r.id));
       const changed = next.size !== state.pinyinMatches.size || [...next].some((id) => !state.pinyinMatches.has(id));
       state.pinyinMatches = next;
-      if (changed) renderLibrary();
+      if (changed) scheduleRenderLibrary();
     } catch {
       // 搜索失败时退化为纯文本匹配
     }
@@ -1113,7 +1120,7 @@ function installEvents() {
   });
   $('#library-search').addEventListener('input', (event) => {
     state.query = event.target.value.trim().toLowerCase();
-    renderLibrary();
+    scheduleRenderLibrary();
     refreshPinyinMatches(state.query);
   });
   $$('#library-filters .chip').forEach((chip) => {

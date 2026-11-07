@@ -910,9 +910,13 @@ function renderRecentContext(){
   $('#recent-context-trigger span').textContent=selected?'选中文字':'最近';
   $('#recent-context-label').textContent=selected?'选中文字':'最近'+(currentContext.kind==='image'?'图片':'复制');
   const age=Math.floor((now-currentContext.createdAt)/1000);$('#recent-context-time').textContent=age<1?'刚刚':age+' 秒前';
-  const image=$('#recent-context-image');image.hidden=currentContext.kind!=='image'||!currentContext.thumbnail;if(!image.hidden)image.src=currentContext.thumbnail;else image.removeAttribute('src');
+  const image=$('#recent-context-image');image.hidden=currentContext.kind!=='image'||!currentContext.thumbnail;
+  // 每秒重设同一个 data URL 会让浏览器反复解码整张缩略图；值没变就别写
+  if(!image.hidden){if(image.getAttribute('src')!==currentContext.thumbnail)image.src=currentContext.thumbnail;}
+  else image.removeAttribute('src');
   $('#recent-context-text').textContent=currentContext.text||currentContext.title||'图片';if(previous!==currentContext)contextStrip?.refresh();
-  contextTimer=setTimeout(renderRecentContext,Math.min(1000,Math.max(1,60000-(now-currentContext.createdAt))));
+  // 面板隐藏后别让常驻渲染进程每秒醒来重绘：降到 2 秒，显示时 onShown 会立即刷新
+  contextTimer=setTimeout(renderRecentContext,document.hidden?2000:Math.min(1000,Math.max(1,60000-(now-currentContext.createdAt))));
 }
 window.suira.quick.onSelection?.(item=>{selectionContext=item;derivedContext=null;renderRecentContext();});
 window.suira.settings?.onChanged?.(settings=>{contextEnabled=settings.panelRecent!==false;if(settings.selectionEnabled===false)selectionContext=null;renderRecentContext();});
