@@ -1,0 +1,7 @@
+{
+  "version": "0.2.41",
+  "actualAsarModule": true,
+  "workerOutsideAsar": true,
+  "realQrDecoded": true,
+  "packagedOpenCCConverts": true
+}
