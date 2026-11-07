@@ -306,7 +306,7 @@ t('面板 OCR 结果也能查看原图（主进程反查来源图片）', () => 
 t('确认文字必须逐字匹配才允许提交', () => {
   if (!appJs.includes('options.expect')) throw new Error('openModal 未接收确认词');
   if (!appJs.includes("input.value.trim() === expect")) throw new Error('未做逐字校验');
-  if (!appJs.includes('confirmBtn.disabled = !ok')) throw new Error('未在未匹配时禁用确认');
+  if (!/confirmBtn\.disabled\s*=\s*[^;]*!ok/.test(appJs)) throw new Error('未在未匹配时禁用确认');
   // 两处危险操作都必须传 expect
   if (!/expect: '清空'/.test(appJs)) throw new Error('清空剪贴板未要求确认词');
   if (!/expect: task\.title/.test(appJs)) throw new Error('删除任务未要求输入任务名');

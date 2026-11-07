@@ -74,11 +74,19 @@ const standaloneTool=['calendar','markdown'].includes(workspaceType)?workspaceTy
 if(standaloneTool){document.documentElement.classList.add('tool-window');document.documentElement.dataset.tool=standaloneTool;document.querySelector('.brand b').textContent=standaloneTool==='markdown'?'Markdown':'日历';document.getElementById('close').setAttribute('aria-label','关闭窗口');}
 function navigate(page) {
   if(page==='trail')page='library';
-  if(!standaloneTool && ['calendar','markdown'].includes(page)){window.suira.workspace.open(page);return;}
+  if(!standaloneTool && ['calendar','markdown'].includes(page)){
+    window.suira.workspace.open(page).then(result=>{if(result?.ok===false)showGlobalToast(result.error||'打开窗口失败','error');}).catch(error=>showGlobalToast(error.message||'打开窗口失败','error'));
+    return;
+  }
   window.WorkspaceUI?.flush().catch(error=>showGlobalToast(error.message,'error'));
   state.page = page;
   $$('.page').forEach((el) => el.classList.toggle('is-active', el.id === `page-${page}`));
-  $$('.nav-item').forEach((el) => el.classList.toggle('is-active', el.dataset.page === page));
+  $$('.nav-item').forEach((el) => {
+    const active = el.dataset.page === page;
+    el.classList.toggle('is-active', active);
+    if (active) el.setAttribute('aria-current', 'page');
+    else el.removeAttribute('aria-current');
+  });
   $('#main-scroll').scrollTo({ top: 0 });
   if (page === 'shelf') refreshShelf();
   if (page === 'library') refreshLibrary();
@@ -89,14 +97,22 @@ function navigate(page) {
 
 /* ---------- shelf / task shelf ---------- */
 
+let shelfRefreshVersion = 0;
+let contentRefreshVersion = 0;
 async function refreshShelf() {
+  const version = ++shelfRefreshVersion;
+  const contentVersion = ++contentRefreshVersion;
   const [tasks, items, executions] = await Promise.all([
     window.suira.tasks.list(),
     window.suira.content.list({ limit: 300 }),
     window.suira.executions.list(200)
   ]);
+  if (version !== shelfRefreshVersion) return;
   state.tasks = tasks || [];
-  state.items = items || [];
+  if (contentVersion === contentRefreshVersion) {
+    state.items = items || [];
+    if (state.page === 'library') renderLibrary();
+  }
   state.executions = executions || [];
   if (!state.tasks.find((task) => task.id === state.selectedTaskId)) {
     state.selectedTaskId = state.tasks[0]?.id || '';
@@ -291,6 +307,7 @@ function bindItemCardActions(root, task) {
 /* ---------- library ---------- */
 
 let pinyinTimer = null;
+let pinyinSearchVersion = 0;
 // 一次按键可能同时触发文本渲染与 90ms 后的拼音结果渲染；合并到同一帧只建一次 DOM。
 let libraryRenderQueued = false;
 function scheduleRenderLibrary() {
@@ -299,17 +316,19 @@ function scheduleRenderLibrary() {
   requestAnimationFrame(() => { libraryRenderQueued = false; renderLibrary(); });
 }
 function refreshPinyinMatches(query) {
+  const version = ++pinyinSearchVersion;
   clearTimeout(pinyinTimer);
-  if (!query) {
-    if (state.pinyinMatches.size) {
-      state.pinyinMatches.clear();
-      scheduleRenderLibrary();
-    }
-    return;
+  // Matches belong to one query only. Clear them immediately, not after the
+  // next request, and ignore older responses that arrive out of order.
+  if (state.pinyinMatches.size) {
+    state.pinyinMatches.clear();
+    scheduleRenderLibrary();
   }
+  if (!query) return;
   pinyinTimer = setTimeout(async () => {
     try {
       const results = await window.suira.search.query(query);
+      if (version !== pinyinSearchVersion) return;
       const next = new Set((results || []).filter((r) => r.kind === 'content').map((r) => r.id));
       const changed = next.size !== state.pinyinMatches.size || [...next].some((id) => !state.pinyinMatches.has(id));
       state.pinyinMatches = next;
@@ -320,8 +339,13 @@ function refreshPinyinMatches(query) {
   }, 90);
 }
 
+let libraryRefreshVersion = 0;
 async function refreshLibrary() {
-  state.items = (await window.suira.content.list({ limit: 300 })) || [];
+  const version = ++libraryRefreshVersion;
+  const contentVersion = ++contentRefreshVersion;
+  const items = await window.suira.content.list({ limit: 300 });
+  if (version !== libraryRefreshVersion || contentVersion !== contentRefreshVersion) return;
+  state.items = items || [];
   renderLibrary();
 }
 
@@ -968,6 +992,13 @@ async function refreshShortcuts() {
   }
 }
 
+/* A successful write and a failed refresh are different outcomes. Never leave
+   a create/delete dialog retryable merely because its follow-up read failed. */
+async function refreshAfterChange(refresh) {
+  try { await refresh(); }
+  catch (error) { showGlobalToast(`操作已保存，但列表刷新失败：${error?.message || '请重新打开页面'}`, 'error'); }
+}
+
 /* ---------- modal ---------- */
 
 /** 同步最大化按钮图标与提示（还原 / 最大化）。 */
@@ -982,7 +1013,9 @@ function syncMaximizeIcon(maximized) {
     ? '<svg viewBox="0 0 16 16"><rect x="3.5" y="5.5" width="7" height="7" rx="1"/><path d="M5.5 5.5V3.5h7v7h-2"/></svg>'
     : '<svg viewBox="0 0 16 16"><rect x="3.5" y="3.5" width="9" height="9" rx="1"/></svg>';
 }
+let modalVersion = 0;
 function openModal(title, placeholder, onConfirm, options = {}) {
+  const version = ++modalVersion;
   $('#modal').hidden = false;
   $('#modal-title').textContent = title;
   const input = $('#modal-input');
@@ -998,9 +1031,10 @@ function openModal(title, placeholder, onConfirm, options = {}) {
   // 上一次弹窗可能把按钮改成「删除」，每次打开都要恢复，否则标签与动作长期不符
   confirmBtn.textContent = options.confirmLabel || '创建';
   const hint = $('#modal-hint');
+  let submitting = false;
   const sync = () => {
     const ok = !expect || input.value.trim() === expect;
-    confirmBtn.disabled = !ok;
+    confirmBtn.disabled = submitting || !ok || !input.value.trim();
     if (hint) {
       hint.hidden = !expect;
       hint.textContent = expect ? (ok ? `已确认：${expect}` : `请输入「${expect}」以继续`) : '';
@@ -1018,12 +1052,24 @@ function openModal(title, placeholder, onConfirm, options = {}) {
       input.focus();
       return;
     }
-    closeModal();
-    await onConfirm(value);
+    if (submitting) return;
+    submitting = true;
+    confirmBtn.disabled = true;
+    try {
+      await onConfirm(value);
+      if (version === modalVersion) closeModal();
+    } catch (error) {
+      // Keep the entered title/confirmation so a recoverable failure can retry.
+      showGlobalToast(error?.message || '操作失败，请重试', 'error');
+    } finally {
+      submitting = false;
+      if (version === modalVersion && !$('#modal').hidden) sync();
+    }
   };
 }
 
 function closeModal() {
+  ++modalVersion;
   $('#modal').hidden = true;
   $('#modal')._dialogCleanup?.();
   const input = $('#modal-input');
@@ -1057,26 +1103,39 @@ function installEvents() {
       state.selectedTaskId = result.task.id;
       state.taskFilter='all';state.taskQuery='';$('#task-search').value='';$$('[data-task-filter]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.taskFilter==='all')));
       showGlobalToast('任务已创建', 'success');
-      await refreshShelf();
-    }
+      await refreshAfterChange(refreshShelf);
+    } else throw new Error(result?.error || '创建任务失败');
   }));
   $('#shelf-import').addEventListener('click', async () => {
-    let text = '';
-    try { text = await navigator.clipboard.readText(); } catch {}
-    if (!text.trim()) { showGlobalToast('剪贴板里暂时没有文字', 'error'); return; }
-    const result = await window.suira.content.addText({ text, source: 'clipboard' });
-    if (!result?.ok) { showGlobalToast(result?.error || '读取失败', 'error'); return; }
-    let task = selectedTask() || state.tasks.find((entry) => !entry.archived && entry.title === '临时收集');
-    if (!task) {
-      const created = await window.suira.tasks.create('临时收集');
-      task = created?.task;
-    }
-    if (task) await window.suira.tasks.addItem({ taskId: task.id, itemId: result.item.id });
-    showGlobalToast('剪贴板内容已加入任务匣', 'success');
-    await refreshShelf();
+    const button = $('#shelf-import');
+    if (button.disabled) return;
+    // Capture the destination before clipboard/IPC awaits. Switching tasks while
+    // a read is pending must not silently send content into a different task.
+    const taskId = selectedTask()?.id;
+    if (!taskId) { showGlobalToast('请先选择一个任务', 'error'); return; }
+    button.disabled = true;
+    try {
+      let text;
+      try { text = await navigator.clipboard.readText(); }
+      catch { throw new Error('无法读取剪贴板，请检查权限后重试'); }
+      if (!text.trim()) throw new Error('剪贴板里暂时没有文字');
+      const result = await window.suira.content.addText({ text, source: 'clipboard' });
+      if (!result?.ok) throw new Error(result?.error || '读取失败');
+      const added = await window.suira.tasks.addItem({ taskId, itemId: result.item.id });
+      if (!added?.ok) throw new Error(added?.error || '未能加入任务，内容已保留在内容库');
+      showGlobalToast('剪贴板内容已加入任务匣', 'success');
+      await refreshShelf();
+    } catch (error) { showGlobalToast(error.message || '加入失败', 'error'); }
+    finally { button.disabled = false; }
   });
-  $('#task-done').addEventListener('click',async()=>{const task=selectedTask();if(!task)return;await window.suira.tasks.status({id:task.id,done:task.progress!=='done'});await refreshShelf();});
-  $('#task-rename').addEventListener('click',()=>{const task=selectedTask();if(!task)return;openModal('重命名任务',task.title,async title=>{await window.suira.tasks.rename({id:task.id,title});await refreshShelf();});});
+  $('#task-done').addEventListener('click',async()=>{
+    const task=selectedTask(),button=$('#task-done');if(!task||button.disabled)return;
+    button.disabled=true;
+    try{const result=await window.suira.tasks.status({id:task.id,done:task.progress!=='done'});if(!result?.ok)throw new Error(result?.error||'更新任务状态失败');await refreshShelf();}
+    catch(error){showGlobalToast(error.message||'更新任务状态失败','error');}
+    finally{button.disabled=false;}
+  });
+  $('#task-rename').addEventListener('click',()=>{const task=selectedTask();if(!task)return;openModal('重命名任务',task.title,async title=>{const result=await window.suira.tasks.rename({id:task.id,title});if(!result?.ok)throw new Error(result?.error||'重命名失败');await refreshAfterChange(refreshShelf);});});
   $('#task-copy').addEventListener('click', async () => {
     const task = selectedTask();
     if (!task) return;
@@ -1095,10 +1154,11 @@ function installEvents() {
     const task = selectedTask();
     if (!task) return;
     openModal('删除任务', `输入「${task.title}」确认删除`, async () => {
-      await window.suira.tasks.remove(task.id);
+      const result = await window.suira.tasks.remove(task.id);
+      if (!result?.ok) throw new Error(result?.error || '删除失败');
       state.selectedTaskId = '';
       showGlobalToast('任务已删除');
-      await refreshShelf();
+      await refreshAfterChange(refreshShelf);
     }, { expect: task.title, confirmLabel: '删除' });
   });
 
@@ -1112,9 +1172,9 @@ function installEvents() {
       const result = await window.suira.content.clearClipboard();
       if (result?.ok) {
         showGlobalToast(`已清理 ${result.removed || 0} 条历史记录${result.protected?'，保留 '+result.protected+' 条固定或任务引用内容':''}`, 'success');
-        await refreshLibrary();
+        await refreshAfterChange(refreshLibrary);
       } else {
-        showGlobalToast(result?.error || '清空失败', 'error');
+        throw new Error(result?.error || '清空失败');
       }
     }, { expect: '清空' });
   });

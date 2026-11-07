@@ -1,16 +1,16 @@
-﻿const assert = require('assert');
+const assert = require('assert');
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
 const { createActionRegistry } = require('../lib/actions');
 const { SuiraStore } = require('../lib/store');
+const { runRecipe } = require('../lib/recipes');
 
 let pass = 0, fail = 0;
 const t = (n, f) => { try { f(); console.log('  PASS  ' + n); pass++; } catch (e) { console.log('  FAIL  ' + n + ' -> ' + e.message); fail++; } };
 const ta = async (n, f) => { try { await f(); console.log('  PASS  ' + n); pass++; } catch (e) { console.log('  FAIL  ' + n + ' -> ' + e.message); fail++; } };
 
-const tmp = path.join(os.tmpdir(), 'suira-act-' + Date.now());
-fs.mkdirSync(tmp, { recursive: true });
+const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'suira-act-'));
 const store = new SuiraStore(path.join(tmp, 'd.json'));
 
 const written = [];
@@ -162,7 +162,78 @@ const registry = createActionRegistry({
   await ta('日历只产生草稿，不写入日程',async()=>{const input=store.addItem({kind:'text',text:'明天下午3点开会'}),count=store.data.items.length;const result=await registry.execute(input.id,'text.to-calendar');assert.ok(result.ok);assert.equal(result.draft.time,'15:00');assert.equal(result.draft.draft,true);assert.equal(store.data.items.length,count);assert.ok(broadcasts.some(e=>e.ch==='draft'));});
   await ta('文字钉图传入文字不修改原内容',async()=>{const result=await registry.execute(textItem.id,'text.pin');assert.ok(result.ok);assert.equal(pinCalls.at(-1).text,textItem.text);});
   await ta('图片不能直接作为文字追加',async()=>{const image=store.addItem({kind:'image',filePath:'example.png'});assert.equal((await registry.execute(image.id,'text.to-note')).ok,false);});
-  fs.rmSync(tmp, { recursive: true, force: true });
+  console.log('\n== 普通保存失败与配方提交 ==');
+  await ta('保存失败返回失败结果，不因记录失败再次抛出', async () => {
+    const failureStore = new SuiraStore(path.join(tmp, 'save-failure.json'));
+    const source = failureStore.addItem({ kind: 'text', text: 'original' });
+    let saveCalls = 0;
+    failureStore.save = async () => { saveCalls++; throw new Error('测试存储暂不可用'); };
+    const failureRegistry = createActionRegistry({ store: failureStore, makeId: () => 'job-save-failure' });
+    const result = await failureRegistry.execute(source.id, 'text.clean');
+    assert.strictEqual(result.ok, false);
+    assert.strictEqual(result.execution.status, 'failed');
+    assert.match(result.error, /测试存储暂不可用/);
+    assert.match(result.error, /执行记录保存失败/);
+    assert.strictEqual(saveCalls, 2);
+    assert.strictEqual(failureStore.getItem(source.id).text, 'original');
+  });
+  await ta('操作失败且记录保存失败时保留两种失败原因', async () => {
+    const failureStore = new SuiraStore(path.join(tmp, 'record-failure.json'));
+    const source = failureStore.addItem({ kind: 'text', text: 'original' });
+    failureStore.save = async () => { throw new Error('测试记录保存失败'); };
+    const failureRegistry = createActionRegistry({ store: failureStore, makeId: () => 'job-record-failure' });
+    const result = await failureRegistry.execute(source.id, 'no.such.action');
+    assert.strictEqual(result.ok, false);
+    assert.match(result.error, /未知动作/);
+    assert.match(result.error, /测试记录保存失败/);
+  });
+  await ta('收集配方预览不执行副作用，显式提交只执行一次', async () => {
+    const calls = [];
+    const deps = { execute: async (id, action) => { calls.push(action); return { ok: true }; } };
+    const preview = await runRecipe(deps, 'input', 'collect-to-shelf');
+    assert.strictEqual(preview.ok, true);
+    assert.deepStrictEqual(calls, []);
+    const committed = await runRecipe(deps, 'input', 'collect-to-shelf', { commit: true });
+    assert.strictEqual(committed.ok, true);
+    assert.deepStrictEqual(calls, ['output.shelf']);
+  });
+  await ta('配方步骤失败时不执行最终提交', async () => {
+    const calls = [];
+    const result = await runRecipe({ execute: async (id, action) => {
+      calls.push(action);
+      return { ok: false, error: '测试处理未完成' };
+    } }, 'input', 'clean-text', { commit: true });
+    assert.strictEqual(result.ok, false);
+    assert.strictEqual(result.stoppedAt, 'text.merge-lines');
+    assert.deepStrictEqual(calls, ['text.merge-lines']);
+  });
+  await ta('配方提交抛出普通错误时返回失败并保留当前结果', async () => {
+    const calls = [];
+    const result = await runRecipe({ execute: async (id, action) => {
+      calls.push(action);
+      if (action === 'output.copy') throw new Error('测试剪贴板暂不可用');
+      return { ok: true, output: { id: id + '-next', text: 'processed' } };
+    } }, 'input', 'clean-text', { commit: true });
+    assert.strictEqual(result.ok, false);
+    assert.strictEqual(result.stoppedAt, 'output.copy');
+    assert.strictEqual(result.error, '测试剪贴板暂不可用');
+    assert.ok(result.current);
+    assert.strictEqual(result.output, null);
+    assert.deepStrictEqual(calls, ['text.merge-lines', 'text.clean', 'output.copy']);
+  });
+  await ta('配方提交期间取消时丢弃迟到的成功结果', async () => {
+    const controller = new AbortController();
+    const result = await runRecipe({ execute: async (id, action) => {
+      if (action === 'output.copy') { controller.abort(); return { ok: true }; }
+      return { ok: true, output: { id: id + '-next', text: 'processed' } };
+    } }, 'input', 'clean-text', { commit: true, signal: controller.signal });
+    assert.strictEqual(result.ok, false);
+    assert.strictEqual(result.canceled, true);
+    assert.strictEqual(result.output, null);
+    assert.strictEqual(result.steps.at(-1).canceled, true);
+  });
+  if (process.env.SUIRA_KEEP_TEST_DATA === '1') console.log('  保留合成测试夹具：' + tmp);
+  else fs.rmSync(tmp, { recursive: true, force: true });
   console.log('\n========== ' + pass + ' 通过 / ' + fail + ' 失败 ==========');
   process.exit(fail ? 1 : 0);
 })();

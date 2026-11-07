@@ -31,8 +31,7 @@ t('幂等性：清理两次结果相同', () => {
 });
 
 console.log('\n== Store 基础 ==');
-const tmp = path.join(os.tmpdir(), 'suira-t-' + Date.now());
-fs.mkdirSync(tmp, { recursive: true });
+const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'suira-t-'));
 const dataFile = path.join(tmp, 'data.json');
 const store = new SuiraStore(dataFile);
 
@@ -115,6 +114,19 @@ t('maxItems 上限生效且置顶优先', () => {
   assert.ok(s.getItem('i79'), '置顶项必须保留');
 });
 
+t('maxItems 按刷新后的时间保留，不按旧数组位置误删', () => {
+  const s = new SuiraStore(path.join(tmp, 'recent-cap.json'));
+  s.data.settings = { ...s.getSettings(), maxItems: 3, retentionDays: 3650 };
+  const stamp = Date.now();
+  for (let i = 0; i < 3; i++) s.addItem({ id: 'recent-' + i, text: 'content', createdAt: stamp - (3 - i) * 1000 });
+  // The oldest item remains at the backing array's end after being touched.
+  s.touchItem('recent-0');
+  s.addItem({ id: 'newest', text: 'new content', createdAt: Date.now() + 1000 });
+  assert.ok(s.getItem('recent-0'), '刚再次复制的内容必须保留');
+  assert.strictEqual(s.getItem('recent-1'), null, '应移除最久未刷新的内容');
+  assert.deepStrictEqual(s.listItems().map(item => item.id), ['newest', 'recent-0', 'recent-2']);
+});
+
 console.log('\n== 执行记录 ==');
 t('上限 500 条', () => {
   const s = new SuiraStore(path.join(tmp, 'e.json'));
@@ -141,11 +153,87 @@ console.log('\n== 落盘与重载 ==');
   } catch (e) { console.log('  FAIL  落盘 -> ' + e.message); fail++; }
 
   try {
-    fs.writeFileSync(dataFile, '{ broken json', 'utf8');
-    const s3 = new SuiraStore(dataFile);
-    assert.ok(Array.isArray(s3.data.items) && s3.data.items.length === 0);
-    console.log('  PASS  损坏文件降级为空库不崩溃'); pass++;
-  } catch (e) { console.log('  FAIL  损坏文件降级 -> ' + e.message); fail++; }
+    const missingFile = path.join(tmp, 'new-library.json');
+    assert.strictEqual(fs.existsSync(missingFile), false);
+    const firstRun = new SuiraStore(missingFile);
+    assert.deepStrictEqual(firstRun.data.items, []);
+    const item = firstRun.addItem({ text: 'first-run content' });
+    await firstRun.save();
+    assert.strictEqual(new SuiraStore(missingFile).getItem(item.id).text, 'first-run content');
+    console.log('  PASS  文件不存在仍可首次创建并保存'); pass++;
+  } catch (e) { console.log('  FAIL  首次创建 -> ' + e.message); fail++; }
+
+  try {
+    const damagedFile = path.join(tmp, 'damaged-library.json');
+    const original = '{ incomplete ordinary test data';
+    fs.writeFileSync(damagedFile, original, 'utf8');
+    assert.throws(() => new SuiraStore(damagedFile), /无法读取本地数据.*保护原文件/);
+    assert.strictEqual(fs.readFileSync(damagedFile, 'utf8'), original);
+    console.log('  PASS  普通损坏夹具停止加载，原文件不变'); pass++;
+  } catch (e) { console.log('  FAIL  损坏文件保护 -> ' + e.message); fail++; }
+
+  try {
+    const reloadFile = path.join(tmp, 'reload-failure.json');
+    const existing = new SuiraStore(reloadFile);
+    existing.addItem({ text: 'previously loaded content' });
+    await existing.save();
+    const original = '{ interrupted ordinary save fixture';
+    fs.writeFileSync(reloadFile, original, 'utf8');
+    const alreadyQueued = existing.save();
+    assert.throws(() => existing.load(), /无法读取本地数据/);
+    await assert.rejects(alreadyQueued, /无法读取本地数据/);
+    existing.addItem({ text: 'must not overwrite damaged file' });
+    await assert.rejects(existing.save(), /无法读取本地数据/);
+    assert.strictEqual(fs.readFileSync(reloadFile, 'utf8'), original);
+    // A successful explicit reload is required before writes can resume.
+    fs.writeFileSync(reloadFile, JSON.stringify({ items: [], tasks: [] }), 'utf8');
+    existing.load();
+    const recovered = existing.addItem({ text: 'recovered fixture' });
+    await existing.save();
+    assert.strictEqual(new SuiraStore(reloadFile).getItem(recovered.id).text, 'recovered fixture');
+    console.log('  PASS  重载失败后禁止保存，成功重载后才恢复写入'); pass++;
+  } catch (e) { console.log('  FAIL  重载失败写入保护 -> ' + e.message); fail++; }
+
+  try {
+    const unreadableFile = path.join(tmp, 'read-failure.json');
+    const original = JSON.stringify({ items: [], tasks: [], fixture: 'unchanged' });
+    fs.writeFileSync(unreadableFile, original, 'utf8');
+    const readFileSync = fs.readFileSync;
+    try {
+      fs.readFileSync = function (file, ...args) {
+        if (file === unreadableFile) throw Object.assign(new Error('synthetic read unavailable'), { code: 'EACCES' });
+        return readFileSync.call(this, file, ...args);
+      };
+      assert.throws(() => new SuiraStore(unreadableFile), error => {
+        assert.match(error.message, /无法读取本地数据.*保护原文件/);
+        assert.strictEqual(error.cause.code, 'EACCES');
+        return true;
+      });
+    } finally { fs.readFileSync = readFileSync; }
+    assert.strictEqual(fs.readFileSync(unreadableFile, 'utf8'), original);
+    console.log('  PASS  模拟普通读取失败停止加载，不更改权限或原文件'); pass++;
+  } catch (e) { console.log('  FAIL  读取失败保护 -> ' + e.message); fail++; }
+
+  try {
+    const isolatedFile = path.join(tmp, 'task-snapshots.json');
+    const snapshots = new SuiraStore(isolatedFile);
+    const item = snapshots.addItem({ kind: 'text', text: 'first snapshot' });
+    const task = snapshots.createTask('snapshot task');
+    snapshots.addItemToTask(task.id, item.id);
+    const firstSave = snapshots.save();
+    snapshots.updateItem(item.id, { text: 'second snapshot' });
+    const secondSave = snapshots.save();
+    await Promise.all([firstSave, secondSave]);
+    const reloaded = new SuiraStore(isolatedFile);
+    assert.strictEqual(reloaded.getItem(item.id).text, 'second snapshot');
+    assert.deepStrictEqual(reloaded.getTask(task.id).itemIds, [item.id]);
+    assert.strictEqual(reloaded.listTasks()[0].items[0].text, 'second snapshot');
+    reloaded.removeItem(item.id);
+    await reloaded.save();
+    const afterRemoval = new SuiraStore(isolatedFile);
+    assert.deepStrictEqual(afterRemoval.getTask(task.id).itemIds, []);
+    console.log('  PASS  顺序保存、任务关联及删除可持久化重载'); pass++;
+  } catch (e) { console.log('  FAIL  任务关联与顺序快照 -> ' + e.message); fail++; }
 
   console.log('\n== 设置白名单 ==');
   const s = await store.updateSettings({ recordClipboard: false, retentionDays: 7, theme: 'dark', ocrLangs: 'eng', maxItems: 500, evilKey: 'x' });
@@ -199,7 +287,8 @@ console.log('\n== 落盘与重载 ==');
     console.log('  PASS  同一内容再次复制时置顶而不是新增'); pass++;
   } catch (e) { console.log('  FAIL  touchItem -> ' + e.message); fail++; }
 
-  fs.rmSync(tmp, { recursive: true, force: true });
+  if (process.env.SUIRA_KEEP_TEST_DATA === '1') console.log('  保留合成测试夹具：' + tmp);
+  else fs.rmSync(tmp, { recursive: true, force: true });
   console.log('\n========== ' + pass + ' 通过 / ' + fail + ' 失败 ==========');
   process.exit(fail ? 1 : 0);
 })();

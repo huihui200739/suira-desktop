@@ -85,7 +85,7 @@
   $('calendar-next').onclick=()=>{if(calendarView==='week'){const day=new Date(selected+'T12:00:00');day.setDate(day.getDate()+7);selected=dateKey(day);month=day;calendar();return;}month=new Date(month.getFullYear(),month.getMonth()+1,1);calendar();};
   $('calendar-today').onclick=()=>{month=new Date();selected=dateKey(month);calendar();};
   $('calendar-new').onclick=()=>editEvent();$('event-cancel').onclick=()=>{$('event-form').hidden=true;};
-  $('event-form').onsubmit=event=>{event.preventDefault();safe(async()=>{const button=event.submitter;button.disabled=true;try{await checked(api.save('calendar',{id:editing,title:$('event-title').value,text:$('event-notes').value,date:$('event-date').value,time:$('event-time').value,category:$('event-category').value,priority:$('event-priority').value,location:$('event-location').value,done:events.find(e=>e.id===editing)?.meta.done||false}));selected=$('event-date').value;month=new Date(selected+'T12:00:00');$('event-form').hidden=true;await loadCalendar();}finally{button.disabled=false;}})();};
+  $('event-form').onsubmit=event=>{event.preventDefault();safe(async()=>{const button=event.submitter,payload={id:editing,title:$('event-title').value,text:$('event-notes').value,date:$('event-date').value,time:$('event-time').value,category:$('event-category').value,priority:$('event-priority').value,location:$('event-location').value,done:events.find(e=>e.id===editing)?.meta.done||false};if(button)button.disabled=true;try{await checked(api.save('calendar',payload));selected=payload.date;month=new Date(selected+'T12:00:00');$('event-form').hidden=true;await loadCalendar();}finally{if(button)button.disabled=false;}})();};
   document.querySelectorAll('[data-calendar-view]').forEach(button=>button.onclick=()=>{calendarView=button.dataset.calendarView;document.querySelectorAll('[data-calendar-view]').forEach(b=>{b.classList.toggle('is-active',b===button);b.setAttribute('aria-pressed',String(b===button));});calendar();});
   for(const id of ['calendar-search','calendar-category','calendar-hide-done'])$(id).addEventListener(id==='calendar-search'?'input':'change',calendar);
   $('calendar-export').onclick=safe(async()=>{const result=await api.calendarExport();if(result.canceled)return;await checked(Promise.resolve(result));notify('日历已导出');});
@@ -101,13 +101,20 @@
   }
   function docList(){const query=$('md-search').value.trim().toLowerCase();$('md-list').innerHTML=docs.filter(d=>allDocuments||!d.meta?.recentHidden).filter(d=>(d.title+' '+d.text).toLowerCase().includes(query)).map(d=>`<button class="document-row ${d.id===current?'is-active':''}" data-document="${d.id}"><span class="recent-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M6 3h8l4 4v14H6z M14 3v5h4 M9 12h6 M9 16h6"/></svg></span><div><b>${esc(d.title)}.md</b><small class="recent-path" title="${esc(d.meta?.externalPath||'随序文档')}">${esc(d.meta?.externalPath||'随序文档')}</small><small>${new Date(d.updatedAt).toLocaleDateString('zh-CN')}</small></div><em>›</em></button>`).join('')||'<div class="workspace-empty">没有匹配的文档</div>';$('md-list').querySelectorAll('[data-document]').forEach(b=>b.onclick=safe(()=>selectDoc(b.dataset.document)));}
   async function flush(){
-    clearTimeout(timer);await richDocument?.commit();clearTimeout(timer);if(!current||revision===savedRevision)return chain;
-    const id=current, version=revision, payload={id,title:$('md-title').value.trim()||'未命名文档',text:$('md-editor').value};
-    $('md-status').textContent='保存中…';
-    const job=chain.catch(()=>{}).then(async()=>{const result=await checked(api.save('markdown',payload));const index=docs.findIndex(d=>d.id===id);if(index>=0)docs[index]=result.item;if(current===id){documentIdentity(result.item);savedRevision=Math.max(savedRevision,version);$('md-status').textContent=revision===savedRevision?savedLabel(result.item):'有未保存的修改';docList();}});
-    chain=job.catch(error=>{if(current===id)$('md-status').textContent='保存失败，请重试';throw error;});
-    // Callers can await rejection, while the background save also has an observer.
-    chain.catch(()=>{});return chain;
+    clearTimeout(timer);await richDocument?.commit();clearTimeout(timer);
+    const documentId=current;
+    // A switch/close must also wait for edits made while the first snapshot saves.
+    while(documentId&&current===documentId&&revision!==savedRevision){
+      const id=current, version=revision, payload={id,title:$('md-title').value.trim()||'未命名文档',text:$('md-editor').value};
+      $('md-status').textContent='保存中…';
+      const job=chain.catch(()=>{}).then(async()=>{const result=await checked(api.save('markdown',payload));const index=docs.findIndex(d=>d.id===id);if(index>=0)docs[index]=result.item;if(current===id){documentIdentity(result.item);savedRevision=Math.max(savedRevision,version);$('md-status').textContent=revision===savedRevision?savedLabel(result.item):'有未保存的修改';docList();}});
+      chain=job.catch(error=>{if(current===id)$('md-status').textContent='保存失败，请重试';throw error;});
+      // Callers can await rejection, while the background save also has an observer.
+      chain.catch(()=>{});await chain;
+      if(current!==documentId)break;
+      clearTimeout(timer);await richDocument?.commit();clearTimeout(timer);
+    }
+    return chain;
   }
   async function selectDoc(id){clearTimeout(previewTimer);await flush();closeDocumentFind(false);richDocument?.destroy();richDocument=null;richText='';richKey='';foldedHeadings.clear();current=id;revision=savedRevision=0;const item=docs.find(d=>d.id===id);if(item?.meta?.recentHidden){await checked(api.recent('open',id));item.meta.recentHidden=false;}$('md-body').hidden=!item;$('md-empty').hidden=Boolean(item);document.documentElement.classList.toggle('md-home',!item);if(item){$('md-title').value=item.title;$('md-editor').value=item.text;$('md-status').textContent=item.meta?.externalPath?'本地文件；Ctrl+S 保存到原位置':'已保存';setDocumentView(requestedView);preview();}documentIdentity(item);api.activeDocument?.(current);for(const id of ['md-save','md-export','md-export-format','md-delete'])$(id).disabled=!item;docList();syncDocumentNavigation();}
   async function loadDocs(){docs=await api.list('markdown');const opened=await api.openedFile?.();await selectDoc(opened|| (docs.some(d=>d.id===current)?current:docs.find(d=>!d.meta?.recentHidden)?.id||''));}
@@ -226,7 +233,17 @@
     else if(event.target===$('md-find-query')&&event.key==='Enter'){event.preventDefault();clearTimeout(findTimer);nextFindMatch(event.shiftKey?-1:1);}
   });
   const savedLabel=item=>item?.meta?.externalPath?'草稿已保存到随序；Ctrl+S 写回原文件':'已保存';
-  async function saveCurrentFile(){await flush();const item=docs.find(d=>d.id===current);if(item?.meta?.externalPath){const result=await checked(api.saveFile(current));docs[docs.findIndex(d=>d.id===current)]=result.item;$('md-status').textContent='已写回原文件';notify('已保存到 '+result.item.meta.externalPath);}else notify('已保存在随序');}
+  async function saveCurrentFile(){
+    const id=current;await flush();if(current!==id)return;
+    const item=docs.find(d=>d.id===id),version=revision;
+    if(item?.meta?.externalPath){
+      const result=await checked(api.saveFile(id)),index=docs.findIndex(d=>d.id===id);
+      // Only the original-file metadata changed; keep any newer local draft.
+      if(index>=0)docs[index]={...docs[index],meta:{...docs[index].meta,...result.item.meta}};
+      if(current===id&&revision===version)$('md-status').textContent='已写回原文件';
+      notify('已保存到 '+result.item.meta.externalPath);
+    }else notify('已保存在随序');
+  }
   $('md-save').onclick=safe(saveCurrentFile);
   api.onFileOpened?.(safe(async payload=>{await flush();docs=await api.list('markdown');await selectDoc(payload.id);if(payload.recovered)notify('已恢复尚未写回原文件的草稿，请检查后再保存');}));
   let syncing=false;

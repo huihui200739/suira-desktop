@@ -146,7 +146,7 @@
       hideHint(); if (!target?.dataset.hint) return;
       hintTarget = target; previousDescription = target.getAttribute('aria-describedby');
       hintTimer = setTimeout(() => {
-        if (!target.isConnected || !target.getClientRects().length || document.hidden || target.getAttribute('aria-expanded') === 'true') { hideHint(); return; }
+        if (!target.isConnected || !target.getClientRects().length || document.hidden || (target.getAttribute('aria-expanded') === 'true' && target.dataset.hintWhenExpanded !== 'true')) { hideHint(); return; }
         hint.textContent = target.dataset.hint; hint.hidden = false;
         target.setAttribute('aria-describedby',[previousDescription,hint.id].filter(Boolean).join(' '));
         const box = target.getBoundingClientRect(), size = hint.getBoundingClientRect();

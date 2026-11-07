@@ -55,6 +55,34 @@
 .liquid-ui.workbench .side-status .live-dot { background:var(--wb-workbench-side-status-live-dot-surface); box-shadow:var(--wb-workbench-side-status-live-dot-shadow); }
 .liquid-ui.workbench .side-status b { margin-left:auto; font:400 12px/1 var(--wb-num);font-variant-numeric:tabular-nums; letter-spacing:.04em; color:var(--wb-rail-muted); }
 
+/* One width token keeps the rail, titlebar and content aligned. The compact
+   state remains navigable rather than hiding the user's primary destinations. */
+.sidebar-toggle { display:none; }
+.liquid-ui.workbench .sidebar-toggle { display:grid; place-items:center; position:relative; flex:none; width:32px; height:32px; margin-left:var(--space-2); border-radius:6px; color:var(--ink-muted); -webkit-app-region:no-drag; }
+.liquid-ui.workbench .sidebar-toggle:hover { background:var(--wb-soft); color:var(--ink); }
+.sidebar-toggle svg { width:20px; height:20px; stroke-width:1.5; }
+.liquid-ui.workbench .sidebar { width:auto; overflow-x:hidden; overflow-y:auto; }
+.liquid-ui.workbench .nav { flex:none; }
+.liquid-ui.workbench .nav-item { min-width:0; transform:none; }
+.liquid-ui.workbench .nav-item > [data-icon] { display:flex; flex:none; align-items:center; }
+.liquid-ui.workbench .nav-item > span:last-child { white-space:nowrap; }
+.liquid-ui.workbench.sidebar-collapsed { --wb-rail:64px; }
+.liquid-ui.workbench.sidebar-collapsed .titlebar .brand { justify-content:center; padding:0; }
+.liquid-ui.workbench.sidebar-collapsed .brand > div { display:none; }
+.sidebar-collapsed .sidebar-toggle-arrow { transform:rotate(180deg); transform-origin:14px 12px; }
+.liquid-ui.workbench.sidebar-collapsed .sidebar { padding-inline:var(--space-2); }
+.liquid-ui.workbench.sidebar-collapsed .nav-item { justify-content:center; gap:0; padding-inline:0; }
+.liquid-ui.workbench.sidebar-collapsed .nav-item > span:last-child { display:none; }
+.liquid-ui.workbench.sidebar-collapsed .nav-item.is-active::after { left:calc(var(--space-2) * -1); }
+.liquid-ui.workbench.sidebar-collapsed .side-status { justify-content:center; padding-inline:0; min-height:24px; }
+.liquid-ui.workbench.sidebar-collapsed .side-status > :not(.live-dot) { display:none; }
+/* Animate only when requested; restored preferences are applied before paint. */
+@media(prefers-reduced-motion:no-preference) {
+ .liquid-ui.workbench .app-body { transition:grid-template-columns 160ms var(--ease-out); }
+ .liquid-ui.workbench .titlebar::before { transition:width 160ms var(--ease-out); }
+ .liquid-ui.workbench .titlebar .brand { transition:width 160ms var(--ease-out); }
+}
+
 /* ---------- pages ---------- */
 .liquid-ui.workbench .main-scroll { padding:var(--space-6) calc(var(--space-1) * 10); background:transparent; }
 .liquid-ui.workbench .page { padding:0; max-width:1480px; margin:0 auto; }

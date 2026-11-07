@@ -48,6 +48,10 @@
 
 <img src="docs/product/workbench.png" alt="新版任务匣：紧凑任务列表、有阅读宽度的内容区与操作入口" width="100%">
 
+**侧边栏，需要时展开。** 开发版 0.2.44 可点击左上角的侧栏按钮或按 `Ctrl + \` 收起/展开，收起后保留图标导航；悬停或键盘聚焦可查看入口名称。偏好保存在本机，不改变文档窗口的编辑快捷键。
+
+<img src="docs/product/sidebar-collapsed.png" alt="0.2.44 工作台收起导航，保留图标入口并扩展内容区（隔离演示数据）" width="100%">
+
 **过程，在内容旁边回看。** 在内容详情中展开处理轨迹，查看提字、整理、翻译和复制经过的每一步。原文、结果与错误放在一起，多次尝试收进同一步骤，失败后可以调整翻译或重试；用时按需展开。
 
 <img src="docs/product/trace.png" alt="按内容归组的处理轨迹，展开翻译步骤查看原文、错误与恢复入口" width="100%">
@@ -92,6 +96,8 @@
 
 ```powershell
 npm test                 # 逻辑、界面与交互回归
+npm run test:workbench   # 侧栏、任务/内容、文档与日历的针对性回归
+npm run verify:workbench # 隔离合成数据的真实 Electron 侧栏与任务流程
 npm run test:surfaces    # Windows 原生窗口圆角与生命周期检查
 npm run verify:workspace # 真实 Electron 日历与 Markdown 工作流
 npm run verify:windows   # 连续移动、关闭重开与窗口尺寸稳定性
