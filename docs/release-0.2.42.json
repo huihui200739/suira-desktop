@@ -1,0 +1,29 @@
+{
+  "version": "0.2.42",
+  "artifact": "Suira-0.2.42-x64.exe",
+  "bytes": 171610926,
+  "sha256": "B6AF71D9B37DD44A4859CC6E003A9C2FEBD03169B0C9BBAFC569FDD602265512",
+  "sha512": "yrE4vp0hx9Ri/FKxZH1JUxKTWCnxSJMddnScsbOpkReAOLsziXX2d0GSrBxg1gdPA476fYjijHcfFiEC3U9ycA==",
+  "platform": "win32",
+  "arch": "x64",
+  "electron": "45.0.0",
+  "checkedSourceFiles": 152,
+  "checks": [
+    "source-payload-byte-match",
+    "no-test-profile-or-obsolete-key-hook",
+    "installer-archive-crc",
+    "updater-feed-and-sha512-match",
+    "original-font-and-license-sha256-in-nsis-payload",
+    "packaged-qr-worker-and-jsqr",
+    "packaged-opencc-dictionary-converts",
+    "public-latest-and-four-remote-asset-digests",
+    "anonymous-updater-download-sha512",
+    "same-version-reports-latest"
+  ],
+  "fontSha256": "0ddef90648998900175cfdca9a6f087a2544c182f130b0ad4f7e94a03a115e79",
+  "signature": "unsigned",
+  "published": true,
+  "payloadSha256": "6C58AE229ED71FA7E70C47AD9701F14498047AA1EAA45F95F04E92F4FFE1FC89",
+  "executableSha256": "F9B0C40D183C6C589287A21C01D41D347F1A4AF787326852516FE112F102F19C",
+  "releaseUrl": "https://github.com/huihui200739/suira-updates/releases/tag/v0.2.42"
+}
