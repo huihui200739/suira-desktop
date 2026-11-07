@@ -6,7 +6,7 @@
 | --- | --- |
 | 随手面板 | [实时玻璃与 38 键](panel.png) |
 | 组合动作 | [编辑并绑定多个步骤](recipes.png) |
-| 取色器 | [放大镜显示 HEX 与 RGB](color-picker.png) |
+| 取色器 | [微信式绿色十字线、坐标与色值](color-picker.png) |
 | 最近内容与划词 | [普通面板](selection-panel.png) · [全屏面板](selection-fullscreen.png) |
 | 全屏键位与菜单 | [同一套玻璃控件](keyboard-menu.png) |
 | 应用启动台 | [本机应用搜索与原生图标](apps.png) |

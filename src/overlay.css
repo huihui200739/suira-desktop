@@ -141,20 +141,22 @@ button { color: inherit; }
   border-radius: var(--radius-sm);
   image-rendering: pixelated;
 }
+/* 信息框贴着放大画面：两行读数 + 一条复制提示，和微信截图取色一致。 */
+.magnifier-info { padding:calc(var(--space-1) * 1.5) var(--space-1) 0; }
 .magnifier-readout {
   display: flex;
-  align-items: center;
+  align-items: baseline;
   justify-content: space-between;
   gap: var(--space-2);
-  margin-top: var(--space-2);
   color: var(--ink);
   font-size: var(--text-1);
+  line-height: 1.75;
   font-variant-numeric: tabular-nums;
 }
 .magnifier-readout > span:first-child,.magnifier-hint { color:var(--ink-soft); }
-.magnifier-value { display:flex;align-items:center;gap:var(--space-1); }
-#magnifier-swatch { width:14px;height:14px;border:1px solid var(--line-strong);border-radius:3px; }
+.magnifier-value { display:flex;align-items:baseline;gap:var(--space-1);white-space:nowrap; }
 #magnifier-color { font-weight:500; }
+.magnifier-rgb { color:var(--ink-muted);font-size:10px;letter-spacing:-.2px; }
 .magnifier-hint { margin-top:var(--space-2);padding-top:var(--space-2);border-top:1px solid var(--line);font-size:var(--text-1);text-align:center; }
 
 .capture-hint {

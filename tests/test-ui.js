@@ -972,5 +972,29 @@ t('剪贴板历史条：preload 与设置页入口', () => {
   if (!barJs.includes('returnTo.commit')) throw new Error('底部条未接放回提交');
 });
 
+t('取色放大镜：微信式绿色十字线、两行读数与 Ctrl+C 复制', () => {
+  const overlayHtml = read('src/overlay.html');
+  const overlayJs = read('src/overlay.js');
+  const theme = read('src/theme.css');
+  const stage = read('src/stage-tools.js');
+  if (!overlayHtml.includes('按 Ctrl+C 复制色值') || !overlayHtml.includes('<kbd>Ctrl+C</kbd> 复制色值')) {
+    throw new Error('取色提示未改为微信式 Ctrl+C 复制色值');
+  }
+  if ((overlayHtml.match(/class="magnifier-readout"/g) || []).length !== 2) {
+    throw new Error('信息框应只有坐标与色值两行，RGB 作为色值行的次要信息');
+  }
+  if (!/--magnifier-crosshair:#00b050/i.test(theme)) throw new Error('十字线应为微信绿');
+  if (!overlayJs.includes("themePaint('magnifier-crosshair')") || !overlayJs.includes('strokeRect(center - pixel / 2, center - pixel / 2, pixel, pixel)')) {
+    throw new Error('放大镜未绘制绿色十字线与中心像素框');
+  }
+  if (!overlayJs.includes('const sampleSize = 21')) throw new Error('放大倍率应保持约 8 倍，能看清周围画面');
+  if (!overlayJs.includes('measureMagnifier()')) throw new Error('贴边避让应使用真实放大镜尺寸');
+  if (!overlayJs.includes('event.ctrlKey && !event.shiftKey && !magnifier.hidden')) {
+    throw new Error('Ctrl+C 应仅在取色放大镜可见时复制色值，避免抢走完成并复制');
+  }
+  if (!overlayJs.includes("showAction(sampled.hex+' 已复制 · Enter 完成截图')")) throw new Error('复制色值后要提示如何完成截图');
+  if (stage.includes('Shift+C')) throw new Error('颜色历史文案仍写着旧快捷键');
+});
+
 console.log('\n========== ' + pass + ' 通过 / ' + fail + ' 失败 ==========');
 process.exit(fail ? 1 : 0);

@@ -97,7 +97,7 @@
   --focus-ring:var(--accent-8);
   --drawing-red:#ff646f; --drawing-orange:#ffb457; --drawing-blue:#6aa7ff;
   --drawing-green:#64dca2; --drawing-white:#fff; --drawing-black:#171923;
-  --magnifier-surface:#111113; --magnifier-crosshair:rgba(119,173,255,.9);
+  --magnifier-surface:#111113; --magnifier-crosshair:#00b050; --magnifier-center-outline:rgba(0,0,0,.55);
   --danger: var(--red-11);
   --danger-solid: var(--red-9);
   --danger-soft: var(--red-3);

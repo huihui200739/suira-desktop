@@ -354,22 +354,33 @@ function drawScreen() {
 /* 放大镜显隐 / 位置 / 坐标文本都只在值变化时写 DOM */
 const lastMagnifierPos = { left: NaN, top: NaN };
 const lastMagnifierPx = { x: NaN, y: NaN };
+let magnifierBox = null;
 
 function setMagnifierVisible(visible) {
   if (magnifier.hidden !== !visible) magnifier.hidden = !visible;
 }
 
+/* 贴边避让用真实盒子尺寸：信息框行数、主题字号变化后也不会溢出屏幕。
+   隐藏时读不到尺寸，所以只在显示之后量一次，resize / 重置时让缓存失效。 */
+function measureMagnifier() {
+  if (magnifierBox) return magnifierBox;
+  const rect = magnifier.getBoundingClientRect();
+  magnifierBox = { width: rect.width || 194, height: rect.height || 292 };
+  return magnifierBox;
+}
+
 function drawMagnifier(p) {
   if (!state.image || !state.payload) return;
   setMagnifierVisible(true);
-  const sampleSize = 11;
+  // 21 源像素放大到 176px（约 8 倍）：既看得清目标像素，也能认出周围画面，和微信取色一致。
+  const sampleSize = 21;
+  const half = Math.floor(sampleSize / 2);
   // 量化到源图像素：源像素没变就不重绘放大镜，坐标文本也一起跳过
   const srcX = clamp(Math.round((p.x / metrics.width) * state.image.width), 0, state.image.width - 1);
   const srcY = clamp(Math.round((p.y / metrics.height) * state.image.height), 0, state.image.height - 1);
   if (srcX !== lastMagnifierPx.x || srcY !== lastMagnifierPx.y) {
     lastMagnifierPx.x = srcX;
     lastMagnifierPx.y = srcY;
-    const half = Math.floor(sampleSize / 2);
     magnifierCtx.imageSmoothingEnabled = false;
     magnifierCtx.clearRect(0, 0, magnifierCanvas.width, magnifierCanvas.height);
     magnifierCtx.fillStyle = themePaint('magnifier-surface');
@@ -385,14 +396,18 @@ function drawMagnifier(p) {
       magnifierCanvas.width,
       magnifierCanvas.height
     );
-    magnifierCtx.strokeStyle = themePaint('accent-9');
-    magnifierCtx.lineWidth = 1;
+    // 微信式绿色十字线贯穿画面，中心小框标出正在取的那一像素；深色描边保证浅色画面上也看得见。
+    const crosshair = themePaint('magnifier-crosshair');
     const center = magnifierCanvas.width / 2, pixel = magnifierCanvas.width / sampleSize;
+    magnifierCtx.strokeStyle = crosshair;
+    magnifierCtx.lineWidth = 1;
     magnifierCtx.beginPath();
     magnifierCtx.moveTo(center + .5, 0); magnifierCtx.lineTo(center + .5, magnifierCanvas.height);
     magnifierCtx.moveTo(0, center + .5); magnifierCtx.lineTo(magnifierCanvas.width, center + .5);
     magnifierCtx.stroke();
-    magnifierCtx.lineWidth = 2;
+    magnifierCtx.strokeStyle = themePaint('magnifier-center-outline');
+    magnifierCtx.strokeRect(center - pixel / 2 - 1, center - pixel / 2 - 1, pixel + 2, pixel + 2);
+    magnifierCtx.strokeStyle = crosshair;
     magnifierCtx.strokeRect(center - pixel / 2, center - pixel / 2, pixel, pixel);
     const coords = `${srcX}, ${srcY}`;
     if (magnifierCoords.textContent !== coords) magnifierCoords.textContent = coords;
@@ -400,17 +415,17 @@ function drawMagnifier(p) {
     if(sampled){
       $('#magnifier-color').textContent=sampled.hex;
       $('#magnifier-rgb').textContent=sampled.rgb.join(', ');
-      $('#magnifier-swatch').style.backgroundColor=sampled.hex;
     }
   }
 
-  const offset = 20;
+  const box = measureMagnifier();
+  const offset = 20, edge = 8;
   let left = p.x + offset;
   let top = p.y + offset;
-  if (left + 194 > metrics.width) left = p.x - 194 - offset;
-  if (top + 292 > metrics.height) top = p.y - 292 - offset;
-  left = clamp(left, 8, Math.max(8, metrics.width - 202));
-  top = clamp(top, 8, Math.max(8,metrics.height - 300));
+  if (left + box.width > metrics.width - edge) left = p.x - box.width - offset;
+  if (top + box.height > metrics.height - edge) top = p.y - box.height - offset;
+  left = clamp(left, edge, Math.max(edge, metrics.width - box.width - edge));
+  top = clamp(top, edge, Math.max(edge, metrics.height - box.height - edge));
   if (lastMagnifierPos.left !== left) { magnifier.style.left = `${left}px`; lastMagnifierPos.left = left; }
   if (lastMagnifierPos.top !== top) { magnifier.style.top = `${top}px`; lastMagnifierPos.top = top; }
 }
@@ -1219,9 +1234,19 @@ function setupEvents() {
       && (target.tagName === 'TEXTAREA' || target.tagName === 'INPUT' || target.isContentEditable);
     if (isTextInput) return;
     const key = event.key.toLowerCase();
-    if(event.shiftKey&&!event.ctrlKey&&!event.altKey&&!event.metaKey&&key==='c'){
-      event.preventDefault();if(event.repeat)return;const sampled=sampleColor(colorPoint);if(!sampled){showAction('请先把指针移到要取色的位置','error');return;}
-      window.suira.colors.pick(sampled.hex).then(result=>{if(!result?.ok)throw Error(result?.error||'取色失败');showAction(sampled.hex+' 已复制，已存入颜色历史');}).catch(error=>showAction(error.message,'error'));return;
+    // 取色复制跟微信一致用 Ctrl+C；Shift+C 保留给旧习惯。Ctrl+C 只在放大镜可见时取色，
+    // 指针停在工具栏或结果框上时，仍按原来的「完成并复制截图」处理（Ctrl+Shift+C 不拦截）。
+    const colorCopy = key === 'c' && !event.altKey && !event.metaKey
+      && ((event.shiftKey && !event.ctrlKey) || (event.ctrlKey && !event.shiftKey && !magnifier.hidden));
+    if (colorCopy) {
+      event.preventDefault();
+      if (event.repeat) return;
+      const sampled = sampleColor(colorPoint);
+      if (!sampled) { showAction('请先把指针移到要取色的位置', 'error'); return; }
+      window.suira.colors.pick(sampled.hex)
+        .then(result=>{if(!result?.ok)throw Error(result?.error||'取色失败');showAction(sampled.hex+' 已复制 · Enter 完成截图');})
+        .catch(error=>showAction(error.message,'error'));
+      return;
     }
     if (event.key === 'Escape') {
       event.preventDefault();
@@ -1285,9 +1310,10 @@ function setupEvents() {
       state.scaleX=state.image.width/metrics.width;state.scaleY=state.image.height/metrics.height;
       state.drawing=null;state.selecting=false;
     }
-    // 尺寸可能变了：下次定位时重新量一次工具栏
+    // 尺寸可能变了：下次定位时重新量一次工具栏和取色放大镜
     dockMetrics.width = 0;
     dockMetrics.height = 0;
+    magnifierBox = null;
     mosaicPaletteKey = '';
     mosaicPaletteData = null;
     resizeCanvases();
@@ -1374,6 +1400,7 @@ function resetOverlay() {
   lastMagnifierPx.x = NaN;
   colorPoint=null;ocrResult.dataset.qrUrl='';
   lastMagnifierPx.y = NaN;
+  magnifierBox = null;
   lastMagnifierPos.left = NaN;
   lastMagnifierPos.top = NaN;
   lastDock.left = NaN;

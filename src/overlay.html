@@ -28,12 +28,14 @@
       <span class="handle sw" data-handle="sw"></span><span class="handle w" data-handle="w"></span>
       <div class="size-badge" id="size-badge">0 × 0</div>
     </div>
+    <!-- 微信式取色：放大画面 + 绿色十字线 + 坐标 / 色值 / 复制提示 -->
     <div class="magnifier" id="magnifier" hidden aria-label="取色放大镜">
       <canvas id="magnifier-canvas" width="176" height="176"></canvas>
-      <div class="magnifier-readout"><span>坐标</span><span id="magnifier-coords">0, 0</span></div>
-      <div class="magnifier-readout"><span>色值</span><span class="magnifier-value"><i id="magnifier-swatch"></i><b id="magnifier-color">HEX</b></span></div>
-      <div class="magnifier-readout magnifier-rgb"><span>RGB</span><span id="magnifier-rgb"></span></div>
-      <div class="magnifier-hint">Shift+C 复制颜色</div>
+      <div class="magnifier-info">
+        <div class="magnifier-readout"><span>坐标</span><span id="magnifier-coords">0, 0</span></div>
+        <div class="magnifier-readout"><span>色值</span><span class="magnifier-value"><b id="magnifier-color">HEX</b><small class="magnifier-rgb" id="magnifier-rgb"></small></span></div>
+        <div class="magnifier-hint" id="magnifier-hint">按 Ctrl+C 复制色值</div>
+      </div>
     </div>
 
     <div class="capture-hint" id="capture-hint">
@@ -41,7 +43,7 @@
       <p><b>拖拽</b>选择区域</p>
       <span><kbd>Enter</kbd> 完成</span>
       <span><kbd>Esc</kbd> 取消</span>
-      <span><kbd>Shift+C</kbd> 取色</span>
+      <span><kbd>Ctrl+C</kbd> 复制色值</span>
     </div>
 
     <div class="tool-dock" id="tool-dock" hidden>
