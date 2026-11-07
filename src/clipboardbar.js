@@ -624,8 +624,10 @@
       $('#bar-preview').hidden=false;body.focus();
     }catch(error){showNotice(errorText(error,'预览失败'),true);}
   }
-  async function copySelected(){
-    const item=state.previewItem||state.items[state.selected];if(!item||state.committing||!state.returnApi)return;
+  async function copySelected(source='selection'){
+    // 预览里的 Ctrl+C 复制预览项；底部「复制」按钮始终作用于当前选中项，
+    // 不能因为预览开着就复制到另一条内容。
+    const item=source==='preview'?state.previewItem:state.items[state.selected];if(!item||state.committing||!state.returnApi)return;
     state.committing=true;syncSelection();
     try{const result=await state.returnApi.commit({itemId:item.id,intent:'copy-only'});if(!result?.ok||!result.copied)throw Error(result?.error||'复制失败');showNotice('已复制，可继续浏览或按 Ctrl+V 粘贴',false);}
     catch(error){showNotice(errorText(error,'复制失败'),true);}finally{state.committing=false;syncSelection();}
@@ -636,9 +638,11 @@
     if (event.isComposing || event.keyCode === 229) return;
     const key = event.key;
     if(state.previewItem){
-      if(key==='Escape'){event.preventDefault();closePreview();}
-      else if((event.ctrlKey||event.metaKey)&&key.toLowerCase()==='a'){event.preventDefault();const range=document.createRange();range.selectNodeContents($('#bar-preview-content'));const selection=window.getSelection();selection.removeAllRanges();selection.addRange(range);}
-      else if((event.ctrlKey||event.metaKey)&&key.toLowerCase()==='c'&&!window.getSelection()?.toString()){event.preventDefault();copySelected();}
+      if(key==='Escape'){event.preventDefault();closePreview();return;}
+      if((event.ctrlKey||event.metaKey)&&key.toLowerCase()==='a'){event.preventDefault();const range=document.createRange();range.selectNodeContents($('#bar-preview-content'));const selection=window.getSelection();selection.removeAllRanges();selection.addRange(range);return;}
+      if((event.ctrlKey||event.metaKey)&&key.toLowerCase()==='c'&&!window.getSelection()?.toString()){event.preventDefault();copySelected('preview');return;}
+      // 预览态刻意只响应上面三个键：其余按键若继续作用于列表，
+      // 选中项会与正在预览的内容错位，Enter 还可能误提交。
       return;
     }
     // 按钮的 Enter / Space 交给原生点击，不能被全局 Enter 抢走去粘贴。
@@ -706,6 +710,8 @@
     if (!card) return;
     const index = Number(card.dataset.index);
     if (!Number.isFinite(index)) return;
+    // 鼠标点中另一张卡片时，旧预览不能继续留在屏幕上并影响「复制」的目标
+    if(state.previewItem && state.previewItem.id!==state.items[index]?.id) closePreview();
     selectIndex(index);
     if(closestFrom(event.target,'[data-edit-image]')) {editSelectedImage();return;}
     submitSelected();
@@ -777,7 +783,7 @@
     $('#bar-edit')?.addEventListener('click', editSelectedImage);
     $('#bar-preview-toggle')?.addEventListener('click',previewSelected);
     $('#bar-preview-close')?.addEventListener('click',()=>closePreview());
-    $('#bar-copy')?.addEventListener('click',copySelected);
+    $('#bar-copy')?.addEventListener('click',()=>copySelected('selection'));
     track?.addEventListener('contextmenu',event=>{const card=closestFrom(event.target,'.bar-card');if(!card)return;event.preventDefault();selectIndex(Number(card.dataset.index));previewSelected();});
     $('#bar-refresh-retry')?.addEventListener('click', () => load({ keepItemId: currentSelectedId() }));
     $('#bar-library')?.addEventListener('click', async () => {

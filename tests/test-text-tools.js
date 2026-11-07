@@ -1,5 +1,5 @@
 'use strict';
-const assert=require('node:assert/strict'),{transformText}=require('../lib/text-tools');
+const assert=require('node:assert/strict'),{transformText,formatJson}=require('../lib/text-tools');
 const source='这 是 一 段 中 文 。\r\n\r\n\r\nHello   world\r\n\r\n下一段';
 assert.equal(transformText(source,'compact'),'这是一段中文。\nHello world\n下一段');
 assert.equal(transformText('中文 English words 混排','cjk'),'中文 English words 混排');
@@ -7,5 +7,11 @@ assert.equal(transformText('Hello\nworld\n\n第二\n段','merge'),'Hello world\n
 assert.equal(transformText('ß hello 中文','upper'),'SS HELLO 中文');
 assert.equal(transformText('HELLO 中文','lower'),'hello 中文');
 assert.throws(()=>transformText('text','unknown'));assert.throws(()=>transformText('x'.repeat(200001)));
-assert.equal(source.includes('\r\n'),true,'Operations do not mutate the original');
-console.log('PASS explicit text conversion, CJK spacing, English word boundaries, paragraph handling and input limits');
+// 旧断言 `source.includes('\r\n')` 检查的是字符串常量本身，永远为真，没有任何回归价值。
+// 换成真正覆盖格式化与错误路径的行为断言。
+assert.equal(formatJson('{}'),'{}');assert.equal(formatJson('[]'),'[]');
+assert.equal(formatJson('[1,2,{"a":3}]'),'[\n  1,\n  2,\n  {\n    "a": 3\n  }\n]');
+assert.equal(formatJson('{"id":9007199254740993}'),'{\n  "id": 9007199254740993\n}','格式化必须保留大整数原字面量');
+assert.equal(transformText('A B','url.encode'),'A%20B');
+assert.throws(()=>transformText('\ud800','url.encode'),/URL 编码失败：文字包含无效的 Unicode 字符/);
+console.log('PASS explicit text conversion, CJK spacing, JSON formatting, big integer literals and Unicode error paths');

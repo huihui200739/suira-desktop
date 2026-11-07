@@ -1025,10 +1025,12 @@ async function changePresentation(mode=presentation==='fullscreen'?'window':'ful
 async function loadImmersiveBackground(){
   try{const result=await window.suira.quick.background?.();if(presentation!=='fullscreen')return;const data=result?.dataUrl||'';if(data.startsWith('data:image/'))$('#launchpad-backdrop').style.backgroundImage=`url("${data}")`;$('#panel').dataset.backdrop=result?.source||'gradient';}catch{}
 }
-function setSearchExpanded() {
-  document.querySelector('.search-field').classList.add('is-expanded');
-  $('#search-toggle').setAttribute('aria-expanded','true');
-  $('#search').tabIndex=0;
+function setSearchExpanded(expanded = true) {
+  // 唤出面板时传 false 要真的收起：以前函数没有参数，永远只做展开，
+  // 导致 aria-expanded 恒为 true、收起态从未生效。
+  document.querySelector('.search-field').classList.toggle('is-expanded', expanded);
+  $('#search-toggle').setAttribute('aria-expanded', String(expanded));
+  $('#search').tabIndex = expanded ? 0 : -1;
 }
 function focusSearch() {
   setSearchExpanded(true);

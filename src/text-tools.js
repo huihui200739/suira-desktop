@@ -69,6 +69,17 @@
   $('tool-back').onclick=async()=>{const previous=history.pop();if(!previous)return;$('tool-source').value=previous.source;$('operation').value=previous.operation;const job=setMode(previous.mode,false),token=revision;await job;if(token!==revision)return;$('source-language').value=previous.sourceLang;$('target-language').value=previous.targetLang;$('tool-result').value=previous.result;currentResult=true;counts();message('已回到上一步');};
   async function copy(paste=false){const text=$('tool-result').value;if(!currentResult||!text.trim())return;try{const saved=await api.content.addText({text,title:mode==='translate'?'译文':'转换后的文字',source:mode==='translate'?'translate':'derived'});if(!saved?.ok)throw Error(saved?.error||'保存结果失败');const result=paste?await api.returnTo.commit({itemId:saved.item.id,intent:'return-and-paste'}):await api.actions.run(saved.item.id,'output.copy');if(!result?.ok)throw Error(result?.error||'复制失败');message(result.message||(paste?'已粘回原处':'结果已复制'));}catch(error){message(error.message,true);}}
   $('tool-copy').onclick=()=>copy();$('tool-paste').onclick=()=>copy(true);$('tool-configure').onclick=()=>api.textTools.configure();$('tool-min').onclick=()=>api.window.minimize();$('tool-max').onclick=()=>api.window.maximize();$('tool-close').onclick=()=>{clearTimeout(autoTimer);api.window.close();};
-  document.addEventListener('keydown',event=>{if(event.isComposing)return;if((event.ctrlKey||event.metaKey)&&event.key==='Enter'){event.preventDefault();run();}else if(selectionPaste&&!event.target.closest('button,select,[role=combobox]')&&event.key==='Enter'&&!event.shiftKey&&!event.altKey&&currentResult&&!busy){event.preventDefault();copy(true);}else if(event.key==='Escape')api.window.close();});window.addEventListener('pagehide',()=>clearTimeout(autoTimer));
+  document.addEventListener('keydown',event=>{
+    if(event.isComposing)return;
+    if((event.ctrlKey||event.metaKey)&&event.key==='Enter'){event.preventDefault();run();}
+    else if(selectionPaste&&!event.target.closest('button,select,[role=combobox]')&&event.key==='Enter'&&!event.shiftKey&&!event.altKey&&currentResult&&!busy){event.preventDefault();copy(true);}
+    else if(event.key==='Escape'){
+      // 先收起「更多原文操作 / 接着处理」等浮层，再关窗口；
+      // 否则菜单开着按 Esc 会直接销毁窗口，未保存的原文和结果一起丢掉。
+      const layer=document.querySelector('details[open], dialog[open], [popover]:popover-open');
+      if(layer){event.preventDefault();if(layer.tagName==='DETAILS')layer.open=false;else if(typeof layer.hidePopover==='function')layer.hidePopover();else if(typeof layer.close==='function')layer.close();return;}
+      api.window.close();
+    }
+  });window.addEventListener('pagehide',()=>clearTimeout(autoTimer));
   api.textTools.onInput(payload=>load(payload).catch(error=>message(error.message,true)));api.textTools.initial().then(load).catch(error=>message(error.message,true));
 })();

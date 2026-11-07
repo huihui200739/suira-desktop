@@ -988,6 +988,8 @@ function openModal(title, placeholder, onConfirm, options = {}) {
   // 输入任意一个字符都能删任务或清空剪贴板。
   const expect = String(options.expect || '');
   const confirmBtn = $('#modal-confirm');
+  // 上一次弹窗可能把按钮改成「删除」，每次打开都要恢复，否则标签与动作长期不符
+  confirmBtn.textContent = options.confirmLabel || '创建';
   const hint = $('#modal-hint');
   const sync = () => {
     const ok = !expect || input.value.trim() === expect;
@@ -1090,8 +1092,7 @@ function installEvents() {
       state.selectedTaskId = '';
       showGlobalToast('任务已删除');
       await refreshShelf();
-    }, { expect: task.title });
-    $('#modal-confirm').textContent = '删除';
+    }, { expect: task.title, confirmLabel: '删除' });
   });
 
   $('#library-capture').addEventListener('click', async () => {
@@ -1129,7 +1130,7 @@ function installEvents() {
   $('#open-font-license').addEventListener('click', event => { event.preventDefault(); window.suira.app.openFontLicense(); });
   $('#restart-app').addEventListener('click', async () => {
     try { await window.suira.app.restart(); }
-    catch (error) { toast(error?.message || '重启失败，请从托盘退出后重新打开'); }
+    catch (error) { showGlobalToast(error?.message || '重启失败，请从托盘退出后重新打开', 'error'); }
   });
   bindSettings();
 

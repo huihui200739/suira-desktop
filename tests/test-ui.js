@@ -989,11 +989,52 @@ t('取色放大镜：微信式绿色十字线、两行读数与 Ctrl+C 复制', 
   }
   if (!overlayJs.includes('const sampleSize = 21')) throw new Error('放大倍率应保持约 8 倍，能看清周围画面');
   if (!overlayJs.includes('measureMagnifier()')) throw new Error('贴边避让应使用真实放大镜尺寸');
-  if (!overlayJs.includes('event.ctrlKey && !event.shiftKey && !magnifier.hidden')) {
-    throw new Error('Ctrl+C 应仅在取色放大镜可见时复制色值，避免抢走完成并复制');
+  if (!/const colorCopy = [\s\S]{0,200}!magnifier\.hidden[\s\S]{0,160}shiftKey !== event\.ctrlKey/.test(overlayJs)) {
+    throw new Error('Shift+C 与 Ctrl+C 都应要求放大镜可见，避免复制陈旧采样点');
   }
   if (!overlayJs.includes("showAction(sampled.hex+' 已复制 · Enter 完成截图')")) throw new Error('复制色值后要提示如何完成截图');
   if (stage.includes('Shift+C')) throw new Error('颜色历史文案仍写着旧快捷键');
+});
+
+t('覆盖层回归：画笔拖拽入队、浮层保护、指针取消与迟到结果', () => {
+  const js = read('src/overlay.js');
+  if (!js.includes('if (!annotating) colorPoint = p;') || !js.includes('queuePointer(p);')) {
+    throw new Error('标注拖拽期间必须继续把 pointermove 入队，否则画笔一笔都画不出来');
+  }
+  if (!js.includes('if (state.drawing) state.drawing.points.push(p);')) throw new Error('画笔松开点必须并入线条');
+  if (!js.includes('.ocr-result, .original-viewer, .loading-state')) throw new Error('查看原图/加载态浮层不能触发重新框选');
+  if (!js.includes("root.addEventListener('pointercancel', cancelPointer)") || !js.includes("root.addEventListener('lostpointercapture'")) {
+    throw new Error('指针取消与捕获丢失必须收掉进行中的绘制');
+  }
+  if (!js.includes('function releaseImage()') || !js.includes('state.image.close()')) throw new Error('ImageBitmap 需要显式释放');
+  if (!js.includes('if (seq !== showSeq) return;') || !js.includes('if (seq === showSeq)')) throw new Error('异步完成结果需要 showSeq 过期保护');
+  if (!js.includes('if (!visible) colorPoint = null;')) throw new Error('放大镜隐藏时必须清掉陈旧采样点');
+  if (!js.includes('const srcLeft = srcX - half, srcTop = srcY - half;')) throw new Error('边缘取样要保持中心像素对齐画布中心');
+});
+
+t('小问题回归：弹窗标签、重启提示、Esc 逐级、搜索条、主题与视图偏好', () => {
+  const app = read('src/app.js'), panel = read('src/quickpanel.js');
+  const textTools = read('src/text-tools.js'), notes = read('src/notes.js');
+  const workspace = read('src/workspace.js'), bar = read('src/clipboardbar.js');
+  if (app.includes('catch (error) { toast(')) throw new Error('重启失败分支仍在调用不存在的 toast');
+  if (!app.includes("confirmBtn.textContent = options.confirmLabel || '创建';")) throw new Error('弹窗必须重置确认按钮标签');
+  if (!/function setSearchExpanded\(expanded = true\)[\s\S]{0,300}classList\.toggle\('is-expanded', expanded\)/.test(panel)) throw new Error('搜索条收起参数必须生效');
+  if (!textTools.includes("details[open], dialog[open], [popover]:popover-open")) throw new Error('文字工具 Esc 要先收起浮层');
+  if (!notes.includes("if (event.key !== 'Escape' || event.defaultPrevented) return;")) throw new Error('速记 Esc 需要挂到 document');
+  if (!workspace.includes("settings?.theme==='dark'?'light':'dark'")) throw new Error('主题按钮要按当前设置切换');
+  if (!/supportsVisualEditing[\s\S]{0,200}if\(!automatic\)requestedView=view;/.test(workspace)) throw new Error('视图降级后才能记住用户偏好');
+  if (!bar.includes("copySelected('selection')") || !bar.includes("source==='preview'?state.previewItem")) throw new Error('剪贴板条复制必须区分预览项与选中项');
+});
+
+t('纯逻辑回归：大整数、JSON 格式化、URL 编码、存储索引与日期', () => {
+  const search = read('lib/search-command.js'), tools = read('lib/text-tools.js');
+  const store = read('lib/store.js'), dates = read('lib/date-parse.js');
+  if (!search.includes('Number.isInteger(value)&&Number.isSafeInteger(value)')) throw new Error('整数结果不能被 toPrecision 静默截断');
+  if (!search.includes('数字过大，超出精确计算范围')) throw new Error('超大整数要给出明确错误');
+  if (!tools.includes("return parts.join('');")) throw new Error('JSON 格式化不能用 O(n²) 字符串重建');
+  if (!tools.includes('URL 编码失败：文字包含无效的 Unicode 字符')) throw new Error('URL 编码失败需要中文提示');
+  if (!store.includes('return this.getItem(item.id) || saved;')) throw new Error('addItem 不能按 prune 前的下标返回条目');
+  if (!dates.includes("/^\\d+$/.test(now)")) throw new Error('日期解析要接受数字字符串时间戳');
 });
 
 console.log('\n========== ' + pass + ' 通过 / ' + fail + ' 失败 ==========');

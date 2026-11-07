@@ -43,6 +43,28 @@ async function until(fn){let last;for(let i=0;i<180;i++){try{const value=await f
  await move(overlay,120,90);await until(()=>overlay.evaluate('document.getElementById("magnifier-coords").textContent==="96, 72"'));await overlay.send('Input.dispatchKeyEvent',{type:'keyDown',key:'c',code:'KeyC',modifiers:2});await until(async()=>(await rpc()).copied==='#604856');assert.ok(await overlay.evaluate('Boolean(state.image)'),'Ctrl+C copies the sampled color without completing the capture');
  await move(overlay,100,120);await overlay.send('Input.dispatchMouseEvent',{type:'mousePressed',button:'left',clickCount:1,x:100,y:120});await move(overlay,500,400);await wait(80);assert.equal(await overlay.evaluate('document.getElementById("magnifier").hidden'),false);await overlay.send('Input.dispatchMouseEvent',{type:'mouseReleased',button:'left',clickCount:1,x:500,y:400});
  await move(overlay,580,220);await until(()=>overlay.evaluate('!document.getElementById("magnifier").hidden'));const toolBox=await overlay.evaluate('(()=>{const r=document.querySelector("#tool-dock button").getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2};})()');await move(overlay,toolBox.x,toolBox.y);await until(()=>overlay.evaluate('document.getElementById("magnifier").hidden'));
+ // 0.2.40 回归：标注拖拽期间 pointermove 被整段丢掉，画笔一笔都画不出来。
+ // 这里用真实鼠标事件验证中间帧点和松开点都进入线条。
+ await overlay.evaluate('setTool("pen");true');await move(overlay,200,300);
+ await overlay.send('Input.dispatchMouseEvent',{type:'mousePressed',button:'left',clickCount:1,x:200,y:300});
+ await move(overlay,240,330);await move(overlay,280,360);await move(overlay,320,390);await wait(80);
+ await overlay.send('Input.dispatchMouseEvent',{type:'mouseReleased',button:'left',clickCount:1,x:330,y:400});
+ await until(()=>overlay.evaluate('state.annotations.some(a=>a.type==="pen")'));
+ const pen=await overlay.evaluate('(()=>{const a=state.annotations.find(a=>a.type==="pen");const last=a.points[a.points.length-1];return {count:a.points.length,x:last.x,y:last.y};})()');
+ assert.ok(pen.count>=3,'Pen drag keeps intermediate pointermove points: '+JSON.stringify(pen));
+ assert.ok(Math.abs(pen.x-330)<2&&Math.abs(pen.y-400)<2,'Pen includes the pointerup point: '+JSON.stringify(pen));
+ // 查看原图是全屏浮层，在上面按下不能静默清空选区和标注。
+ await overlay.evaluate('document.getElementById("original-viewer").hidden=false;true');
+ await overlay.send('Input.dispatchMouseEvent',{type:'mousePressed',button:'left',clickCount:1,x:450,y:300});
+ await overlay.send('Input.dispatchMouseEvent',{type:'mouseReleased',button:'left',clickCount:1,x:450,y:300});
+ const kept=await overlay.evaluate('({selection:Boolean(state.selection),annotations:state.annotations.length})');
+ assert.ok(kept.selection&&kept.annotations>0,'Original viewer must not reset selection or annotations: '+JSON.stringify(kept));
+ await overlay.evaluate('document.getElementById("original-viewer").hidden=true;true');
+ // 放大镜隐藏后，Shift+C 不能拿旧采样点静默复制颜色。
+ const copiedBefore=(await rpc()).copied;await move(overlay,toolBox.x,toolBox.y);
+ await until(()=>overlay.evaluate('document.getElementById("magnifier").hidden'));
+ await overlay.send('Input.dispatchKeyEvent',{type:'keyDown',key:'C',code:'KeyC',modifiers:8});await wait(150);
+ assert.equal((await rpc()).copied,copiedBefore,'Shift+C must not copy a stale sample while the magnifier is hidden');
  await overlay.evaluate('resetOverlay();true');assert.equal(await overlay.evaluate('document.getElementById("magnifier").hidden'),true);assert.deepEqual(errors,[]);
- const proof={version,isolatedFixture:true,actualPointerHitTests:true,idleMagnifier:true,sourcePixelAndDpiMapping:true,sourceEdgeClamped:true,crosshairAndHexRgb:true,greenWeChatCrosshair:true,weChatTwoRowReadout:true,ctrlCHint:true,renderedCrosshairPixels:true,shiftCCopiesAndKeepsCapture:true,ctrlCCopiesColorAndKeepsCapture:true,dynamicMagnifierBounds:true,toolbarHidesPreview:true,resetHidesPreview:true,allTaskButtons:true,multipleItemsAndDerivedButtons:true,removedItemRetained:true,compactCaptureButton:true,collapsedRecentEntry:true,recentDoesNotDisplaceKeyboard:true,popoverDismissal:true,ctrlKAndNestedEscape:true,noRendererErrors:true};fs.writeFileSync(path.join(root,'docs','ui-fixes-'+version+'.json'),JSON.stringify(proof,null,2)+'\n');console.log('PASS four UI fixes',JSON.stringify(proof));
+ const proof={version,isolatedFixture:true,actualPointerHitTests:true,idleMagnifier:true,sourcePixelAndDpiMapping:true,sourceEdgeClamped:true,crosshairAndHexRgb:true,greenWeChatCrosshair:true,weChatTwoRowReadout:true,ctrlCHint:true,renderedCrosshairPixels:true,shiftCCopiesAndKeepsCapture:true,ctrlCCopiesColorAndKeepsCapture:true,penDragKeepsPoints:true,pointerUpPointIncluded:true,originalViewerProtectsSelection:true,staleShiftCIgnored:true,dynamicMagnifierBounds:true,toolbarHidesPreview:true,resetHidesPreview:true,allTaskButtons:true,multipleItemsAndDerivedButtons:true,removedItemRetained:true,compactCaptureButton:true,collapsedRecentEntry:true,recentDoesNotDisplaceKeyboard:true,popoverDismissal:true,ctrlKAndNestedEscape:true,noRendererErrors:true};fs.writeFileSync(path.join(root,'docs','ui-fixes-'+version+'.json'),JSON.stringify(proof,null,2)+'\n');console.log('PASS four UI fixes',JSON.stringify(proof));
 })().catch(error=>{console.error(error);if(fs.existsSync(path.join(tmp,'app.log')))console.error(fs.readFileSync(path.join(tmp,'app.log'),'utf8').slice(-1600));process.exitCode=1;}).finally(async()=>{sockets.forEach(socket=>socket.close());if(child&&child.exitCode===null){const done=new Promise(resolve=>child.once('exit',resolve));child.kill();await done;}await wait(250);assert.equal(path.dirname(path.resolve(tmp)),path.resolve(os.tmpdir()));fs.rmSync(tmp,{recursive:true,force:true,maxRetries:4,retryDelay:150});});

@@ -39,7 +39,8 @@
     $('calendar-grid').innerHTML=Array.from({length:calendarView==='week'?7:42},(_,i)=>{
       const day=calendarView==='week'?new Date(first.getFullYear(),first.getMonth(),first.getDate()+i):new Date(month.getFullYear(),month.getMonth(),i-offset+1), key=dateKey(day), items=byDate.get(key)||[], info=window.CalendarData.day(day);
       const badge=info.term||info.festival;
-      return `<button class="calendar-day ${i%7>=5?'weekend':''} ${day.getMonth()!==month.getMonth()?'outside':''} ${key===dateKey(new Date())?'today':''} ${key===selected?'selected':''}" data-date="${key}" aria-pressed="${key===selected}"><span class="day-number">${day.getDate()}${info.work!==null?`<i class="work-badge ${info.work?'work':'rest'}">${info.work?'班':'休'}</i>`:''}</span><label class="lunar-day">${badge?`<span class="date-badge ${info.term?'term':'holiday'}">${esc(badge)}</span>`:info.lunar}</label>${items.slice(0,calendarView==='week'?8:2).map(e=>`<small class="category-${e.meta.category||'work'} ${e.meta.done?'done':''}">${e.meta.priority==='high'?'! ':''}${esc(e.title)}</small>`).join('')}${items.length>2?`<em>还有 ${items.length-2} 项</em>`:''}</button>`;
+      const shownItems=calendarView==='week'?8:2;
+      return `<button class="calendar-day ${i%7>=5?'weekend':''} ${day.getMonth()!==month.getMonth()?'outside':''} ${key===dateKey(new Date())?'today':''} ${key===selected?'selected':''}" data-date="${key}" aria-pressed="${key===selected}"><span class="day-number">${day.getDate()}${info.work!==null?`<i class="work-badge ${info.work?'work':'rest'}">${info.work?'班':'休'}</i>`:''}</span><label class="lunar-day">${badge?`<span class="date-badge ${info.term?'term':'holiday'}">${esc(badge)}</span>`:info.lunar}</label>${items.slice(0,shownItems).map(e=>`<small class="category-${e.meta.category||'work'} ${e.meta.done?'done':''}">${e.meta.priority==='high'?'! ':''}${esc(e.title)}</small>`).join('')}${items.length>shownItems?`<em>还有 ${items.length-shownItems} 项</em>`:''}</button>`;
     }).join('');
     $('calendar-grid').querySelectorAll('[data-date]').forEach(button=>button.onclick=()=>{selected=button.dataset.date;$('event-form').hidden=true;calendar();});
     if($('calendar-week-numbers')){const start=calendarView==='week'?first:new Date(month.getFullYear(),month.getMonth(),1-offset);$('calendar-week-numbers').innerHTML=Array.from({length:calendarView==='week'?1:6},(_,i)=>`<span>${window.CalendarData.week(new Date(start.getFullYear(),start.getMonth(),start.getDate()+i*7))}</span>`).join('');}
@@ -143,8 +144,10 @@
   }
   function setDocumentView(view,automatic=false){
     sourceDocument?.close();richDocument?.closeMenu();
-    if(!automatic)requestedView=view;
+    // 先做视图降级，再记住用户选择；否则「写作」被扩展语法拒绝后，
+    // 这个不可用的偏好会一直留着，之后每打开文档都重复提示甚至强制切视图。
     if(view==='write'&&current&&!supportsVisualEditing($('md-editor').value)){view='edit';notify('这篇文档包含扩展语法，使用源码模式可保持内容完整');}
+    if(!automatic)requestedView=view;
     $('md-split').dataset.view=view;document.querySelector('.markdown-toolbar').hidden=false;
     document.querySelectorAll('[data-md-view]').forEach(b=>{b.classList.toggle('is-active',b.dataset.mdView===view);b.setAttribute('aria-pressed',String(b.dataset.mdView===view));});
     $('md-sync-scroll').closest('label').hidden=view!=='split';
@@ -246,7 +249,7 @@
     document.querySelector('.brand').prepend(mark);
     const top=document.createElement('div');top.className='tool-top-actions';
     document.querySelector('.titlebar').insertBefore(top,document.querySelector('.window-actions'));
-    const theme=document.createElement('button');theme.className='quiet-btn tool-icon';theme.title='切换明暗主题';theme.setAttribute('aria-label',theme.title);theme.innerHTML='<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M12 4a8 8 0 0 1 0 16z" fill="currentColor"/></svg>';theme.onclick=safe(()=>window.suira.settings.update({theme:matchMedia('(prefers-color-scheme: dark)').matches?'light':'dark'}));top.append(theme);
+    const theme=document.createElement('button');theme.className='quiet-btn tool-icon';theme.title='切换明暗主题';theme.setAttribute('aria-label',theme.title);theme.innerHTML='<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M12 4a8 8 0 0 1 0 16z" fill="currentColor"/></svg>';theme.onclick=safe(async()=>{const settings=await window.suira.settings.get();await window.suira.settings.update({theme:settings?.theme==='dark'?'light':'dark',themeChosen:true});});top.append(theme);
     const pin=document.createElement('button');pin.className='quiet-btn tool-icon';pin.title='窗口置顶';pin.setAttribute('aria-label',pin.title);pin.innerHTML='<svg viewBox="0 0 24 24"><path d="M8 3h8l-1 7 4 4H5l4-4z M12 14v7"/></svg>';pin.onclick=safe(async()=>pin.setAttribute('aria-pressed',String(await window.suira.window.pin())));top.append(pin);
     if(tool==='markdown'){
       for(const node of document.querySelectorAll('#page-markdown .page-actions > *'))top.append(node);
@@ -307,6 +310,6 @@
   document.querySelector('.document-sidebar').append($('md-outline'));
   window.SuiraToolArt?.mount();
   window.WorkspaceUI={open:safe(async type=>{if(type==='calendar')await loadCalendar();else await loadDocs();}),flush,get documentEditor(){return richDocument;},
-    shortcuts(snapshot){const rows=Object.entries(snapshot.bindings||{}).filter(([name,acc])=>name.startsWith('panelKey:')&&acc);$('all-shortcut-status').innerHTML=rows.map(([name,acc])=>`<div><kbd>${esc(acc.replace('+',' + '))}</kbd><small class="${snapshot.status?.[name]?.ok?'is-ok':'is-error'}">${snapshot.status?.[name]?.localOnly?'仅面板内':snapshot.status?.[name]?.ok?'已生效':esc(snapshot.status?.[name]?.error||'未注册')}</small></div>`).join('');}
+    shortcuts(snapshot){const rows=Object.entries(snapshot.bindings||{}).filter(([name,acc])=>name.startsWith('panelKey:')&&acc);$('all-shortcut-status').innerHTML=rows.map(([name,acc])=>`<div><kbd>${esc(acc.replace(/\+/g,' + '))}</kbd><small class="${snapshot.status?.[name]?.ok?'is-ok':'is-error'}">${snapshot.status?.[name]?.localOnly?'仅面板内':snapshot.status?.[name]?.ok?'已生效':esc(snapshot.status?.[name]?.error||'未注册')}</small></div>`).join('');}
   };
 })();

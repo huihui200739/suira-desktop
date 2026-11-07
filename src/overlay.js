@@ -358,6 +358,9 @@ let magnifierBox = null;
 
 function setMagnifierVisible(visible) {
   if (magnifier.hidden !== !visible) magnifier.hidden = !visible;
+  // 放大镜不可见时不要再留着旧采样点：否则在工具栏或窗口外按取色键，
+  // 会悄悄复制上一次画面位置的颜色，用户完全看不出取的是哪里。
+  if (!visible) colorPoint = null;
 }
 
 /* 贴边避让用真实盒子尺寸：信息框行数、主题字号变化后也不会溢出屏幕。
@@ -385,17 +388,21 @@ function drawMagnifier(p) {
     magnifierCtx.clearRect(0, 0, magnifierCanvas.width, magnifierCanvas.height);
     magnifierCtx.fillStyle = themePaint('magnifier-surface');
     magnifierCtx.fillRect(0, 0, magnifierCanvas.width, magnifierCanvas.height);
-    magnifierCtx.drawImage(
-      state.image,
-      srcX - half,
-      srcY - half,
-      sampleSize,
-      sampleSize,
-      0,
-      0,
-      magnifierCanvas.width,
-      magnifierCanvas.height
-    );
+    // 只绘制图像内的取样窗，并让中心像素始终落在画布中心。
+    // 直接给 drawImage 传越界的源矩形，浏览器会按比例裁剪目标矩形，
+    // 屏幕边缘时放大画面会整体偏移，十字线就指错像素了。
+    const scale = magnifierCanvas.width / sampleSize;
+    const srcLeft = srcX - half, srcTop = srcY - half;
+    const sx = Math.max(0, srcLeft), sy = Math.max(0, srcTop);
+    const ex = Math.min(state.image.width, srcLeft + sampleSize);
+    const ey = Math.min(state.image.height, srcTop + sampleSize);
+    if (ex > sx && ey > sy) {
+      magnifierCtx.drawImage(
+        state.image, sx, sy, ex - sx, ey - sy,
+        (sx - srcLeft) * scale, (sy - srcTop) * scale,
+        (ex - sx) * scale, (ey - sy) * scale
+      );
+    }
     // 微信式绿色十字线贯穿画面，中心小框标出正在取的那一像素；深色描边保证浅色画面上也看得见。
     const crosshair = themePaint('magnifier-crosshair');
     const center = magnifierCanvas.width / 2, pixel = magnifierCanvas.width / sampleSize;
@@ -675,12 +682,16 @@ async function finish(action = 'copy') {
     return;
   }
   const dataUrl = output.toDataURL('image/png');
+  const seq = showSeq;
   try {
     const result = await captureApi.finish({ dataUrl, action });
-    if (result && !result.ok && !result.canceled) showAction(result.error || '截图处理失败', 'error');
+    // 等待期间窗口可能已被收起并释放：迟到的结果不能再往旧 DOM 上弹提示
+    if (seq !== showSeq) return;
+    if (result?.canceled) showAction('已取消保存，可继续编辑或按 Esc 退出');
+    else if (result && !result.ok) showAction(result.error || '截图处理失败', 'error');
     if (editorMode && result?.ok) window.SuiraEditorUI.report(result.message || '图片已处理');
   } catch (error) {
-    showAction(error.message || '截图处理失败', 'error');
+    if (seq === showSeq) showAction(error.message || '截图处理失败', 'error');
   }
 }
 
@@ -693,11 +704,12 @@ async function startLongSelection() {
   if(editorMode||longStarting)return;
   if(!hasSelection()){showAction('请先框选滚动区域','error');return;}
   longStarting=true;
+  const seq=showSeq;
   try {
     const s=state.selection;
     const result=await window.suira.longCapture.start({x:s.x,y:s.y,width:s.w,height:s.h});
-    if(!result?.ok)showAction(result?.error||'无法开始长截图','error');
-  }catch(error){showAction(error.message||'无法开始长截图','error');}
+    if(seq===showSeq&&!result?.ok)showAction(result?.error||'无法开始长截图','error');
+  }catch(error){if(seq===showSeq)showAction(error.message||'无法开始长截图','error');}
   finally{longStarting=false;}
 }
 
@@ -818,7 +830,9 @@ async function copyOcrText(translated = false, paste = false) {
 
 function beginDrag(event) {
   if (event.button !== 0) return;
-  if (event.target.closest('.tool-dock, .capture-hint, .text-editor, .color-popover, .ocr-result')) return;
+  // 查看原图/加载态是全屏浮层：在上面按下不能再触发「重新开始框选」，
+  // 否则会静默清空已有选区与全部标注。
+  if (event.target.closest('.tool-dock, .capture-hint, .text-editor, .color-popover, .ocr-result, .original-viewer, .loading-state')) return;
   if (event.target.closest('.handle')) return;
   const p = point(event);
   if (hasSelection() && state.mode === 'annotate') {
@@ -1042,7 +1056,7 @@ function setupEvents() {
     if (perf && !perf.firstPointerMs && perf.shownAt) {
       perf.firstPointerMs = performance.now() - perf.shownAt;
     }
-    if (event.target.closest('button, textarea, .text-editor, .color-popover')) return;
+    if (event.target.closest('button, textarea, .text-editor, .color-popover, .original-viewer, .loading-state')) return;
     if (event.target.closest('.handle')) {
       startMove(event);
       return;
@@ -1055,13 +1069,17 @@ function setupEvents() {
   });
 
   // pointermove 只记点：一帧里来多少次都合并成一次应用。
-  // 未拖拽时也更新取色预览；工具栏和结果框不参与采样。
+  // 标注拖拽必须继续入队（画笔靠这些点连线，矩形/箭头靠它们实时预览），
+  // 只是这期间不显示取色放大镜；只有指针压在面板控件上才整帧丢弃。
   root.addEventListener('pointermove', (event) => {
-    if (editorMode || event.target.closest('button, textarea, .tool-dock, .ocr-result, .original-viewer, .text-editor, .color-popover, .capture-hint, .loading-state') || (state.drawing && ANNOTATION_TYPES.includes(state.drawing.type))) {
+    if (editorMode || event.target.closest('button, textarea, .tool-dock, .ocr-result, .original-viewer, .text-editor, .color-popover, .capture-hint, .loading-state')) {
       dropPendingPointer(); setMagnifierVisible(false); return;
     }
-    colorPoint=point(event);
-    queuePointer(colorPoint);
+    const p = point(event);
+    const annotating = !!(state.drawing && ANNOTATION_TYPES.includes(state.drawing.type));
+    if (!annotating) colorPoint = p;
+    queuePointer(p);
+    if (annotating) setMagnifierVisible(false);
   });
 
   root.addEventListener('pointerup', (event) => {
@@ -1099,6 +1117,8 @@ function setupEvents() {
       // 中间的帧点可以直接丢，省一次整屏重绘
       if (type === 'pen') {
         flushPointerNow();
+        // 松开点可能比最后一个 pointermove 更远，补进去才不会少画最后一段
+        if (state.drawing) state.drawing.points.push(p);
       } else {
         dropPendingPointer();
         updateAnnotation(p);
@@ -1113,6 +1133,22 @@ function setupEvents() {
       setMagnifierVisible(false);
     }
   });
+
+  // 系统手势 / 失焦 / 触摸笔取消时不会有 pointerup：必须收掉进行中的绘制，
+  // 否则 state.drawing 残留，之后移动鼠标会拖出幽灵选区或幽灵箭头。
+  const cancelPointer = () => {
+    dropPendingPointer();
+    if (state.drawing) {
+      state.drawing = null;
+      state.selecting = false;
+      root.style.cursor = '';
+      renderSelection();
+      renderAnnotations();
+    }
+    setMagnifierVisible(false);
+  };
+  root.addEventListener('pointercancel', cancelPointer);
+  root.addEventListener('lostpointercapture', () => { if (state.drawing) cancelPointer(); });
 
   $$('[data-shortcut]', toolDock).forEach(button => {
     const shortcut = { escape: 'Esc', enter: 'Enter' }[button.dataset.shortcut] || button.dataset.shortcut.toUpperCase();
@@ -1236,8 +1272,8 @@ function setupEvents() {
     const key = event.key.toLowerCase();
     // 取色复制跟微信一致用 Ctrl+C；Shift+C 保留给旧习惯。Ctrl+C 只在放大镜可见时取色，
     // 指针停在工具栏或结果框上时，仍按原来的「完成并复制截图」处理（Ctrl+Shift+C 不拦截）。
-    const colorCopy = key === 'c' && !event.altKey && !event.metaKey
-      && ((event.shiftKey && !event.ctrlKey) || (event.ctrlKey && !event.shiftKey && !magnifier.hidden));
+    const colorCopy = key === 'c' && !event.altKey && !event.metaKey && !magnifier.hidden
+      && (event.shiftKey !== event.ctrlKey);
     if (colorCopy) {
       event.preventDefault();
       if (event.repeat) return;
@@ -1356,6 +1392,14 @@ function clearCanvas(canvas) {
   ctx.restore();
 }
 
+/** 释放上一张图的后备存储；图片工作台的 ImageBitmap 必须显式 close。 */
+function releaseImage() {
+  if (state.image instanceof HTMLCanvasElement) state.image.width = state.image.height = 0;
+  else if (typeof ImageBitmap !== 'undefined' && state.image instanceof ImageBitmap) {
+    try { state.image.close(); } catch { }
+  }
+}
+
 /**
  * 把覆盖层恢复到「刚唤起的空白状态」。
  * 覆盖层窗口现在是启动时预创建、之后只 show/hide，所以每一次唤起都必须
@@ -1365,7 +1409,7 @@ function resetOverlay() {
   delete root.dataset.intent;
   dockMetrics.width = dockMetrics.height = 0;
   showSeq += 1;
-  if (state.image instanceof HTMLCanvasElement) state.image.width = state.image.height = 0;
+  releaseImage();
   state.payload = null;
   state.rawTiles = null;
   state.image = null;
@@ -1449,7 +1493,12 @@ function resetOverlay() {
  */
 function releaseOverlay() {
   closeOcrResult();
-  if (state.image instanceof HTMLCanvasElement) state.image.width = state.image.height = 0;
+  releaseImage();
+  dropPendingPointer();
+  clearTimeout(state.toastTimer);
+  state.toastTimer = null;
+  setMagnifierVisible(false);
+  magnifierBox = null;
   showSeq += 1; // 作废还在进行中的 loadCapture
   state.payload = null;
   state.rawTiles = null;

@@ -3425,7 +3425,7 @@ function registerIpc() {
   ipcMain.handle('updates:state',()=>updates().snapshot());
   ipcMain.handle('updates:check',()=>updates().check());
   ipcMain.handle('updates:download',()=>updates().download());
-  ipcMain.handle('updates:install',event=>event.sender===quickWindow?.webContents?updates().install():{phase:'error',message:'请从更新面板安装'});
+  ipcMain.handle('updates:install',event=>event.sender===quickWindow?.webContents?updates().install():{...updates().snapshot(),phase:'error',message:'请从更新面板安装'});
   ipcMain.handle('app:quit',event=>{if(event.sender!==quickWindow?.webContents)return {ok:false};isQuitting=true;app.quit();return {ok:true};});
   ipcMain.handle('app:releases',async()=>{await shell.openExternal('https://github.com/huihui200739/suira-updates/releases');return {ok:true};});
 

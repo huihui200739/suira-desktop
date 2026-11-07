@@ -11,4 +11,6 @@ for(const text of ['没有日期','11月31日','2026年2月29日','明天25点',
 assert.equal(parseDate('下周五',new Date(2026,10,8)).date,'2026-11-13','Sunday still uses the following Monday-based week');
 assert.equal(parseDate('明天3点开会',now).warning.length>0,true);assert.equal(calendarDraft('未定时间的事',now).recognized,false);
 assert.equal(calendarDraft('未定时间的事',now).date,'2026-11-06');assert.equal(parseDate('明天',new Date(NaN)),null);
-console.log('PASS Chinese relative/absolute dates, weekdays, Chinese times, rollover, invalid inputs and confirmation-only drafts');
+assert.equal(parseDate('明天','1700000000000').date,'2023-11-16','数字字符串时间戳也要能作为基准时间');
+assert.equal(parseDate('明天',1700000000000).date,'2023-11-16');
+console.log('PASS Chinese relative/absolute dates, weekdays, Chinese times, numeric timestamps, rollover, invalid inputs and confirmation-only drafts');

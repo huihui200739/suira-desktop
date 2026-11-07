@@ -20,5 +20,11 @@ const tmp=fs.mkdtempSync(path.join(os.tmpdir(),'suira-workspace-tools-'));
  assert.equal((await runAi({mode:'reply',text:'example',config:{provider:'none'},fetchImpl})).ok,false);assert.equal(aiCalls,0);for(const mode of ['summarize','rewrite','explain','reply'])assert.equal((await runAi({mode,text:'example',config,fetchImpl})).text,'result');assert.equal(aiCalls,4);
  const qr=await require('qrcode').toBuffer('https://example.com/qr',{width:280,margin:4});const png=require('pngjs').PNG.sync.read(qr);assert.equal(decodeQr(png.data,png.width,png.height).url,'https://example.com/qr');assert.equal(decodeQr(new Uint8ClampedArray(20*20*4),20,20),null);
  const unsafe=require('pngjs').PNG.sync.read(await require('qrcode').toBuffer('javascript:alert(1)',{width:280}));assert.equal(decodeQr(unsafe.data,unsafe.width,unsafe.height).url,'');
- console.log('PASS new text operations, bounded calculator, units, opt-in currency, persisted recipes, AI request gating and real QR decoding');
+ // 大整数不能被 toPrecision(12) 静默改写；超出安全整数范围要明确报错。
+ assert.equal(search.formatNumber(1234567890123),'1234567890123');
+ assert.equal(search.searchCommand('1234567890123+1').value,'1234567890124');
+ assert.equal(search.searchCommand('9007199254740993+1').type,'error');
+ assert.equal(search.searchCommand('9007199254740993 cm to m').type,'error');
+ assert.equal(search.searchCommand('2*(3+4)').value,'14','普通表达式不能被新保护误伤');
+ console.log('PASS new text operations, bounded calculator, units, safe-integer errors, opt-in currency, persisted recipes, AI request gating and real QR decoding');
 })().catch(error=>{console.error(error);process.exitCode=1;}).finally(()=>{assert.equal(path.dirname(path.resolve(tmp)),path.resolve(os.tmpdir()));fs.rmSync(tmp,{recursive:true,force:true,maxRetries:4,retryDelay:100});});

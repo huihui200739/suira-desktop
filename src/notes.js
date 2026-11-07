@@ -93,12 +93,13 @@ async function boot() {
 
   // Esc 逐级返回：先收「全部速记」浮层，再收窗口。
   // 收窗前会补一次保存，不会丢掉刚敲进去的字。
-  body.addEventListener('keydown', (event) => {
-    if (event.key === 'Escape') {
-      event.preventDefault();
-      if (!$('#note-index').hidden) closeIndex();
-      else closeWindow();
-    }
+  // 挂 document 而不是 textarea：打开「全部速记」后焦点仍在按钮上，
+  // 只监听 textarea 会让 Esc 完全失效。
+  document.addEventListener('keydown', (event) => {
+    if (event.key !== 'Escape' || event.defaultPrevented) return;
+    event.preventDefault();
+    if (!$('#note-index').hidden) closeIndex();
+    else closeWindow();
   });
 
   $('#note-index-btn').addEventListener('click', () => toggleIndex());
