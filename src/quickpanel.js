@@ -1411,6 +1411,7 @@ function installEvents() {
     setMode(mode);
   });
   window.suira.quick.onPrepare(async ({token}) => {
+    window.SuiraUI?.dismissHints?.();
     $('#panel').classList.remove('is-revealing');
     window.SuiraGlassSelect?.close();
     await initialPanelLoad;

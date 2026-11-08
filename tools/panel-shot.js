@@ -241,6 +241,7 @@ async function capture(send, name) {
     await evaluate(send, `document.getElementById('mode-actions').click(); document.activeElement.blur(); true`);
     console.log('  PASS  分段控件支持空格 / Enter 激活并同步选中态');
 
+    await send('Input.dispatchKeyEvent', {type:'keyDown',key:'Tab',code:'Tab',windowsVirtualKeyCode:9});
     await evaluate(send, `document.querySelector('.key').focus(), true`);
     await sleep(30);
     const hint = await evaluate(send, `(()=>{const h=document.getElementById('surface-hint'),r=h.getBoundingClientRect();return {visible:!h.hidden,text:Boolean(h.textContent),within:r.left>=0&&r.right<=innerWidth&&r.top>=0&&r.bottom<=innerHeight,described:document.activeElement.getAttribute('aria-describedby')===h.id,native:document.querySelector('.key').hasAttribute('title')};})()`);

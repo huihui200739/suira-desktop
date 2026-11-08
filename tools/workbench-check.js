@@ -43,6 +43,7 @@ async function until(fn, label = 'state') {
   const geometry = () => page.evaluate(`(()=>{const r=document.querySelector('.sidebar').getBoundingClientRect(),m=document.querySelector('.main-scroll').getBoundingClientRect(),b=document.querySelector('.brand').getBoundingClientRect(),n=document.querySelector('.nav-item').getBoundingClientRect(),i=document.querySelector('.nav .shared-selection').getBoundingClientRect();return {rail:r.width,main:m.x,brand:b.width,item:n.width,indicator:i.width,expanded:document.getElementById('sidebar-toggle').getAttribute('aria-expanded'),overflow:document.documentElement.scrollWidth>innerWidth};})()`);
   const shot = async name => { if (!process.argv.includes('--shots')) return; await page.evaluate('document.activeElement?.blur();true'); await page.send('Input.dispatchMouseEvent', { type:'mouseMoved', x:900, y:500 }); await wait(200); const image = await page.send('Page.captureScreenshot', { format: 'png' }); const directory = path.join(root, 'docs/product'); fs.mkdirSync(directory, { recursive: true }); fs.writeFileSync(path.join(directory, 'sidebar-' + name + '.png'), Buffer.from(image.data, 'base64')); };
   await wait(250); const expanded = await geometry(); close(expanded.rail, 184); close(expanded.main, expanded.brand);
+  await page.send('Input.dispatchKeyEvent', { type:'keyDown', key:'Tab', code:'Tab', windowsVirtualKeyCode:9 });
   await page.evaluate('document.getElementById("sidebar-toggle").focus();true');
   await until(() => page.evaluate('!document.getElementById("surface-hint").hidden'));
   assert.ok(await page.evaluate('document.getElementById("surface-hint").textContent.includes("收起侧边栏")'), 'Expanded sidebar also explains its shortcut');
@@ -55,6 +56,7 @@ async function until(fn, label = 'state') {
   await click('[data-page="library"]'); await until(() => page.evaluate('document.querySelector("[data-page=library]").getAttribute("aria-current")==="page"'));
   await click('[data-page="settings"]'); await until(() => page.evaluate('document.querySelector("#page-settings").classList.contains("is-active")'));
   await click('[data-page="shelf"]');
+  await page.send('Input.dispatchKeyEvent', { type:'keyDown', key:'Tab', code:'Tab', windowsVirtualKeyCode:9 });
   await page.evaluate('document.querySelector("[data-page=library]").focus();true');
   await until(() => page.evaluate('!document.getElementById("surface-hint").hidden'));
   assert.equal(await page.evaluate('document.getElementById("surface-hint").textContent'), '内容库');

@@ -9,6 +9,14 @@
   const indexProperty = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'selectedIndex');
   const disabled = option => option.disabled || option.parentElement?.disabled || option.hidden || option.parentElement?.hidden;
 
+  function available(instance) {
+    const { select, host, trigger } = instance;
+    if (!select.isConnected || !trigger.isConnected || select.matches(':disabled') || trigger.disabled || host.hidden ||
+        trigger.closest('[hidden],[inert],[aria-hidden="true"]') || !trigger.getClientRects().length) return false;
+    const style = getComputedStyle(trigger);
+    return style.visibility !== 'hidden' && style.visibility !== 'collapse';
+  }
+
   function close({ focus = false } = {}) {
     const instance = opened;
     if (!instance) return;
@@ -16,7 +24,7 @@
     instance.menu.hidden = true;
     instance.trigger.setAttribute('aria-expanded', 'false');
     instance.trigger.removeAttribute('aria-activedescendant');
-    if (focus && instance.trigger.isConnected) instance.trigger.focus({ preventScroll: true });
+    if (focus && available(instance)) instance.trigger.focus({ preventScroll: true });
   }
 
   function nameOf(select) {
@@ -64,7 +72,7 @@
     if(trigger.hasAttribute('aria-invalid')) trigger.setAttribute('aria-invalid',String(!select.validity.valid));
     const hidden=select.hidden || getComputedStyle(select).display==='none';
     if(host.hidden!==hidden) host.hidden=hidden;
-    if (opened === instance && (host.hidden || trigger.disabled || !trigger.getClientRects().length)) close();
+    if (opened === instance && !available(instance)) close();
     if (opened !== instance) return;
     menu.replaceChildren();
     let group;
@@ -86,12 +94,12 @@
   }
 
   function open(instance) {
-    if (instance.select.matches(':disabled') || instance.host.hidden || instance.trigger.closest('[inert]')) return;
+    if (!available(instance)) return;
     close(); opened = instance; search = '';
     instance.active = instance.select.selectedIndex;
     if (instance.active < 0 || disabled(instance.select.options[instance.active])) instance.active = [...instance.select.options].findIndex(option => !disabled(option));
     instance.menu.hidden = false; instance.trigger.setAttribute('aria-expanded', 'true');
-    render(instance); instance.trigger.focus({ preventScroll: true });
+    render(instance); if (opened === instance) instance.trigger.focus({ preventScroll: true });
   }
 
   function commit(instance, index) {
@@ -205,7 +213,10 @@
         for (const [attribute, saved] of [['tabindex', instance.saved.tabIndex], ['aria-hidden', instance.saved.ariaHidden]]) saved === null ? instance.select.removeAttribute(attribute) : instance.select.setAttribute(attribute, saved);
         instances.delete(instance); mounted.delete(instance.select);
       }
-    }).observe(document.body, { subtree: true, childList: true, characterData: true, attributes: true, attributeFilter: ['disabled', 'hidden', 'selected', 'label', 'class', 'style', 'aria-label', 'aria-labelledby', 'required'] });
+      // The popup lives under body, so hiding/inerting a parent of the control
+      // does not hide the menu itself. Recheck after ancestor/layout mutations.
+      if (opened && !available(opened)) close();
+    }).observe(document.documentElement, { subtree: true, childList: true, characterData: true, attributes: true, attributeFilter: ['disabled', 'hidden', 'inert', 'aria-hidden', 'selected', 'label', 'class', 'style', 'aria-label', 'aria-labelledby', 'required'] });
   }
   window.SuiraGlassSelect = Object.freeze({ mount, refresh(select) { const instance = mounted.get(select); if (instance) render(instance); }, close, isOpen: () => Boolean(opened) });
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init, { once: true }); else init();

@@ -67,6 +67,7 @@
     const background = Array.from(document.querySelectorAll('.titlebar, .app-body'));
     const inertBefore = background.map(node => node.inert);
     background.forEach(node => { node.inert = true; });
+    window.SuiraUI?.dismissHints?.();
     const focusable = () => Array.from(surface.querySelectorAll('button:not(:disabled), input:not(:disabled), textarea:not(:disabled), select:not(:disabled), a[href]')).filter(node => node.getClientRects().length && !node.matches('.glass-select-native,[tabindex="-1"],[aria-hidden="true"]'));
     const focusFirst = () => (surface.querySelector('input:not(:disabled)') || focusable()[0])?.focus({ preventScroll: true });
     const onFocus = event => { if (!surface.contains(event.target)) focusFirst(); };
@@ -112,6 +113,155 @@
     return timer;
   }
 
+  function installHints() {
+    // A pointer click often leaves focus on a button. Focus is not hover:
+    // only keyboard navigation may keep a focus hint alive without the pointer.
+    const hint = document.createElement('div');
+    hint.id = 'surface-hint'; hint.className = 'surface-hint'; hint.hidden = true;
+    hint.setAttribute('role', 'tooltip'); document.body.append(hint);
+    const titleHints = new WeakSet(), automaticLabels = new WeakMap();
+    let target = null, source = '', timer = 0, frame = 0, mode = 'pointer';
+    let pointer = null, blockedHover = null, shownBounds = null;
+    const owner = node => node?.closest?.('[data-hint]') || null;
+    function normalizeTitle(element) {
+      const label = element.getAttribute('title');
+      if (label === null) return;
+      if (!element.dataset.hint || titleHints.has(element)) {
+        if (label) element.dataset.hint = label;
+        else delete element.dataset.hint;
+        titleHints.add(element);
+      }
+      const previous = automaticLabels.get(element);
+      if (element.matches('button, [role="button"]') && (!element.hasAttribute('aria-label') || element.getAttribute('aria-label') === previous)) {
+        if (label) { element.setAttribute('aria-label', label); automaticLabels.set(element, label); }
+        else { element.removeAttribute('aria-label'); automaticLabels.delete(element); }
+      }
+      element.removeAttribute('title');
+    }
+    function normalizeTree(node) {
+      if (node.nodeType !== 1) return;
+      if (node.hasAttribute('title')) normalizeTitle(node);
+      node.querySelectorAll('[title]').forEach(normalizeTitle);
+    }
+    normalizeTree(document.documentElement);
+    // Rendered lists, menus and changing pin/fullscreen labels must not recreate
+    // a second native tooltip or retain the text from an earlier state.
+    new MutationObserver(records => {
+      for (const record of records) {
+        if (record.type === 'attributes') normalizeTitle(record.target);
+        else record.addedNodes.forEach(normalizeTree);
+      }
+    }).observe(document.documentElement, { subtree: true, childList: true, attributes: true, attributeFilter: ['title'] });
+    const layoutStyle = text => String(text || '').split(';').filter(value => value.trim() && !value.trim().startsWith('--')).join(';');
+    const activeObserver = new MutationObserver(records => {
+      if (!target || frame) return;
+      const changed = records.some(record => {
+        if (hint.contains(record.target)) return false;
+        if (record.type !== 'attributes') return true;
+        const element = record.target;
+        if (!element.contains(target) && !target.contains(element)) return false;
+        // Keycap/glass lighting writes CSS variables on every pointer frame;
+        // those do not move the stationary anchor and need no geometry reads.
+        if (record.attributeName === 'style' && layoutStyle(record.oldValue) === layoutStyle(element.getAttribute('style'))) return false;
+        return true;
+      });
+      if (changed) frame = requestAnimationFrame(validate);
+    });
+    function hide() {
+      clearTimeout(timer); timer = 0;
+      cancelAnimationFrame(frame); frame = 0;
+      activeObserver.disconnect();
+      hint.hidden = true; hint.textContent = '';
+      if (target) {
+        // Remove only our token; other components can change descriptions while
+        // the hint is open and their changes must survive dismissal.
+        const ids = (target.getAttribute('aria-describedby') || '').split(/\s+/).filter(id => id && id !== hint.id);
+        if (ids.length) target.setAttribute('aria-describedby', ids.join(' '));
+        else target.removeAttribute('aria-describedby');
+      }
+      target = null; source = ''; shownBounds = null;
+    }
+    function eligible(element) {
+      if (!element?.isConnected || !element.dataset.hint || document.hidden) return false;
+      if (element.closest('[hidden], [inert], [aria-hidden="true"]') || element.matches(':disabled, [aria-disabled="true"]')) return false;
+      if (!element.checkVisibility({ checkOpacity: true, checkVisibilityCSS: true }) || !element.getClientRects().length) return false;
+      return element.getAttribute('aria-expanded') !== 'true' || element.dataset.hintWhenExpanded === 'true';
+    }
+    function valid() {
+      if (!eligible(target)) return false;
+      if (source === 'keyboard') return mode === 'keyboard' && target.contains(document.activeElement);
+      return mode === 'pointer' && pointer && target.contains(document.elementFromPoint(pointer.x, pointer.y));
+    }
+    function validate() {
+      frame = 0;
+      if (!valid()) { hide(); return; }
+      if (shownBounds) {
+        const box = target.getBoundingClientRect();
+        if (hint.textContent !== target.dataset.hint || ['x','y','width','height'].some(key => Math.abs(box[key] - shownBounds[key]) > 1)) hide();
+      }
+    }
+    function show(element, kind) {
+      if (target === element && source === kind) return;
+      hide(); if (!eligible(element)) return;
+      target = element; source = kind;
+      activeObserver.observe(document.documentElement, { subtree: true, childList: true, attributes: true, attributeOldValue: true, attributeFilter: ['hidden','inert','aria-hidden','aria-expanded','aria-disabled','disabled','data-hint','data-hint-when-expanded','class','style','open'] });
+      timer = setTimeout(() => {
+        timer = 0;
+        if (!valid()) { hide(); return; }
+        hint.textContent = target.dataset.hint; hint.hidden = false;
+        const ids = new Set((target.getAttribute('aria-describedby') || '').split(/\s+/).filter(Boolean));
+        ids.add(hint.id); target.setAttribute('aria-describedby', [...ids].join(' '));
+        const box = target.getBoundingClientRect(), size = hint.getBoundingClientRect();
+        shownBounds = { x: box.x, y: box.y, width: box.width, height: box.height };
+        hint.style.left = `${Math.max(12, Math.min(innerWidth-size.width-12, box.left+(box.width-size.width)/2))}px`;
+        hint.style.top = `${box.top-size.height-8 >= 12 ? box.top-size.height-8 : Math.min(innerHeight-size.height-12, box.bottom+8)}px`;
+      }, kind === 'keyboard' ? 0 : 450);
+    }
+    function hover(event) {
+      if (event.pointerType === 'touch') return;
+      mode = 'pointer'; pointer = { x: event.clientX, y: event.clientY };
+      const element = owner(event.target);
+      if (element !== blockedHover) blockedHover = null;
+      if (element !== blockedHover) show(element, 'pointer');
+      else hide();
+    }
+    document.addEventListener('pointerover', hover, true);
+    document.addEventListener('pointermove', hover, { capture: true, passive: true });
+    document.addEventListener('pointerout', event => {
+      if (blockedHover && !blockedHover.contains(event.relatedTarget)) blockedHover = null;
+      if (source === 'pointer' && target && !target.contains(event.relatedTarget)) hide();
+      if (!event.relatedTarget) { pointer = null; hide(); }
+    }, true);
+    document.addEventListener('pointerdown', event => {
+      mode = 'pointer'; blockedHover = owner(event.target); hide();
+    }, true);
+    document.addEventListener('keydown', event => {
+      if (['Shift','Control','Alt','Meta'].includes(event.key)) return;
+      mode = 'keyboard'; blockedHover = target; hide();
+    }, true);
+    document.addEventListener('focusin', event => {
+      if (mode === 'keyboard') show(owner(event.target), 'keyboard');
+    }, true);
+    document.addEventListener('focusout', event => {
+      if (source === 'keyboard' && target && !target.contains(event.relatedTarget)) hide();
+    }, true);
+    const reset = () => { pointer = null; blockedHover = null; mode = 'pointer'; hide(); };
+    document.documentElement.addEventListener('pointerleave', reset);
+    document.addEventListener('pointercancel', reset, true);
+    document.addEventListener('dragstart', reset, true);
+    document.addEventListener('contextmenu', reset, true);
+    // Capture: menus/comboboxes deliberately stop bubbling key/pointer events.
+    document.addEventListener('beforetoggle', hide, true);
+    document.addEventListener('scroll', event => {
+      if (event.target === document || event.target?.contains?.(target)) hide();
+    }, true);
+    window.addEventListener('blur', reset);
+    window.addEventListener('resize', reset);
+    window.addEventListener('pagehide', reset);
+    document.addEventListener('visibilitychange', reset);
+    return reset;
+  }
+
   function init() {
     const interruptReveal=event=>{
       const panel=event.target.closest?.('.panel.is-revealing');
@@ -120,58 +270,9 @@
     };
     document.addEventListener('pointerdown',interruptReveal,true);
     document.addEventListener('keydown',interruptReveal,true);
-    document.querySelectorAll('button[title]').forEach(button => {
-      const label = button.getAttribute('title');
-      if (!button.dataset.hint) button.dataset.hint = label;
-      if (!button.hasAttribute('aria-label')) button.setAttribute('aria-label', label);
-      button.removeAttribute('title');
-    });
+    window.SuiraUI.dismissHints = installHints();
     document.querySelectorAll('[data-selection-group]').forEach(selectionGroup);
     document.querySelectorAll('.bar-search, .capture-chip, .shortcut-pill').forEach(node => node.setAttribute('data-glass',''));
-    // 使用同一渲染层的提示，避免透明原生窗口上的系统 tooltip 形成白色矩形。
-    const hint = document.createElement('div');
-    hint.id = 'surface-hint'; hint.className = 'surface-hint'; hint.hidden = true;
-    hint.setAttribute('role','tooltip'); document.body.append(hint);
-    let hintTarget = null, hintTimer = 0, previousDescription = null;
-    const hideHint = () => {
-      clearTimeout(hintTimer); hint.hidden = true;
-      if (hintTarget) {
-        if (previousDescription === null) hintTarget.removeAttribute('aria-describedby');
-        else hintTarget.setAttribute('aria-describedby',previousDescription);
-      }
-      hintTarget = null;
-    };
-    const showHint = (target, delay) => {
-      if (target === hintTarget) return;
-      hideHint(); if (!target?.dataset.hint) return;
-      hintTarget = target; previousDescription = target.getAttribute('aria-describedby');
-      hintTimer = setTimeout(() => {
-        if (!target.isConnected || !target.getClientRects().length || document.hidden || (target.getAttribute('aria-expanded') === 'true' && target.dataset.hintWhenExpanded !== 'true')) { hideHint(); return; }
-        hint.textContent = target.dataset.hint; hint.hidden = false;
-        target.setAttribute('aria-describedby',[previousDescription,hint.id].filter(Boolean).join(' '));
-        const box = target.getBoundingClientRect(), size = hint.getBoundingClientRect();
-        hint.style.left = `${Math.max(12,Math.min(innerWidth-size.width-12,box.left+(box.width-size.width)/2))}px`;
-        hint.style.top = `${box.top-size.height-8 >= 12 ? box.top-size.height-8 : Math.min(innerHeight-size.height-12,box.bottom+8)}px`;
-      },delay);
-    };
-    document.addEventListener('pointerover', event => {
-      if (hintTarget && document.activeElement === hintTarget) return;
-      showHint(event.target.closest?.('[data-hint]'),450);
-    });
-    document.addEventListener('pointerout', event => {
-      if (hintTarget && document.activeElement !== hintTarget && !hintTarget.contains(event.relatedTarget)) hideHint();
-    });
-    document.addEventListener('focusin', event => showHint(event.target.closest?.('[data-hint]'),0));
-    document.addEventListener('focusout', hideHint);
-    document.addEventListener('pointerdown', hideHint);
-    document.addEventListener('keydown', hideHint);
-    document.addEventListener('scroll', event => {
-      // Expanding search can scroll its own field. Only movement of the hint's
-      // actual ancestor invalidates its position.
-      if (event.target === document || event.target?.contains?.(hintTarget)) hideHint();
-    }, true);
-    window.addEventListener('blur', hideHint);
-    document.addEventListener('visibilitychange', () => { if (document.hidden) hideHint(); });
     let frame = 0, last = null, point = null;
     const clear = () => {
       cancelAnimationFrame(frame); frame = 0;
