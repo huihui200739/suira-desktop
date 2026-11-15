@@ -710,9 +710,52 @@ function applyTranslateSettings(settings) {
     status.textContent = provider === 'none' ? '未配置引擎，翻译会提示去设置' : '还缺密钥';
     status.className = 'setting-hint';
   }
+  $('#setting-voice-provider').value = settings.voiceProvider || 'deepseek';
+  $('#setting-voice-base').value = settings.voiceBaseUrl || '';
+  $('#setting-voice-model').value = settings.voiceModel || '';
+  $('#setting-voice-key').value = '';
+  const voiceProvider = settings.voiceProvider || 'deepseek';
+  $$('[data-voice-row]').forEach(row => { row.hidden = row.dataset.voiceRow !== voiceProvider; });
+  if (settings.voiceApiKeySet) {
+    $('#setting-voice-keyhint').textContent = '已单独加密保存；留空表示不修改';
+    $('#setting-voice-status').textContent = 'ASR 密钥已保存';
+    $('#setting-voice-status').className = 'setting-hint is-ok';
+  } else if (settings.voiceCanReuseTranslateKey) {
+    $('#setting-voice-keyhint').textContent = '当前同源 OpenAI 兼容服务可复用已加密的翻译密钥';
+    $('#setting-voice-status').textContent = '可复用同源翻译密钥';
+    $('#setting-voice-status').className = 'setting-hint is-ok';
+  } else {
+    $('#setting-voice-keyhint').textContent = '单独加密保存；只有同源 OpenAI 兼容地址才能复用翻译密钥';
+    $('#setting-voice-status').textContent = '请配置 ASR 服务和密钥';
+    $('#setting-voice-status').className = 'setting-hint';
+  }
 }
 
 function bindTranslateSettings() {
+  $('#setting-voice-provider').addEventListener('change', async event => {
+    await window.suira.settings.update({ voiceProvider: event.target.value });
+    applyTranslateSettings(await window.suira.settings.get());
+  });
+  for (const [id, key] of [['#setting-voice-base', 'voiceBaseUrl'], ['#setting-voice-model', 'voiceModel']]) {
+    $(id).addEventListener('change', async event => {
+      await window.suira.settings.update({ [key]: event.target.value });
+      applyTranslateSettings(await window.suira.settings.get());
+    });
+  }
+  $('#setting-voice-key').addEventListener('change', async event => {
+    const value = String(event.target.value || '').trim();
+    if (!value) return;
+    const result = await window.suira.settings.update({ voiceApiKey: value });
+    if (!result?.ok) { showGlobalToast(result?.error || 'ASR 密钥保存失败', 'error'); return; }
+    applyTranslateSettings(result.settings);
+    showGlobalToast('ASR 密钥已加密保存', 'success');
+  });
+  $('#setting-voice-clear').addEventListener('click', async () => {
+    const result = await window.suira.settings.update({ voiceApiKey: null });
+    if (!result?.ok) { showGlobalToast(result?.error || '清除失败', 'error'); return; }
+    applyTranslateSettings(result.settings);
+    showGlobalToast('已清除单独保存的 ASR 密钥', 'success');
+  });
   $('#setting-translate-models').addEventListener('click',async()=>{
     const button=$('#setting-translate-models'),status=$('#setting-translate-status');button.disabled=true;status.textContent='正在获取模型…';
     try{const patch={translateProvider:$('#setting-translate-provider').value,translateBaseUrl:$('#setting-translate-base').value};if($('#setting-translate-key').value.trim())patch.translateApiKey=$('#setting-translate-key').value.trim();

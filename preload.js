@@ -209,6 +209,15 @@ contextBridge.exposeInMainWorld('suira', {
     test: () => ipcRenderer.invoke('translate:test'),
     onStatus: (callback) => subscribe('translate:status', callback)
   },
+  voice: {
+    open: () => ipcRenderer.invoke('voice:open'),
+    status: () => ipcRenderer.invoke('voice:status'),
+    transcribe: pcm => ipcRenderer.invoke('voice:transcribe', { pcm }),
+    commit: (text, mode) => ipcRenderer.invoke('voice:commit', { text, mode }),
+    cancel: () => ipcRenderer.invoke('voice:cancel'),
+    close: () => ipcRenderer.invoke('voice:close'),
+    openSettings: () => ipcRenderer.invoke('voice:open-settings')
+  },
   ocr: {
     recognizeItem: (itemId) => ipcRenderer.invoke('ocr:recognize-item', itemId),
     onProgress: (callback) => subscribe('ocr:progress', callback)

@@ -24,6 +24,7 @@ const GLYPHS = {
   annotate: '<svg viewBox="0 0 24 24"><path d="M4 20.5 5.2 16 16.4 4.8a2 2 0 0 1 2.8 2.8L8 18.8z"/><path d="m14 7.2 2.8 2.8"/></svg>',
   ocr: '<svg viewBox="0 0 24 24"><path d="M4 8V6a2 2 0 0 1 2-2h2"/><path d="M16 4h2a2 2 0 0 1 2 2v2"/><path d="M20 16v2a2 2 0 0 1-2 2h-2"/><path d="M8 20H6a2 2 0 0 1-2-2v-2"/><path d="M8.2 9.2h7.6"/><path d="M8.2 12.5h5.6"/><path d="M8.2 15.8h3.6"/></svg>',
   translate: '<svg viewBox="0 0 24 24"><path d="M3.5 5.5h8"/><path d="M7.5 3.5v2c0 3.6-1.8 6.3-4.5 7.9"/><path d="M5 11.3c1.3 1.9 3.1 3.3 5.4 4"/><path d="m12.5 20.5 4.4-11h.2l4.4 11"/><path d="M14.2 16.5h5.6"/></svg>',
+  voice: '<svg viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="12" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5v3.5m-4 0h8"/></svg>',
   pin: '<svg viewBox="0 0 24 24"><path d="M9.4 3.5h5.2l-.6 5 3 3c.4.4.1 1-.5 1H7.5c-.6 0-.9-.6-.5-1l3-3z"/><path d="M12 12.5v8"/></svg>',
   clipboard: '<svg viewBox="0 0 24 24"><rect x="5" y="4.8" width="14" height="16.4" rx="2.6"/><path d="M9 4.8V4a1.6 1.6 0 0 1 1.6-1.6h2.8A1.6 1.6 0 0 1 15 4v.8"/><path d="M9 10.5h6"/><path d="M9 14h4.5"/></svg>',
   'text-clean': '<svg viewBox="0 0 24 24"><path d="M4 6h16M4 11h11M4 16h8m3-2 5 5m0-5-5 5"/></svg>',

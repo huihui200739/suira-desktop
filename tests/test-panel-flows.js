@@ -26,7 +26,7 @@ const tmp = path.join(os.tmpdir(), 'suira-panel-' + Date.now());
 fs.mkdirSync(tmp, { recursive: true });
 const store = new SuiraStore(path.join(tmp, 'd.json'));
 
-const calls = { capture: [], pin: [], desktop: 0, lock: 0, note: [] };
+const calls = { capture: [], pin: [], desktop: 0, lock: 0, note: [], voice: 0 };
 const actions = createActionRegistry({
   store,
   ocr: { recognizeFile: async () => ({ text: '识别出的文字', confidence: 90, blocks: [], engine: 'test', cached: false }) },
@@ -52,6 +52,7 @@ function makePanel(overrides = {}) {
     lockWorkstation: () => { calls.lock++; return { ok: true, message: '正在锁屏', closePanel: true }; },
     // 速记：打开最近一条（没有才新建），窗口由主进程负责
     openNote: async () => { calls.note.push('open'); return { ok: true, id: 'note-1' }; },
+    openVoiceInput: async () => { calls.voice++; return { ok: true }; },
     openImageEditor: async () => ({ok:true}),
     openTextTools: async mode => { calls.textTool = mode; return {ok:true}; },
     ...overrides
@@ -83,6 +84,13 @@ function makePanel(overrides = {}) {
   console.log('\n== 截图链路：面板 → 覆盖层 → 收起面板 ==');
 
   const panel = makePanel();
+
+  await ta('工具箱语音输入：打开按需窗口并收起面板', async () => {
+    const r = await panel.run('voice');
+    assert.strictEqual(r.ok, true);
+    assert.strictEqual(r.closePanel, true);
+    assert.strictEqual(calls.voice, 1);
+  });
 
   await ta('Z 截图：进入覆盖层并收起面板', async () => {
     const r = await panel.run('capture');

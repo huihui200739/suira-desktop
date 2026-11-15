@@ -192,6 +192,28 @@
                   <option value="ru">俄文</option>
                 </select>
               </div>
+              <div class="setting-title"><b>语音输入</b></div>
+              <p class="selection-settings-copy">录音仅保留在内存里，最长 120 秒；停止后上传给你配置的 ASR 服务，可能产生服务商费用。识别结果可编辑，再粘贴回唤起面板前的窗口。</p>
+              <div class="setting-row">
+                <span><b>识别接口</b><small>聊天模型和语音转写是两种能力；中转站需单独提供对应路由</small></span>
+                <select id="setting-voice-provider"><option value="deepseek">DeepSeek ASR</option><option value="openai">OpenAI 兼容转写</option></select>
+              </div>
+              <label class="setting-row">
+                <span><b>ASR Base URL</b><small>留空时使用翻译服务地址；否则 DeepSeek 请求 /v1/tools/asr</small></span>
+                <input class="text-input" type="text" id="setting-voice-base" placeholder="留空以使用翻译服务地址" spellcheck="false" autocomplete="off">
+              </label>
+              <label class="setting-row" data-voice-row="openai" hidden>
+                <span><b>转写模型</b><small>填服务商提供的音频转写模型名，例如 whisper-1</small></span>
+                <input class="text-input" type="text" id="setting-voice-model" placeholder="whisper-1" spellcheck="false" autocomplete="off">
+              </label>
+              <label class="setting-row">
+                <span><b>ASR API 密钥</b><small id="setting-voice-keyhint">单独加密保存；同一 OpenAI 兼容主机可安全复用翻译密钥</small></span>
+                <input class="text-input" type="password" id="setting-voice-key" placeholder="可留空以复用同源翻译密钥" spellcheck="false" autocomplete="off">
+              </label>
+              <div class="setting-actions">
+                <button class="quiet-btn" id="setting-voice-clear" type="button" title="删除单独保存的 ASR 密钥">清除 ASR 密钥</button>
+                <span class="setting-hint" id="setting-voice-status">—</span>
+              </div>
               <div class="setting-actions">
                 <button class="quiet-btn" id="setting-translate-test" type="button" title="用一句固定短句验证密钥与网络">测试连接</button>
                 <button class="quiet-btn" id="setting-translate-clear" type="button" title="删除已保存的密钥">清除密钥</button>

@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; media-src 'self' blob:; connect-src 'none'; object-src 'none'; base-uri 'none';">
+  <title>随序 · 语音输入</title>
+  <link rel="stylesheet" href="theme.css">
+  <link rel="stylesheet" href="voice-input.css">
+</head>
+<body>
+  <main class="voice-card">
+    <header class="voice-head">
+      <div><span class="eyebrow">SUIRA · INPUT</span><h1>语音输入</h1></div>
+      <button id="close" class="icon-button" type="button" aria-label="关闭">×</button>
+    </header>
+    <p class="intro">录完后会转换成可编辑文字，再粘贴回刚才的输入框。录音只在内存中处理。</p>
+    <section class="record-area" aria-live="polite">
+      <button id="record" class="record-button" type="button" aria-label="开始录音"><span class="record-dot"></span></button>
+      <div id="status" class="status">正在检查语音服务…</div>
+      <div id="elapsed" class="elapsed">00:00 / 02:00</div>
+    </section>
+    <div id="error" class="error" role="alert" hidden></div>
+    <label class="result-label" for="result">识别结果</label>
+    <textarea id="result" maxlength="100000" placeholder="识别文字会显示在这里，可直接修改" spellcheck="false" disabled></textarea>
+    <footer class="voice-actions">
+      <button id="settings" class="secondary" type="button">配置服务</button>
+      <button id="rerecord" class="secondary" type="button" hidden>重新录音</button>
+      <button id="cancel-recognition" class="secondary" type="button" hidden>取消识别</button>
+      <span class="action-spacer"></span>
+      <button id="copy" class="secondary" type="button" disabled>复制</button>
+      <button id="paste" class="primary" type="button" disabled>粘贴到原窗口</button>
+    </footer>
+    <p class="footnote">录音由 ASR 服务在线识别；最长 2 分钟，识别完成后临时音频会清除。</p>
+  </main>
+  <script src="pcm-converter.js"></script>
+  <script src="voice-input.js"></script>
+</body>
+</html>

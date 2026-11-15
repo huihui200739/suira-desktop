@@ -76,6 +76,11 @@ t('annotate 仍然可以绑定，但不占默认键位', () => {
 
 console.log('\n== 布局与可用状态 ==');
 
+t('工具箱动作 ID 唯一', () => {
+  const ids = TOOLBOX_TOOLS.map(tool => tool.id);
+  assert.strictEqual(new Set(ids).size, ids.length);
+});
+
 const layout = keyLayout();
 
 t('布局返回 38 条键位', () => assert.strictEqual(layout.keys.length, 38));

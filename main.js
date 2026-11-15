@@ -59,6 +59,7 @@ const { pathToFileURL, fileURLToPath } = require('node:url');
 const { SuiraStore, makeId } = require('./lib/store');
 const { OcrService } = require('./lib/ocr');
 const translateLib = require('./lib/translate');
+const voiceInput = require('./lib/voice-input');
 const { createActionRegistry, mergeLines, cleanText } = require('./lib/actions');
 const { RECIPES, getRecipe, listRecipes, runRecipe } = require('./lib/recipes');
 const { searchCandidates, searchAppCandidates, COMMANDS } = require('./lib/search');
@@ -136,6 +137,8 @@ let ocr = null;
 let actions = null;
 let mainWindow = null;
 let quickWindow = null;
+let voiceWindow = null;
+let voicePermissionSession = null;
 let panelBindingPickerOpen = false;
 let overlayWindow = null;
 let tray = null;
@@ -235,23 +238,52 @@ const RETURN_FOCUS_DELAY = 120;
 /* ---------- 翻译引擎（图片取词翻译） ---------- */
 
 const TRANSLATE_KEY_AAD = 'settings:translateApiKey';
+const VOICE_KEY_AAD = 'settings:voiceApiKey';
 
 /** 密钥明文只在主进程内存里存在，落盘一律走数据密钥加密。 */
-function encryptSecret(plaintext) {
+function encryptSecret(plaintext, aad = TRANSLATE_KEY_AAD) {
   if (!keyVault || !keyVault.isReady()) return null;
-  try { return encryptText(keyVault.key, String(plaintext), TRANSLATE_KEY_AAD); } catch { return null; }
+  try { return encryptText(keyVault.key, String(plaintext), aad); } catch { return null; }
 }
 
-function decryptSecret(envelope) {
+function decryptSecret(envelope, aad = TRANSLATE_KEY_AAD) {
   if (!envelope || !keyVault || !keyVault.isReady()) return '';
-  try { return decryptText(keyVault.key, envelope, TRANSLATE_KEY_AAD); } catch { return ''; }
+  try { return decryptText(keyVault.key, envelope, aad); } catch { return ''; }
 }
 
 /** 渲染层能看到的设置：密钥换成布尔标记，密文不出主进程。 */
 function publicSettings() {
   const settings = store ? store.getSettings() : {};
-  const { translateApiKeyEnc, ...rest } = settings;
-  return { ...rest, translateApiKeySet: Boolean(translateApiKeyEnc) };
+  const { translateApiKeyEnc, voiceApiKeyEnc, ...rest } = settings;
+  const voiceUrl = settings.voiceBaseUrl || settings.translateBaseUrl || '';
+  const voiceCanReuseTranslateKey = voiceInput.canReuseApiKey({ targetUrl: voiceUrl, sourceUrl: settings.translateBaseUrl,
+    sourceProvider: settings.translateProvider, hasSourceKey: Boolean(translateApiKeyEnc) });
+  return { ...rest, translateApiKeySet: Boolean(translateApiKeyEnc), voiceApiKeySet: Boolean(voiceApiKeyEnc), voiceCanReuseTranslateKey };
+}
+
+function voiceConfig() {
+  const settings = store ? store.getSettings() : {};
+  const format = settings.voiceProvider === 'openai' ? 'openai' : 'deepseek';
+  const baseUrl = String(settings.voiceBaseUrl || settings.translateBaseUrl || (format === 'deepseek' ? 'https://api.deepseek.com/v1' : '')).trim();
+  let apiKey = decryptSecret(settings.voiceApiKeyEnc, VOICE_KEY_AAD);
+  if (!apiKey && settings.translateProvider === 'openai' && settings.translateApiKeyEnc) {
+    const share = voiceInput.canReuseApiKey({ targetUrl: baseUrl, sourceUrl: settings.translateBaseUrl,
+      sourceProvider: settings.translateProvider, hasSourceKey: true });
+    if (share) apiKey = decryptSecret(settings.translateApiKeyEnc);
+  }
+  return { format, baseUrl,
+    model: String(settings.voiceModel || '').trim(), apiKey };
+}
+
+function voiceStatus() {
+  const settings = store ? store.getSettings() : {};
+  const config = voiceConfig();
+  const hasVoiceKey = Boolean(settings.voiceApiKeyEnc);
+  const canReuseTranslateKey = voiceInput.canReuseApiKey({ targetUrl: config.baseUrl, sourceUrl: settings.translateBaseUrl,
+    sourceProvider: settings.translateProvider, hasSourceKey: Boolean(settings.translateApiKeyEnc) });
+  const endpoint = voiceInput.buildEndpoint(config.baseUrl, config.format);
+  return { ok: true, provider: config.format, model: config.model,
+    hasVoiceKey, canReuseTranslateKey, configured: Boolean(config.apiKey && endpoint.ok && (config.format !== 'openai' || config.model)) };
 }
 
 /** 当前生效的翻译配置（含解密后的密钥）。 */
@@ -1158,7 +1190,7 @@ async function rememberReturnTarget(selectionMethod = 'unknown',knownSnapshot) {
 /* ---------- 浮层生命周期：用完一段时间就还内存 ---------- */
 
 /*
- * 主窗口闲置后回收；高频热键入口保留三分钟，之后释放渲染进程。
+ * 隐藏窗口闲置后回收；高频热键入口保留一分钟，之后释放渲染进程。
  * 截图隐藏时立即释放图像和画布，兼顾再次唤起速度与大图内存占用。
  */
 const WINDOW_IDLE_TEARDOWN_MS = 60 * 1000;
@@ -1235,10 +1267,67 @@ function hideQuickPanel() {
   if (quickWindow && !quickWindow.isDestroyed()) {
     quickWindow.__showRequested=false;quickWindow.__prepareShow?.cancel();
     quickWindow.hide();
-    // Keep this frequent hotkey surface warm. Other utility windows still have
-    // their independent idle release policy.
+    // Keep the panel warm briefly, then release its renderer with other overlays.
     primeQuickFrame(quickWindow);
+    scheduleIdleTeardown(quickWindow, '动作面板', HOT_WINDOW_IDLE_MS);
   }
+}
+
+function installVoicePermissionHandlers() {
+  const voiceSession = session.fromPartition('suira-voice');
+  if (voicePermissionSession === voiceSession) return;
+  const mayCaptureAudio = (webContents, permission, details = {}) => {
+    const audioRequested = Array.isArray(details.mediaTypes)
+      && details.mediaTypes.includes('audio') && !details.mediaTypes.includes('video');
+    return webContents === voiceWindow?.webContents && permission === 'media' && audioRequested;
+  };
+  voiceSession.setPermissionRequestHandler((webContents, permission, callback, details) => callback(mayCaptureAudio(webContents, permission, details)));
+  voiceSession.setPermissionCheckHandler((webContents, permission, _origin, details) => mayCaptureAudio(webContents, permission, details));
+  voicePermissionSession = voiceSession;
+}
+
+/** 语音工具按需创建，关闭即销毁窗口与临时媒体会话。 */
+async function openVoiceInput() {
+  if (!store) return { ok: false, error: '数据未就绪' };
+  if (voiceWindow && !voiceWindow.isDestroyed()) {
+    if (voiceWindow.isMinimized()) voiceWindow.restore();
+    voiceWindow.show();
+    voiceWindow.focus();
+    return { ok: true };
+  }
+  hideQuickPanel();
+  installVoicePermissionHandlers();
+  voiceSessionTarget = returnTarget;
+  const win = voiceWindow = new BrowserWindow({
+    width: 540, height: 460, minWidth: 460, minHeight: 400,
+    show: false, frame: false, thickFrame: SYSTEM_GLASS, transparent: true,
+    backgroundColor: '#00000000', title: '随序 · 语音输入',
+    icon: assetPath('suira-icon.png'), skipTaskbar: false,
+    webPreferences: {
+      preload: path.join(__dirname, 'voice-preload.js'),
+      contextIsolation: true, nodeIntegration: false, sandbox: true,
+      spellcheck: false, partition: 'suira-voice'
+    }
+  });
+  prepareFloatingSurface(win, 24, true);
+  win.setMenuBarVisibility(false);
+  win.webContents.on('will-navigate', event => event.preventDefault());
+  win.webContents.on('will-attach-webview', event => event.preventDefault());
+  win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+  win.once('ready-to-show', () => { if (!win.isDestroyed()) { win.center(); win.show(); win.focus(); } });
+  win.on('closed', () => {
+    if (voiceWindow === win) {
+      voiceRequestController?.abort();
+      voiceRequestController = null;
+      voiceSessionTarget = null;
+      voiceWindow = null;
+    }
+  });
+  win.loadFile(path.join(__dirname, 'src', 'voice-input.html')).catch(error => {
+    console.warn('语音窗口加载失败:', error.message);
+    if (!win.isDestroyed()) win.close();
+  });
+  return { ok: true };
 }
 
 function toggleQuickPanel() {
@@ -1798,7 +1887,9 @@ async function setupMomentaryProbe() {
  */
 async function tryReturnToTarget(item, intent = 'return-and-paste', options = {}) {
   const settings = store.getSettings();
-  const target = options.clipboardBar ? options.target : returnTarget;
+  const target = Object.prototype.hasOwnProperty.call(options, 'targetOverride')
+    ? options.targetOverride
+    : options.clipboardBar ? options.target : returnTarget;
 
   // 无论是否能粘贴，都先完成复制——这是「已复制，切回目标后粘贴」的前提
   try {
@@ -2923,6 +3014,7 @@ function getPanelActions() {
       lockWorkstation,
       // 速记：接着最近一条写，没有才新建
       openNote: () => openLatestNote(),
+      openVoiceInput,
       openTextTools,
       openImageEditor: () => openImageEditor()
     });
@@ -3212,6 +3304,60 @@ function closeNoteWindow(noteId) {
 }
 
 function registerIpc() {
+  ipcMain.handle('voice:open', event => {
+    const caller = BrowserWindow.fromWebContents(event.sender);
+    if (caller !== quickWindow && caller !== mainWindow) return { ok: false, error: '语音输入入口无效' };
+    return openVoiceInput();
+  });
+  ipcMain.handle('voice:status', event => {
+    if (BrowserWindow.fromWebContents(event.sender) !== voiceWindow) return { ok: false, error: '语音窗口无效' };
+    return voiceStatus();
+  });
+  ipcMain.handle('voice:open-settings', event => {
+    if (BrowserWindow.fromWebContents(event.sender) !== voiceWindow) return { ok: false, error: '语音窗口无效' };
+    const win = voiceWindow;
+    win?.close();
+    showMain('settings');
+    const send = () => mainWindow?.webContents.send('settings:translation');
+    if (mainWindow?.webContents.isLoadingMainFrame()) mainWindow.webContents.once('did-finish-load', send);
+    else send();
+    return { ok: true };
+  });
+  ipcMain.handle('voice:transcribe', async (event, payload) => {
+    if (BrowserWindow.fromWebContents(event.sender) !== voiceWindow) return { ok: false, error: '语音窗口无效' };
+    if (voiceRequestController) return { ok: false, error: '正在识别上一段录音' };
+    const config = voiceConfig();
+    const controller = voiceRequestController = new AbortController();
+    try {
+      return await voiceInput.transcribe({ pcm: payload?.pcm, format: config.format, baseUrl: config.baseUrl,
+        model: config.model, apiKey: config.apiKey, fetchImpl: electron.net.fetch, signal: controller.signal });
+    } finally {
+      if (voiceRequestController === controller) voiceRequestController = null;
+    }
+  });
+  ipcMain.handle('voice:cancel', event => {
+    if (BrowserWindow.fromWebContents(event.sender) !== voiceWindow) return { ok: false };
+    voiceRequestController?.abort();
+    return { ok: true };
+  });
+  ipcMain.handle('voice:commit', async (event, payload) => {
+    if (BrowserWindow.fromWebContents(event.sender) !== voiceWindow) return { ok: false, error: '语音窗口无效' };
+    const text = String(payload?.text || '').slice(0, 100000);
+    if (!text.trim()) return { ok: false, error: '没有可复制的识别结果' };
+    const copyOnly = payload?.mode === 'copy';
+    const result = await tryReturnToTarget({ kind: 'text', text }, copyOnly ? 'copy-only' : 'return-and-paste', {
+      explicitPaste: !copyOnly, targetOverride: voiceSessionTarget
+    });
+    if (result.copyFailed) return { ok: false, error: result.message || '复制失败' };
+    if (voiceWindow && !voiceWindow.isDestroyed()) voiceWindow.close();
+    return { ok: true, ...result };
+  });
+  ipcMain.handle('voice:close', event => {
+    if (BrowserWindow.fromWebContents(event.sender) !== voiceWindow) return { ok: false };
+    voiceWindow.close();
+    return { ok: true };
+  });
+
   /* ---- 钉图窗口控制 ---- */
   // 每个钉图窗口独立保存收起前的边界，便于恢复
   const pinState = new WeakMap();
@@ -4160,6 +4306,11 @@ function registerIpc() {
   ipcMain.handle('settings:get', () => publicSettings());
   ipcMain.handle('settings:update', async (_event, patch) => {
     const incoming = patch && typeof patch === 'object' ? { ...patch } : {};
+    if (typeof incoming.voiceBaseUrl === 'string' && incoming.voiceBaseUrl.trim()) {
+      const checked = voiceInput.validateEndpoint(incoming.voiceBaseUrl);
+      if (!checked.ok) return { ok: false, error: checked.error };
+      incoming.voiceBaseUrl = checked.url;
+    }
     if ([...Object.values(SHORTCUT_SETTING_KEYS), 'shortcutMomentary'].some(key => Object.hasOwn(incoming, key))) {
       return { ok: false, error: '请通过快捷键设置修改组合键，以便同步面板键位' };
     }
@@ -4169,6 +4320,7 @@ function registerIpc() {
     }
     // 翻译密钥：界面传明文，主进程加密后落盘；空串表示"不改动"，null 才是清除
     let keyTouched = false;
+    let voiceKeyTouched = false;
     if (Object.prototype.hasOwnProperty.call(incoming, 'translateApiKey')) {
       const raw = incoming.translateApiKey;
       delete incoming.translateApiKey;
@@ -4182,6 +4334,19 @@ function registerIpc() {
         }
         incoming.translateApiKeyEnc = envelope;
         keyTouched = true;
+      }
+    }
+    if (Object.prototype.hasOwnProperty.call(incoming, 'voiceApiKey')) {
+      const raw = incoming.voiceApiKey;
+      delete incoming.voiceApiKey;
+      if (raw === null) {
+        incoming.voiceApiKeyEnc = null;
+        voiceKeyTouched = true;
+      } else if (typeof raw === 'string' && raw.trim()) {
+        const envelope = encryptSecret(raw.trim(), VOICE_KEY_AAD);
+        if (!envelope) return { ok: false, error: '内容加密不可用，无法安全保存 ASR 密钥' };
+        incoming.voiceApiKeyEnc = envelope;
+        voiceKeyTouched = true;
       }
     }
     const settings = await store.updateSettings(incoming);
@@ -4201,6 +4366,10 @@ function registerIpc() {
     const safe = publicSettings();
     broadcast('settings:changed', safe);
     if (keyTouched) broadcast('translate:status', translateStatus());
+    if (keyTouched || voiceKeyTouched || incoming.voiceProvider !== undefined || incoming.voiceBaseUrl !== undefined
+      || incoming.voiceModel !== undefined || incoming.translateBaseUrl !== undefined || incoming.translateProvider !== undefined) {
+      broadcast('voice:status', voiceStatus());
+    }
     return { ok: true, settings: safe };
   });
 

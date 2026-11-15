@@ -84,6 +84,23 @@ t('quickpanel.js 引用的 ID 都存在', () => {
   if (miss.length) throw new Error('缺失: ' + miss.join(', '));
 });
 
+t('语音输入界面、受限预加载与主进程通道齐备', () => {
+  const voiceHtml = read('src/voice-input.html');
+  const voiceJs = read('src/voice-input.js');
+  const voicePreload = read('voice-preload.js');
+  const voiceIds = new Set([...voiceHtml.matchAll(/id="([^"]+)"/g)].map(match => match[1]));
+  const referencedIds = new Set([...voiceJs.matchAll(/\$\('#([A-Za-z0-9_-]+)'\)/g)].map(match => match[1]));
+  const missingIds = [...referencedIds].filter(id => !voiceIds.has(id));
+  if (missingIds.length) throw new Error('语音页缺少元素: ' + missingIds.join(', '));
+  for (const method of ['status', 'transcribe', 'commit', 'cancel', 'close', 'openSettings']) {
+    if (!voicePreload.includes(`${method}:`)) throw new Error('预加载缺少语音能力 ' + method);
+  }
+  for (const channel of ['voice:open', 'voice:status', 'voice:transcribe', 'voice:commit', 'voice:cancel', 'voice:close', 'voice:open-settings']) {
+    if (!mainJs.includes(`'${channel}'`)) throw new Error('主进程缺少语音通道 ' + channel);
+  }
+  if (!voiceHtml.includes("connect-src 'none'")) throw new Error('语音页面不应直接建立网络连接');
+});
+
 console.log('\n== overlay.html ==');
 const ovHtml = read('src/overlay.html');
 const ovIds = new Set([...ovHtml.matchAll(/id="([^"]+)"/g)].map((m) => m[1]));
@@ -847,7 +864,9 @@ t('保留期在启动与设置变更时立即生效', () => {
   // 不看变量叫什么，只看设置更新这条通道里有没有「保留期/上限变了就立刻 prune」
   const updateStart = mainJs.indexOf("ipcMain.handle('settings:update'");
   if (updateStart < 0) throw new Error('找不到 settings:update 处理器');
-  const updateHandler = mainJs.slice(updateStart, updateStart + 2400);
+  const updateEnd = mainJs.indexOf('/* ---------- 翻译', updateStart);
+  if (updateEnd < 0) throw new Error('找不到设置处理器边界');
+  const updateHandler = mainJs.slice(updateStart, updateEnd);
   if (!/retentionDays\s*!==\s*undefined/.test(updateHandler)) throw new Error('设置变更后未触发清理');
   if (!/store\.prune\(\)/.test(updateHandler)) throw new Error('设置变更后没有真的调用 prune');
 });

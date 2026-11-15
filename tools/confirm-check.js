@@ -31,7 +31,7 @@ const appJs = fs.readFileSync(path.join(ROOT, 'src', 'app.js'), 'utf8');
 const modalStart = appJs.indexOf('function openModal(');
 const modalEnd = appJs.indexOf('/* ---------- events ---------- */');
 if (modalStart < 0 || modalEnd < 0) throw new Error('无法从 app.js 抽取 openModal');
-const modalSrc = appJs.slice(modalStart, modalEnd);
+const modalSrc = 'let modalVersion = 0;\n' + appJs.slice(modalStart, modalEnd);
 
 const PAGE = `<!doctype html><html><head><meta charset="utf-8">
 <link rel="stylesheet" href="theme.css">
@@ -89,7 +89,7 @@ function connect(wsUrl) {
 
 async function evaluate(send, expression) {
   const r = await send('Runtime.evaluate', { expression, awaitPromise: true, returnByValue: true });
-  if (r.exceptionDetails) throw new Error(r.exceptionDetails.text || 'evaluate failed');
+  if (r.exceptionDetails) throw new Error(r.exceptionDetails.exception?.description || r.exceptionDetails.text || 'evaluate failed');
   return r.result ? r.result.value : undefined;
 }
 
@@ -199,11 +199,15 @@ const check = (name, cond, detail) => {
     await evaluate(send, `window.__openModal('新建任务','例如：竞品研究',
       async (v)=>{ window.__created = v; }), 'ok'`);
     await sleep(120);
+    await evaluate(send, `(function(){
+      var i = document.getElementById('modal-input');
+      i.value = '竞品研究'; i.dispatchEvent(new Event('input',{bubbles:true}));
+    })(), 'ok'`);
+    await sleep(40);
     s = JSON.parse(await state());
-    check('普通新建弹窗不要求确认词（按钮可用）', s.disabled === false, JSON.stringify(s));
+    check('普通新建弹窗输入标题后无需确认词', s.disabled === false, JSON.stringify(s));
     check('普通弹窗不显示确认提示', s.hintHidden === true, JSON.stringify(s));
     await evaluate(send, `(function(){
-      document.getElementById('modal-input').value = '竞品研究';
       document.getElementById('modal-confirm').click();
     })(), 'ok'`);
     await sleep(250);
@@ -218,6 +222,7 @@ const check = (name, cond, detail) => {
       const first=document.getElementById('modal-close');
       const last=document.getElementById('modal-confirm');
       const initial=document.activeElement===input;
+      input.value='任务';input.dispatchEvent(new Event('input',{bubbles:true}));
       last.focus();document.dispatchEvent(new KeyboardEvent('keydown',{key:'Tab',bubbles:true,cancelable:true}));
       const forward=document.activeElement===first;
       document.dispatchEvent(new KeyboardEvent('keydown',{key:'Tab',shiftKey:true,bubbles:true,cancelable:true}));
