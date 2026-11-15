@@ -1086,7 +1086,7 @@ function installEvents() {
   });
   $$('[data-display]').forEach(button=>listen(button,'click',async()=>{closeMoreMenu(false);await changePresentation(button.dataset.display);}));
   $$('[data-layout]').forEach(button=>button.onclick=()=>{clearSearch();setMode(button.dataset.layout);closeMoreMenu(false);});
-  $$('#panel-more-menu [data-theme]').forEach(button=>listen(button,'click',async()=>{
+  $$('[data-menu-group] [data-theme]').forEach(button=>listen(button,'click',async()=>{
     const result=await window.suira.settings.update({theme:button.dataset.theme,themeChosen:true});
     if(!result?.ok)throw Error(result?.error||'外观保存失败');closeMoreMenu();
   }));

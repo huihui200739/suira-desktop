@@ -14,6 +14,7 @@
   const tray='<span class="tray-back"></span><span class="tray-folder"></span><span class="tray-front"></span>';
   Object.assign(objects,{
     'long-capture':object('scroll',sheet+'<span class="scroll-top"></span><span class="scroll-bottom"></span><span class="scroll-arrow"></span>'),
+    voice:object('voice-object','<span class="microphone"><span class="mic-grille"></span></span><span class="mic-stem"></span><span class="mic-base"></span>'),
     annotate:object('annotation',sheet+pencil),
     'capture-translate':object('capture-translation','<span class="translation-frame"></span><span class="translation-letter">A</span>'),
     'edit-image':objects.capture.replace('suira-art capture','suira-art capture image-edit').replace(/<\/span>$/,pencil+'</span>'),
@@ -40,7 +41,7 @@
     translate:'jade',calendar:'orange',
     'edit-image':'blue',desktop:'slate',lock:'iris',
     annotate:'blue','text-clean':'jade',island:'blue',shelf:'amber',library:'iris',settings:'slate',
-    url:'blue',file:'blue',app:'iris'
+    url:'blue',file:'blue',app:'iris',voice:'blue'
   };
   const api = {
     has: id => Object.prototype.hasOwnProperty.call(objects,id),

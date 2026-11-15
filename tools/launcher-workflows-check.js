@@ -181,7 +181,7 @@ require(${JSON.stringify(path.join(root,'main.js'))});`);
   assert.equal((await main.evaluate('window.suira.quick.presentation()')).mode,'fullscreen');
   console.log('PASS hide and reopen retain the selected fullscreen mode');
   await panel.evaluate(`document.getElementById('panel-more').click();document.querySelector('[data-menu-section="appearance"]').click();document.querySelector('[data-material="solid"]').click();true`);
-  await until(()=>panel.evaluate(`window.suira.settings.get().then(settings=>settings.panelMaterial==='solid')`));assert.equal((await info()).nativeBlur,false,'Stronger blocking disables blur');
+  await until(()=>panel.evaluate(`window.suira.settings.get().then(settings=>settings.panelMaterial==='solid')`));await until(async()=>(await info()).nativeBlur===false);assert.equal((await info()).nativeBlur,false,'Stronger blocking disables blur');
   main.ws.close();panel.ws.close();const stopped=new Promise(resolve=>child.once('exit',resolve));child.kill();await stopped;await wait(200);
   const nextLog=fs.openSync(path.join(tmp,'app.log'),'a');child=spawn(electron,[entry,'--remote-debugging-port='+port],{cwd:root,env,windowsHide:true,stdio:['ignore',nextLog,nextLog]});fs.closeSync(nextLog);
   const resumed=await until(()=>connect(port,t=>t.url.endsWith('/index.html')));sockets.push(resumed.ws);await until(()=>resumed.evaluate('Boolean(window.suira?.quick)'));

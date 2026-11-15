@@ -6,7 +6,7 @@ for(const name of ['udata','debug.log'])assert.equal(fs.existsSync(path.join(roo
 const files=asar.listPackage(payload).map(file=>file.replace(/\\/g,'/').replace(/^\//,''));
 assert.ok(!files.some(file=>/(^|\/)(?:__fx_[^/]*|suira-data\.(?:json|key)|\.workbuddy|\.git|shortcut-fallback[^/]*)(?:\/|$)/.test(file)),'Development files or obsolete fallback leaked into payload');
 let checked=0;
-for(const file of files.filter(file=>/^(main\.js|preload\.js|pin-preload\.js|theme-preload\.js|lib\/|src\/|assets\/foreground-(host\.cs|helper\.ps1))/.test(file))){
+for(const file of files.filter(file=>/^(main\.js|preload\.js|voice-preload\.js|pin-preload\.js|theme-preload\.js|lib\/|src\/|assets\/foreground-(host\.cs|helper\.ps1))/.test(file))){
   const native=path.normalize(file),stat=asar.statFile(payload,native);if(stat.files)continue;
   assert.deepEqual(asar.extractFile(payload,native),fs.readFileSync(path.join(root,file)),'Payload differs: '+file);checked++;
 }
