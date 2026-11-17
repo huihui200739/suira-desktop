@@ -432,6 +432,8 @@ t('快捷键恢复默认/清除绑定已接到界面', () => {
   // preload 暴露
   if (!preload.includes("'shortcuts:restore-default'")) throw new Error('preload 未暴露 restore-default');
   if (!preload.includes("'shortcuts:clear'")) throw new Error('preload 未暴露 clear');
+  if (!preload.includes("'shortcuts:capture'")) throw new Error('preload 未暴露录制期间的全局快捷键暂停');
+  if (!appJs.includes('shortcuts.capture(true)') || !appJs.includes('shortcuts.capture(false)')) throw new Error('改键录制未暂停并恢复旧快捷键');
   // 清除后要有可见状态，不能静默
   if (!appJs.includes('未绑定，点击输入框可重新设置')) throw new Error('清除后缺少状态提示');
 });
@@ -756,6 +758,7 @@ t('按住型唤起：侦测助手与状态机已接线', () => {
   if (!watch.includes('class KeyWatchProbe')) throw new Error('缺少 KeyWatchProbe');
   if (!mainJs.includes('setupMomentaryProbe')) throw new Error('主进程未接线');
   if (!mainJs.includes('momentaryStatus')) throw new Error('未向设置页暴露按住型状态');
+  if (/globalShortcut\.register\(accelerator,\s*\(\)=>\{\}\)/.test(mainJs)) throw new Error('按住型不应因其他程序已注册组合键而失效');
   if (!fs.existsSync('assets/key-watch.ps1')) throw new Error('缺少 key-watch.ps1');
 });
 

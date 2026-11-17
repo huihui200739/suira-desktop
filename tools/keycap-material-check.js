@@ -18,7 +18,7 @@ async function checkKeycapMaterial({send,evaluate}) {
       borders:keys.every(key=>getComputedStyle(key.querySelector('.key-card')).borderTopWidth==='0px')
     };
   })()`);
-  assert.equal(facts.count,14);assert.equal(facts.objects,true);assert.equal(facts.inside,true);
+  assert.equal(facts.count,15);assert.equal(facts.objects,true);assert.equal(facts.inside,true);
   assert.equal(facts.faceColors,1,'All tool keys use one neutral surface');
   assert.equal(facts.borders,true,'Old colored key outlines must not leak through');
   assert.equal(await ev('new Set([...document.querySelectorAll(".key.is-bound .suira-art")].map(n=>[...n.classList].find(c=>c.startsWith("family-")))).size'),6,'The keyboard has Blue, Jade, Orange, Amber, Iris and Slate families');
@@ -92,7 +92,7 @@ async function checkKeycapMaterial({send,evaluate}) {
   assert.equal(await ev('document.querySelectorAll(".is-key-near,.is-key-hover,.is-key-sheen").length'),0);
   await send('Emulation.setEmulatedMedia',{features:[{name:'prefers-color-scheme',value:'light'},{name:'prefers-reduced-motion',value:'no-preference'}]});
   await ev('document.getElementById("toolbox").click();true');
-  assert.equal(await ev('document.querySelectorAll("#tool-grid .suira-art").length'),15);
+  assert.equal(await ev('document.querySelectorAll("#tool-grid .suira-art").length'),16);
   assert.equal(await ev('document.querySelectorAll(".is-key-hover,.is-key-pressed").length'),0);
   await ev('document.getElementById("mode-actions").click();true');
   await send('Input.dispatchMouseEvent',{type:'mouseMoved',x:8,y:8});

@@ -32,7 +32,7 @@ async function until(fn){let last;for(let i=0;i<180;i++){try{const value=await f
     const shot=await panel.send('Page.captureScreenshot',{format:'png'});
     fs.writeFileSync(path.join(__dirname,'../docs/product/panel.png'),Buffer.from(shot.data,'base64'));
   }
-  assert.equal(await panel.evaluate('document.querySelectorAll(".key.is-bound .suira-art").length'),14,'Installed tool objects must be packaged');
+  assert.equal(await panel.evaluate('document.querySelectorAll(".key.is-bound .suira-art").length'),15,'Installed tool objects must be packaged');
   assert.equal(await panel.evaluate('Boolean(window.SuiraKeycapMotion && document.querySelector(".key-face"))'),true,'Installed key material and motion module must load');
   assert.equal(await panel.evaluate('new Set([...document.querySelectorAll(".key.is-bound .suira-art.vivid")].map(n=>[...n.classList].find(c=>c.startsWith("family-")))).size'),5);
   const target=await panel.evaluate('(()=>{const b=document.querySelector("[data-key=T]").getBoundingClientRect();return {x:b.x+b.width/2,y:b.y+b.width/2};})()');

@@ -80,7 +80,7 @@ const { keyLayout, TOOLBOX_TOOLS, PANEL_ACTIONS, DEFAULT_KEY_BINDINGS, KEY_ROWS,
 const { createPanelActions } = require('./lib/panel-actions');
 // 38 键面板的自定义键位绑定：清洗与换位是纯模型，主进程只负责落盘与执行
 const { assignPanelBinding, movePanelBinding, effectiveBinding } = require('./lib/panel-bindings');
-const { PANEL_SHORTCUT_ACTIONS, actionKey, acceleratorKey, alignPanelShortcuts, shortcutPatchForPanel, migrateLegacyPanelBindings, panelGlobalBindings, panelShortcutName, panelAccelerator } = require('./lib/panel-shortcuts');
+const { PANEL_SHORTCUT_ACTIONS, actionKey, acceleratorKey, alignPanelShortcuts, shortcutPatchForPanel, clearShortcutPanelAction, migrateLegacyPanelBindings, panelGlobalBindings, panelShortcutName, panelAccelerator } = require('./lib/panel-shortcuts');
 // 第三批：按住型唤起用常驻 PowerShell 助手拿「松开」事件；浮引岛纯模型负责暂存语义
 const { KeyWatchProbe, ensureNativeHost } = require('./lib/key-watch');
 const islandModel = require('./lib/island-model');
@@ -182,6 +182,8 @@ let momentaryProbe = null;
 let momentaryOpened = false;
 /** 最近一次按住型侦测启动失败的原因；成功时清空，设置页据此显示真实原因。 */
 let momentaryError = '';
+let shortcutCaptureActive = false;
+let shortcutCaptureTimer = null;
 /** 按住型侦测的启动 Promise：自检要等它落定，否则会把「正在启动」误报成「未运行」。 */
 let momentaryReady = Promise.resolve({ ok: true });
 let panelModeIndex = 0;
@@ -387,11 +389,11 @@ async function commitPanelConfiguration(bindings, requested = {}, options = {}) 
   try { await store.setPanelConfiguration(bindings, settingsPatch); }
   catch (error) {
     shortcutManager.restoreSnapshot(snapshot, { notify: false });
-    broadcast('shortcuts:changed', shortcutManager.snapshot().status);
+    publishShortcutStatus();
     return { ok: false, error: error.message || '键位保存失败，已保留原绑定' };
   }
   broadcast('panel:changed');
-  broadcast('shortcuts:changed', shortcutManager.snapshot().status);
+  publishShortcutStatus();
   return { ok: true, status: shortcutManager.snapshot().status };
 }
 
@@ -1804,10 +1806,10 @@ function togglePinnedVisibility() {
 }
 
 /** 按住型唤起的下发给设置页的状态。 */
-let momentaryReserved='';
 function momentaryStatus() {
   const accelerator = momentaryAccelerator();
   if (!accelerator) return { ok: true, accelerator: '', error: '', watching: false, cleared: true };
+  if (shortcutCaptureActive) return { ok: true, accelerator, watching: false, recording: true, error: '' };
   if(!globalShortcutsEnabled() && accelerator) return {ok:true,accelerator,watching:false,localOnly:true,error:''};
   const watching = Boolean(momentaryProbe && momentaryProbe.status === 'watching');
   return {
@@ -1824,21 +1826,20 @@ function momentaryStatus() {
  * 键位为空（用户清除绑定）时只停掉侦测，不报错。
  */
 async function setupMomentaryProbe() {
-  if(momentaryReserved){globalShortcut.unregister(momentaryReserved);momentaryReserved='';}
   const accelerator = momentaryAccelerator();
   if (momentaryProbe) {
     try { await momentaryProbe.stop(); } catch {}
     momentaryProbe = null;
   }
-  if (!accelerator || !globalShortcutsEnabled()) {
+  if (!accelerator || !globalShortcutsEnabled() || shortcutCaptureActive) {
+    if (momentaryOpened) hideQuickPanel();
     momentaryOpened = false;
-    momentaryError = '';
-    return { ok: true, watching: false };
+    if (!shortcutCaptureActive) momentaryError = '';
+    publishShortcutStatus();
+    return { ok: true, watching: false, localOnly: shortcutCaptureActive };
   }
   const validation=validateMomentaryAccelerator(accelerator);
-  if(!validation.ok){momentaryError=validation.error;return {ok:false,error:momentaryError};}
-  try { if(!globalShortcut.register(accelerator,()=>{})) throw Error('组合键已被其他程序占用，请更换'); momentaryReserved=accelerator; }
-  catch(error){momentaryError=error.message;return {ok:false,error:momentaryError};}
+  if(!validation.ok){momentaryError=validation.error;publishShortcutStatus();return {ok:false,error:momentaryError};}
   // 宿主选择：优先用系统自带 csc.exe 编译一次的 5KB 原生小程序
   // （常驻约 9MB、无 conhost、READY 19ms），编译不可用才回退 PowerShell
   // （约 73MB 私有 + 7.7MB conhost、READY 2.5s）。功能与协议完全一致。
@@ -1847,6 +1848,8 @@ async function setupMomentaryProbe() {
     sourcePath: assetPath('key-watch-host.cs'),
     targetPath: path.join(userRoot(), 'key-watch-host.exe')
   }).catch(() => null);
+  // 用户可能在本机编译按键助手期间离开录制框；不要迟到地重新接管组合键。
+  if (shortcutCaptureActive || accelerator !== momentaryAccelerator()) return { ok: true, watching: false, localOnly: true };
   momentaryProbe = new KeyWatchProbe({
     accelerator,
     scriptPath: assetPath('key-watch.ps1'),
@@ -1868,15 +1871,42 @@ async function setupMomentaryProbe() {
   if (ok) {
     momentaryError = '';
   } else {
-    if(momentaryReserved){globalShortcut.unregister(momentaryReserved);momentaryReserved='';}
     momentaryError = (result && result.error) || '按键侦测助手没有启动';
     console.warn('按住型侦测启动失败:', momentaryError);
   }
+  publishShortcutStatus();
   return {
     ok,
     watching: momentaryProbe && momentaryProbe.status === 'watching',
     error: ok ? '' : momentaryError
   };
+}
+
+/** 录制快捷键时临时释放全局热键，避免旧绑定先于输入框收到同一组合键。 */
+async function beginShortcutCapture() {
+  if (!shortcutManager) return { ok: false, error: '快捷键尚未初始化' };
+  if (!shortcutCaptureActive) {
+    shortcutCaptureActive = true;
+    registerShortcuts();
+    await setupMomentaryProbe();
+  }
+  clearTimeout(shortcutCaptureTimer);
+  shortcutCaptureTimer = setTimeout(() => {
+    queuePanelConfiguration(() => endShortcutCapture()).catch(error => console.warn('恢复快捷键失败:', error.message));
+  }, 60000);
+  if (shortcutCaptureTimer.unref) shortcutCaptureTimer.unref();
+  return { ok: true };
+}
+
+/** 退出录制或安全超时后，按当前设置重新注册全局快捷键。 */
+async function endShortcutCapture() {
+  clearTimeout(shortcutCaptureTimer);
+  shortcutCaptureTimer = null;
+  if (!shortcutCaptureActive) return { ok: true };
+  shortcutCaptureActive = false;
+  registerShortcuts();
+  const momentary = await setupMomentaryProbe();
+  return { ok: true, momentary };
 }
 
 /**
@@ -2102,6 +2132,9 @@ function createMainWindow() {
   if(saved?.physicalWidth&&saved?.physicalHeight)mainWindow.__restorePhysicalSize={width:saved.physicalWidth,height:saved.physicalHeight,scale:saved.scaleFactor};
   prepareDesktopWindow(mainWindow);
   mainWindow.loadFile(path.join(__dirname, 'src', 'index.html'));
+  mainWindow.on('blur', () => {
+    if (shortcutCaptureActive) queuePanelConfiguration(() => endShortcutCapture()).catch(error => console.warn('恢复快捷键失败:', error.message));
+  });
   // ready-to-show 是首选：等首帧画完再显示，避免白屏闪一下。
   // 但它在「桌面已锁定 / 合成器异常 / GPU 未就绪」时可能永远不触发，
   // 那种情况下进程在跑、托盘在，却一个窗口都没有——所以加一个兜底显示。
@@ -4006,7 +4039,12 @@ function registerIpc() {
     };
   });
 
-  ipcMain.handle('shortcuts:check', () => ({ok:true,entries:shortcutReport(globalShortcut,{...shortcutManager?.bindings,momentary:momentaryAccelerator()}),note:'仅检测这些组合键当前能否注册为全局快捷键，不能检测其他应用内部快捷键；结果可能随其他软件启动而改变。'}));
+  ipcMain.handle('shortcuts:capture', (event, active) => {
+    if (event.sender !== mainWindow?.webContents) return { ok: false, error: '无权录入快捷键' };
+    return queuePanelConfiguration(() => active ? beginShortcutCapture() : endShortcutCapture());
+  });
+
+  ipcMain.handle('shortcuts:check', () => ({ok:true,entries:currentShortcutReport(),note:'全局快捷键只在系统允许注册时生效；按住型使用后台侦测，不会抢占其他程序或系统快捷键。'}));
   ipcMain.handle('shortcuts:retry',()=>queuePanelConfiguration(async()=>{
     if(!globalShortcutsEnabled())return {ok:false,error:'请先开启全局快捷键'};
     registerShortcuts();await setupMomentaryProbe();return {ok:true};
@@ -4017,7 +4055,7 @@ function registerIpc() {
     const name = String(payload?.name || '');
     const accelerator = String(payload?.accelerator || '').trim();
 
-    // 按住型先保留全局组合键，再由助手侦测松开；注册失败不启动侦测。
+    // 按住型由后台轮询侦测，不注册同一全局组合键；其他随序动作仍参与重复校验。
     if (name === 'momentary') {
       const validation = validateMomentaryAccelerator(accelerator);
       if (!validation.ok) return { ok: false, error: validation.error };
@@ -4025,7 +4063,9 @@ function registerIpc() {
       if (conflict) return { ok: false, error: conflict };
       const previous = store.getSettings().shortcutMomentary;
       await store.updateSettings({ shortcutMomentary: accelerator });
-      const started = await setupMomentaryProbe();
+      const started = shortcutCaptureActive
+        ? (await endShortcutCapture()).momentary
+        : await setupMomentaryProbe();
       if (!started.ok) {
         // 新键位起不来就回滚，不能让设置页显示成功但实际不工作
         await store.updateSettings({
@@ -4051,7 +4091,15 @@ function registerIpc() {
         if (!moved.ok) return moved;
         bindings = moved.bindings;
       }
-      return commitPanelConfiguration(bindings, { [name]: accelerator });
+      // ShortcutManager was deliberately rebuilt with registration disabled while
+      // the recorder is focused. Re-enable it before the transactional rebind so
+      // the new accelerator can be registered and persisted instead of failing
+      // against the capture-only adapter.
+      const resumeCaptureOnFailure = shortcutCaptureActive;
+      if (resumeCaptureOnFailure) await endShortcutCapture();
+      const result = await commitPanelConfiguration(bindings, { [name]: accelerator });
+      if (!result.ok && resumeCaptureOnFailure) await beginShortcutCapture();
+      return result;
     });
   });
 
@@ -4090,7 +4138,11 @@ function registerIpc() {
       return { ok: true, status: momentaryStatus() };
     }
     if (!SHORTCUT_SETTING_KEYS[name]) return { ok: false, error: '未知的快捷键名称' };
-    return queuePanelConfiguration(() => commitPanelConfiguration(store.getPanelBindings(), { [name]: '' }));
+    return queuePanelConfiguration(async () => {
+      const cleared = clearShortcutPanelAction(store.getPanelBindings(), name);
+      if (!cleared.ok) return cleared;
+      return commitPanelConfiguration(cleared.bindings, { [name]: '' });
+    });
   });
 
   ipcMain.handle('return:target', () => returnTarget);
@@ -4444,12 +4496,34 @@ function createTray() {
 
 let shortcutStartupReport=[];
 function globalShortcutsEnabled() { return store?.getSettings().globalShortcutsEnabled === true; }
+function currentShortcutReport() {
+  const bindings = shortcutManager?.bindings || shortcutBindings();
+  const entries = shortcutCaptureActive
+    ? Object.entries(bindings).filter(([,accelerator])=>accelerator).map(([name,accelerator])=>({name,accelerator,state:'paused',reason:'正在录制组合键'}))
+    : shortcutReport(globalShortcut, bindings);
+  const accelerator = momentaryAccelerator();
+  if (accelerator) {
+    const entry = shortcutCaptureActive
+      ? { name:'momentary', accelerator, state:'paused', reason:'正在录制组合键' }
+      : !globalShortcutsEnabled()
+        ? { name:'momentary', accelerator, state:'paused', reason:'未启用全局快捷键' }
+        : momentaryProbe?.status === 'watching'
+          ? { name:'momentary', accelerator, state:'watching', reason:'' }
+          : { name:'momentary', accelerator, state:'conflict', reason:momentaryError || '按键侦测助手未运行' };
+    entries.push(entry);
+  }
+  return entries;
+}
+function publishShortcutStatus() {
+  shortcutStartupReport = currentShortcutReport();
+  if (shortcutManager) broadcast('shortcuts:changed', shortcutStatus(shortcutManager.snapshot().status));
+}
 function shortcutStatus(status) {
-  return Object.fromEntries(Object.entries(status).map(([name,entry])=>[name,(!globalShortcutsEnabled() && entry.accelerator)?{...entry,localOnly:true}:entry]));
+  return Object.fromEntries(Object.entries(status).map(([name,entry])=>[name,shortcutCaptureActive&&entry.accelerator?{...entry,recording:true}:(!globalShortcutsEnabled() && entry.accelerator)?{...entry,localOnly:true}:entry]));
 }
 function registerShortcuts() {
   shortcutManager?.dispose();
-  const enabled=globalShortcutsEnabled();
+  const enabled=globalShortcutsEnabled() && !shortcutCaptureActive;
   shortcutManager = new ShortcutManager({
     globalShortcut:shortcutAdapter(globalShortcut,enabled),
     legacyBindings:false,
@@ -4483,7 +4557,7 @@ function registerShortcuts() {
       shortcutManager.status[name] = { ok: true, accelerator: '', error: '', cleared: true };
     }
   }
-  shortcutStartupReport=shortcutReport(globalShortcut,{...shortcutManager.bindings,momentary:momentaryAccelerator()});
+  shortcutStartupReport=currentShortcutReport();
   return shortcutManager.status;
 }
 

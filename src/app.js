@@ -878,8 +878,48 @@ function bindShortcutEditors() {
   for (const editor of editors) {
     const input = editor.input;
     if (!input) continue;
+    let captureReady = Promise.resolve();
+    let captureActive = false;
+    let captureStarting = false;
+    let deferBlurRelease = false;
+    let focusRequest = 0;
+    let valueBeforeCapture = '';
+    let captureSaved = false;
+    const prepareCapture = () => {
+      if (captureActive) return Promise.resolve({ ok: true });
+      if (captureStarting) return captureReady;
+      captureStarting = true;
+      editor.status.textContent = '正在暂停其他快捷键…';
+      editor.status.className = 'shortcut-status is-warn';
+      captureReady = window.suira.shortcuts.capture(true).then(result => {
+        captureActive = result?.ok === true;
+        if (!captureActive) {
+          editor.status.textContent = result?.error || '无法暂停其他快捷键';
+          editor.status.className = 'shortcut-status is-error';
+        }
+        return result;
+      }).catch(error => {
+        editor.status.textContent = error?.message || '无法暂停其他快捷键';
+        editor.status.className = 'shortcut-status is-error';
+        return { ok: false };
+      }).finally(() => { captureStarting = false; });
+      return captureReady;
+    };
+    const focusAfterCapture = async () => {
+      const request = ++focusRequest;
+      const result = await prepareCapture();
+      if (result?.ok && request === focusRequest && input.isConnected && document.activeElement !== input) input.focus();
+    };
+    input.addEventListener('pointerdown', event => {
+      if (captureActive) return;
+      // Do not let the browser focus the recorder until the main process has
+      // released old OS shortcuts; otherwise a fast Alt+C can still capture.
+      event.preventDefault();
+      focusAfterCapture();
+    });
     input.addEventListener('keydown', async (event) => {
       event.preventDefault();
+      if (event.repeat || event.isComposing) return;
       if (event.key === 'Escape') { input.blur(); return; }
       const accelerator = toAccelerator(event);
       if (!accelerator) {
@@ -887,21 +927,56 @@ function bindShortcutEditors() {
         editor.status.className = 'shortcut-status is-warn';
         return;
       }
+      await captureReady.catch(() => {});
       const result = await window.suira.shortcuts.set({ name: editor.name, accelerator });
       if (result?.ok) {
+        captureSaved = true;
         input.value = prettyAccelerator(accelerator);
         editor.status.textContent = '已更新';
         editor.status.className = 'shortcut-status is-ok';
+        input.blur();
       } else {
         editor.status.textContent = result?.error || '改键失败';
         editor.status.className = 'shortcut-status is-error';
       }
     });
     input.addEventListener('focus', () => {
+      if (!captureActive) {
+        // Keyboard navigation can focus the readonly input without pointerdown.
+        // Blur it until the main process confirms the shortcut pause, then focus again.
+        deferBlurRelease = true;
+        input.blur();
+        focusAfterCapture().finally(() => { deferBlurRelease = false; });
+        return;
+      }
+      valueBeforeCapture = input.value;
+      captureSaved = false;
       input.value = '';
       input.placeholder = '请按下组合键…';
-      editor.status.textContent = '';
-      editor.status.className = 'shortcut-status';
+      editor.status.textContent = '录入期间会暂时暂停其他快捷键';
+      editor.status.className = 'shortcut-status is-warn';
+    });
+    input.addEventListener('blur', () => {
+      if (deferBlurRelease) return;
+      const saved = captureSaved;
+      captureSaved = false;
+      if (!saved) input.value = valueBeforeCapture;
+      captureActive = false;
+      focusRequest++;
+      const pending = captureReady;
+      captureReady = Promise.resolve();
+      pending.finally(() => window.suira.shortcuts.capture(false)).catch(() => {});
+    });
+    window.addEventListener('blur', () => {
+      if (!captureActive && !captureStarting) return;
+      captureActive = false;
+      captureStarting = false;
+      captureReady = Promise.resolve();
+      focusRequest++;
+      if (!captureSaved) input.value = valueBeforeCapture;
+    });
+    window.addEventListener('focus', () => {
+      if (document.activeElement === input) focusAfterCapture();
     });
   }
 
@@ -944,7 +1019,8 @@ function bindShortcutEditors() {
 /** 从主进程拉取当前键位与注册状态并渲染。 */
 function renderShortcutCheck(entries) {
   const target=$('#shortcut-check-result');
-  if(target && Array.isArray(entries))target.innerHTML=entries.map(entry=>'<div><kbd>'+escapeHtml(entry.accelerator)+'</kbd><small>'+escapeHtml(({registered:'已由随序注册',available:'当前可注册',conflict:'已被占用',protected:'系统或编辑保留',duplicate:'配置重复'})[entry.state]+(entry.reason?'：'+entry.reason:''))+'</small></div>').join('');
+  const labels={registered:'已由随序注册',available:'当前可注册',conflict:'已被占用',protected:'系统或编辑保留',duplicate:'配置重复',watching:'后台按键侦测中',paused:'已暂停'};
+  if(target && Array.isArray(entries))target.innerHTML=entries.map(entry=>'<div><kbd>'+escapeHtml(entry.accelerator)+'</kbd><small>'+escapeHtml((labels[entry.state]||'状态未知')+(entry.reason?'：'+entry.reason:''))+'</small></div>').join('');
 }
 async function refreshShortcuts() {
   try {
@@ -964,6 +1040,8 @@ async function refreshShortcuts() {
       if (!accelerator && entry?.cleared) {
         status.textContent = '未绑定，点击输入框可重新设置';
         status.className = 'shortcut-status is-warn';
+      } else if(entry?.recording){
+        status.textContent='快捷键录入中，其他全局快捷键暂时暂停';status.className='shortcut-status is-warn';
       } else if(entry?.localOnly){
         status.textContent='仅面板内，未启用全局组合键';status.className='shortcut-status is-warn';
       } else if (entry && !entry.ok) {
@@ -1003,6 +1081,8 @@ async function refreshShortcuts() {
       if (!accelerator && entry?.cleared) {
         momentaryStatus.textContent = '未绑定，点击输入框可重新设置';
         momentaryStatus.className = 'shortcut-status is-warn';
+      } else if(entry?.recording){
+        momentaryStatus.textContent='快捷键录入中，按住型侦测暂时暂停';momentaryStatus.className='shortcut-status is-warn';
       } else if(entry?.localOnly){
         momentaryStatus.textContent='全局快捷键未启用，按住型侦测已暂停';momentaryStatus.className='shortcut-status is-warn';
       } else if (entry && entry.watching === false) {

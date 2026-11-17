@@ -1,5 +1,5 @@
 'use strict';
-// Real Electron, isolated profile and files. Only one temporary OS hotkey is used.
+// Real Electron, isolated profile and files. Temporary OS hotkeys are isolated and released.
 const fs=require('node:fs'),path=require('node:path'),os=require('node:os'),net=require('node:net'),assert=require('node:assert/strict'),{spawn}=require('node:child_process');
 const {SuiraStore}=require('../lib/store'),{KEY_ROWS}=require('../lib/keybindings'),{connect}=require('./runtime-client');
 const root=path.resolve(__dirname,'..'),tmp=fs.mkdtempSync(path.join(os.tmpdir(),'suira-workspace-'));
@@ -9,15 +9,15 @@ async function until(fn){let last;for(let n=0;n<180;n++){try{const v=await fn();
 function launch(entry,args=[]){const log=fs.openSync(path.join(tmp,'app.log'),'a');const child=spawn(exe,[entry,...args],{cwd:root,env,windowsHide:true,stdio:['ignore',log,log]});fs.closeSync(log);children.push(child);return child;}
 (async()=>{
   const ready=path.join(tmp,'ready.json'),stop=path.join(tmp,'stop'),blocker=path.join(tmp,'blocker.js');
-  fs.writeFileSync(blocker,`const fs=require('node:fs'),{app,globalShortcut}=require('electron');app.setPath('userData',${JSON.stringify(path.join(tmp,'blocker-profile'))});app.whenReady().then(()=>{const key=['Alt+F9','Alt+F10','Alt+F11'].find(k=>globalShortcut.register(k,()=>{}));fs.writeFileSync(${JSON.stringify(ready)},JSON.stringify({key}));setInterval(()=>{if(fs.existsSync(${JSON.stringify(stop)})){globalShortcut.unregisterAll();app.quit();}},40);});`);
-  const blockerChild=launch(blocker);const key=(await until(()=>fs.existsSync(ready)&&JSON.parse(fs.readFileSync(ready)))).key;assert.ok(key,'No free test hotkey');
+  fs.writeFileSync(blocker,`const fs=require('node:fs'),{app,globalShortcut}=require('electron');app.setPath('userData',${JSON.stringify(path.join(tmp,'blocker-profile'))});app.whenReady().then(()=>{const free=[];for(const k of ['Alt+F9','Alt+F10','Alt+F11','Alt+F12','Alt+F13','Alt+F14','Alt+F15']){if(globalShortcut.register(k,()=>{}))free.push(k);if(free.length===2)break;}fs.writeFileSync(${JSON.stringify(ready)},JSON.stringify({key:free[0],spare:free[1]}));setInterval(()=>{if(fs.existsSync(${JSON.stringify(stop)})){globalShortcut.unregisterAll();app.quit();}},40);});`);
+  const blockerChild=launch(blocker);const reserved=(await until(()=>fs.existsSync(ready)&&JSON.parse(fs.readFileSync(ready))));const key=reserved.key,captureKey=reserved.spare;assert.ok(key&&captureKey,'Need two free test hotkeys');
   const profile=path.join(tmp,'profile'),store=new SuiraStore(path.join(profile,'suira-data.json'));
   await store.updateSettings({shortcutQuick:key,shortcutCapture:'',shortcutLongCapture:'',shortcutPanelCycle:'',shortcutPinnedToggle:'',shortcutClipboardBar:'',shortcutMomentary:'',recordClipboard:false});
   await store.setPanelBindings(Object.fromEntries(KEY_ROWS.flat().map(k=>[k,k==='A'?{type:'url',target:'https://example.com',name:'fixture'}:{type:'none'}])));
   const first=path.join(tmp,'中文 first.md'),second=path.join(tmp,'第二个 file.markdown'),trace=path.join(tmp,'trace'),control=path.join(tmp,'control');
   fs.writeFileSync(first,'# First');fs.writeFileSync(second,'# Second');fs.writeFileSync(control,'2');
   const server=net.createServer();await new Promise(r=>server.listen(0,'127.0.0.1',r));const port=server.address().port;await new Promise(r=>server.close(r));
-  const entry=path.join(tmp,'app.js');fs.writeFileSync(entry,`const fs=require('node:fs'),{app,clipboard,globalShortcut,dialog,shell}=require('electron');app.setPath('userData',${JSON.stringify(profile)});clipboard.read=async()=>[];clipboard.readText=async()=>'';const register=globalShortcut.register.bind(globalShortcut);globalShortcut.register=(key,fn)=>key===${JSON.stringify(key)}?register(key,fn):false;dialog.showMessageBox=async()=>({response:Number(fs.readFileSync(${JSON.stringify(control)},'utf8'))});dialog.showErrorBox=(title,message)=>fs.appendFileSync(${JSON.stringify(trace)},title+':'+message+'\\n');shell.openExternal=async url=>fs.appendFileSync(${JSON.stringify(trace)},url+'\\n');require(${JSON.stringify(path.join(root,'main.js'))});`);
+  const entry=path.join(tmp,'app.js');fs.writeFileSync(entry,`const fs=require('node:fs'),{app,clipboard,globalShortcut,dialog,shell}=require('electron');app.setPath('userData',${JSON.stringify(profile)});clipboard.read=async()=>[];clipboard.readText=async()=>'';const register=globalShortcut.register.bind(globalShortcut);globalShortcut.register=(key,fn)=>([${JSON.stringify(key)},${JSON.stringify(captureKey)}].includes(key))?register(key,fn):false;dialog.showMessageBox=async()=>({response:Number(fs.readFileSync(${JSON.stringify(control)},'utf8'))});dialog.showErrorBox=(title,message)=>fs.appendFileSync(${JSON.stringify(trace)},title+':'+message+'\\n');shell.openExternal=async url=>fs.appendFileSync(${JSON.stringify(trace)},url+'\\n');require(${JSON.stringify(path.join(root,'main.js'))});`);
   launch(entry,[first,'--remote-debugging-port='+port]);
   const main=await until(()=>connect(port,t=>t.url.endsWith('/index.html')));sockets.push(main.ws);
   await until(()=>main.evaluate('Boolean(window.suira?.shortcuts && window.WorkspaceUI)'));
@@ -30,6 +30,16 @@ function launch(entry,args=[]){const log=fs.openSync(path.join(tmp,'app.log'),'a
   fs.writeFileSync(stop,'');await until(()=>blockerChild.exitCode!==null);
   assert.equal((await main.evaluate('window.suira.shortcuts.retry()')).ok,true);
   assert.equal((await main.evaluate('window.suira.shortcuts.get()')).status.quick.ok,true);
+  assert.equal((await main.evaluate('window.suira.shortcuts.capture(true)')).ok,true);
+  status=await main.evaluate('window.suira.shortcuts.get()');
+  assert.equal(status.status.quick.recording,true,'Opening the recorder pauses existing global bindings');
+  assert.equal((await main.evaluate('window.suira.shortcuts.check()')).entries.find(e=>e.name==='quick').state,'paused');
+  const recorded=await main.evaluate(`window.suira.shortcuts.set({name:'capture',accelerator:${JSON.stringify(captureKey)}})`);
+  assert.equal(recorded.ok,true,recorded.error);
+  status=await main.evaluate('window.suira.shortcuts.get()');
+  assert.equal(status.bindings.capture,captureKey);assert.equal(status.status.capture.ok,true);
+  assert.equal((await main.evaluate('window.suira.shortcuts.capture(false)')).ok,true);
+  console.log('PASS recorder suspends old global bindings, saves the new key and resumes registration');
   await main.evaluate('window.suira.settings.update({globalShortcutsEnabled:false})');
   assert.equal((await main.evaluate('window.suira.shortcuts.check()')).entries.find(e=>e.name==='quick').state,'available');
   assert.equal((await main.evaluate(`window.suira.shortcuts.set({name:'quick',accelerator:'Control+A'})`)).ok,false);

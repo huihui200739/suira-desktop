@@ -193,6 +193,7 @@ contextBridge.exposeInMainWorld('suira', {
     commit: (payload) => ipcRenderer.invoke('return:commit', payload)
   },
   shortcuts: {
+    capture: active => ipcRenderer.invoke('shortcuts:capture', Boolean(active)),
     retry: () => ipcRenderer.invoke('shortcuts:retry'),
     check: () => ipcRenderer.invoke('shortcuts:check'),
     get: () => ipcRenderer.invoke('shortcuts:get'),

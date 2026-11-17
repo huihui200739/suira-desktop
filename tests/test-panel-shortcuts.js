@@ -4,7 +4,7 @@ const fs = require('node:fs'), os = require('node:os'), path = require('node:pat
 const { DEFAULT_BINDINGS, ShortcutManager } = require('../lib/shortcuts');
 const { SuiraStore } = require('../lib/store');
 const { assignPanelBinding, movePanelBinding } = require('../lib/panel-bindings');
-const { acceleratorKey, actionKey, alignPanelShortcuts, shortcutPatchForPanel, migrateLegacyPanelBindings, panelGlobalBindings, panelShortcutName } = require('../lib/panel-shortcuts');
+const { acceleratorKey, actionKey, alignPanelShortcuts, shortcutPatchForPanel, clearShortcutPanelAction, migrateLegacyPanelBindings, panelGlobalBindings, panelShortcutName } = require('../lib/panel-shortcuts');
 const {KEY_ROWS,PANEL_ACTIONS}=require('../lib/keybindings');
 let count=0;
 function check(name,fn){fn();count++;console.log('PASS '+name);}
@@ -29,6 +29,15 @@ check('设置中的自定义剪贴板键也会对齐，重复主键不会悄悄�
   assert.equal(actionKey(result.bindings,'clipboard'),'K');
   assert.equal(alignPanelShortcuts({}, {capture:'Alt+C',clipboardBar:'Ctrl+C'}).ok,false);
 });
+check('清除专用快捷键会同步从悬浮板移除对应动作',()=>{
+  for(const [name,action,key] of [['capture','capture','C'],['longCapture','long-capture','G'],['clipboardBar','clipboard','V']]) {
+    const result=clearShortcutPanelAction({},name);
+    assert.equal(result.ok,true);assert.deepEqual(result.bindings[key],{type:'none'});
+    assert.equal(actionKey(result.bindings,action),'');
+    assert.equal(panelGlobalBindings(result.bindings,DEFAULT_BINDINGS)[`panelKey:${key}`],'');
+  }
+  assert.equal(clearShortcutPanelAction({},'quick').changed,false);
+});
 check('拖动保留修饰键，两项交换时同时生成两个新组合键',()=>{
   const moved=movePanelBinding({},'C','Q');
   assert.deepEqual(shortcutPatchForPanel({},moved.bindings,{capture:'Control+Shift+C',clipboardBar:'Alt+V'}),{capture:'Control+Shift+Q'});
@@ -52,6 +61,8 @@ check('所有已实现键位与自定义内容都派生 Alt 直达，未绑定�
   for(const action of Object.values(PANEL_ACTIONS).filter(a=>a.implemented&&a.key))assert.ok(Object.values(bindings).includes('Alt+'+action.key),action.label);
   assert.equal(bindings['panelKey:Q'],'Alt+Q');assert.equal(bindings['panelKey:W'],'');assert.equal(bindings['panelKey:M'],'Alt+M');
   assert.equal(new Set(Object.values(bindings).filter(Boolean)).size,Object.values(bindings).filter(Boolean).length);
+  assert.equal(PANEL_ACTIONS.voice.key,'U');
+  assert.equal(panelGlobalBindings({},DEFAULT_BINDINGS)['panelKey:U'],'Alt+U');
   const equals=assignPanelBinding({},'=',{type:'action',id:'capture'}).bindings;
   assert.equal(panelGlobalBindings(equals,{...DEFAULT_BINDINGS,capture:'Alt+='})['panelKey:='],'');
   assert.equal(acceleratorKey('Alt+Plus'),'=');

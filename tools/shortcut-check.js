@@ -41,7 +41,10 @@ function slice(name, nextMarker) {
   if (end < 0) throw new Error('无法定位 ' + name + ' 的结束位置');
   return appJs.slice(start, end);
 }
-const prettySrc = slice('prettyAccelerator', 'function bindShortcutEditors(');
+const keyCaptureSrc = appJs.slice(appJs.indexOf('const KEY_LABELS = {'), appJs.indexOf('function bindShortcutEditors('));
+if (!keyCaptureSrc.startsWith('const KEY_LABELS = {') || !keyCaptureSrc.includes('function toAccelerator(')) {
+  throw new Error('无法从 app.js 抽取快捷键录入函数');
+}
 const bindSrc = slice('bindShortcutEditors', '/** 从主进程拉取当前键位与注册状态并渲染。 */');
 const refreshSrc = slice('renderShortcutCheck', '/* ---------- modal ---------- */');
 
@@ -78,11 +81,15 @@ const state = {
   }
 };
 window.__calls = [];
+window.__captureDelay = 0;
+window.__setFailure = '';
 window.suira = {
   shortcuts: {
+    capture: async active => { window.__calls.push(['capture', Boolean(active)]); if(active&&window.__captureDelay)await new Promise(resolve=>setTimeout(resolve,window.__captureDelay)); return { ok:true }; },
     get: async () => JSON.parse(JSON.stringify(state)),
     set: async (p) => {
       window.__calls.push(['set', p.name, p.accelerator]);
+      if(window.__setFailure)return {ok:false,error:window.__setFailure};
       state.bindings[p.name] = p.accelerator;
       state.status[p.name] = { ok: true, accelerator: p.accelerator, error: '' };
       return { ok: true, status: state.status };
@@ -108,7 +115,7 @@ window.suira = {
 // 抽出的函数内部使用 await，普通 script 顶层不允许，
 // 因此统一包进一个 async 立即执行函数，并在内部挂载测试入口。
 window.__ready = (async () => {
-${prettySrc}
+${keyCaptureSrc}
 ${bindSrc}
 ${refreshSrc}
   bindShortcutEditors();
@@ -222,6 +229,23 @@ const check = (name, cond, detail) => {
     check('输入框清空', view.quick === '', JSON.stringify(view.quick));
     check('显示未绑定提示而非空白', view.statusQuick.includes('未绑定'), view.statusQuick);
 
+    console.log('\n== 录入组合键 ==');
+    const pointer = JSON.parse(await evaluate(send, `(()=>{const input=document.getElementById('setting-key-capture');document.getElementById('shortcut-restore').focus();window.__captureDelay=80;const event=new PointerEvent('pointerdown',{bubbles:true,cancelable:true});input.dispatchEvent(event);return JSON.stringify({prevented:event.defaultPrevented,active:document.activeElement.id});})()`));
+    check('点击录入框时先阻止提前聚焦',pointer.prevented&&pointer.active==='shortcut-restore',JSON.stringify(pointer));
+    await sleep(140);
+    let captureReady = JSON.parse(await evaluate(send, `JSON.stringify({active:document.activeElement.id,calls:window.__calls})`));
+    check('暂停旧快捷键后才聚焦录入框',captureReady.active==='setting-key-capture'&&captureReady.calls.some(c=>c[0]==='capture'&&c[1]===true),JSON.stringify(captureReady));
+    await evaluate(send, `(function(){
+      const input=document.getElementById('setting-key-capture');
+      input.dispatchEvent(new KeyboardEvent('keydown',{key:'c',altKey:true,bubbles:true,cancelable:true}));
+      input.dispatchEvent(new Event('blur'));
+    })(), 'ok'`);
+    await sleep(300);
+    view = JSON.parse(await evaluate(send, `JSON.stringify({calls:window.__calls,capture:window.__state().bindings.capture})`));
+    check('聚焦录入框先暂停全局快捷键', view.calls.some(c=>c[0]==='capture'&&c[1]===true), JSON.stringify(view.calls));
+    check('Alt+C 作为录入值保存，不再误启动旧截图键', view.capture==='Alt+C'&&view.calls.some(c=>c[0]==='set'&&c[1]==='capture'&&c[2]==='Alt+C'), JSON.stringify(view));
+    check('保存成功后恢复全局快捷键', view.calls.some(c=>c[0]==='capture'&&c[1]===false), JSON.stringify(view.calls));
+
     console.log('\n== 恢复默认 ==');
     await evaluate(send, `document.getElementById('shortcut-restore').click(), 'ok'`);
     await sleep(400);
@@ -251,6 +275,16 @@ const check = (name, cond, detail) => {
     })`));
     check('失败时错误可见', view.statusQuick.includes('占用'), view.statusQuick);
     check('失败时用错误样式', view.cls.includes('is-error'), view.cls);
+
+    console.log('\n== 组合键冲突后恢复原值 ==');
+    await evaluate(send, `window.__setFailure='组合键已被占用';document.getElementById('setting-key-capture').dispatchEvent(new Event('focus'));true`);
+    await sleep(80);
+    await evaluate(send, `(function(){const input=document.getElementById('setting-key-capture');input.dispatchEvent(new KeyboardEvent('keydown',{key:'F10',altKey:true,bubbles:true,cancelable:true}));})()`);
+    await sleep(120);
+    await evaluate(send, `document.getElementById('shortcut-restore').focus()`);
+    await sleep(100);
+    view=JSON.parse(await evaluate(send,`JSON.stringify({capture:document.getElementById('setting-key-capture').value,status:document.getElementById('status-capture').textContent,calls:window.__calls})`));
+    check('改键失败后保留原绑定并释放录入状态',view.capture.includes('Ctrl')&&view.capture.includes('Shift')&&view.calls.some(c=>c[0]==='capture'&&c[1]===false),JSON.stringify(view));
 
     ws.close();
   } finally {

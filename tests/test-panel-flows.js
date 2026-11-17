@@ -81,6 +81,11 @@ function makePanel(overrides = {}) {
     }
   });
 
+  t('语音输入在 38 键面板有直接入口', () => {
+    assert.equal(PANEL_ACTIONS.voice.key, 'U');
+    assert.equal(DEFAULT_KEY_BINDINGS.U, 'voice');
+  });
+
   console.log('\n== 截图链路：面板 → 覆盖层 → 收起面板 ==');
 
   const panel = makePanel();
