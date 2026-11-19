@@ -147,6 +147,8 @@ require(${JSON.stringify(path.join(root,'main.js'))});`);
     await panel.evaluate(`closeMoreMenu(false);true`);
     assert.equal(await panel.evaluate(`getComputedStyle(document.querySelector('.panel-brand')).display==='none'&&getComputedStyle(document.querySelector('.panel-foot')).display==='none'`),true);
     assert.equal(await panel.evaluate(`getComputedStyle(document.getElementById('apps-grid')).gridTemplateRows.split(' ').length`),5);
+    // The reveal animation scales the entire panel before it reaches its final geometry.
+    await until(()=>panel.evaluate('document.getElementById("panel").getAnimations().every(animation=>animation.playState!=="running")'));
     const searchBox=await panel.evaluate(`(()=>{const r=document.querySelector('.search-field').getBoundingClientRect();return {height:r.height,center:r.x+r.width/2,viewport:innerWidth};})()`);
     assert.ok(Math.abs(searchBox.height-44)<1&&Math.abs(searchBox.center-searchBox.viewport/2)<=2,JSON.stringify(searchBox));
     assert.equal(await panel.evaluate(`document.getElementById('panel-body').scrollWidth<=document.getElementById('panel-body').clientWidth+1`),true);
