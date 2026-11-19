@@ -649,7 +649,7 @@ const waitSave = () => new Promise((r) => setTimeout(r, 120));
     mgr.rebind('quick', 'Alt+K');
     mgr.rebind('capture', 'Alt+J');
     mgr.rebind('panelCycle', 'Alt+L');
-    mgr.rebind('pinnedToggle', 'Alt+U');
+    assert.equal(mgr.rebind('pinnedToggle', 'Alt+I').ok, true);
     const r = mgr.restoreDefault();
     assert.strictEqual(r.ok, true, r.error);
     assert.deepStrictEqual(r.restored.slice().sort(), ['capture', 'panelCycle', 'pinnedToggle', 'quick']);

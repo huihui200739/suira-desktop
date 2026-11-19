@@ -32,5 +32,39 @@ async function until(fn){let last;for(let i=0;i<120;i++){try{const value=await f
  await end();await type('\n/h');await key('ArrowDown');await key('ArrowDown');await key('Enter');assert.equal(await md.evaluate('document.getElementById("md-editor").value.endsWith("## ")'),true,'Arrow keys choose the focused command, not always the first');
  await md.evaluate('window.WorkspaceUI.flush()');const saved=(await main.evaluate('window.suira.workspace.list("markdown")')).find(item=>item.id===doc.id);assert.ok(saved.text.startsWith('---\ntitle: 完整保留\n---'));assert.ok(saved.text.includes('color:#b93836'));
  await md.send('Emulation.setDeviceMetricsOverride',{width:900,height:700,deviceScaleFactor:1,mobile:false});assert.equal(await md.evaluate('document.documentElement.scrollWidth<=innerWidth'),true);
- const proof={version,sourceSlash:true,splitSlash:true,previewSlash:true,consistentToolbars:true,sourceColors:true,sourcePreserved:true,escapeLiteral:true,urlAndCodeLiteral:true,keyboardChoice:true,taskSearch:true,taskFilters:true,progressiveTaskMenu:true,actionableEmptyTask:true};fs.writeFileSync(path.join(root,'docs',`document-modes-${version}.json`),JSON.stringify(proof,null,2)+'\n');console.log('PASS document modes/workbench',JSON.stringify(proof));
+ await md.evaluate(`(() => {
+   const editor = document.getElementById('md-editor');
+   editor.value = '# 开头\\n\\n> ## 引用里的标题\\n\\n' + '长段落 '.repeat(500) + '\\n\\n## 第二节\\n\\n' + '不同长度的行\\n\\n'.repeat(130);
+   editor.dispatchEvent(new Event('input', { bubbles: true }));
+   document.querySelector('[data-md-view=split]').click();
+ })()`);
+ await until(()=>md.evaluate('document.querySelectorAll("#md-outline [data-heading]").length === 2'));
+ const alignment = `(() => {
+   const preview = document.getElementById('md-preview');
+   const heading = preview.querySelector('[data-md-heading="1"]');
+   return heading.getBoundingClientRect().top - preview.getBoundingClientRect().top;
+ })()`;
+ const offsets=await md.evaluate(`(() => {
+   const editor = document.getElementById('md-editor');
+   document.querySelector('#md-outline [data-heading="1"]').click();
+   return { cursor:editor.selectionStart, expected:editor.value.indexOf('## 第二节'), editorTop:editor.scrollTop };
+ })()`);
+ assert.equal(offsets.cursor, offsets.expected, 'Blockquote headings do not shift source navigation');
+ await md.evaluate('document.getElementById("md-editor").scrollTop=0;true');
+ await until(()=>md.evaluate('document.getElementById("md-preview").scrollTop === 0'));
+ await md.evaluate(`document.getElementById('md-editor').scrollTop=${offsets.editorTop};true`);
+ await until(async()=>Math.abs(await md.evaluate(alignment)-24) < 5);
+ await md.evaluate('document.getElementById("md-preview").scrollTop=0;true');
+ await until(()=>md.evaluate('document.getElementById("md-editor").scrollTop === 0'));
+ await md.evaluate(`(() => {
+   const preview = document.getElementById('md-preview');
+   preview.scrollTop = ${alignment} - 24;
+ })()`);
+ await until(async()=>Math.abs(await md.evaluate('document.getElementById("md-editor").scrollTop')-offsets.editorTop)<5);
+ await md.evaluate('document.getElementById("md-focus-toggle").click();true');
+ assert.equal(await md.evaluate('getComputedStyle(document.querySelector(".document-sidebar")).display'), 'none');
+ await key('Escape');
+ assert.equal(await md.evaluate('document.documentElement.classList.contains("md-writing-focus")'), false);
+ assert.equal(await md.evaluate('localStorage.getItem("suira:markdown:view")'), 'split');
+ const proof={version,sourceSlash:true,splitSlash:true,previewSlash:true,consistentToolbars:true,sourceColors:true,sourcePreserved:true,escapeLiteral:true,urlAndCodeLiteral:true,keyboardChoice:true,taskSearch:true,taskFilters:true,progressiveTaskMenu:true,actionableEmptyTask:true,headingScrollBothWays:true,focusMode:true};fs.writeFileSync(path.join(root,'docs',`document-modes-${version}.json`),JSON.stringify(proof,null,2)+'\n');console.log('PASS document modes/workbench',JSON.stringify(proof));
 })().catch(error=>{console.error(error);process.exitCode=1;}).finally(async()=>{sockets.forEach(s=>s.close());if(child&&child.exitCode===null){const done=new Promise(r=>child.once('exit',r));child.kill();await done;}await wait(200);if(path.dirname(tmp)!==path.resolve(os.tmpdir()))throw Error('Unsafe cleanup');fs.rmSync(tmp,{recursive:true,force:true,maxRetries:4,retryDelay:150});});

@@ -7,9 +7,37 @@
   const lunarFormatter = new Intl.DateTimeFormat('zh-CN-u-ca-chinese',{day:'numeric'});
   const lunarDays = ['初一','初二','初三','初四','初五','初六','初七','初八','初九','初十','十一','十二','十三','十四','十五','十六','十七','十八','十九','二十','廿一','廿二','廿三','廿四','廿五','廿六','廿七','廿八','廿九','三十'];
   const lunar = day => lunarDays[Number(lunarFormatter.formatToParts(day).find(p=>p.type==='day')?.value)-1] || lunarFormatter.format(day);
-  let previewTimer, richDocument=null, sourceDocument=null, richText='', richKey='', requestedView='write';
+  let previewTimer, richDocument = null, sourceDocument = null, richText = '', richKey = '';
+  const views = new Set(['edit', 'split', 'preview', 'write']);
+  const viewStorageKey = 'suira:markdown:view';
+  let requestedView = localStorage.getItem(viewStorageKey);
+  if (!views.has(requestedView)) requestedView = 'edit';
+  let renderedText = null, focusedWriting = false, saveInFlight, visualBundle;
+  let viewRevision = 0;
+  const editor = $('md-editor'), previewPane = $('md-preview');
+  let sourceHeadingPositions, ignoreEditorScroll, ignorePreviewScroll;
   let allDocuments=false, outlineCollapsed=false, outlineItems=[], activeHeading=-1;
   const foldedHeadings=new Set();
+  function setWritingFocus(enabled) {
+    focusedWriting = Boolean(enabled && current);
+    document.documentElement.classList.toggle('md-writing-focus', focusedWriting);
+    const button = $('md-focus-toggle');
+    if (button) {
+      button.setAttribute('aria-pressed', String(focusedWriting));
+      button.textContent = focusedWriting ? '退出专注' : '专注';
+    }
+    if (focusedWriting && ['edit', 'split'].includes($('md-split').dataset.view)) editor.focus();
+  }
+  document.addEventListener('keydown', event => {
+    if (event.isComposing || event.defaultPrevented || !current || !document.querySelector('#page-markdown.is-active')) return;
+    if (event.ctrlKey && event.shiftKey && event.key.toLowerCase() === 'f') {
+      event.preventDefault();
+      setWritingFocus(!focusedWriting);
+    } else if (focusedWriting && event.key === 'Escape' && $('md-find').hidden) {
+      event.preventDefault();
+      setWritingFocus(false);
+    }
+  });
   function documentIdentity(item) {
     if(document.documentElement.dataset.tool!=='markdown')return;
     document.querySelector('.brand b').textContent=item?item.title+'.md':'未打开 Markdown';
@@ -18,7 +46,7 @@
   }
   let agendaMode='countdown', countdownFilter='all', upcomingDays=[];
   let calendarView='month';
-  let month=new Date(), selected=dateKey(month), events=[], editing='', docs=[], current='', revision=0, savedRevision=0, timer, chain=Promise.resolve();
+  let month=new Date(), selected=dateKey(month), events=[], editing='', docs=[], current='', revision=0, savedRevision=0, timer;
   const notify=message=>{const el=$('global-toast');el.textContent=message;el.classList.add('is-visible');setTimeout(()=>el.classList.remove('is-visible'),2600);};
   async function checked(promise){const result=await promise;if(!result?.ok)throw Error(result?.error||'操作失败');return result;}
   const safe=fn=>(...args)=>Promise.resolve().then(()=>fn(...args)).catch(error=>notify(error.message));
@@ -68,7 +96,7 @@
   function editEvent(item){$('agenda-list').before($('event-form'));$('event-draft-hint')?.remove();$('event-form').dataset.draft='false';editing=item?.id||'';$('event-form').hidden=false;$('event-title').value=item?.title||'';$('event-notes').value=item?.text||'';$('event-date').value=item?.meta.date||selected;$('event-time').value=item?.meta.time||'';$('event-category').value=item?.meta.category||'work';$('event-priority').value=item?.meta.priority||'normal';$('event-location').value=item?.meta.location||'';$('event-title').focus();}
   let calendarDraftRevision=0;async function receiveCalendarDraft(draft){if(!draft)return;const token=++calendarDraftRevision;await window.CalendarData.ready();if(token!==calendarDraftRevision)return;selected=draft.date;month=new Date(draft.date+'T12:00:00');calendar();editEvent({title:draft.title,text:draft.text,meta:draft});$('event-form').dataset.draft='true';let hint=$('event-draft-hint');if(!hint){hint=document.createElement('p');hint.id='event-draft-hint';hint.setAttribute('role','status');$('event-form').prepend(hint);}hint.textContent='日程草稿 · 请核对日期和时间，保存后才会加入日历。'+(draft.warning||'');requestAnimationFrame(()=>$('event-form').scrollIntoView({block:'nearest'}));}
   if(document.documentElement.dataset.tool==='calendar'){api.onCalendarDraft?.(safe(async()=>receiveCalendarDraft(await api.calendarDraft())));api.calendarDraft?.().then(receiveCalendarDraft).catch(error=>notify(error.message));}
-  window.suira.relay?.onRequest?.(async request=>{if(request.kind!=='markdown.append')return;try{if(current!==request.id)throw Error('当前文档已切换，请重试');await flush();$('md-editor').value=[$('md-editor').value,request.text].filter(Boolean).join('\n\n');richText=$('md-editor').value;richDocument?.load(richText);dirty();await flush();await window.suira.relay.reply({token:request.token,ok:true});}catch(error){await window.suira.relay.reply({token:request.token,ok:false,error:error.message});}});
+  window.suira.relay?.onRequest?.(async request=>{if(request.kind!=='markdown.append')return;try{await flush();if(current!==request.id)throw Error('当前文档已切换，请重试');$('md-editor').value=[$('md-editor').value,request.text].filter(Boolean).join('\n\n');richText=$('md-editor').value;richDocument?.load(richText);dirty();await flush();await window.suira.relay.reply({token:request.token,ok:true});}catch(error){await window.suira.relay.reply({token:request.token,ok:false,error:error.message});}});
   const monthPicker=document.createElement('label');monthPicker.className='calendar-month-picker';monthPicker.title='选择年份和月份';
   $('calendar-month').before(monthPicker);monthPicker.append($('calendar-month'));
   const monthInput=document.createElement('input');monthInput.type='month';monthInput.id='calendar-jump';monthInput.min='1900-01';monthInput.max='2200-12';monthInput.setAttribute('aria-label','跳转到指定月份');monthPicker.append(monthInput);
@@ -89,37 +117,124 @@
   document.querySelectorAll('[data-calendar-view]').forEach(button=>button.onclick=()=>{calendarView=button.dataset.calendarView;document.querySelectorAll('[data-calendar-view]').forEach(b=>{b.classList.toggle('is-active',b===button);b.setAttribute('aria-pressed',String(b===button));});calendar();});
   for(const id of ['calendar-search','calendar-category','calendar-hide-done'])$(id).addEventListener(id==='calendar-search'?'input':'change',calendar);
   $('calendar-export').onclick=safe(async()=>{const result=await api.calendarExport();if(result.canceled)return;await checked(Promise.resolve(result));notify('日历已导出');});
-  function preview(){
+  function preview() {
     clearTimeout(previewTimer);
-    const text=$('md-editor').value;
-    const html=window.marked.parse(text,{gfm:true,breaks:false});
-    $('md-preview').innerHTML=window.SuiraMarkdown.safeHTML(html);
-    $('md-preview').querySelectorAll('input').forEach(input=>{if(input.type!=='checkbox'){input.remove();return;}input.disabled=true;});
-    $('md-preview').querySelectorAll('a').forEach(link=>{link.removeAttribute('target');link.onclick=event=>{event.preventDefault();const url=link.getAttribute('href');if(/^https?:\/\//i.test(url||''))safe(()=>checked(api.openLink(url)))();};});
-    syncRichDocument();renderOutline();
-    $('md-words').textContent=`${text.length.toLocaleString()} 字符 · ${text.split('\n').length} 行`;
+    const text = editor.value;
+    if (renderedText === text) return;
+    const { html, headings } = window.SuiraMarkdown.renderWithOutline(text);
+    const scroll = previewPane.scrollTop;
+    previewPane.innerHTML = html;
+    for (const input of previewPane.querySelectorAll('input')) {
+      if (input.type === 'checkbox') input.disabled = true;
+      else input.remove();
+    }
+    renderedText = text;
+    sourceHeadingPositions = null;
+    renderOutline(headings);
+    previewPane.scrollTop = scroll;
+    ignorePreviewScroll = previewPane.scrollTop;
+    syncScroll(editor);
+    $('md-words').textContent = `${text.length.toLocaleString()} 字符 · ${text.split('\n').length} 行`;
+    updateActiveHeading();
   }
+  previewPane.addEventListener('click', event => {
+    const link = event.target.closest('a[href]');
+    if (!link) return;
+    event.preventDefault();
+    const url = link.getAttribute('href');
+    if (/^(?:https?:\/\/|suira-image:\/\/[-\w]+$)/i.test(url)) safe(() => checked(api.openLink(url)))();
+  });
   function docList(){const query=$('md-search').value.trim().toLowerCase();$('md-list').innerHTML=docs.filter(d=>allDocuments||!d.meta?.recentHidden).filter(d=>(d.title+' '+d.text).toLowerCase().includes(query)).map(d=>`<button class="document-row ${d.id===current?'is-active':''}" data-document="${d.id}"><span class="recent-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M6 3h8l4 4v14H6z M14 3v5h4 M9 12h6 M9 16h6"/></svg></span><div><b>${esc(d.title)}.md</b><small class="recent-path" title="${esc(d.meta?.externalPath||'随序文档')}">${esc(d.meta?.externalPath||'随序文档')}</small><small>${new Date(d.updatedAt).toLocaleDateString('zh-CN')}</small></div><em>›</em></button>`).join('')||'<div class="workspace-empty">没有匹配的文档</div>';$('md-list').querySelectorAll('[data-document]').forEach(b=>b.onclick=safe(()=>selectDoc(b.dataset.document)));}
-  async function flush(){
+  function flush() {
+    if (!saveInFlight) saveInFlight = saveDocument().finally(() => { saveInFlight = null; });
+    return saveInFlight;
+  }
+  async function saveDocument(){
     clearTimeout(timer);await richDocument?.commit();clearTimeout(timer);
     const documentId=current;
     // A switch/close must also wait for edits made while the first snapshot saves.
     while(documentId&&current===documentId&&revision!==savedRevision){
       const id=current, version=revision, payload={id,title:$('md-title').value.trim()||'未命名文档',text:$('md-editor').value};
       $('md-status').textContent='保存中…';
-      const job=chain.catch(()=>{}).then(async()=>{const result=await checked(api.save('markdown',payload));const index=docs.findIndex(d=>d.id===id);if(index>=0)docs[index]=result.item;if(current===id){documentIdentity(result.item);savedRevision=Math.max(savedRevision,version);$('md-status').textContent=revision===savedRevision?savedLabel(result.item):'有未保存的修改';docList();}});
-      chain=job.catch(error=>{if(current===id)$('md-status').textContent='保存失败，请重试';throw error;});
-      // Callers can await rejection, while the background save also has an observer.
-      chain.catch(()=>{});await chain;
+      try {
+        const { item } = await checked(api.save('markdown', payload));
+        const index = docs.findIndex(doc => doc.id === id);
+        if (index >= 0) docs[index] = item;
+        if (current === id) {
+          documentIdentity(item);
+          savedRevision = version;
+          $('md-status').textContent = revision === savedRevision ? savedLabel(item) : '有未保存的修改';
+        }
+      } catch (error) {
+        if (current === id) $('md-status').textContent = '保存失败，请重试';
+        throw error;
+      }
       if(current!==documentId)break;
       clearTimeout(timer);await richDocument?.commit();clearTimeout(timer);
     }
-    return chain;
   }
-  async function selectDoc(id){clearTimeout(previewTimer);await flush();closeDocumentFind(false);richDocument?.destroy();richDocument=null;richText='';richKey='';foldedHeadings.clear();current=id;revision=savedRevision=0;const item=docs.find(d=>d.id===id);if(item?.meta?.recentHidden){await checked(api.recent('open',id));item.meta.recentHidden=false;}$('md-body').hidden=!item;$('md-empty').hidden=Boolean(item);document.documentElement.classList.toggle('md-home',!item);if(item){$('md-title').value=item.title;$('md-editor').value=item.text;$('md-status').textContent=item.meta?.externalPath?'本地文件；Ctrl+S 保存到原位置':'已保存';setDocumentView(requestedView);preview();}documentIdentity(item);api.activeDocument?.(current);for(const id of ['md-save','md-export','md-export-format','md-delete'])$(id).disabled=!item;docList();syncDocumentNavigation();}
-  async function loadDocs(){docs=await api.list('markdown');const opened=await api.openedFile?.();await selectDoc(opened|| (docs.some(d=>d.id===current)?current:docs.find(d=>!d.meta?.recentHidden)?.id||''));}
-  function dirty(){revision++;$('md-status').textContent='未保存';clearTimeout(previewTimer);previewTimer=setTimeout(preview,120);clearTimeout(timer);timer=setTimeout(()=>flush().catch(error=>notify(error.message)),400);}
-  $('md-editor').oninput=dirty;$('md-title').oninput=dirty;$('md-search').oninput=docList;
+  async function selectDoc(id) {
+    await flush();
+    const item = docs.find(doc => doc.id === id);
+    if (item?.meta?.recentHidden) {
+      await checked(api.recent('open', item.id));
+      item.meta.recentHidden = false;
+      await flush();
+    }
+    clearTimeout(previewTimer);
+    closeDocumentFind(false);
+    richDocument?.destroy();
+    richDocument = null;
+    richText = '';
+    richKey = '';
+    foldedHeadings.clear();
+    renderedText = null;
+    viewRevision++;
+    current = item?.id || '';
+    revision = savedRevision = 0;
+    if (!current) setWritingFocus(false);
+    $('md-body').hidden = !item;
+    $('md-empty').hidden = Boolean(item);
+    document.documentElement.classList.toggle('md-home', !item);
+    if (item) {
+      $('md-title').value = item.title;
+      editor.value = item.text;
+      $('md-status').textContent = item.meta?.externalPath ? '本地文件；Ctrl+S 保存到原位置' : '已保存';
+      editor.scrollTop = 0;
+      previewPane.scrollTop = 0;
+      setDocumentView(requestedView, true);
+    } else {
+      editor.value = '';
+      previewPane.replaceChildren();
+      $('md-outline').replaceChildren();
+      outlineItems = [];
+      sourceHeadingPositions = null;
+    }
+    documentIdentity(item);
+    api.activeDocument?.(current);
+    for (const button of ['md-save', 'md-export', 'md-export-format', 'md-delete']) $(button).disabled = !item;
+    docList();
+    syncDocumentNavigation();
+  }
+  async function loadDocs() {
+    await flush();
+    docs = await api.list('markdown');
+    const opened = await api.openedFile?.();
+    await selectDoc(opened || (docs.some(doc => doc.id === current) ? current : docs.find(doc => !doc.meta?.recentHidden)?.id));
+  }
+  function dirty(updatePreview = true) {
+    revision++;
+    $('md-status').textContent = '未保存';
+    if (updatePreview) {
+      clearTimeout(previewTimer);
+      previewTimer = setTimeout(preview, 120);
+    }
+    clearTimeout(timer);
+    timer = setTimeout(() => flush().catch(error => notify(error.message)), 400);
+  }
+  editor.oninput = () => dirty();
+  $('md-title').oninput = () => dirty(false);
+  $('md-search').oninput = docList;
   $('md-new').onclick=safe(async()=>{await flush();const result=await checked(api.save('markdown',{title:'未命名文档',text:'# 新的想法\n\n'}));docs.unshift(result.item);await selectDoc(result.item.id);$('md-title').focus();$('md-title').select();});
   $('md-import').onclick=safe(async()=>{await flush();const result=await api.import();if(result.canceled)return;await checked(Promise.resolve(result));docs=[result.item,...docs.filter(item=>item.id!==result.item.id)];await selectDoc(result.item.id);if(result.recovered)notify('已恢复尚未写回原文件的草稿，请检查后再保存');});
   $('md-export').onclick=safe(async()=>{await flush();const result=await api.export(current,$('md-export-format').value);if(result.canceled)return;await checked(Promise.resolve(result));notify('文档已导出');});
@@ -150,29 +265,70 @@
     if(!richDocument){richDocument=window.SuiraRichDocument.create({element:$('md-rich'),notify,onChange:value=>{richText=value;$('md-editor').value=value;dirty();},onSelection:()=>updateActiveHeading(),openLink:url=>safe(()=>checked(api.openLink(url)))(),readClipboard:()=>checked(api.clipboard()),capture:async kind=>{const id=current;await flush();const result=await api.capture({kind});if(current!==id)throw Error('当前文档已切换，未插入截图');return result;}});richKey=current;}
     if(richText!==text||richKey!==current){richDocument.load(text);richText=text;richKey=current;}
   }
-  function setDocumentView(view,automatic=false){
-    sourceDocument?.close();richDocument?.closeMenu();
-    // 先做视图降级，再记住用户选择；否则「写作」被扩展语法拒绝后，
-    // 这个不可用的偏好会一直留着，之后每打开文档都重复提示甚至强制切视图。
-    if(view==='write'&&current&&!supportsVisualEditing($('md-editor').value)){view='edit';notify('这篇文档包含扩展语法，使用源码模式可保持内容完整');}
-    if(!automatic)requestedView=view;
+  function loadVisualBundle() {
+    if (!visualBundle) visualBundle = new Promise((resolve, reject) => {
+      const script = document.createElement('script');
+      script.src = 'vendor/document-editor.js';
+      script.onload = () => window.SuiraRichDocument ? resolve() : reject(Error('可视化编辑器初始化失败'));
+      script.onerror = () => reject(Error('无法加载可视化编辑器'));
+      document.head.append(script);
+    }).catch(error => { visualBundle = null; throw error; });
+    return visualBundle;
+  }
+  function setDocumentView(view, automatic = false) {
+    const change = ++viewRevision;
+    sourceDocument?.close();
+    richDocument?.closeMenu();
+    if (!automatic) {
+      requestedView = view;
+      localStorage.setItem(viewStorageKey, view);
+    }
+    // 扩展语法只对当前文档使用源码，不改用户为其他文档选的视图。
+    if (view === 'write' && current && !supportsVisualEditing(editor.value)) {
+      view = 'edit';
+      if (!automatic) notify('这篇文档包含扩展语法，使用源码模式可保持内容完整');
+    }
+    if (view === 'write' && current && !window.SuiraRichDocument) {
+      const id = current;
+      loadVisualBundle().then(() => {
+        if (current === id && change === viewRevision) setDocumentView('write', true);
+      }).catch(error => { if (change === viewRevision) notify(error.message); });
+      view = 'edit';
+    }
     $('md-split').dataset.view=view;document.querySelector('.markdown-toolbar').hidden=false;
     document.querySelectorAll('[data-md-view]').forEach(b=>{b.classList.toggle('is-active',b.dataset.mdView===view);b.setAttribute('aria-pressed',String(b.dataset.mdView===view));});
     $('md-sync-scroll').closest('label').hidden=view!=='split';
-    document.querySelectorAll('[data-document-menu],[data-rich-format]').forEach(b=>b.hidden=false);
-    syncRichDocument();
+    if (!current) return;
+    if (view === 'write') syncRichDocument();
+    else if (richDocument) {
+      richDocument.destroy();
+      richDocument = null;
+      richText = '';
+      richKey = '';
+    }
+    preview();
+    if (view === 'split') syncScroll(editor);
+    updateActiveHeading();
   }
   function syncDocumentNavigation(){
-    const isOpen=Boolean(current);$('md-search').hidden=isOpen;$('md-list').hidden=isOpen;
+    const isOpen=Boolean(current);if ($('md-focus-toggle')) $('md-focus-toggle').disabled = !isOpen;$('md-search').hidden=isOpen;$('md-list').hidden=isOpen;
     if($('md-sidebar-label'))$('md-sidebar-label').textContent=isOpen?'目录':allDocuments?'全部文档':'最近打开';
     $('md-outline').hidden=!isOpen||outlineCollapsed;if($('md-clear-recent'))$('md-clear-recent').hidden=isOpen||allDocuments;if($('md-all-documents'))$('md-all-documents').hidden=isOpen;
     document.documentElement.classList.toggle('md-outline-collapsed',isOpen&&outlineCollapsed);
     for(const button of document.querySelectorAll('[aria-controls="md-outline"]')){button.disabled=!isOpen;button.setAttribute('aria-expanded',String(isOpen&&!outlineCollapsed));button.setAttribute('aria-label',outlineCollapsed?'展开目录':'收起目录');}
   }
   function toggleOutline(){outlineCollapsed=!outlineCollapsed;syncDocumentNavigation();}
-  function renderOutline(){
-    const source=window.SuiraMarkdown.sourceHeadings($('md-editor').value),headings=[...$('md-preview').querySelectorAll('h1,h2,h3,h4,h5,h6')],counts=new Map();
-    outlineItems=headings.map((h,i)=>{h.id='md-heading-'+i;const level=+h.tagName[1],base=level+':'+h.textContent,n=(counts.get(base)||0)+1;counts.set(base,n);return {level,text:h.textContent,key:base+':'+n,offset:source[i]?.offset||0,node:h};});
+  function renderOutline(headings) {
+    const counts = new Map();
+    outlineItems = [...previewPane.querySelectorAll('[data-md-heading]')].flatMap(node => {
+      const heading = headings[Number(node.dataset.mdHeading)];
+      if (!heading || node.tagName !== 'H' + heading.level) return [];
+      const text = node.textContent;
+      const base = heading.level + ':' + text;
+      const occurrence = (counts.get(base) || 0) + 1;
+      counts.set(base, occurrence);
+      return [{ ...heading, text, key: base + ':' + occurrence, node }];
+    });
     const root=[],stack=[];outlineItems.forEach((h,index)=>{const entry={...h,index,children:[]};while(stack.length&&stack.at(-1).level>=h.level)stack.pop();(stack.at(-1)?.children||root).push(entry);stack.push(entry);});
     const render=entries=>entries.map(h=>`<div class="md-toc-branch" data-outline-key="${esc(h.key)}"><div class="md-toc-row"><button type="button" class="md-toc-fold" data-fold="${h.index}" aria-label="${foldedHeadings.has(h.key)?'展开':'折叠'} ${esc(h.text)}" aria-expanded="${!foldedHeadings.has(h.key)}" ${h.children.length?'':'disabled'}><svg viewBox="0 0 16 16"><path d="m6 4 4 4-4 4"/></svg></button><button type="button" data-heading="${h.index}" title="${esc(h.text)}">${esc(h.text||'未命名标题')}</button></div>${h.children.length?`<div class="md-toc-children" ${foldedHeadings.has(h.key)?'hidden':''}>${render(h.children)}</div>`:''}</div>`).join('');
     $('md-outline').innerHTML=root.length?render(root):'<p class="md-toc-empty">添加标题后，目录会显示在这里</p>';
@@ -185,7 +341,16 @@
     const view=$('md-split').dataset.view;
     if(view==='write'&&richDocument)richDocument.jump(index);
     else if(view==='preview')heading.node.scrollIntoView({block:'start'});
-    else{const editor=$('md-editor');editor.focus();editor.setSelectionRange(heading.offset,heading.offset);const lines=editor.value.slice(0,heading.offset).split('\n').length-1;editor.scrollTop=Math.max(0,lines*parseFloat(getComputedStyle(editor).lineHeight)-24);if(view==='split')heading.node.scrollIntoView({block:'start'});}
+    else {
+      editor.focus();
+      editor.setSelectionRange(heading.offset, heading.offset);
+      editor.scrollTop = Math.max(0, positionsInEditor()[index] - 24);
+      if (view === 'split') {
+        previewPane.scrollTop = previewHeadingPosition(heading);
+        ignorePreviewScroll = previewPane.scrollTop;
+        ignoreEditorScroll = editor.scrollTop;
+      }
+    }
     activeHeading=index;markActiveHeading();
   }
   function markActiveHeading(){for(const b of $('md-outline').querySelectorAll('[data-heading]')){const active=+b.dataset.heading===activeHeading;b.classList.toggle('is-active',active);if(active)b.setAttribute('aria-current','location');else b.removeAttribute('aria-current');}}
@@ -196,7 +361,9 @@
     else{const top=$('md-preview').getBoundingClientRect().top+32;activeHeading=Math.max(0,outlineItems.findLastIndex(h=>h.node.getBoundingClientRect().top<=top));}
     markActiveHeading();
   }
-  document.querySelectorAll('[data-md-view]').forEach(b=>b.onclick=()=>setDocumentView(b.dataset.mdView));
+  document.querySelectorAll('[data-md-view]').forEach(button => {
+    button.onclick = () => setDocumentView(button.dataset.mdView);
+  });
   const findBar=document.createElement('div');findBar.id='md-find';findBar.hidden=true;
   findBar.innerHTML='<input id="md-find-query" type="search" maxlength="200" placeholder="查找正文" aria-label="查找当前 Markdown 正文"><span id="md-find-count" role="status" aria-live="polite">0 / 0</span><button id="md-find-prev" title="上一个 · Shift+Enter" aria-label="上一个匹配">↑</button><button id="md-find-next" title="下一个 · Enter" aria-label="下一个匹配">↓</button><button id="md-find-close" title="关闭查找 · Esc" aria-label="关闭文内查找">×</button>';
   document.querySelector('.markdown-toolbar').after(findBar);
@@ -228,7 +395,7 @@
   $('md-editor').addEventListener('input',updateFindAfterEditing);$('md-editor').addEventListener('compositionend',updateFindAfterEditing);
   document.addEventListener('keydown',event=>{
     if(event.isComposing||!document.querySelector('#page-markdown.is-active'))return;
-    if((event.ctrlKey||event.metaKey)&&event.key.toLowerCase()==='f'&&current){event.preventDefault();openDocumentFind();}
+    if((event.ctrlKey||event.metaKey)&&!event.shiftKey&&event.key.toLowerCase()==='f'&&current){event.preventDefault();openDocumentFind();}
     else if(!findBar.hidden&&event.key==='Escape'){event.preventDefault();closeDocumentFind();}
     else if(event.target===$('md-find-query')&&event.key==='Enter'){event.preventDefault();clearTimeout(findTimer);nextFindMatch(event.shiftKey?-1:1);}
   });
@@ -246,13 +413,72 @@
   }
   $('md-save').onclick=safe(saveCurrentFile);
   api.onFileOpened?.(safe(async payload=>{await flush();docs=await api.list('markdown');await selectDoc(payload.id);if(payload.recovered)notify('已恢复尚未写回原文件的草稿，请检查后再保存');}));
-  let syncing=false;
-  function syncScroll(source,target){if(syncing||!$('md-sync-scroll').checked||$('md-split').dataset.view!=='split')return;syncing=true;const range=source.scrollHeight-source.clientHeight;target.scrollTop=range>0?source.scrollTop/range*(target.scrollHeight-target.clientHeight):0;requestAnimationFrame(()=>syncing=false);}
-  $('md-editor').addEventListener('scroll',()=>syncScroll($('md-editor'),$('md-preview')));
-  $('md-preview').addEventListener('scroll',()=>{syncScroll($('md-preview'),$('md-editor'));updateActiveHeading();});
+  function positionsInEditor() {
+    const width = editor.clientWidth;
+    if (sourceHeadingPositions?.width === width) return sourceHeadingPositions.positions;
+    const style = getComputedStyle(editor);
+    const mirror = document.createElement('div');
+    Object.assign(mirror.style, {
+      position: 'fixed', left: '-10000px', top: '0', visibility: 'hidden', width: `${width}px`,
+      boxSizing: 'border-box', font: style.font, lineHeight: style.lineHeight, padding: style.padding,
+      letterSpacing: style.letterSpacing, tabSize: style.tabSize, whiteSpace: 'pre-wrap', overflowWrap: 'break-word'
+    });
+    const markers = [];
+    let offset = 0;
+    for (const heading of outlineItems) {
+      mirror.append(renderedText.slice(offset, heading.offset));
+      const marker = document.createElement('span');
+      mirror.append(marker);
+      markers.push(marker);
+      offset = heading.offset;
+    }
+    mirror.append(renderedText.slice(offset));
+    document.body.append(mirror);
+    const positions = markers.map(marker => marker.offsetTop);
+    mirror.remove();
+    sourceHeadingPositions = { width, positions };
+    return positions;
+  }
+  function previewHeadingPosition(heading) {
+    return heading.node.getBoundingClientRect().top - previewPane.getBoundingClientRect().top + previewPane.scrollTop;
+  }
+  function syncScroll(source) {
+    if (!$('md-sync-scroll').checked || $('md-split').dataset.view !== 'split' || renderedText !== editor.value) return;
+    const fromEditor = source === editor;
+    const target = fromEditor ? previewPane : editor;
+    const sourceMax = Math.max(0, source.scrollHeight - source.clientHeight);
+    const targetMax = Math.max(0, target.scrollHeight - target.clientHeight);
+    if (!sourceMax || !targetMax) return;
+    const sourcePositions = positionsInEditor();
+    const anchors = [[0, 0]];
+    outlineItems.forEach((heading, index) => {
+      const sourceTop = sourcePositions[index] - 24;
+      const previewTop = previewHeadingPosition(heading) - 24;
+      const pair = fromEditor ? [sourceTop, previewTop] : [previewTop, sourceTop];
+      const previous = anchors.at(-1);
+      if (pair[0] > previous[0] && pair[1] > previous[1] && pair[0] < sourceMax && pair[1] < targetMax) anchors.push(pair);
+    });
+    anchors.push([sourceMax, targetMax]);
+    const top = Math.min(sourceMax, Math.max(0, source.scrollTop));
+    const index = Math.max(1, anchors.findIndex(([at]) => at >= top));
+    const [from, targetFrom] = anchors[index - 1];
+    const [to, targetTo] = anchors[index];
+    const next = targetFrom + (top - from) / (to - from) * (targetTo - targetFrom);
+    target.scrollTop = next;
+    if (fromEditor) ignorePreviewScroll = target.scrollTop;
+    else ignoreEditorScroll = target.scrollTop;
+  }
+  editor.addEventListener('scroll', () => {
+    if (editor.scrollTop !== ignoreEditorScroll) syncScroll(editor);
+    ignoreEditorScroll = null;
+  });
+  previewPane.addEventListener('scroll', () => {
+    if (previewPane.scrollTop !== ignorePreviewScroll) syncScroll(previewPane);
+    ignorePreviewScroll = null;
+    updateActiveHeading();
+  });
+  $('md-sync-scroll').addEventListener('change', () => syncScroll(editor));
   $('md-editor').addEventListener('click',updateActiveHeading);$('md-editor').addEventListener('keyup',updateActiveHeading);
-  const syntax={italic:['*','*'],quote:['> ',''],link:['[','](https://example.com)'],table:['| 列一 | 列二 |\n| --- | --- |\n| 内容 | 内容 |',''],rule:['\n---\n',''],heading:['## ',''],bold:['**','**'],list:['- ',''],task:['- [ ] ',''],code:['```\n','\n```']};
-  document.querySelectorAll('[data-md]').forEach(button=>button.onclick=()=>{if($('md-split').dataset.view==='write'&&richDocument){richDocument.apply(button.dataset.md);return;}const editor=$('md-editor'),[left,right]=syntax[button.dataset.md],start=editor.selectionStart,end=editor.selectionEnd;const insertion=left+editor.value.slice(start,end)+right;editor.focus();editor.setSelectionRange(start,end);if(!document.execCommand('insertText',false,insertion))editor.setRangeText(insertion,start,end,'end');dirty();});
   document.addEventListener('keydown',event=>{if(event.isComposing)return;if((event.ctrlKey||event.metaKey)&&document.querySelector('#page-markdown.is-active')){const views={'1':'edit','2':'split','3':'preview'};if(views[event.key]){event.preventDefault();setDocumentView(views[event.key]);return;}}if((event.ctrlKey||event.metaKey)&&event.key.toLowerCase()==='s'&&document.querySelector('#page-markdown.is-active')){event.preventDefault();saveCurrentFile().catch(error=>notify(error.message));}});
   api.onClosing?.(safe(async()=>{await flush();const result=await api.confirmClose?.(current);if(result?.canceled)return;if(result && !result.ok)throw Error(result.error||'无法保存');await api.closeReady();}));
   window.addEventListener('blur',()=>flush().catch(()=>{}));
@@ -291,7 +517,16 @@
       const menu=document.createElement('div');menu.id='md-file-menu';menu.className='md-file-menu';menu.hidden=true;menu.setAttribute('role','dialog');menu.setAttribute('aria-label','更多文档操作');document.body.append(menu);
       const heading=text=>{const h=document.createElement('small');h.textContent=text;menu.append(h);};
       heading('文件');menu.append($('md-new'),$('md-import'));heading('导出');menu.append($('md-export-format'),$('md-export'));heading('视图');menu.append(outline,theme,pin);heading('文档');menu.append($('md-delete'));
-      const view=top.querySelector('.view-switch');top.replaceChildren(search,home,view,$('md-save'),more);
+      const view = top.querySelector('.view-switch');
+      const focus = document.createElement('button');
+      focus.id = 'md-focus-toggle';
+      focus.type = 'button';
+      focus.className = 'quiet-btn';
+      focus.textContent = '专注';
+      focus.title = '专注模式 · Ctrl+Shift+F';
+      focus.setAttribute('aria-pressed', 'false');
+      focus.onclick = () => setWritingFocus(!focusedWriting);
+      top.replaceChildren(search, home, view, $('md-save'), focus, more);
       const closeMenu=(focus=false)=>{menu.hidden=true;more.setAttribute('aria-expanded','false');window.SuiraGlassSelect?.close();if(focus)more.focus();};
       more.onclick=()=>{if(!menu.hidden){closeMenu();return;}menu.hidden=false;more.setAttribute('aria-expanded','true');const r=more.getBoundingClientRect();menu.style.right=Math.max(8,innerWidth-r.right)+'px';menu.style.top=r.bottom+8+'px';menu.querySelector('button:not(:disabled)')?.focus();};
       menu.addEventListener('click',event=>{if(event.target.closest('button')&&!event.target.closest('.glass-select'))closeMenu();});

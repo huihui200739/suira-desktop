@@ -73,7 +73,7 @@ async function until(fn){let error;for(let n=0;n<140;n++){try{const value=await 
   const markdownClient=main;
   assert.equal(await main.evaluate('document.getElementById("md-title").closest(".titlebar")!==null'),true);
   assert.equal(await main.evaluate('document.getElementById("md-status").closest(".document-foot")!==null'),true);
-  assert.equal(await main.evaluate('document.querySelector(".tool-top-actions").children.length'),5,"Markdown titlebar exposes only search, recent, mode, save and more");
+  assert.equal(await main.evaluate('document.querySelector(".tool-top-actions").children.length'),6,"Markdown titlebar exposes search, recent, mode, save, focus and more");
   await main.evaluate('document.getElementById("md-more").click();true');assert.equal(await main.evaluate('document.getElementById("md-file-menu").hidden'),false);
   await main.evaluate('window.__confirm35=window.confirm;window.confirm=()=>false;document.getElementById("md-delete").click();true');await wait(80);assert.equal(await main.evaluate('document.getElementById("md-title").value'),"工作台计划","Canceling deletion preserves the current document");await main.evaluate('window.confirm=window.__confirm35;true');
   await main.send('Emulation.setDeviceMetricsOverride',{width:900,height:700,deviceScaleFactor:1,mobile:false});

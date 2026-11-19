@@ -6,7 +6,7 @@ const MAX_SECONDS = 120;
 const MAX_SAMPLES = SAMPLE_RATE * MAX_SECONDS;
 const state = { stream: null, context: null, source: null, processor: null, mute: null,
   chunks: [], sampleCount: 0, resampler: null,
-  startedAt: 0, elapsedTimer: null, recording: false, transcribing: false, requestRevision: 0, configured: false };
+  startedAt: 0, elapsedTimer: null, opening: false, closing: false, recording: false, transcribing: false, requestRevision: 0, configured: false };
 
 function setStatus(text) { $('#status').textContent = text; }
 function showError(text) { $('#error').textContent = text; $('#error').hidden = !text; }
@@ -43,17 +43,25 @@ function appendAudio(input, inputRate) {
 
 async function startRecording() {
   showError('');
-  if (state.transcribing) return;
+  if (state.opening || state.closing || state.recording || state.transcribing) return;
   if (!state.configured) { setStatus('请先配置 ASR 服务'); return; }
+  state.opening = true;
   $('#record').disabled = true;
   try {
     const stream = await navigator.mediaDevices.getUserMedia({ audio: {
       channelCount: 1, echoCancellation: true, noiseSuppression: true, autoGainControl: true
     }, video: false });
+    if (state.closing) { stream.getTracks().forEach(track => track.stop()); return; }
     state.stream = stream;
+    for (const track of stream.getAudioTracks()) track.addEventListener('ended', () => {
+      if (state.stream !== stream) return;
+      if (state.sampleCount) stopRecording();
+      else { releaseMicrophone(); setStatus('麦克风已断开'); $('#record').disabled = !state.configured; }
+    });
     const context = new AudioContext();
     state.context = context;
     await context.resume();
+    if (state.closing || state.stream !== stream) return;
     const source = context.createMediaStreamSource(stream);
     const processor = context.createScriptProcessor(4096, 1, 1);
     const mute = context.createGain(); mute.gain.value = 0;
@@ -73,9 +81,12 @@ async function startRecording() {
     state.elapsedTimer = setInterval(updateElapsed, 200);
   } catch (error) {
     releaseMicrophone();
-    $('#record').disabled = false;
+    if (state.closing) return;
+    $('#record').disabled = !state.configured;
     setStatus('无法启动录音');
     showError(error?.name === 'NotAllowedError' ? '没有麦克风权限，请在 Windows 隐私设置中允许桌面应用访问麦克风。' : '麦克风不可用，请检查设备后重试。');
+  } finally {
+    state.opening = false;
   }
 }
 
@@ -86,7 +97,7 @@ async function stopRecording() {
   $('#record').disabled = true; $('#rerecord').hidden = true;
   $('#result').disabled = true; $('#copy').disabled = true; $('#paste').disabled = true;
   if (!state.sampleCount) {
-    $('#record').disabled = false; setStatus('没有录到声音'); showError('请确认麦克风已连接，然后重新录音。'); clearAudioBuffers(); return;
+    $('#record').disabled = !state.configured; setStatus('没有录到声音'); showError('请确认麦克风已连接，然后重新录音。'); clearAudioBuffers(); return;
   }
   const tail = state.resampler.finish(MAX_SAMPLES - state.sampleCount);
   if (tail.length) { state.chunks.push(tail); state.sampleCount += tail.length; }
@@ -125,6 +136,7 @@ async function stopRecording() {
     pcm.fill(0);
     state.transcribing = false; $('#cancel-recognition').hidden = true;
     $('#record').disabled = !state.configured;
+    if (revision !== state.requestRevision && !state.closing) setStatus('已取消识别 · 可以重新录音');
   }
 }
 
@@ -136,7 +148,8 @@ async function commit(mode) {
   try {
     const result = await window.suiraVoice.commit(text, mode);
     if (!result?.ok) throw new Error(result?.error || '操作失败');
-    setStatus(result.pasted ? '已粘贴到原窗口' : '已复制到剪贴板');
+    setStatus(result.pasted ? '已粘贴到原窗口' : result.message || '已复制到剪贴板');
+    if (mode === 'paste' && !result.pasted) { $('#copy').disabled = false; $('#paste').disabled = false; }
   } catch (error) {
     showError(error?.message || '操作失败');
     $('#copy').disabled = false; $('#paste').disabled = false;
@@ -145,8 +158,8 @@ async function commit(mode) {
 
 async function cancelRecognition() {
   state.requestRevision += 1;
-  await window.suiraVoice.cancel().catch(() => {});
   setStatus('正在取消识别…');
+  await window.suiraVoice.cancel().catch(() => {});
 }
 
 $('#record').addEventListener('click', () => state.recording ? stopRecording() : startRecording());
@@ -157,10 +170,26 @@ $('#paste').addEventListener('click', () => commit('paste'));
 $('#settings').addEventListener('click', () => window.suiraVoice.openSettings());
 $('#close').addEventListener('click', () => { releaseMicrophone(); window.suiraVoice.close(); });
 $('#result').addEventListener('input', () => { const ready = Boolean($('#result').value.trim()); $('#copy').disabled = !ready; $('#paste').disabled = !ready; });
-window.addEventListener('beforeunload', () => { releaseMicrophone(); clearAudioBuffers(); });
+window.addEventListener('beforeunload', () => { state.closing = true; releaseMicrophone(); clearAudioBuffers(); });
+document.addEventListener('keydown', event => {
+  if (event.isComposing || event.repeat) return;
+  if (event.key === 'Escape') {
+    event.preventDefault();
+    if (state.transcribing) cancelRecognition();
+    else $('#close').click();
+  } else if (event.key === ' ' && !event.target.closest('button,input,textarea,select')) {
+    event.preventDefault();
+    if (!$('#record').disabled) $('#record').click();
+  } else if (event.key === 'Enter' && event.ctrlKey && !$('#paste').disabled) {
+    event.preventDefault();
+    $('#paste').click();
+  }
+});
 
-window.suiraVoice.status().then(status => {
+function applyStatus(status) {
   state.configured = Boolean(status?.configured);
+  if (state.recording || state.opening || state.transcribing) return;
+  showError('');
   if (state.configured) {
     setStatus(status.canReuseTranslateKey ? '语音服务已就绪 · 使用同源翻译密钥' : '语音服务已就绪');
     $('#record').disabled = false;
@@ -169,4 +198,6 @@ window.suiraVoice.status().then(status => {
     $('#record').disabled = true;
     showError('当前设置尚未提供 ASR 接口和可用密钥。');
   }
-}).catch(() => { setStatus('无法读取语音服务设置'); $('#record').disabled = true; });
+}
+window.suiraVoice.onStatus(applyStatus);
+window.suiraVoice.status().then(applyStatus).catch(() => { setStatus('无法读取语音服务设置'); $('#record').disabled = true; });

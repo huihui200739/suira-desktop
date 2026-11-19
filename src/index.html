@@ -109,7 +109,7 @@
         </section>
         <section class="page" id="page-markdown" aria-label="Markdown">
           <div class="page-head"><div><p class="page-eyebrow">文档 / MARKDOWN</p><h1><span class="tool-emblem page-emblem" data-tool-object="markdown" aria-hidden="true"></span>Markdown</h1><p class="page-description">写下想法，整理成文。</p></div><div class="page-actions"><button id="md-import" class="quiet-btn">打开文件</button><button id="md-new" class="primary-btn">＋ 新建文档</button></div></div>
-          <div class="markdown-layout"><aside class="document-sidebar"><input id="md-search" class="text-input" type="search" placeholder="搜索文档"><div id="md-list"></div></aside><div class="document-main"><div id="md-empty" class="detail-empty"><span class="tool-emblem" data-tool-object="markdown" aria-hidden="true"></span><b>从一个标题开始</b><p>支持标题、表格、任务清单和代码块。文档自动保存在本地。</p></div><div id="md-body" hidden><div class="document-heading"><input id="md-title" aria-label="文档标题" maxlength="120" placeholder="未命名文档"><span id="md-status" role="status"></span><button id="md-save" class="quiet-btn">保存</button><select id="md-export-format" aria-label="导出格式"><option value="md">Markdown (.md)</option><option value="html">网页 (.html)</option><option value="pdf">PDF 文档</option></select><button id="md-export" class="quiet-btn">下载 / 导出</button><button id="md-delete" class="quiet-btn">删除</button></div><div class="markdown-toolbar"><button data-md="heading">标题</button><button data-md="bold">加粗</button><button data-md="list">列表</button><button data-md="task">待办</button><button data-md="code">代码</button><button data-md="quote">引用</button><button data-md="link">链接</button><button data-md="table">表格</button><button data-md="rule">分割线</button><div class="view-switch" aria-label="文档视图"><button data-md-view="edit">编辑</button><button data-md-view="split" class="is-active">左右预览</button><button data-md-view="preview">预览</button></div></div><nav id="md-outline" class="md-outline" aria-label="文档目录"></nav><div class="markdown-split" id="md-split" data-view="split"><textarea id="md-editor" spellcheck="false" aria-label="Markdown 正文" placeholder="从这里开始写…" maxlength="200000"></textarea><article id="md-preview" class="markdown-preview"></article></div><div class="document-foot"><span id="md-words"></span><label><input id="md-sync-scroll" type="checkbox" checked>同步滚动</label><span>Ctrl + S 保存 / Markdown</span></div></div></div></div>
+          <div class="markdown-layout"><aside class="document-sidebar"><input id="md-search" class="text-input" type="search" placeholder="搜索文档"><div id="md-list"></div></aside><div class="document-main"><div id="md-empty" class="detail-empty"><span class="tool-emblem" data-tool-object="markdown" aria-hidden="true"></span><b>从一个标题开始</b><p>支持标题、表格、任务清单和代码块。文档自动保存在本地。</p></div><div id="md-body" hidden><div class="document-heading"><input id="md-title" aria-label="文档标题" maxlength="120" placeholder="未命名文档"><span id="md-status" role="status"></span><button id="md-save" class="quiet-btn">保存</button><select id="md-export-format" aria-label="导出格式"><option value="md">Markdown (.md)</option><option value="html">网页 (.html)</option><option value="pdf">PDF 文档</option></select><button id="md-export" class="quiet-btn">下载 / 导出</button><button id="md-delete" class="quiet-btn">删除</button></div><div class="markdown-toolbar"><div class="view-switch" aria-label="文档视图"><button data-md-view="edit">源码</button><button data-md-view="split">分栏</button><button data-md-view="preview">预览</button></div></div><nav id="md-outline" class="md-outline" aria-label="文档目录"></nav><div class="markdown-split" id="md-split" data-view="split"><textarea id="md-editor" spellcheck="false" aria-label="Markdown 正文" placeholder="从这里开始写…" maxlength="200000"></textarea><article id="md-preview" class="markdown-preview"></article></div><div class="document-foot"><span id="md-words"></span><label><input id="md-sync-scroll" type="checkbox" checked>同步滚动</label><span>Ctrl + S 保存 / Markdown</span></div></div></div></div>
         </section>
         <section class="page" id="page-settings" aria-label="设置">
           <div class="page-head">
@@ -262,7 +262,13 @@
                 <input class="shortcut-input" type="text" id="setting-key-clipboardBar" readonly placeholder="点击后按下组合键">
               </label>
               <p class="shortcut-status" id="status-clipboardBar"></p>
+              <label class="setting-row shortcut-edit">
+                <span><b>语音输入</b><small>默认 Alt + U。全局关闭时可在悬浮板按 U。</small></span>
+                <input class="shortcut-input" type="text" id="setting-key-voice" readonly placeholder="点击后按下组合键">
+              </label>
+              <p class="shortcut-status" id="status-voice"></p>
               <div class="shortcut-actions">
+                <button class="quiet-btn" data-shortcut-clear="voice" type="button">清除语音快捷键</button>
                 <button class="quiet-btn" data-shortcut-clear="pinnedToggle" type="button" title="解除绑定后不再响应该快捷键">清除绑定</button>
                 <button class="quiet-btn" data-shortcut-clear="clipboardBar" type="button" title="解除绑定后不再响应该快捷键">清除绑定</button>
                 <button class="quiet-btn" id="shortcut-restore" type="button" title="把全部快捷键改回出厂默认">恢复默认</button>
@@ -318,7 +324,7 @@
     </div>
   </div>
   <script src="icons.js"></script><script src="ui-motion.js"></script>
-  <script src="vendor/marked.js"></script><script src="vendor/purify.js"></script><script src="markdown-format.js"></script><script src="vendor/document-editor.js"></script><script src="calendar-data.js"></script><script src="tool-art.js"></script><script src="workspace.js"></script><script src="text-spacing.js"></script><script src="trail-model.js"></script><script src="trail-view.js"></script><script src="app.js"></script>
+  <script src="vendor/marked.js"></script><script src="vendor/purify.js"></script><script src="markdown-format.js"></script><script src="vendor/document-source-editor.js"></script><script src="calendar-data.js"></script><script src="tool-art.js"></script><script src="workspace.js"></script><script src="text-spacing.js"></script><script src="trail-model.js"></script><script src="trail-view.js"></script><script src="app.js"></script>
   <script src="liquid-glass.js"></script>
   <script src="theme-settings.js"></script><script src="stage-tools.js"></script>
 <script src="glass-select.js"></script></body>

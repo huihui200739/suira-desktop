@@ -138,6 +138,8 @@ let actions = null;
 let mainWindow = null;
 let quickWindow = null;
 let voiceWindow = null;
+let voiceSessionTarget = null;
+let voiceRequestController = null;
 let voicePermissionSession = null;
 let panelBindingPickerOpen = false;
 let overlayWindow = null;
@@ -158,6 +160,7 @@ let clipboardWriteGuard = '';
 let isQuitting = false;
 let quickReady = false;
 let captureBusy = false;
+let regionCaptureRevision = 0;
 let captureGeneration = 0;
 let mainWasVisible = false;
 const pinWindows = new Set();
@@ -339,6 +342,7 @@ function applyTheme() {
 /** 从设置读取当前键位，回落到出厂默认。清除绑定（空串）的项不注册。 */
 function shortcutBindings() {
   const settings = store ? store.getSettings() : {};
+  const defaultVoiceKey = store ? actionKey(store.getPanelBindings(), 'voice') : 'U';
   const map = {
     quick: settings.shortcutQuick ?? DEFAULT_BINDINGS.quick,
     capture: settings.shortcutCapture ?? DEFAULT_BINDINGS.capture,
@@ -347,11 +351,11 @@ function shortcutBindings() {
     pinnedToggle: settings.shortcutPinnedToggle ?? DEFAULT_BINDINGS.pinnedToggle,
     clipboardBar: settings.shortcutClipboardBar ?? DEFAULT_BINDINGS.clipboardBar
   };
-  const bindings = {};
-  for (const [name, accelerator] of Object.entries(map)) {
-    bindings[name] = accelerator;
-  }
-  return bindings;
+  // Old profiles derived Alt+letter from the panel only when that chord was free.
+  const inheritedVoice = defaultVoiceKey ? panelAccelerator(defaultVoiceKey) : '';
+  const taken = [...Object.values(map), settings.shortcutMomentary].some(value => value
+    && normalizeAccelerator(value) === normalizeAccelerator(inheritedVoice));
+  return { ...map, voice: settings.shortcutVoice ?? (taken ? '' : inheritedVoice) };
 }
 
 /** 快捷键名 → 设置字段。设置页与主进程共用同一张映射。 */
@@ -361,7 +365,8 @@ const SHORTCUT_SETTING_KEYS = {
   longCapture: 'shortcutLongCapture',
   panelCycle: 'shortcutPanelCycle',
   pinnedToggle: 'shortcutPinnedToggle',
-  clipboardBar: 'shortcutClipboardBar'
+  clipboardBar: 'shortcutClipboardBar',
+  voice: 'shortcutVoice'
 };
 
 // 拖动、设置页改键和恢复默认都走同一条串行事务，避免两套映射再次分叉。
@@ -375,7 +380,7 @@ function queuePanelConfiguration(task) {
 async function commitPanelConfiguration(bindings, requested = {}, options = {}) {
   const before = store.getPanelBindings();
   const snapshot = shortcutManager.snapshot();
-  const dedicated = { ...snapshot.bindings, ...requested, ...shortcutPatchForPanel(before, bindings, { ...snapshot.bindings, ...requested }) };
+  const dedicated = { ...snapshot.bindings, ...shortcutPatchForPanel(before, bindings, snapshot.bindings), ...requested };
   const desired = panelGlobalBindings(bindings, dedicated);
   const patch=Object.fromEntries(Object.entries(desired).filter(([name,value])=>value!==(snapshot.bindings[name]||'')));
   const momentary = options.momentary ?? momentaryAccelerator();
@@ -398,13 +403,17 @@ async function commitPanelConfiguration(bindings, requested = {}, options = {}) 
 }
 
 function panelState() {
-  const layout = keyLayout(appIndexReady, store.getPanelBindings());
+  const bindings = store.getPanelBindings();
+  const layout = keyLayout(appIndexReady, bindings);
+  const dedicatedKeys = new Map(Object.entries(PANEL_SHORTCUT_ACTIONS).map(([name, action]) => [actionKey(bindings, action), name]));
   const shortcuts = shortcutManager?.snapshot().bindings || shortcutBindings();
   for (const key of layout.keys) {
     if(key.state==='bound'||key.state==='custom') {
-      key.accelerator=panelAccelerator(key.key);
-      const name=Object.keys(shortcuts).find(name=>normalizeAccelerator(shortcuts[name])===normalizeAccelerator(key.accelerator));
-      key.shortcutStatus=shortcutManager?.status[name]||null;
+      const derived = panelShortcutName(key.key);
+      const name = shortcuts[derived] ? derived : dedicatedKeys.get(key.key) || derived;
+      key.accelerator = shortcuts[name] || '';
+      const entry = shortcutManager?.status[name];
+      key.shortcutStatus = entry ? shortcutStatus({ [name]: entry })[name] : null;
     }
   }
   return { ...layout, actions: implementedPanelActions(), tools: TOOLBOX_TOOLS };
@@ -1278,13 +1287,14 @@ function hideQuickPanel() {
 function installVoicePermissionHandlers() {
   const voiceSession = session.fromPartition('suira-voice');
   if (voicePermissionSession === voiceSession) return;
-  const mayCaptureAudio = (webContents, permission, details = {}) => {
-    const audioRequested = Array.isArray(details.mediaTypes)
-      && details.mediaTypes.includes('audio') && !details.mediaTypes.includes('video');
-    return webContents === voiceWindow?.webContents && permission === 'media' && audioRequested;
-  };
-  voiceSession.setPermissionRequestHandler((webContents, permission, callback, details) => callback(mayCaptureAudio(webContents, permission, details)));
-  voiceSession.setPermissionCheckHandler((webContents, permission, _origin, details) => mayCaptureAudio(webContents, permission, details));
+  const isVoiceFrame = (contents, permission, details) => contents === voiceWindow?.webContents
+    && permission === 'media' && details.isMainFrame === true;
+  voiceSession.setPermissionRequestHandler((contents, permission, callback, details) => {
+    callback(isVoiceFrame(contents, permission, details) && details.mediaTypes?.length === 1 && details.mediaTypes[0] === 'audio');
+  });
+  voiceSession.setPermissionCheckHandler((contents, permission, _origin, details) => {
+    return isVoiceFrame(contents, permission, details) && details.mediaType === 'audio';
+  });
   voicePermissionSession = voiceSession;
 }
 
@@ -1297,9 +1307,12 @@ async function openVoiceInput() {
     voiceWindow.focus();
     return { ok: true };
   }
+  const panelTarget = quickWindow?.isFocused() ? quickInvocationTarget : null;
+  const foreground = panelTarget ? null : await queryForeground();
+  if (voiceWindow && !voiceWindow.isDestroyed()) return { ok: true };
+  voiceSessionTarget = panelTarget || captureTarget(Number(foreground?.pid) === process.pid ? null : foreground, { selectionMethod: 'voice' });
   hideQuickPanel();
   installVoicePermissionHandlers();
-  voiceSessionTarget = returnTarget;
   const win = voiceWindow = new BrowserWindow({
     width: 540, height: 460, minWidth: 460, minHeight: 400,
     show: false, frame: false, thickFrame: SYSTEM_GLASS, transparent: true,
@@ -1831,9 +1844,9 @@ async function setupMomentaryProbe() {
     try { await momentaryProbe.stop(); } catch {}
     momentaryProbe = null;
   }
+  if (momentaryOpened) hideQuickPanel();
+  momentaryOpened = false;
   if (!accelerator || !globalShortcutsEnabled() || shortcutCaptureActive) {
-    if (momentaryOpened) hideQuickPanel();
-    momentaryOpened = false;
     if (!shortcutCaptureActive) momentaryError = '';
     publishShortcutStatus();
     return { ok: true, watching: false, localOnly: shortcutCaptureActive };
@@ -2041,7 +2054,10 @@ function queueMarkdownFiles(files) {
       try {
         const result=await markdownFiles.open(file);
         const win=showWorkspaceWindow('markdown');win.__openedDoc=result.item.id;
-        if(!win.webContents.isLoadingMainFrame())win.webContents.send('workspace:file-opened',{id:result.item.id,recovered:result.recovered});
+        if (!win.webContents.isLoadingMainFrame()) {
+          win.__openedDoc = '';
+          win.webContents.send('workspace:file-opened', { id: result.item.id, recovered: result.recovered });
+        }
         broadcast('content:changed');
       } catch(error){dialog.showErrorBox('无法打开 Markdown',error.message);}
     }
@@ -2336,7 +2352,7 @@ function createOverlayWindow() {
  * 显示覆盖层：按当前显示器重设边界，再通知渲染层拉取这一帧画面。
  * 渲染层收到 'capture:shown' 后自行 reset 并 loadCapture()。
  */
-async function showOverlayWindow(payload) {
+async function showOverlayWindow(payload, revision = regionCaptureRevision) {
   capturePayload = payload;
   const win = createOverlayWindow();
   cancelIdleTeardown(win);
@@ -2351,13 +2367,14 @@ async function showOverlayWindow(payload) {
       })
     ]);
   }
+  if (revision !== regionCaptureRevision) return false;
   if (!overlayWindow || overlayWindow.isDestroyed()) throw new Error('截图覆盖层创建失败');
   // 先通知渲染层 reset + 取新画面，再显示窗口：
   // 反过来做会有一帧左右先露出上一轮的旧截图（预热窗口的副作用）。
   overlayWindow.webContents.send('capture:shown');
   overlayWindow.show();
   overlayWindow.focus();
-  return overlayWindow;
+  return true;
 }
 
 /**
@@ -2366,9 +2383,10 @@ async function showOverlayWindow(payload) {
  * 但隐藏不等于不占内存：一张 4K 屏幕画面（RGBA 约 33MB）+ 两层同尺寸 canvas
  * 会一直挂在渲染进程里。所以这里做两级回收：
  *   1. 立刻通知渲染层丢掉画面/画布后备缓冲（毫秒级，保留窗口热启动）；
- *   2. 保留空页面，不再在闲置后销毁，避免下一次截图重新加载页面。
+ *   2. 等待短时间，闲置后释放空页面。
  */
 function hideOverlayWindow(options = {}) {
+  ++regionCaptureRevision;
   if(documentCapture){const pending=documentCapture;documentCapture=null;pending.resolve(options.documentResult||{ok:false,canceled:true});if(!pending.win.isDestroyed()){pending.win.show();pending.win.focus();}}
   capturePayload = null;
   captureBusy = false;
@@ -2397,9 +2415,12 @@ async function beginScreenCapture(source = 'panel', options = {}) {
   // 意图随 payload 交给覆盖层，覆盖层据此预选工具或自动完成。
   const intent = ['ocr', 'translate', 'ocr-return', 'document-image', 'document-text', 'pin', 'copy', 'save', 'shelf','long'].includes(options?.intent) ? options.intent : 'copy';
   if(intent==='long')return beginLongPicker(source);
+  const revision = ++regionCaptureRevision;
+  const cancelled = { ok: false, canceled: true };
   captureBusy = true;
   try {
     if (source !== 'text-tools') await rememberReturnTarget('capture');
+    if (revision !== regionCaptureRevision) return cancelled;
     // 页面加载与屏幕采集并行；启动预热尚未完成时也不串行冷建。
     createOverlayWindow();
     const hidingSurface = [quickWindow, clipboardBarWindow, mainWindow].some(win => win && !win.isDestroyed() && win.isVisible());
@@ -2437,6 +2458,7 @@ async function beginScreenCapture(source = 'panel', options = {}) {
 
     tiles = collectDesktopTiles(displays, sources, virtualBounds, maxScale);
     }
+    if (revision !== regionCaptureRevision) return cancelled;
     if (!tiles) throw new Error('无法读取屏幕画面');
 
     const primaryDisplay = screen.getDisplayNearestPoint(screen.getCursorScreenPoint());
@@ -2462,9 +2484,10 @@ async function beginScreenCapture(source = 'panel', options = {}) {
       source
     };
     // 复用预热窗口：不再新建 BrowserWindow / loadFile
-    await showOverlayWindow(capturePayload);
-    return { ok: true };
+    return await showOverlayWindow(capturePayload, revision) ? { ok: true } : cancelled;
   } catch (error) {
+    if (revision !== regionCaptureRevision) return cancelled;
+    capturePayload = null;
     captureBusy = false;
     restoreMainAfterCapture();
     if (mainWindow) {
@@ -2527,7 +2550,7 @@ async function saveDataUrlImage(dataUrl, prefix = 'capture') {
   return { image, filePath };
 }
 
-async function completeCapture(dataUrl, action) {
+async function completeCapture(dataUrl, action, session) {
   const { image, filePath } = await saveDataUrlImage(dataUrl);
   const item = await addImageToStore(image, { type: 'screenshot', acquisitionMethod: 'screen-capture', confidence: 'certain' }, '屏幕截图', filePath);
   if (action === 'copy') {
@@ -2558,11 +2581,15 @@ async function completeCapture(dataUrl, action) {
     return { ok: true, filePath, item, output: result.output, ocr: true,qr:result.qr };
   }
   // 收起（而不是销毁）预热覆盖层，下次唤起才快
-  if(documentCapture&&capturePayload?.intent==='document-image'){
+  if (session === capturePayload && documentCapture && session.intent === 'document-image') {
     item.pinned=true;item.meta={...item.meta,documentAttachment:true};await store.save();
-    hideOverlayWindow({documentResult:{ok:true,itemId:item.id,url:'suira-image://'+item.id,text:''}});broadcast('content:changed');return {ok:true,item};
+    if (session === capturePayload) {
+      hideOverlayWindow({ documentResult: { ok: true, itemId: item.id, url: 'suira-image://' + item.id, text: '' } });
+    }
+    broadcast('content:changed');
+    return { ok: true, item };
   }
-  hideOverlayWindow();
+  if (session === capturePayload) hideOverlayWindow();
   broadcast('content:changed', { itemId: item?.id || '' });
   if (mainWindow && !mainWindow.isDestroyed()) {
     const messages = {
@@ -3106,10 +3133,9 @@ async function runGlobalPanelKey(key) {
   if(globalPanelRunning.has(key))return;
   if(captureBusy||longCapture||longCaptureStarting) {
     // Recover the existing tool rather than silently dropping every global action.
-    const active=longPickerPayload?longPickerWindow:longCapture?.win||overlayWindow;
-    if(active&&!active.isDestroyed()){active.showInactive();return;}
-    if(longCapture||longCaptureStarting)return;
-    captureBusy=false;
+    const active = longPickerPayload ? longPickerWindow : longCapture?.win || (capturePayload ? overlayWindow : null);
+    if (active && !active.isDestroyed() && active.isVisible()) active.showInactive();
+    return;
   }
   globalPanelRunning.add(key);
   try {
@@ -3382,7 +3408,7 @@ function registerIpc() {
       explicitPaste: !copyOnly, targetOverride: voiceSessionTarget
     });
     if (result.copyFailed) return { ok: false, error: result.message || '复制失败' };
-    if (voiceWindow && !voiceWindow.isDestroyed()) voiceWindow.close();
+    if ((copyOnly || result.pasted) && voiceWindow?.webContents === event.sender) voiceWindow.close();
     return { ok: true, ...result };
   });
   ipcMain.handle('voice:close', event => {
@@ -3703,7 +3729,8 @@ function registerIpc() {
   ipcMain.handle('capture:finish', async (_event, payload) => {
     try {
       const session = capturePayload;
-      const result = await completeCapture(payload?.dataUrl, payload?.action || 'copy');
+      if (!session) return { ok: false, canceled: true };
+      const result = await completeCapture(payload?.dataUrl, payload?.action || 'copy', session);
       if(result.ok&&documentCapture&&session===capturePayload){
         const item=session.intent==='document-text'?result.output:result.item;
         if(item){hideOverlayWindow({documentResult:{ok:true,text:item.text||'',itemId:item.id,url:'suira-image://'+item.id}});return result;}
@@ -3711,8 +3738,6 @@ function registerIpc() {
       if (result.ok && payload?.action === 'ocr' && session === capturePayload && session?.intent === 'ocr-return') {
         hideOverlayWindow({ textToolInput: require('./src/text-spacing').compactCapture(result.output?.text || '') });
       }
-      // OCR 结果面板还要留在覆盖层里让用户编辑，其它动作成功即收起
-      if (result.ok && payload?.action !== 'ocr') hideOverlayWindow();
       return result;
     } catch (error) {
       return { ok: false, error: error.message || '截图处理失败' };
@@ -4047,7 +4072,7 @@ function registerIpc() {
   ipcMain.handle('shortcuts:check', () => ({ok:true,entries:currentShortcutReport(),note:'全局快捷键只在系统允许注册时生效；按住型使用后台侦测，不会抢占其他程序或系统快捷键。'}));
   ipcMain.handle('shortcuts:retry',()=>queuePanelConfiguration(async()=>{
     if(!globalShortcutsEnabled())return {ok:false,error:'请先开启全局快捷键'};
-    registerShortcuts();await setupMomentaryProbe();return {ok:true};
+    registerShortcuts();await setupMomentaryProbe();broadcast('panel:changed');return {ok:true};
   }));
 
   ipcMain.handle('shortcuts:set', async (_event, payload) => {
@@ -4056,7 +4081,7 @@ function registerIpc() {
     const accelerator = String(payload?.accelerator || '').trim();
 
     // 按住型由后台轮询侦测，不注册同一全局组合键；其他随序动作仍参与重复校验。
-    if (name === 'momentary') {
+    if (name === 'momentary') return queuePanelConfiguration(async () => {
       const validation = validateMomentaryAccelerator(accelerator);
       if (!validation.ok) return { ok: false, error: validation.error };
       const conflict = momentaryConflict(accelerator, shortcutManager.snapshot().bindings);
@@ -4075,7 +4100,7 @@ function registerIpc() {
         return { ok: false, error: `按住型侦测启动失败：${started.error || '未知原因'}` };
       }
       return { ok: true, status: momentaryStatus() };
-    }
+    });
 
     if (!SHORTCUT_SETTING_KEYS[name]) return { ok: false, error: '未知的快捷键名称' };
     // 与按住型唤起撞组合会互相抢键：两边都是全局监听，必须提前拒绝
@@ -4110,12 +4135,12 @@ function registerIpc() {
     if (name && name !== 'momentary' && !SHORTCUT_SETTING_KEYS[name]) {
       return { ok: false, error: '未知的快捷键名称' };
     }
-    if (name === 'momentary') {
+    if (name === 'momentary') return queuePanelConfiguration(async () => {
       await store.updateSettings({ shortcutMomentary: DEFAULT_MOMENTARY_BINDINGS.momentary });
       const started = await setupMomentaryProbe();
       if (!started.ok) return { ok: false, error: started.error || '按住型侦测启动失败' };
       return { ok: true, restored: ['momentary'], status: momentaryStatus() };
-    }
+    });
     return queuePanelConfiguration(async () => {
       const patch = name ? { [name]: DEFAULT_BINDINGS[name] } : { ...DEFAULT_BINDINGS };
       const desired = { ...shortcutManager.snapshot().bindings, ...patch };
@@ -4132,11 +4157,11 @@ function registerIpc() {
   ipcMain.handle('shortcuts:clear', async (_event, payload) => {
     if (!shortcutManager) return { ok: false, error: '快捷键尚未初始化' };
     const name = String(payload?.name || '');
-    if (name === 'momentary') {
+    if (name === 'momentary') return queuePanelConfiguration(async () => {
       await store.updateSettings({ shortcutMomentary: '' });
       await setupMomentaryProbe();
       return { ok: true, status: momentaryStatus() };
-    }
+    });
     if (!SHORTCUT_SETTING_KEYS[name]) return { ok: false, error: '未知的快捷键名称' };
     return queuePanelConfiguration(async () => {
       const cleared = clearShortcutPanelAction(store.getPanelBindings(), name);
@@ -4194,7 +4219,7 @@ function registerIpc() {
     if(documentCapture||captureBusy||longCapture||longCaptureStarting)return {ok:false,error:'请先完成当前截图'};
     let resolve;const result=new Promise(done=>{resolve=done;});documentCapture={win,resolve};win.hide();
     const closed=()=>{if(documentCapture?.win===win)hideOverlayWindow();};win.once('closed',closed);
-    try{await new Promise(done=>setTimeout(done,40));const started=await beginScreenCapture('document',{intent:payload.kind==='text'?'document-text':'document-image'});if(!started.ok)hideOverlayWindow({documentResult:started});return await result;}
+    try{await new Promise(done=>setTimeout(done,40));const started=await beginScreenCapture('document',{intent:payload.kind==='text'?'document-text':'document-image'});if(!started.ok && documentCapture?.win === win)hideOverlayWindow({documentResult:started});return await result;}
     catch(error){hideOverlayWindow({documentResult:{ok:false,error:error.message}});return await result;}
     finally{win.removeListener('closed',closed);}
   });
@@ -4368,7 +4393,15 @@ function registerIpc() {
     }
     if(Object.hasOwn(incoming,'globalShortcutsEnabled')) {
       if(typeof incoming.globalShortcutsEnabled!=='boolean'||Object.keys(incoming).length!==1)return {ok:false,error:'请单独设置快捷键响应范围'};
-      return queuePanelConfiguration(async()=>{await store.updateSettings(incoming);registerShortcuts();await setupMomentaryProbe();const settings=publicSettings();broadcast('settings:changed',settings);return {ok:true,settings};});
+      return queuePanelConfiguration(async () => {
+        await store.updateSettings(incoming);
+        registerShortcuts();
+        await setupMomentaryProbe();
+        broadcast('panel:changed');
+        const settings = publicSettings();
+        broadcast('settings:changed', settings);
+        return { ok: true, settings };
+      });
     }
     // 翻译密钥：界面传明文，主进程加密后落盘；空串表示"不改动"，null 才是清除
     let keyTouched = false;
@@ -4420,7 +4453,7 @@ function registerIpc() {
     if (keyTouched) broadcast('translate:status', translateStatus());
     if (keyTouched || voiceKeyTouched || incoming.voiceProvider !== undefined || incoming.voiceBaseUrl !== undefined
       || incoming.voiceModel !== undefined || incoming.translateBaseUrl !== undefined || incoming.translateProvider !== undefined) {
-      broadcast('voice:status', voiceStatus());
+      voiceWindow?.webContents.send('voice:status', voiceStatus());
     }
     return { ok: true, settings: safe };
   });
@@ -4535,6 +4568,7 @@ function registerShortcuts() {
       panelCycle: cyclePanelMode,
       pinnedToggle: togglePinnedVisibility,
       clipboardBar: toggleClipboardBar,
+      voice: openVoiceInput,
       legacy: toggleQuickPanel
     },
     bindings: panelGlobalBindings(store.getPanelBindings(),shortcutBindings()),

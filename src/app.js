@@ -872,6 +872,7 @@ function bindShortcutEditors() {
     { name: 'momentary', input: $('#setting-key-momentary'), status: $('#status-momentary') },
     { name: 'panelCycle', input: $('#setting-key-panelCycle'), status: $('#status-panelCycle') },
     { name: 'pinnedToggle', input: $('#setting-key-pinnedToggle'), status: $('#status-pinnedToggle') },
+    { name: 'voice', input: $('#setting-key-voice'), status: $('#status-voice') },
     { name: 'clipboardBar', input: $('#setting-key-clipboardBar'), status: $('#status-clipboardBar') }
   ];
 
@@ -1067,6 +1068,7 @@ async function refreshShortcuts() {
     window.WorkspaceUI?.shortcuts(snapshot);
     render('panelCycle', '#setting-key-panelCycle', '#status-panelCycle');
     render('pinnedToggle', '#setting-key-pinnedToggle', '#status-pinnedToggle');
+    render('voice', '#setting-key-voice', '#status-voice');
     render('clipboardBar', '#setting-key-clipboardBar', '#status-clipboardBar');
 
     // 按住型：状态来自 snapshot.status.momentary，除了注册结果还多一个 watching

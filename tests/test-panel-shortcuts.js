@@ -62,7 +62,8 @@ check('所有已实现键位与自定义内容都派生 Alt 直达，未绑定�
   assert.equal(bindings['panelKey:Q'],'Alt+Q');assert.equal(bindings['panelKey:W'],'');assert.equal(bindings['panelKey:M'],'Alt+M');
   assert.equal(new Set(Object.values(bindings).filter(Boolean)).size,Object.values(bindings).filter(Boolean).length);
   assert.equal(PANEL_ACTIONS.voice.key,'U');
-  assert.equal(panelGlobalBindings({},DEFAULT_BINDINGS)['panelKey:U'],'Alt+U');
+  assert.equal(panelGlobalBindings({}, DEFAULT_BINDINGS).voice, 'Alt+U');
+  assert.equal(panelGlobalBindings({}, DEFAULT_BINDINGS)['panelKey:U'], '');
   const equals=assignPanelBinding({},'=',{type:'action',id:'capture'}).bindings;
   assert.equal(panelGlobalBindings(equals,{...DEFAULT_BINDINGS,capture:'Alt+='})['panelKey:='],'');
   assert.equal(acceleratorKey('Alt+Plus'),'=');

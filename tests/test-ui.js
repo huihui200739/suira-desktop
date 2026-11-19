@@ -344,7 +344,10 @@ t('面板截图入口带意图，O 提字 / P 钉图框完即出结果', () => {
   if (!overlay.includes('intentAutoDone')) throw new Error('缺少重复触发保护');
 });
 t('截图完成后按意图回到内容库，不留下悬空窗口', () => {
-  if (!mainJs.includes('payload?.action !== \'ocr\'')) throw new Error('OCR 完成时未保留覆盖层供结果面板使用');
+  const completion = mainJs.slice(mainJs.indexOf('async function completeCapture'), mainJs.indexOf('async function completeCapture') + 5500);
+  if (!/action === 'ocr'[\s\S]*?return \{ ok: true,[^\n]*ocr: true[^\n]*\}[\s\S]*?session === capturePayload/.test(completion)) {
+    throw new Error('OCR 完成时未保留覆盖层供结果面板使用');
+  }
   const overlay = read('src/overlay.js');
   if (!overlay.includes('closeOcrResult')) throw new Error('缺少 OCR 结果关闭');
 });
@@ -598,7 +601,7 @@ t('preload 的每个 invoke 通道都有 main handler', () => {
   if (missing.length) throw new Error('缺少 handler：' + missing.join(', '));
 });
 t('main 没有前端用不到的孤儿 handler', () => {
-  const invoked = new Set([...(preload + read('pin-preload.js')).matchAll(/invoke\('([^']+)'/g)].map((m) => m[1]));
+  const invoked = new Set([...(preload + read('pin-preload.js') + read('voice-preload.js')).matchAll(/invoke\('([^']+)'/g)].map((m) => m[1]));
   const handled = [...new Set([...mainJs.matchAll(/ipcMain\.handle\('([^']+)'/g)].map((m) => m[1]))];
   const orphans = handled.filter((ch) => !invoked.has(ch));
   if (orphans.length) throw new Error('孤儿 handler：' + orphans.join(', '));
@@ -1044,7 +1047,6 @@ t('小问题回归：弹窗标签、重启提示、Esc 逐级、搜索条、主�
   if (!textTools.includes("details[open], dialog[open], [popover]:popover-open")) throw new Error('文字工具 Esc 要先收起浮层');
   if (!notes.includes("if (event.key !== 'Escape' || event.defaultPrevented) return;")) throw new Error('速记 Esc 需要挂到 document');
   if (!workspace.includes("settings?.theme==='dark'?'light':'dark'")) throw new Error('主题按钮要按当前设置切换');
-  if (!/supportsVisualEditing[\s\S]{0,200}if\(!automatic\)requestedView=view;/.test(workspace)) throw new Error('视图降级后才能记住用户偏好');
   if (!bar.includes("copySelected('selection')") || !bar.includes("source==='preview'?state.previewItem")) throw new Error('剪贴板条复制必须区分预览项与选中项');
 });
 

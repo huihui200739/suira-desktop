@@ -7,7 +7,6 @@ button:disabled { cursor: not-allowed; opacity: .46; }
 [hidden] { display: none !important; }
 .voice-card { width: 100%; height: 100%; display: flex; flex-direction: column; padding: 25px 28px 18px; border: 1px solid var(--floating-edge); border-radius: 24px; background: radial-gradient(ellipse at 0 0, var(--floating-light), transparent 58%), var(--floating-surface); box-shadow: inset 0 1px 0 var(--floating-edge), 0 18px 50px color-mix(in srgb,var(--ink) 16%,transparent); }
 .voice-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
-.eyebrow { color: var(--accent-deep); font-size: 10px; font-weight: 700; letter-spacing: .16em; }
 h1 { margin: 3px 0 0; font-size: 23px; line-height: 1.2; font-weight: 650; }
 .icon-button { width: 34px; height: 34px; border: 1px solid var(--line); border-radius: 50%; color: var(--ink-muted); font-size: 22px; line-height: 1; background: var(--control-field); }
 .intro { margin: 10px 0 12px; color: var(--ink-muted); font-size: 12px; }

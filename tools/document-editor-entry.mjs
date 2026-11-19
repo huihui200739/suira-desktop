@@ -1,5 +1,4 @@
 import {renderMenu,validURL,escape} from './document-menu.mjs';
-import './document-source-editor.mjs';
 import {Editor} from '@tiptap/core';
 import StarterKit from '@tiptap/starter-kit';
 import {Markdown} from '@tiptap/markdown';
@@ -124,7 +123,7 @@ window.SuiraRichDocument={create({element,onChange,onSelection,notify,openLink,r
   load(text){suppress=true;closeMenu();hideBubble();editor.chain().setContent(text,{contentType:'markdown',emitUpdate:false}).setTextSelection(1).setMeta('addToHistory',false).run();suppress=false;},
   async commit(){if(compositionPending){await new Promise(r=>setTimeout(r,0));if(!editor.view.composing){compositionPending=false;emit();}}},
   apply,openMenu,closeMenu,focus:()=>editor.commands.focus(),getMarkdown:()=>editor.getMarkdown(),getJSON:()=>editor.getJSON(),
-  headings(){const list=[];editor.state.doc.descendants((node,pos)=>{if(node.type.name==='heading')list.push({level:node.attrs.level,text:node.textContent,pos});});return list;},
+  headings(){const list=[];editor.state.doc.forEach((node,pos)=>{if(node.type.name==='heading')list.push({level:node.attrs.level,text:node.textContent,pos});});return list;},
   jump(index){const h=this.headings()[index];if(h){editor.chain().focus().setTextSelection(h.pos+1).run();editor.view.nodeDOM(h.pos)?.scrollIntoView({block:'start'});}},
   selection:()=>selection(),setSelection:(from,to=from)=>editor.commands.setTextSelection({from,to}),
   destroy(){disposed=true;closeMenu();bubble?.remove();document.removeEventListener('pointerdown',outside);document.removeEventListener('keydown',key);window.removeEventListener('resize',reposition);element.removeEventListener('scroll',reposition);editor.destroy();},

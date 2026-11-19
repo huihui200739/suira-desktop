@@ -11,12 +11,12 @@
 <body>
   <main class="voice-card">
     <header class="voice-head">
-      <div><span class="eyebrow">SUIRA · INPUT</span><h1>语音输入</h1></div>
+      <div><h1>语音输入</h1></div>
       <button id="close" class="icon-button" type="button" aria-label="关闭">×</button>
     </header>
-    <p class="intro">录完后会转换成可编辑文字，再粘贴回刚才的输入框。录音只在内存中处理。</p>
+    <p class="intro">空格开始或停止录音，Ctrl + Enter 粘贴结果。</p>
     <section class="record-area" aria-live="polite">
-      <button id="record" class="record-button" type="button" aria-label="开始录音"><span class="record-dot"></span></button>
+      <button id="record" class="record-button" type="button" aria-label="开始录音" disabled><span class="record-dot"></span></button>
       <div id="status" class="status">正在检查语音服务…</div>
       <div id="elapsed" class="elapsed">00:00 / 02:00</div>
     </section>

@@ -18,20 +18,27 @@
   fragment.querySelectorAll('a').forEach(link=>{if(!/^(?:https?:\/\/|mailto:|#|suira-image:\/\/[-\w]+$)/i.test(link.getAttribute('href')||''))link.removeAttribute('href');link.removeAttribute('target');});
   const box=document.createElement('div');box.append(fragment);return box.innerHTML;
  }
- // Source offsets used by the outline; fenced code is deliberately excluded.
- function sourceHeadings(text){
-  const result=[];let offset=0,fence=null,previous=null;
-  for(const line of text.split('\n')){
-   const start=offset;offset+=line.length+1;
-   const marker=line.match(/^ {0,3}(`{3,}|~{3,})/);
-   if(fence){if(marker&&marker[1][0]===fence.char&&marker[1].length>=fence.length&&line.slice(marker[0].length).trim()==='')fence=null;previous=null;continue;}
-   if(marker){fence={char:marker[1][0],length:marker[1].length};previous=null;continue;}
-   const atx=line.match(/^ {0,3}(#{1,6})(?:[\t ]+(.+?)|[\t ]*)$/);
-   if(atx){result.push({level:atx[1].length,text:(atx[2]||'').replace(/[\t ]+#+[\t ]*$/,''),offset:start});previous=null;continue;}
-   if(previous&&/^ {0,3}(?:=+|-+)\s*$/.test(line)){result.push({level:line.trim()[0]==='='?1:2,text:previous.text,offset:previous.offset});previous=null;continue;}
-   previous=line.trim()&&!/^ {4}|^\t|^\s*[>|*-]\s/.test(line)?{text:line.trim(),offset:start}:null;
+ // Use the same tokens for the preview and source offsets so quoted headings,
+ // fenced examples and multiline Setext titles cannot shift later outline links.
+ function renderWithOutline(text) {
+  const options = { gfm: true, breaks: false };
+  const tokens = window.marked.lexer(text, options);
+  const indexes = new Map(), headings = [];
+  let offset = 0;
+  for (const token of tokens) {
+   if (token.type === 'heading') {
+    indexes.set(token, headings.length);
+    headings.push({ level: token.depth, offset });
+   }
+   offset += token.raw.length;
   }
-  return result;
+  const renderer = new window.marked.Renderer(options);
+  renderer.heading = function (token) {
+   const html = window.marked.Renderer.prototype.heading.call(this, token);
+   const index = indexes.get(token);
+   return index === undefined ? html : html.replace('>', ` data-md-heading="${index}">`);
+  };
+  return { html: safeHTML(window.marked.parser(tokens, { ...options, renderer })), headings };
  }
- window.SuiraMarkdown={safeHTML,sourceHeadings};
+ window.SuiraMarkdown = { safeHTML, renderWithOutline };
 })();

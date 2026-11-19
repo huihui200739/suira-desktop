@@ -40,6 +40,8 @@ const path = require('node:path');
   assert.equal(voice.buildEndpoint('https://relay.example/v1').url, 'https://relay.example/v1/tools/asr');
   assert.equal(voice.buildEndpoint('https://relay.example/custom/v2/').url, 'https://relay.example/custom/v2/tools/asr');
   assert.equal(voice.buildEndpoint('https://relay.example/v1', 'openai').url, 'https://relay.example/v1/audio/transcriptions');
+  assert.equal(voice.buildEndpoint('https://relay.example/api/chat/completions', 'openai').url, 'https://relay.example/api/audio/transcriptions');
+  assert.equal(voice.buildEndpoint('https://relay.example', 'openai').url, 'https://relay.example/v1/audio/transcriptions');
   assert.equal(voice.buildEndpoint('https://relay.example/v1/tools/asr').url, 'https://relay.example/v1/tools/asr');
   assert.equal(voice.canReuseApiKey({ targetUrl: 'https://relay.example/v1', sourceUrl: 'https://relay.example/chat', sourceProvider: 'openai', hasSourceKey: true }), true);
   assert.equal(voice.canReuseApiKey({ targetUrl: 'https://other.example/v1', sourceUrl: 'https://relay.example/v1', sourceProvider: 'openai', hasSourceKey: true }), false);

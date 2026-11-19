@@ -198,7 +198,9 @@ function keyMarkup(key) {
     : key.state === 'unimplemented'
       ? `<span class="key-letter">${escapeHtml(key.key)}</span>`
       : `<span class="key-letter">${escapeHtml(key.key)}</span>`;
-  const shortcutHint=key.accelerator?`（${key.accelerator.replace(/\+/g, ' + ')}）${key.shortcutStatus?.ok===false?' 全局键不可用：'+key.shortcutStatus.error:''}`:'';
+  const shortcutHint = !key.accelerator ? '' : key.shortcutStatus?.recording ? '（全局键录入中）'
+    : key.shortcutStatus?.localOnly ? '（仅面板内）'
+      : `（${key.accelerator.replace(/\+/g, ' + ')}）${key.shortcutStatus?.ok === false ? ' 全局键不可用：' + key.shortcutStatus.error : ''}`;
   const title = bound ? `${key.label}${key.hint ? `：${key.hint}` : ''}${shortcutHint}`
     : custom ? `${key.label}：${key.hint}${shortcutHint}（右键可改绑）`
     : key.state === 'unimplemented' ? `${key.label}：尚未实现` : '这个键还没有绑定动作，点击或右键可绑定';

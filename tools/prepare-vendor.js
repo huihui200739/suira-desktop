@@ -10,7 +10,8 @@ for(const [source,target] of [
   ['dompurify/dist/purify.min.js','purify.js'],['dompurify/LICENSE','dompurify-LICENSE.txt']
 ])fs.copyFileSync(path.join(root,'node_modules',source),path.join(out,target));
 const bundle=require('esbuild').buildSync({entryPoints:[path.join(root,'tools/document-editor-entry.mjs')],outfile:path.join(out,'document-editor.js'),bundle:true,minify:true,format:'iife',platform:'browser',target:'chrome140',legalComments:'eof',metafile:true});
-const packages=new Set(Object.keys(bundle.metafile.inputs).map(file=>file.match(/node_modules\/((@[^/]+\/)?[^/]+)\//)?.[1]).filter(Boolean));
+const sourceBundle = require('esbuild').buildSync({entryPoints:[path.join(root,'tools/document-source-editor.mjs')],outfile:path.join(out,'document-source-editor.js'),bundle:true,minify:true,format:'iife',platform:'browser',target:'chrome140',legalComments:'eof',metafile:true});
+const packages=new Set([...Object.keys(bundle.metafile.inputs),...Object.keys(sourceBundle.metafile.inputs)].map(file=>file.match(/node_modules\/((@[^/]+\/)?[^/]+)\//)?.[1]).filter(Boolean));
 const licenses=[];
 for(const name of [...packages].sort()){
  const directory=path.join(root,'node_modules',name),file=['LICENSE.md','LICENSE','LICENSE.txt','license','license.md'].find(name=>fs.existsSync(path.join(directory,name)));
