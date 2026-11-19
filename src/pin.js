@@ -3,23 +3,67 @@
   const api=window.pinApi,$=id=>document.getElementById(id),menu=$('pin-menu');
   let textMode=false;let baseW=300,baseH=200,scale=1,opacity=1,collapsed=false,drag=null,moveFrame=0,movePoint=null,noticeTimer,suppressRestore=false;
   const notify=(message,error=false)=>{clearTimeout(noticeTimer);$('pin-notice').textContent=message;if(!error&&/复制/.test(message))window.SuiraUI?.copyFeedback($('pin-notice'));$('pin-notice').hidden=false;$('pin-notice').classList.toggle('is-error',error);noticeTimer=setTimeout(()=>$('pin-notice').hidden=true,2200);};
-  const zoom=next=>{scale=Math.min(3, Math.max(0.25,next));$('zoom-val').textContent=Math.round(scale*100)+'%';api.resize(Math.round(baseW*scale),Math.round(baseH*scale));if(textMode)$('pin-text').style.setProperty('--text-pin-size',(15*scale)+'px');};
-  const fade=next=>{opacity=Math.max(.25,Math.min(1,next));$('opacity-val').textContent=Math.round(opacity*100)+'%';api.setOpacity(opacity);};
-  function collapse(){collapsed=!collapsed;api.collapse(collapsed);document.body.classList.toggle('is-collapsed',collapsed);$('restore').hidden=!collapsed;menu.hidden=true;}
-  function hideMenu(restore=false){menu.hidden=true;if(restore)$('more').focus({preventScroll:true});}
-  function openMenu(x,y){
-    if(collapsed)collapse();
-    menu.hidden=false;
-    const rect=menu.getBoundingClientRect();
-    menu.style.left=Math.max(6,Math.min(innerWidth-rect.width-6,x))+'px';
-    menu.style.top=Math.max(6,Math.min(innerHeight-rect.height-6,y))+'px';
-    menu.querySelector('button').focus({preventScroll:true});
+  let menuAnchor;
+  function updateControls() {
+    const zoomLabel = Math.round(scale * 100) + '%';
+    const opacityLabel = Math.round(opacity * 100) + '%';
+    $('zoom-val').textContent = menu.querySelector('[data-value=zoom]').textContent = zoomLabel;
+    $('opacity-val').textContent = menu.querySelector('[data-value=opacity]').textContent = opacityLabel;
+    const unavailable = {'zoom-out': scale <= .25, 'zoom-in': scale >= 3, 'opacity-down': opacity <= .25, 'opacity-up': opacity >= 1};
+    for (const [id, disabled] of Object.entries(unavailable)) {
+      $(id).disabled = menu.querySelector(`[data-adjust=${id}]`).disabled = disabled;
+    }
   }
+  function zoom(next) {
+    if (collapsed) return;
+    scale = Math.min(3, Math.max(.25, Math.round(next * 100) / 100));
+    updateControls();
+    api.resize(Math.round(baseW * scale), Math.round(baseH * scale));
+    if (textMode) $('pin-text').style.setProperty('--text-pin-size', (15 * scale) + 'px');
+  }
+  function fade(next) {
+    opacity = Math.min(1, Math.max(.25, Math.round(next * 100) / 100));
+    updateControls();
+    api.setOpacity(opacity);
+  }
+  function collapse() {
+    collapsed = !collapsed;
+    api.collapse(collapsed);
+    document.body.classList.toggle('is-collapsed', collapsed);
+    $('restore').hidden = !collapsed;
+    hideMenu();
+  }
+  function hideMenu(restore = false) {
+    menu.hidden = true;
+    $('more').setAttribute('aria-expanded', 'false');
+    if (restore) $(collapsed ? 'restore' : 'more').focus({preventScroll:true});
+  }
+  function positionMenu() {
+    if (menu.hidden) return;
+    const anchor = $(collapsed ? 'restore' : 'more').getBoundingClientRect();
+    const width = menu.offsetWidth;
+    const height = menu.offsetHeight;
+    const x = menuAnchor?.x ?? anchor.right - width;
+    const y = menuAnchor?.y ?? anchor.top - height - 6;
+    menu.style.left = Math.max(6, Math.min(innerWidth - width - 6, x)) + 'px';
+    menu.style.top = Math.max(6, Math.min(innerHeight - height - 6, y)) + 'px';
+  }
+  function openMenu(anchor, focus = true) {
+    menuAnchor = anchor;
+    menu.hidden = false;
+    $('more').setAttribute('aria-expanded', 'true');
+    positionMenu();
+    if (focus) menu.querySelector('[data-command=copy]').focus({preventScroll:true});
+  }
+  new ResizeObserver(positionMenu).observe(menu);
+  window.addEventListener('resize', positionMenu);
+  window.PinUI = {revealMenu: () => openMenu(undefined, false)};
+  updateControls();
   async function command(name){
     hideMenu();
     if(name==='close'){api.close();return;}
     if(name==='collapse'){collapse();return;}
-    if(name==='reset'){zoom(1);fade(1);return;}
+    if(name==='reset'){if(collapsed)collapse();zoom(1);fade(1);return;}
     try {
       const result=name==='top'?await api.toggleTop():await api[name]();
       if(result?.canceled)return;
@@ -33,9 +77,14 @@
   $('copy').onclick=()=>command('copy');$('close').onclick=()=>command('close');
   $('collapse').onclick=collapse;
   $('restore').onclick=event=>{if(suppressRestore&&event.detail>0){suppressRestore=false;return;}collapse();};
-  $('more').onclick=()=>{const rect=$('more').getBoundingClientRect();menu.hidden?openMenu(rect.left,rect.top-220):hideMenu();};
-  menu.addEventListener('click',event=>{const button=event.target.closest('[data-command]');if(button)command(button.dataset.command);});
-  document.addEventListener('contextmenu',event=>{event.preventDefault();openMenu(event.clientX,event.clientY);});
+  $('more').onclick=()=>{if(menu.hidden)openMenu();else hideMenu();};
+  menu.addEventListener('click', event => {
+    const item = event.target.closest('[data-command],[data-adjust]');
+    if (!item) return;
+    if (item.dataset.command) command(item.dataset.command);
+    else { $(item.dataset.adjust).click(); hideMenu(true); }
+  });
+  document.addEventListener('contextmenu',event=>{event.preventDefault();openMenu({x:event.clientX,y:event.clientY});});
   document.addEventListener('pointerdown',event=>{
     if(!menu.hidden&&!menu.contains(event.target)&&!event.target.closest('#more'))hideMenu();
     const restoring=collapsed&&event.target.closest('#restore');
@@ -70,6 +119,6 @@
   window.addEventListener('blur',()=>{hideMenu();endDrag();});
   api.getData().then(result=>{
     if(!result.ok)throw Error(result.error);
-    textMode=result.data.kind==='text';$('pin-image').hidden=textMode;$('pin-text').hidden=!textMode;if(textMode){$('pin-text').textContent=result.data.text;document.title='随序 · 文字钉图';menu.querySelector('[data-command=copy]').firstChild.textContent='复制文字 ';menu.querySelector('[data-command=save]').firstChild.textContent='文字另存为 ';}else $('pin-image').src=result.data.url;baseW=result.data.width;baseH=result.data.height;
+    textMode=result.data.kind==='text';$('pin-image').hidden=textMode;$('pin-text').hidden=!textMode;if(textMode){$('copy').setAttribute('aria-label','复制文字');$('copy').dataset.hint='复制文字';$('pin-text').textContent=result.data.text;document.title='随序 · 文字钉图';menu.querySelector('[data-command=copy]').firstChild.textContent='复制文字 ';menu.querySelector('[data-command=save]').firstChild.textContent='文字另存为 ';}else $('pin-image').src=result.data.url;baseW=result.data.width;baseH=result.data.height;
   }).catch(error=>notify(error.message,true));
 })();

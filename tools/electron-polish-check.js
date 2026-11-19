@@ -12,17 +12,41 @@ async function until(fn){for(let n=0;n<150;n++){try{const value=await fn();if(va
   assert.ok(exe,'需要 Electron');
   const server=net.createServer();await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));const port=server.address().port;await new Promise(resolve=>server.close(resolve));
   const entry=path.join(tmp,'app.js');
-  fs.writeFileSync(entry,`const {app,clipboard,globalShortcut}=require('electron');app.setPath('userData',${JSON.stringify(path.join(tmp,'profile'))});clipboard.read=async()=>[];clipboard.readText=async()=>'';const keys=new Set();globalShortcut.register=key=>{keys.add(key);return true;};globalShortcut.unregister=key=>keys.delete(key);globalShortcut.unregisterAll=()=>keys.clear();require(${JSON.stringify(path.join(root,'main.js'))});`);
+  fs.writeFileSync(entry,`const {app,clipboard,globalShortcut}=require('electron');app.setPath('userData',${JSON.stringify(path.join(tmp,'profile'))});clipboard.read=async()=>[];clipboard.readText=async()=>'';const keys=new Set();globalShortcut.register=key=>{keys.add(key);return true;};globalShortcut.unregister=key=>keys.delete(key);globalShortcut.unregisterAll=()=>keys.clear();const fs=require('node:fs'),Module=require('node:module'),filename=${JSON.stringify(path.join(root,'main.js'))};const loaded=new Module(filename,module);loaded.filename=filename;loaded.paths=Module._nodeModulePaths(${JSON.stringify(root)});loaded._compile(fs.readFileSync(filename,'utf8')+'\\n'+${JSON.stringify(`let fixtureOpened=false;setInterval(()=>{if(fixtureOpened||!app.isReady())return;const file=${JSON.stringify(path.join(tmp,'pin.json'))};if(!fs.existsSync(file))return;const data=JSON.parse(fs.readFileSync(file,'utf8'));fixtureOpened=true;createPinWindow(data.url,data);},60).unref();`)},filename);`);
   const env={...process.env};delete env.ELECTRON_RUN_AS_NODE;const log=fs.openSync(path.join(tmp,'app.log'),'w');
-  child=spawn(exe,[entry,`--remote-debugging-port=${port}`],{env,windowsHide:true,stdio:['ignore',log,log]});fs.closeSync(log);
+  child=spawn(exe,[entry,`--remote-debugging-port=${port}`,`--force-device-scale-factor=${process.env.SUIRA_TEST_DPI||1}`],{env,windowsHide:true,stdio:['ignore',log,log]});fs.closeSync(log);
   async function page(suffix){const c=await until(()=>connect(port,t=>t.url.endsWith(suffix)));sockets.push(c.ws);return c;}
   const main=await page('/index.html');await until(()=>main.evaluate('Boolean(window.suira?.capture)'));
   const png=await main.evaluate(`(()=>{const c=document.createElement('canvas');c.width=360;c.height=240;const x=c.getContext('2d');x.fillStyle='#0d74ce';x.fillRect(0,0,360,240);x.fillStyle='#fff';x.font='28px sans-serif';x.fillText('SUIRA test',50,125);return c.toDataURL();})()`);
-  const opened=await main.evaluate(`window.suira.capture.finish({dataUrl:${JSON.stringify(png)},action:'pin'})`);assert.equal(opened.ok,true);
+  // Use an isolated fixture file and open the real pin window via the debug control file.
+  const pinFile=path.join(tmp,'pin.png');fs.writeFileSync(pinFile,Buffer.from(png.split(',')[1],'base64'));
+  fs.writeFileSync(path.join(tmp,'pin.json'),JSON.stringify({url:require('node:url').pathToFileURL(pinFile).href,width:360,height:240}));
   const pin=await page('/pin.html');await until(()=>pin.evaluate(`document.getElementById('pin-image').naturalWidth>0`));await wait(120);
+  const checkLayout=()=>pin.evaluate(`(() => {
+    const rect=e=>e.getBoundingClientRect();
+    const bar=document.querySelector('.pin-bar'),b=rect(bar);
+    const buttons=[...bar.querySelectorAll('button')].filter(e=>e.getClientRects().length);
+    return {width:innerWidth,dpr:devicePixelRatio,buttons:buttons.map(e=>e.id),clipped:bar.scrollWidth>bar.clientWidth+1,aligned:buttons.every(e=>{
+      const r=rect(e),icon=rect(e.querySelector('svg'));
+      return r.left>=b.left && r.right<=b.right && icon.width===18 && Math.abs((r.left+r.right)-(icon.left+icon.right))<1 && Math.abs((r.top+r.bottom)-(icon.top+icon.bottom))<1;
+    })};
+  })()`);
+  const wide=await checkLayout();assert.deepEqual(wide.buttons,['zoom-out','zoom-in','opacity-down','opacity-up','copy','more','collapse','close']);assert.ok(wide.aligned&&!wide.clipped,JSON.stringify(wide));
+  assert.equal(wide.dpr,Number(process.env.SUIRA_TEST_DPI||1));
+  await pin.evaluate('window.pinApi.resize(110,150)');await until(()=>pin.evaluate('innerWidth<=145'));
+  const narrow=await checkLayout();assert.deepEqual(narrow.buttons,['more','close']);assert.ok(narrow.aligned&&!narrow.clipped,JSON.stringify(narrow));
+  await pin.evaluate('document.getElementById("more").click();true');
+  const geometry=await pin.evaluate(`(() => {const p=document.getElementById('pin-menu');return {hidden:p.hidden,rect:p.getBoundingClientRect().toJSON(),w:innerWidth,h:innerHeight,left:p.style.left,top:p.style.top}})()`);
+  assert.ok(!geometry.hidden&&geometry.rect.left>=0&&geometry.rect.top>=0&&geometry.rect.right<=geometry.w&&geometry.rect.bottom<=geometry.h,JSON.stringify(geometry));
+  assert.equal(await pin.evaluate('document.querySelector("[data-adjust=opacity-up]").disabled'),true);
+  await pin.evaluate('document.querySelector("[data-adjust=opacity-down]").click();true');
+  assert.equal(await pin.evaluate('document.getElementById("opacity-val").textContent'),'90%');
+  await pin.evaluate('window.PinUI.revealMenu();document.querySelector("[data-command=reset]").click();true');
+  await until(()=>pin.evaluate('innerWidth>330'));
+  console.log('PASS 钉图工具栏对齐、窄屏菜单、透明度边界，DPI '+wide.dpr);
   const bounds=()=>pin.evaluate('window.pinApi.bounds()');const original=await bounds();
-  await pin.evaluate(`document.getElementById('collapse').click(),true`);await until(async()=>Math.abs((await bounds()).height-40)<=1);
-  const small=await bounds();const start={x:small.width/2,y:20};
+  await pin.evaluate(`document.getElementById('collapse').click(),true`);await until(async()=>Math.abs((await bounds()).height-60)<=1);
+  const small=await bounds();const start={x:small.width/2,y:small.height/2};
   await pin.send('Input.dispatchMouseEvent',{type:'mouseMoved',...start});
   await pin.send('Input.dispatchMouseEvent',{type:'mousePressed',...start,button:'left',buttons:1,clickCount:1});
   await pin.send('Input.dispatchMouseEvent',{type:'mouseMoved',x:start.x+28,y:27,button:'left',buttons:1});await wait(140);
@@ -32,12 +56,12 @@ async function until(fn){for(let n=0;n<150;n++){try{const value=await fn();if(va
   assert.equal(await pin.evaluate(`document.body.classList.contains('is-collapsed')`),true,'拖动松手不能误展开');
   await pin.evaluate(`document.getElementById('restore').click(),true`);await until(async()=>Math.abs((await bounds()).height-original.height)<=1);
   const expanded=await bounds();assert.ok(Math.abs(expanded.x-moved.x)<=1);assert.ok(Math.abs(expanded.y-moved.y)<=1);assert.ok(Math.abs(expanded.width-original.width)<=1);
-  await pin.evaluate(`document.getElementById('collapse').click(),true`);await until(async()=>Math.abs((await bounds()).height-40)<=1);
+  await pin.evaluate(`document.getElementById('collapse').click(),true`);await until(async()=>Math.abs((await bounds()).height-60)<=1);
   await pin.send('Input.dispatchMouseEvent',{type:'mousePressed',...start,button:'left',buttons:1,clickCount:1});
   await pin.send('Input.dispatchMouseEvent',{type:'mouseReleased',...start,button:'left',buttons:0,clickCount:1});
   await until(async()=>Math.abs((await bounds()).height-original.height)<=1);
   for(let n=0;n<3;n++){
-    await pin.evaluate(`document.getElementById('collapse').click(),true`);await until(async()=>Math.abs((await bounds()).height-40)<=1);
+    await pin.evaluate(`document.getElementById('collapse').click(),true`);await until(async()=>Math.abs((await bounds()).height-60)<=1);
     await pin.evaluate(`document.getElementById('restore').click(),true`);await until(async()=>Math.abs((await bounds()).height-original.height)<=1);
     const size=await bounds();assert.ok(Math.abs(size.width-original.width)<=1);assert.ok(Math.abs(size.height-original.height)<=1);
   }

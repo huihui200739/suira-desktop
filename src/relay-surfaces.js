@@ -26,7 +26,7 @@
   }
   if(document.getElementById('pin-menu')){
     const menu=document.getElementById('pin-menu'),host=document.createElement('div');host.id='pin-action-strip';menu.prepend(host);
-    let content=null;api.getData().then(result=>{const data=result.data;content=data.kind==='text'?textItem(data.text,data.itemId?[data.itemId]:[]):{id:data.itemId,kind:'image'};mount(host,()=>content,{reveal:()=>{menu.hidden=false;}});});
+    let content=null;api.getData().then(result=>{const data=result.data;content=data.kind==='text'?textItem(data.text,data.itemId?[data.itemId]:[]):{id:data.itemId,kind:'image'};mount(host,()=>content,{reveal:()=>window.PinUI?.revealMenu()});});
   }
   if(document.getElementById('note-body')){
     const menu=document.createElement('div');menu.className='note-relay-menu';menu.id='note-relay-menu';menu.hidden=true;

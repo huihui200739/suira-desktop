@@ -8,14 +8,21 @@
 <main id="pin-surface" class="pin-surface"><img id="pin-image" alt="钉在桌面的图片" draggable="false">
   <pre id="pin-text" class="pin-text" title="选中文字；按住 Ctrl 拖动窗口" hidden></pre>
   <div class="pin-bar" role="toolbar" aria-label="钉图工具">
-    <button id="zoom-out" aria-label="缩小" title="缩小"><span data-icon="subtract" aria-hidden="true"></span></button><span id="zoom-val">100%</span><button id="zoom-in" aria-label="放大" title="放大"><span data-icon="add" aria-hidden="true"></span></button><i></i>
-    <button id="opacity-down" aria-label="更透明" title="更透明"><span data-icon="dark_theme" aria-hidden="true"></span></button><span id="opacity-val">100%</span><button id="opacity-up" aria-label="更不透明" title="更不透明"><span data-icon="circle_half_fill" aria-hidden="true"></span></button><i></i>
-    <button id="copy" aria-label="复制图片" title="复制图片"><span data-icon="copy" aria-hidden="true"></span></button><button id="more" aria-label="更多操作" title="更多操作"><span data-icon="more_horizontal" aria-hidden="true"></span></button><button id="collapse" aria-label="临时收起" title="临时收起"><span data-icon="subtract" aria-hidden="true"></span></button><button id="close" aria-label="关闭" title="关闭"><span data-icon="dismiss" aria-hidden="true"></span></button>
+    <div class="pin-adjust" role="group" aria-label="缩放"><button id="zoom-out" aria-label="缩小" title="缩小"><span data-icon="subtract" aria-hidden="true"></span></button><span class="pin-value" id="zoom-val">100%</span><button id="zoom-in" aria-label="放大" title="放大"><span data-icon="add" aria-hidden="true"></span></button></div>
+    <div class="pin-adjust" role="group" aria-label="透明度"><button id="opacity-down" aria-label="更透明" title="更透明"><span data-icon="dark_theme" aria-hidden="true"></span></button><span class="pin-value" id="opacity-val">100%</span><button id="opacity-up" aria-label="更不透明" title="更不透明"><span data-icon="circle_half_fill" aria-hidden="true"></span></button></div>
+    <button id="copy" aria-label="复制图片" title="复制图片"><span data-icon="copy" aria-hidden="true"></span></button><button id="more" aria-controls="pin-menu" aria-haspopup="menu" aria-expanded="false" aria-label="更多操作" title="更多操作"><span data-icon="more_horizontal" aria-hidden="true"></span></button><button id="collapse" aria-label="临时收起" title="临时收起"><span data-icon="subtract" aria-hidden="true"></span></button><button id="close" aria-label="关闭" title="关闭"><span data-icon="dismiss" aria-hidden="true"></span></button>
   </div>
   <button id="restore" hidden>展开钉图 <span data-icon="arrow_expand" aria-hidden="true"></span></button>
   <div class="pin-menu" id="pin-menu" role="menu" aria-label="钉图操作" hidden>
     <button role="menuitem" data-command="copy">复制图片 <kbd>Ctrl C</kbd></button>
     <button role="menuitem" data-command="save">图片另存为 <kbd>Ctrl S</kbd></button>
+    <div class="pin-compact-adjust" role="group" aria-label="缩放和透明度">
+      <hr>
+      <button role="menuitem" data-adjust="zoom-out">缩小 <span data-value="zoom"></span></button>
+      <button role="menuitem" data-adjust="zoom-in">放大</button>
+      <button role="menuitem" data-adjust="opacity-down">更透明 <span data-value="opacity"></span></button>
+      <button role="menuitem" data-adjust="opacity-up">更不透明</button>
+    </div>
     <hr><button role="menuitem" data-command="reset">恢复大小与透明度</button>
     <button role="menuitemcheckbox" id="top-item" aria-checked="true" data-command="top">置于顶层 <span>✓</span></button>
     <button role="menuitem" data-command="collapse">临时收起</button><hr>

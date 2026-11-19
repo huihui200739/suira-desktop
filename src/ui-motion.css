@@ -31,7 +31,7 @@
 :where(button):active:not(:disabled,.key) { transform:translateY(1px); }
 .panel.is-revealing { transform-origin:center;animation:panel-reveal 160ms var(--ease-out); }
 .ocr-result:not([hidden]),.is-result-new { animation:result-appear 180ms var(--ease-out); }
-:where(.tool-dock,.color-popover,.text-editor,.pin-menu):not([hidden]) { animation:result-appear 180ms var(--ease-out); }
+:where(.tool-dock,.color-popover,.text-editor):not([hidden]) { animation:result-appear 180ms var(--ease-out); }
 .copy-check { display:inline-block;width:var(--space-4);height:var(--space-4);margin-right:var(--space-2);vertical-align:middle;fill:none;stroke:currentColor;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round; }
 .copy-check path { stroke-dasharray:24;stroke-dashoffset:0; }
 .copy-check.is-drawing path { animation:copy-stroke 200ms ease-out; }

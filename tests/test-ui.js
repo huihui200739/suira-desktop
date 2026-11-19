@@ -671,7 +671,7 @@ t('钉图窗口注册了全部 pin:* 通道', () => {
   }
 });
 t('缩放有上下限（不会缩到不可见或撑爆屏幕）', () => {
-  if (!/Math\.min\(3, Math\.max\(0\.25/.test(read('src/pin.js'))) throw new Error('渲染侧缩放未限幅');
+  if (!/Math\.min\(3, Math\.max\(0?\.25/.test(read('src/pin.js'))) throw new Error('渲染侧缩放未限幅');
   if (!/Math\.max\(80, Math\.min\(4000/.test(mainJs)) throw new Error('主进程尺寸未限幅');
 });
 t('透明度有下限（不会变成完全不可见）', () => {
@@ -936,16 +936,10 @@ t('放回原处：复制失败必须返回失败而不是成功提示', () => {
 
 console.log('\n== 体验优化：截图流畅度 / 工具栏时序 / 底部剪贴板条 ==');
 
-t('截图覆盖层是预热常驻窗口（不再每次新建/销毁）', () => {
-  if (!mainJs.includes('function createOverlayWindow')) throw new Error('缺少覆盖层预热创建');
-  if (!mainJs.includes('showOverlayWindow')) throw new Error('缺少统一显示入口');
-  if (!mainJs.includes('hideOverlayWindow')) throw new Error('缺少隐藏而不是销毁');
-  if (!mainJs.includes("webContents.send('capture:shown')")) throw new Error('未通知覆盖层重新取画面');
-  if (mainJs.includes('overlayWindow.destroy()')) throw new Error('覆盖层仍在销毁，失去预热意义');
-  const preload = read('preload.js');
-  if (!preload.includes("'capture:shown'")) throw new Error('preload 未暴露 capture.onShown');
-  const overlay = read('src/overlay.js');
-  if (!overlay.includes('captureApi.onShown') || !overlay.includes('window.suira.capture')) throw new Error('覆盖层未通过共享 API 订阅 capture.onShown');
+t('截图覆盖层按需创建，隐藏后释放画布并回收窗口', () => {
+  if (!mainJs.includes('function createOverlayWindow')) throw new Error('缺少覆盖层创建入口');
+  if (!mainJs.includes("scheduleIdleTeardown(overlayWindow, '截图', HOT_WINDOW_IDLE_MS)")) throw new Error('缺少截图窗口闲置回收');
+  if (!mainJs.includes('capture:release')) throw new Error('截图隐藏时未通知释放画面');
 });
 
 t('截图工具栏在框选完成前不出现', () => {

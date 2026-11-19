@@ -1,4 +1,5 @@
 import {renderMenu,validURL,escape} from './document-menu.mjs';
+import {continueList, editLines, inFencedCode} from './miaoyan-markdown-editing.mjs';
 
 // The source, split and preview views share the visual editor's command model.
 // Source mutations stay in the native textarea undo history and never parse or
@@ -10,7 +11,7 @@ window.SuiraSourceDocument={create({element,preview,enabled,readOnly,activate,on
  const replace=(text,from,to)=>{
   activate();element.focus();element.setSelectionRange(from,to);
   const previous=element.value;
-  if(!document.execCommand('insertText',false,text)){element.setRangeText(text,from,to,'end');onChange();}
+  if(!(text ? document.execCommand('insertText',false,text) : document.execCommand('delete'))){element.setRangeText(text,from,to,'end');onChange();}
   else if(element.value===previous)onChange();
  };
  function apply(command,value=''){
@@ -63,8 +64,7 @@ window.SuiraSourceDocument={create({element,preview,enabled,readOnly,activate,on
  function updateSlash(){
   if(!enabled()||readOnly()||composing||element.selectionStart!==element.selectionEnd)return;
   const end=element.selectionStart,line=element.value.slice(element.value.lastIndexOf('\n',end-1)+1,end),match=line.match(/(?:^|\s)\/([^\s/]{0,32})$/);
-  const fences=element.value.slice(0,end).split('\n');let fence='';for(const line of fences){const token=line.match(/^\s{0,3}(`{3,}|~{3,})/);if(token){if(!fence)fence=token[1][0];else if(token[1][0]===fence)fence='';}}
-  if(!match||fence){if(slash)close();return;}
+  if(!match||inFencedCode(element.value,end)){if(slash)close();return;}
   // Native textarea does not expose caret bounds. A short-lived mirror gives
   // the real wrapped-line position without changing focus, selection or scroll.
   const style=getComputedStyle(element),mirror=document.createElement('div');mirror.style.cssText=style.cssText;
@@ -83,6 +83,24 @@ window.SuiraSourceDocument={create({element,preview,enabled,readOnly,activate,on
    if(['ArrowDown','ArrowUp','Home','End'].includes(e.key)&&!e.target.closest('form')){e.preventDefault();let i=buttons.indexOf(document.activeElement);i=e.key==='Home'?0:e.key==='End'?buttons.length-1:e.key==='ArrowDown'?(i+1)%buttons.length:(i-1+buttons.length)%buttons.length;buttons[i]?.focus();return;}
    if(e.key==='Enter'&&!e.target.closest('form')){const focused=buttons.find(b=>b===document.activeElement);if(focused||slash||e.target.matches('.md-command-query')){e.preventDefault();(focused||buttons[0])?.click();return;}}
    if(e.key==='Tab')close();
+  }
+  if(e.target===element&&!readOnly()&&!e.altKey){
+   const {from,to}=selection();
+   let change=null;
+   if(e.key==='Enter'&&!e.shiftKey&&!e.ctrlKey&&!e.metaKey&&from===to){
+    change=continueList(element.value,from);
+   }else if(e.key==='Tab'&&!e.ctrlKey&&!e.metaKey&&(from!==to||e.shiftKey||/^[ \t]*(?:[-*+]|\d{1,9}[.)])[ \t]/.test(element.value.slice(from ? element.value.lastIndexOf('\n',from-1)+1 : 0,from)))){
+    change=editLines(element.value,from,to,e.shiftKey?'outdent':'indent');
+   }else if(e.key==='Enter'&&(e.ctrlKey||e.metaKey)&&!e.shiftKey){
+    change=editLines(element.value,from,to,'task');
+   }
+   if(change){
+    e.preventDefault();
+    close();
+    replace(change.replacement,change.from,change.to);
+    element.setSelectionRange(change.start,change.end);
+    return;
+   }
   }
   if(readOnly()&&e.key==='/'&&!e.ctrlKey&&!e.metaKey&&!e.altKey&&!e.target.closest('input,textarea,[contenteditable],.md-context-menu')){e.preventDefault();openMenu('insert',null,{x:preview.getBoundingClientRect().left+32,y:preview.getBoundingClientRect().top+48});}
   if(e.target===element&&(e.ctrlKey||e.metaKey)&&['b','i','k'].includes(e.key.toLowerCase())){e.preventDefault();saved=selection();apply({b:'bold',i:'italic',k:'link'}[e.key.toLowerCase()]);}

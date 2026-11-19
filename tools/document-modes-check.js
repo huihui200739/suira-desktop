@@ -21,7 +21,7 @@ async function until(fn){let last;for(let i=0;i<120;i++){try{const value=await f
  const view=async name=>{await md.evaluate(`document.querySelector('[data-md-view="${name}"]').click();true`);assert.equal(await md.evaluate('Array.from(document.querySelectorAll("[data-document-menu],[data-rich-format]")).filter(b=>b.getClientRects().length).length'),10,'All modes expose the same format controls');};
  const end=async()=>{await md.evaluate('(()=>{const e=document.getElementById("md-editor");e.focus();e.setSelectionRange(e.value.length,e.value.length);return true;})()');};
  const type=async text=>md.send('Input.insertText',{text});
- const key=async name=>{await md.send('Input.dispatchKeyEvent',{type:'keyDown',key:name,code:name,windowsVirtualKeyCode:{Enter:13,Escape:27,ArrowDown:40}[name]});await md.send('Input.dispatchKeyEvent',{type:'keyUp',key:name,code:name});};
+ const key=async (name,modifiers=0)=>{await md.send('Input.dispatchKeyEvent',{type:'keyDown',key:name,code:name==='z'?'KeyZ':name,modifiers,...(name==='Enter'&&!modifiers?{text:'\r'}:{}),windowsVirtualKeyCode:{Enter:13,Escape:27,ArrowDown:40,Tab:9,z:90}[name]});await md.send('Input.dispatchKeyEvent',{type:'keyUp',key:name,code:name});};
  await view('edit');await end();await type('/bg');await until(()=>md.evaluate('Boolean(document.querySelector(".md-context-menu [data-command=table]"))'));await key('Enter');assert.equal(await md.evaluate('document.getElementById("md-editor").value.includes("| 列一 |")'),true,'Source slash inserts a Markdown table');
  assert.equal(await md.evaluate('document.getElementById("md-editor").value.startsWith('+JSON.stringify(original)+')'),true,'Frontmatter and earlier source are untouched');
  await view('split');await end();await type('\n段落 /db');await until(()=>md.evaluate('Boolean(document.querySelector(".md-context-menu [data-command=task]"))'));await key('Enter');assert.equal(await md.evaluate('document.getElementById("md-editor").value.includes("- [ ] 段落 ")'),true,'Slash after whitespace transforms the actual line');
@@ -30,6 +30,18 @@ async function until(fn){let last;for(let i=0;i<120;i++){try{const value=await f
  await until(()=>md.evaluate('Boolean(document.querySelector("#md-preview span[style]"))'));
  await view('preview');await md.evaluate('document.activeElement.blur();true');const before=await md.evaluate('document.getElementById("md-editor").value');await key('/');await until(()=>md.evaluate('Boolean(document.querySelector(".md-command-query"))'));assert.equal(await md.evaluate('document.getElementById("md-editor").value'),before,'Opening preview slash never changes the source');await type('table');await key('Enter');assert.equal(await md.evaluate('document.getElementById("md-split").dataset.view'),'edit');assert.equal(await md.evaluate('(document.getElementById("md-editor").value.match(/列一/g)||[]).length'),2,'Preview insert returns to editable source');
  await end();await type('\n/h');await key('ArrowDown');await key('ArrowDown');await key('Enter');assert.equal(await md.evaluate('document.getElementById("md-editor").value.endsWith("## ")'),true,'Arrow keys choose the focused command, not always the first');
+ await end();await type('\n\n> 9) [x] 中文事项');await key('Enter');
+ const source=()=>md.evaluate('document.getElementById("md-editor").value');
+ assert.ok((await source()).endsWith('> 9) [x] 中文事项\n> 10) [ ] '));
+ await key('Enter');assert.ok((await source()).endsWith('> 9) [x] 中文事项\n'));
+ await key('z',2);assert.ok((await source()).endsWith('> 10) [ ] '),'Removing an empty item remains undoable');
+ await end();await type('\n\n10. 上级\n- 中文子项');await key('Tab');
+ assert.ok((await source()).endsWith('\n    - 中文子项'));
+ await key('Tab',8);assert.ok((await source()).endsWith('\n- 中文子项'));
+ await key('Enter',2);assert.ok((await source()).endsWith('\n- [ ] 中文子项'));
+ await key('Enter',2);assert.ok((await source()).endsWith('\n- [x] 中文子项'));
+ await end();await type('\n\n~~~~lang\n- 代码');await key('Enter');
+ assert.ok((await source()).endsWith('~~~~lang\n- 代码\n'),JSON.stringify((await source()).slice(-100)));
  await md.evaluate('window.WorkspaceUI.flush()');const saved=(await main.evaluate('window.suira.workspace.list("markdown")')).find(item=>item.id===doc.id);assert.ok(saved.text.startsWith('---\ntitle: 完整保留\n---'));assert.ok(saved.text.includes('color:#b93836'));
  await md.send('Emulation.setDeviceMetricsOverride',{width:900,height:700,deviceScaleFactor:1,mobile:false});assert.equal(await md.evaluate('document.documentElement.scrollWidth<=innerWidth'),true);
  await md.evaluate(`(() => {

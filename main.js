@@ -162,6 +162,7 @@ let quickReady = false;
 let captureBusy = false;
 let regionCaptureRevision = 0;
 let captureGeneration = 0;
+let lastClipboardSequence = null;
 let mainWasVisible = false;
 const pinWindows = new Set();
 const editorWindows = new Map();
@@ -856,6 +857,7 @@ async function readClipboardSnapshot() {
     return snapshot;
   }, (value) => value == null);
 
+  if (result.error) throw result.error;
   return result.value || empty;
 }
 
@@ -866,6 +868,7 @@ async function writeClipboardText(text) {
   // 记录序号与内容，供自写回环判定（第 7 节）
   clipboardLedger.record(value);
   lastClipboardText = value;
+  lastClipboardImageRaw = null;
   lastClipboardImageHash = '';
   lastClipboardImageKey = '';
   lastClipboardImageType = '';
@@ -876,11 +879,12 @@ async function writeClipboardText(text) {
 async function writeClipboardImage(image) {
   const png = image.toPNG();
   clipboardWriteGuard = await readClipboardText();
-  lastClipboardImageHash = hashBuffer(png);
+  const recording = store.getSettings().recordClipboard;
+  lastClipboardImageHash = recording ? hashBuffer(png) : '';
   // 自己的写入也记进字节缓存，下一趟轮询就不会再解一次
-  lastClipboardImageRaw = png;
+  lastClipboardImageRaw = recording ? png : null;
   lastClipboardImageKey = ''; // 让下一趟重新取一次指纹，不与上一张图混淆
-  lastClipboardImageType = 'image/png';
+  lastClipboardImageType = recording ? 'image/png' : '';
   await clipboard.write([new ClipboardItem({ 'image/png': png })]);
   lastClipboardText = await readClipboardText();
   lastClipboardFilesKey = '';
@@ -896,12 +900,15 @@ const selectionReader=require('./lib/selection').createSelectionReader({
   pause:()=>{selectionPollingPaused=true;++captureGeneration;return ()=>{++captureGeneration;selectionPollingPaused=false;};}
 });
 async function pollClipboard() {
-  if (clipboardPollBusy||selectionPollingPaused||clipboardLedger.transientDepth) return;
+  if (!store.getSettings().recordClipboard || clipboardPollBusy || clipboardSeeding || selectionPollingPaused || clipboardLedger.transientDepth) return;
+  const sequence = inputInjector.clipboardSequence();
+  if (sequence !== null && sequence === lastClipboardSequence) return;
   clipboardPollBusy = true;
   try {
     const generation = ++captureGeneration;
     const snapshot = await readClipboardSnapshot();
     if (generation !== captureGeneration||selectionPollingPaused||clipboardLedger.transientDepth) return;
+    if (sequence !== null && inputInjector.clipboardSequence() !== sequence) return;
 
     const text = snapshot.text || '';
     const filesKey = snapshot.files.length ? snapshot.files.join('\n').toLowerCase() : '';
@@ -937,6 +944,8 @@ async function pollClipboard() {
       await addImageToStore(image, source);
     }
 
+    if (generation !== captureGeneration) return;
+    lastClipboardSequence = sequence;
     lastClipboardText = text;
     lastClipboardFilesKey = filesKey;
     // 图片被清空时同步清掉缓存，下次再遇到图片会重新解码
@@ -952,16 +961,32 @@ async function pollClipboard() {
 
 async function startClipboardWatcher() {
   clearInterval(clipboardTimer);
-  const initial = await readClipboardSnapshot();
+  try {
+    if (store.getSettings().recordClipboard) await seedClipboardWatcher();
+  } finally {
+    clipboardTimer = setInterval(pollClipboard, 550);
+  }
+  clipboardWatcherError = '';
+}
+
+let clipboardSeeding = null;
+async function seedClipboardWatcher() {
+  const generation = ++captureGeneration;
+  const sequence = inputInjector.clipboardSequence();
+  const read = readClipboardSnapshot();
+  clipboardSeeding = read;
+  let initial;
+  try { initial = await read; }
+  finally { if (clipboardSeeding === read) clipboardSeeding = null; }
+  if (generation !== captureGeneration) return;
+  if (sequence !== null && inputInjector.clipboardSequence() !== sequence) return;
+  lastClipboardSequence = sequence;
   lastClipboardText = initial.text || '';
   lastClipboardFilesKey = initial.files.length ? initial.files.join('\n').toLowerCase() : '';
   lastClipboardImageRaw = initial.imageBuffer || null;
   lastClipboardImageKey = initial.imageKey || '';
   lastClipboardImageType = initial.imageType || '';
   lastClipboardImageHash = initial.imageBuffer ? hashBuffer(nativeImage.createFromBuffer(initial.imageBuffer).toPNG()) : '';
-  clipboardTimer = setInterval(pollClipboard, 550);
-  clipboardWatcherError = '';
-  console.log('[clipboard] 监听已启动，间隔 550ms（文本 / 文件引用 / 图片；图片按字节比对，未变不解码）');
 }
 
 async function migrateLegacyHistory() {
@@ -1201,23 +1226,28 @@ async function rememberReturnTarget(selectionMethod = 'unknown',knownSnapshot) {
 /* ---------- 浮层生命周期：用完一段时间就还内存 ---------- */
 
 /*
- * 隐藏窗口闲置后回收；高频热键入口保留一分钟，之后释放渲染进程。
+ * 隐藏窗口闲置后回收；高频热键入口保留 15 秒，之后释放渲染进程。
  * 截图隐藏时立即释放图像和画布，兼顾再次唤起速度与大图内存占用。
  */
-const WINDOW_IDLE_TEARDOWN_MS = 60 * 1000;
-const HOT_WINDOW_IDLE_MS = 60 * 1000;
-// 主窗口是"正门"，用户随时可能回来，回收前多留一段时间。
-// 90s 是折中：关到托盘后 1 分半还占着上百 MB 没有意义，而从托盘唤醒重建
-// 主窗口约 200–400ms，用户体感仍然接近即时。
-const MAIN_WINDOW_IDLE_MS = 30 * 1000;
+const HOT_WINDOW_IDLE_MS = 15 * 1000;
+const MAIN_WINDOW_IDLE_MS = 10 * 1000;
 
 /** 窗口隐藏后开始计时；期间被再次唤起会取消。 */
-function scheduleIdleTeardown(win, label, delay = WINDOW_IDLE_TEARDOWN_MS) {
+function scheduleIdleTeardown(win, label, delay = HOT_WINDOW_IDLE_MS) {
   if (!win || win.isDestroyed()) return;
   cancelIdleTeardown(win);
-  win.__teardownTimer = setTimeout(() => {
+  win.__teardownTimer = setTimeout(async () => {
     win.__teardownTimer = null;
     if (win.isDestroyed() || win.isVisible()) return;
+    if (win === mainWindow) {
+      try {
+        await win.webContents.executeJavaScript('Promise.resolve(window.WorkspaceUI?.flush()).then(()=>window.NoteUI?.flush())');
+      } catch (error) {
+        console.warn('主窗口草稿未保存，保留窗口:', error.message);
+        return;
+      }
+      if (win.isDestroyed() || win.isVisible() || win.__teardownTimer) return;
+    }
     console.log(`[窗口] ${label} 闲置超时，释放渲染进程`);
     win.destroy();
   }, delay);
@@ -1540,19 +1570,6 @@ function setIslandExpanded(expanded) {
   return setIslandMode(expanded ? 'sheet' : 'sleep');
 }
 
-/** 启动时把岛放进休眠态：窗口在岗（接得住拖放），屏幕上什么都没有。 */
-function armIsland() {
-  const win = createIslandWindow();
-  if (!win || win.isDestroyed()) return { ok: false, error: '浮引岛窗口创建失败' };
-  islandMode = 'sleep';
-  win.setBounds(islandBounds('sleep'));
-  win.setIgnoreMouseEvents(true);
-  win.hide();
-  scheduleIdleTeardown(win, '文件中转', HOT_WINDOW_IDLE_MS);
-  pushIslandMode();
-  return { ok: true, mode: 'sleep' };
-}
-
 let quickPointerDown=false;
 function handleIslandPointer(point) {
   const pressed=point.down&&!quickPointerDown;quickPointerDown=point.down;
@@ -1569,14 +1586,13 @@ function handleIslandPointer(point) {
     if (point.down && !contains(win.getBounds(), point)) setIslandMode('sleep');
     return;
   }
-  const display = receiverDisplay(screen.getAllDisplays(), point);
-  if (!display) {
+  if (!receiver) {
     win.setIgnoreMouseEvents(true);
     if (win.isVisible()) { win.hide(); scheduleIdleTeardown(win, '文件中转', HOT_WINDOW_IDLE_MS); }
     return;
   }
   cancelIdleTeardown(win);
-  islandDisplayId = display.id;
+  islandDisplayId = receiver.id;
   win.setBounds(islandBounds('sleep'));
   win.setIgnoreMouseEvents(false);
   if (!win.isVisible()) win.showInactive();
@@ -2178,8 +2194,6 @@ function createMainWindow() {
     if (!isQuitting) {
       event.preventDefault();
       mainWindow.hide();
-      // 关到托盘后不要一直攥着一个渲染进程：闲置几分钟就销毁，
-      // 下次从托盘/面板进来再重建（窗口位置与最大化状态已经记在 store 里）
       scheduleIdleTeardown(mainWindow, '主窗口', MAIN_WINDOW_IDLE_MS);
     }
   });
@@ -2277,14 +2291,7 @@ function showMain(page = 'shelf') {
   if(destination.webContents.isLoadingMainFrame())destination.webContents.once('did-finish-load',navigate);else navigate();
 }
 
-/* ---------- 截图覆盖层：预热常驻窗口 ---------- */
-
-/**
- * 覆盖层窗口只在启动时创建一次，之后每次截图只 show/hide。
- *
- * 之前每次截图都新建 BrowserWindow + loadFile，冷启动 300–600ms 全压在热键之后，
- * 体感就是「按下快捷键要等一会儿才出画面」。预热后第一次唤起也只剩截屏与解码时间。
- */
+/* ---------- 截图覆盖层：按需创建，短时间内复用 ---------- */
 let overlayReady = false;
 let overlayDidLoad = null;
 
@@ -2421,7 +2428,7 @@ async function beginScreenCapture(source = 'panel', options = {}) {
   try {
     if (source !== 'text-tools') await rememberReturnTarget('capture');
     if (revision !== regionCaptureRevision) return cancelled;
-    // 页面加载与屏幕采集并行；启动预热尚未完成时也不串行冷建。
+    // 页面加载与屏幕采集并行，缩短首次显示等待。
     createOverlayWindow();
     const hidingSurface = [quickWindow, clipboardBarWindow, mainWindow].some(win => win && !win.isDestroyed() && win.isVisible());
     hideQuickPanel();
@@ -3181,6 +3188,7 @@ function getAppIconLoader() {
 // 每个钉图窗口的期望尺寸：透明窗在 Windows 上被拖动时可能被系统悄悄改大，
 // 移动/缩放后按这里记录的期望值核对，发现漂移立即拉回。
 const pinExpectedSize = new WeakMap();
+const PIN_COLLAPSED_HEIGHT = 60;
 
 function createPinWindow(dataUrl, size = {}, content = null) {
   if(!content&&String(dataUrl||'').startsWith('file:')){try{content=store.data.items.find(item=>item.kind==='image'&&item.filePath===fileURLToPath(dataUrl));}catch{}}
@@ -3466,6 +3474,7 @@ function registerIpc() {
   ipcMain.on('pin:resize', (event, payload) => {
     const win = pinFromEvent(event);
     if (!win || win.isDestroyed()) return;
+    if (pinState.get(win)?.collapsed) return;
     const width = Math.max(80, Math.min(4000, Math.round(Number(payload?.width) || 0)));
     const height = Math.max(60, Math.min(4000, Math.round(Number(payload?.height) || 0)));
     if (!width || !height) return;
@@ -3496,8 +3505,8 @@ function registerIpc() {
       const b = state.savedBounds;
       // 收成一条细窄条，仍可见可点回
       const collapsedWidth = Math.max(72, Math.min(b.width, 120));
-      win.setBounds({ x: b.x, y: b.y, width: collapsedWidth, height: 40 });
-      pinExpectedSize.set(win, { width: collapsedWidth, height: 40 });
+      win.setBounds({ x: b.x, y: b.y, width: collapsedWidth, height: PIN_COLLAPSED_HEIGHT });
+      pinExpectedSize.set(win, { width: collapsedWidth, height: PIN_COLLAPSED_HEIGHT });
       win.setOpacity(0.85);
     } else {
       if (!state.collapsed) return;
@@ -3551,7 +3560,7 @@ function registerIpc() {
     const win=senderWindow(event);if(!win)return false;
     if(win.isMaximized())win.unmaximize();else win.maximize();return win.isMaximized();
   });
-  ipcMain.handle('window:close', event => {const win=senderWindow(event);if(win===mainWindow)win.hide();else win?.close();});
+  ipcMain.handle('window:close', event => senderWindow(event)?.close());
   ipcMain.handle('window:pin', event => {const win=senderWindow(event);if(!win)return false;win.setAlwaysOnTop(!win.isAlwaysOnTop());return win.isAlwaysOnTop();});
   ipcMain.handle('window:is-maximized', event => Boolean(senderWindow(event)?.isMaximized()));
   ipcMain.handle('window:reset',event=>{
@@ -4434,7 +4443,19 @@ function registerIpc() {
         voiceKeyTouched = true;
       }
     }
+    const recordedClipboard = store.getSettings().recordClipboard;
     const settings = await store.updateSettings(incoming);
+    if (settings.recordClipboard !== recordedClipboard) {
+      ++captureGeneration;
+      lastClipboardSequence = null;
+      lastClipboardText = lastClipboardFilesKey = '';
+      lastClipboardImageRaw = null;
+      lastClipboardImageKey = lastClipboardImageType = lastClipboardImageHash = '';
+      if (settings.recordClipboard) {
+        try { await seedClipboardWatcher(); }
+        catch (error) { console.warn('剪贴板基线读取失败:', error.message); }
+      }
+    }
     if(incoming.selectionEnabled===false){panelSelection=null;broadcast('quick:selection',null);}
     // 保留期/上限变小后要立刻生效，不能等下一次复制才清理
     if (incoming.retentionDays !== undefined || incoming.maxItems !== undefined) {
@@ -4700,28 +4721,9 @@ async function initialize() {
   if (!process.argv.includes('--background')) createMainWindow();
   createTray();
   registerShortcuts();
-  // 浮引岛启动即"上岗"，但处在休眠态：屏幕上看不见，只等文件拖到顶部中央。
-  // 热键入口预建并保留空页面；截图结束仍立即释放大图与画布。
-  if (!process.argv.includes('--background')) {
-    // First render the workbench; then warm one tool at a time. Each creator
-    // checks for an existing window because a shortcut may beat this timer.
-    [
-      [1200, () => { if (!quickWindow || quickWindow.isDestroyed()) createQuickWindow(); return quickWindow; }],
-      [1800, createClipboardBarWindow],
-      [2400, createOverlayWindow]
-    ].forEach(([delay, create]) => {
-      const timer = setTimeout(() => {
-        if (isQuitting) return;
-        const win = create();
-        if (win && !win.isDestroyed() && !win.isVisible()) scheduleIdleTeardown(win, '预热入口', HOT_WINDOW_IDLE_MS);
-      }, delay);
-      timer.unref?.();
-    });
-  }
   captureHost = prepareCaptureHost();
   foregroundProbe.nativeHostReady = ensureNativeHost({ sourcePath: assetPath('foreground-host.cs'), targetPath: path.join(userRoot(), 'foreground-host-v5.exe'), references: ['System.Web.Extensions.dll'] });
   foregroundProbe.start().catch(error => console.warn('前台助手预热失败:', error.message));
-  armIsland();
   islandWakeReady = setupIslandPointer().catch(error => { islandWakeError = error.message; });
   const repositionIsland = () => {
     if (islandWindow && !islandWindow.isDestroyed()) {

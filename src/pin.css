@@ -4,17 +4,28 @@ html, body { width:100%;height:100%;margin:0;overflow:hidden;background:transpar
 button { font:inherit;font-variant-numeric:tabular-nums;color:inherit;cursor:pointer;border:0;background:transparent; }
 .pin-surface { position:relative;width:100%;height:100%;border:1px solid var(--floating-edge);border-radius:var(--radius-panel);overflow:hidden;background:var(--floating-surface); }
 #pin-image { display:block;width:100%;height:100%;object-fit:contain;pointer-events:none; }
-.pin-bar { position:absolute;left:50%;bottom:10px;transform:translateX(-50%);display:flex;align-items:center;gap:2px;max-width:calc(100% - 16px);padding:5px 6px;border-radius:12px;border:1px solid var(--floating-edge);background:var(--surface);box-shadow:var(--control-shadow),var(--shadow-lift);backdrop-filter:blur(18px);opacity:0;transition:opacity var(--dur-fast);overflow-x:auto;scrollbar-width:none; }
+.pin-bar { position:absolute;left:50%;bottom:8px;transform:translateX(-50%);display:flex;align-items:center;gap:2px;max-width:calc(100% - 12px);padding:4px;border-radius:12px;border:1px solid var(--floating-edge);background:var(--surface);box-shadow:var(--control-shadow),var(--shadow-lift);backdrop-filter:blur(18px);opacity:0;transition:opacity var(--dur-fast); }
 .pin-surface:hover .pin-bar,.pin-bar:focus-within { opacity:1; }
-.pin-bar button { flex:0 0 26px;width:26px;height:28px;border-radius:var(--radius-sm);font-size:16px; }
-.pin-bar button:hover { background:var(--control-selected); }
-.pin-bar span { min-width:34px;text-align:center;color:var(--ink-soft);font-variant-numeric:tabular-nums; }
-.pin-bar button { display:grid;place-items:center; }
-.pin-bar button [data-icon] { display:contents; }
-.pin-bar i { flex:0 0 1px;width:1px;height:16px;background:var(--line);margin:0 3px; }
-.pin-menu { position:absolute;z-index:10;width:min(226px,calc(100% - 12px));max-height:calc(100% - 12px);overflow:auto;padding:5px;border-radius:12px;border:1px solid var(--floating-edge);background:var(--surface);box-shadow:var(--shadow-lift);backdrop-filter:blur(18px); }
-.pin-menu button { width:100%;display:flex;gap:12px;align-items:center;justify-content:space-between;text-align:left;padding:8px;border-radius:7px;white-space:nowrap; }
-.pin-menu button:hover,.pin-menu button:focus-visible { background:var(--control-selected); }
+.pin-bar button { flex:0 0 28px;width:28px;height:28px;padding:0;display:grid;place-items:center;border-radius:var(--radius-sm);color:var(--ink-soft); }
+.pin-bar button:hover:not(:disabled) { background:var(--control-selected);color:var(--ink); }
+.pin-bar button [data-icon] { display:grid;place-items:center; }
+.pin-bar button svg { display:block;width:18px;height:18px; }
+.pin-bar button:disabled,.pin-compact-adjust button:disabled { opacity:.45;cursor:default; }
+.pin-adjust { display:flex;align-items:center;padding-right:3px;border-right:1px solid var(--line); }
+.pin-value { width:36px;text-align:center;color:var(--ink-soft);font-variant-numeric:tabular-nums;font-size:12px; }
+.pin-compact-adjust { display:none; }
+@media (max-width: 330px) {
+  .pin-adjust { display:none; }
+  .pin-compact-adjust { display:block; }
+  .pin-menu > button > kbd { display:none; }
+}
+.is-collapsed .pin-compact-adjust { display:none; }
+@media (max-width: 145px) {
+  .pin-bar #copy,.pin-bar #collapse { display:none; }
+}
+.pin-menu { position:fixed;z-index:10;width:min(226px,calc(100% - 12px));max-height:calc(100% - 12px);overflow:auto;padding:5px;border-radius:12px;border:1px solid var(--floating-edge);background:var(--surface);box-shadow:var(--shadow-lift);backdrop-filter:blur(18px); }
+.pin-menu > button,.pin-compact-adjust > button { width:100%;display:flex;gap:12px;align-items:center;justify-content:space-between;text-align:left;padding:8px;border-radius:7px;overflow-wrap:anywhere; }
+.pin-menu > button:hover,.pin-menu > button:focus-visible,.pin-compact-adjust > button:hover:not(:disabled),.pin-compact-adjust > button:focus-visible { background:var(--control-selected); }
 .pin-menu kbd { font:inherit;font-variant-numeric:tabular-nums;color:var(--ink-muted); }
 .pin-menu hr { border:0;border-top:1px solid var(--line);margin:4px 5px; }
 #top-item[aria-checked="false"] span { visibility:hidden; }
@@ -23,4 +34,4 @@ button { font:inherit;font-variant-numeric:tabular-nums;color:inherit;cursor:poi
 #restore { touch-action:none;cursor:grab; }
 #restore:active { cursor:grabbing;scale:none; }
 .pin-notice.is-error { color:var(--danger);border-color:var(--danger); }
-body.is-collapsed #pin-image,body.is-collapsed .pin-bar { display:none; }
+body.is-collapsed #pin-image,body.is-collapsed #pin-text,body.is-collapsed .pin-bar { display:none; }
