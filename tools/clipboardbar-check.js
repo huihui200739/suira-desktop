@@ -151,6 +151,7 @@ const MOCK = `
   window.suira = window.suira || {};
   window.suira.imageEditor = { open: function(options){ calls.edit=options;return Promise.resolve(window.__editFail?{ok:false,error:'原图已被移动'}:{ok:true}); } };
   window.suira.content = {
+    get: function(id){return Promise.resolve(clone(ALL.find(function(record){ return record.id===id; })||null));},
     togglePin: function(id){
       if(window.__pinThrow) return Promise.reject(new Error('写入失败'));
       var item = ALL.find(function(record){ return record.id === id; });
@@ -171,6 +172,14 @@ const MOCK = `
       if (typeof callback === 'function') changedCallbacks.push(callback);
       return function(){ changedCallbacks = changedCallbacks.filter(function(fn){ return fn !== callback; }); };
     }
+  };
+  window.suira.actions = {
+    list: function(id){
+      calls.actionLists = (calls.actionLists || []).concat(id);
+      var image = id.startsWith('img');
+      return Promise.resolve([{id: 'output.copy', label: '复制', hint: ''}, image ? {id: 'ocr.local', label: '识别文字', hint: ''} : {id: 'text.translate', label: '翻译', hint: ''}]);
+    },
+    run: function(id, actionId){ calls.action = {id, actionId};return Promise.resolve({ok:true,message:'已完成'}); }
   };
   window.suira.returnTo = {
     commit: function(payload){
@@ -358,7 +367,7 @@ const PROBE = `
 
 function buildFixtures() {
   fs.mkdirSync(path.join(TMP,'art'),{recursive:true});
-  for (const asset of ['ui-motion.css','ui-motion.js','tool-art.css','tool-art.js', 'liquid-glass.js','liquid-glass.css','companion.js', 'companion.css', 'art/companion-courier.png','tool-surfaces.css']) fs.copyFileSync(path.join(ROOT,'src',asset),path.join(TMP,asset));
+  for (const asset of ['ui-motion.css','ui-motion.js','tool-art.css','tool-art.js', 'action-strip.js','action-strip.css','relay-surfaces.js','art/companion-courier.png']) fs.copyFileSync(path.join(ROOT,'src',asset),path.join(TMP,asset));
   fs.writeFileSync(path.join(TMP, '__bar_mock.js'), MOCK, 'utf8');
   fs.writeFileSync(path.join(TMP, '__bar_probe.js'), PROBE, 'utf8');
   fs.copyFileSync(path.join(ROOT, 'src', 'theme.css'), path.join(TMP, 'theme.css'));
@@ -554,21 +563,19 @@ async function runChecks(send) {
     JSON.stringify(initial.fileCountTexts));
   check('文字卡片摘要不超过 180 字', initial.snippetLengths.length === 3
     && initial.snippetLengths.every((length) => length <= 180), JSON.stringify(initial.snippetLengths));
-  check('卡片不重复显示标题',initial.duplicateCaptions===0);
+  check('图片与文字不重复显示标题', initial.duplicateCaptions===0);
   check('来源应用图标按需显示',initial.sourceIcons>0);
   check('超长文本被截断到 180 字', initial.snippetLengths.includes(180), JSON.stringify(initial.snippetLengths));
   check('默认选中第 1 条', initial.selectedIndex === 0 && initial.selectedId === 'img-1',
     initial.selectedIndex + ' / ' + initial.selectedId);
-  check('底部显示类型 / 标题 / 来源应用 / 相对时间',
-    initial.selectionText.includes('图片') && initial.selectionText.includes('来源 微信')
-    && initial.selectionText.includes('分钟前'), initial.selectionText);
+  check('底部显示选中位置和标题', initial.selectionText.includes('1 / 8') && initial.selectionText.includes('屏幕截图 1'), initial.selectionText);
   check('卡片内容不横向溢出', initial.cardOverflow.every((value) => value === 0),
     JSON.stringify(initial.cardOverflow));
   check('页面无整体滚动条 / 溢出', noOverflow(initial),
     JSON.stringify([initial.docScrollW, initial.docClientW, initial.docScrollH, initial.docClientH]));
   check('轨道可横向滚动', initial.trackOverflowX === 'auto' && initial.trackScrollWidth > initial.trackClientWidth,
     initial.trackScrollWidth + ' > ' + initial.trackClientWidth);
-  check('轨道平滑滚动且不显示滚动条', initial.trackScrollBehavior === 'smooth'
+  check('轨道不显示滚动条', initial.trackScrollBehavior === 'auto'
     && initial.trackScrollbarH === 0 && initial.trackScrollbarW === 0,
     initial.trackScrollBehavior + ' / ' + initial.trackScrollbarH);
 
@@ -637,7 +644,7 @@ async function runChecks(send) {
   const narrow = await runScenario(send, 'layout', 720, 310);
   const narrowView = narrow.initial;
   check('窄屏仍渲染 8 张卡片', narrowView.cardCount === 8, 'cards=' + narrowView.cardCount);
-  check('窄屏保留完整预览尺寸', narrowView.cardRects.every((rect) => rect.w === 220 && rect.h >= 170),
+  check('窄屏保留卡片宽度与可读高度', narrowView.cardRects.every((rect) => rect.w === 220 && rect.h >= 144),
     JSON.stringify(narrowView.cardRects));
   check('窄屏无页面级滚动条 / 溢出', noOverflow(narrowView),
     JSON.stringify([narrowView.docScrollW, narrowView.docClientW, narrowView.docScrollH, narrowView.docClientH]));
@@ -726,6 +733,30 @@ async function runChecks(send) {
     return result;
   })()`);
   for (const [name, passed] of Object.entries(toolbar)) check(name, passed);
+  const moreMenu = await evaluate(send, `(async()=>{
+    const wait=()=>new Promise(r=>setTimeout(r,80)), key=(target,k,ctrlKey=false)=>target.dispatchEvent(new KeyboardEvent('keydown',{key:k,ctrlKey,bubbles:true,cancelable:true}));
+    window.__fireShown();await wait();
+    const menu=document.querySelector('#bar-action-strip [popover]'), summary=document.querySelector('#bar-action-strip summary');
+    const pinnedCard=document.querySelector('[data-id="img-1"]');pinnedCard.focus();
+    key(pinnedCard,'k',true);await wait();
+    const open=menu.matches(':popover-open') && document.activeElement===menu.querySelector('input');
+    const bounds=menu.getBoundingClientRect();const onScreen=bounds.left>=0 && bounds.right<=innerWidth && bounds.top>=0 && bounds.bottom<=innerHeight;
+    const before=window.__calls.commit.length;key(summary,'Enter');
+    const noPaste=window.__calls.commit.length===before;
+    key(document.activeElement,'Escape');await wait();
+    const returnsFocus=!menu.matches(':popover-open') && document.activeElement===pinnedCard;
+    document.querySelector('[data-id="text-1"]').click();await wait();
+    key(document.activeElement,'1');await wait();
+    const selectedAction=window.__calls.action?.id==='text-1' && window.__calls.action?.actionId==='output.copy';
+    summary.click();await wait();
+    const beforeCount=window.__calls.actionLists.length;
+    window.__fireChanged();await wait();
+    const backgroundKeepsMenu=menu.matches(':popover-open') && window.__calls.actionLists.length===beforeCount;
+    document.querySelector('[data-filter="image"]').click();await wait();
+    const filterClosesMenu=!menu.matches(':popover-open');
+    return {open,onScreen,noPaste,returnsFocus,selectedAction,backgroundKeepsMenu,filterClosesMenu};
+  })()`);
+  for (const [name, ok] of Object.entries(moreMenu)) check('剪贴板更多动作：'+name, ok);
   console.log('\n== 后台刷新保持卡片、焦点与浏览位置 ==');
   const stable = await evaluate(send, `(async function(){
     const wait=ms=>new Promise(r=>setTimeout(r,ms)), track=document.getElementById('bar-track');
@@ -733,6 +764,7 @@ async function runChecks(send) {
     document.querySelector('[data-filter="all"]').click();await wait(80);
     track.scrollTo({left:180,behavior:'instant'});
     const anchor=Array.from(track.children).find(c=>c.dataset.id==='img-2');
+    anchor.click();
     anchor.focus({preventScroll:true});
     const oldLeft=anchor.getBoundingClientRect().left;
     window.__listDelay=250;window.__fireChanged();await wait(30);
@@ -752,34 +784,33 @@ async function runChecks(send) {
   const lateRefresh = await evaluate(send, `(async function(){
     const wait=ms=>new Promise(r=>setTimeout(r,ms));
     window.__listDelay=220;window.__fireChanged();await wait(30);
+    const before=window.__calls.commit.length, hides=window.__calls.hide;
     document.querySelector('[data-id="text-1"]').click();await wait(280);
     const selection=document.querySelector('.bar-card.is-selected')?.dataset.id==='text-1';
-    const singleClickCommitted=window.__calls.commit.at(-1)?.itemId==='text-1';
-    const hiddenAfterClick=window.__calls.hide>0;
+    const clickOnlySelects=window.__calls.commit.length===before && window.__calls.hide===hides;
+    document.querySelector('[data-id="text-1"]').dispatchEvent(new MouseEvent('dblclick',{bubbles:true}));await wait(80);
+    const doubleClickPastes=window.__calls.commit.length===before+1 && window.__calls.commit.at(-1)?.itemId==='text-1' && window.__calls.hide===hides+1;
     window.__fireShown();await wait(30);
     const search=document.getElementById('bar-search');search.value='微信';search.dispatchEvent(new Event('input',{bubbles:true}));
     await wait(280);
     const query=search.value==='微信' && document.querySelectorAll('.bar-card').length===1 && document.querySelector('.bar-card').dataset.id==='img-1';
     search.value='';search.dispatchEvent(new Event('input',{bubbles:true}));window.__listDelay=0;
-    return {selectionDuringRefresh:selection,singleClickCommitted,hiddenAfterClick,queryDuringReopen:query};
+    return {selectionDuringRefresh:selection,clickOnlySelects,doubleClickPastes,queryDuringReopen:query};
   })()`);
   for (const [name, passed] of Object.entries(lateRefresh)) check(name, passed);
   const shared = await evaluate(send, `(async function(){
-    const group=document.querySelector('[data-selection-group]');
+    const group=document.querySelector('.bar-filters');
     for(const filter of ['text','image','files','all']) group.querySelector('[data-filter="'+filter+'"]').click();
     await new Promise(r=>setTimeout(r,240));
-    const active=group.querySelector('[aria-pressed="true"]'), indicator=group.querySelector('.shared-selection');
-    const a=active.getBoundingClientRect(),b=indicator.getBoundingClientRect();
+    const active=group.querySelector('[aria-pressed="true"]');
     const toast=document.createElement('div');
     window.SuiraUI.notify(toast,'已复制');window.SuiraUI.notify(toast,'已复制');
-    return {oneIndicator:group.querySelectorAll('.shared-selection').length===1,
-      rapidSelection:active.dataset.filter==='all' && Math.abs(a.left-b.left)<1 && Math.abs(a.width-b.width)<1,
+    return {oneActiveFilter:group.querySelectorAll('[aria-pressed="true"]').length===1,
+      rapidSelection:active.dataset.filter==='all',
       repeatedFeedback:toast.textContent==='已复制（2 次）' && toast.getAttribute('aria-live')==='polite'};
   })()`);
   for (const [name, passed] of Object.entries(shared)) check(name, passed);
   await send('Emulation.setEmulatedMedia',{features:[{name:'prefers-reduced-motion',value:'reduce'}]});
-  const reduced=await evaluate(send, `getComputedStyle(document.querySelector('.shared-selection')).transitionDuration==='0s'`);
-  check('减少动态效果立即切换状态',reduced);
   const reducedScroll=await evaluate(send, `(function(){
     const original=Element.prototype.scrollIntoView;let behavior='';
     Element.prototype.scrollIntoView=function(options){behavior=options.behavior;};
@@ -788,14 +819,14 @@ async function runChecks(send) {
   })()`);
   check('减少动态效果也关闭键盘平滑滚动',reducedScroll);
   await send('Emulation.setEmulatedMedia',{features:[{name:'prefers-color-scheme',value:'light'}]});
-  for (const [width,height] of [[464,310],[720,210]]) {
+  for (const [width,height] of [[320,310],[464,310],[720,210]]) {
     const compact = await runScenario(send, 'layout', width, height);
     check('小屏 '+width+'×'+height+' 不溢出且可浏览', noOverflow(compact.initial) && compact.initial.cardCount===8 && compact.initial.errors.length===0);
   }
 
   console.log('\n== 截图（临时目录，不污染仓库）==');
   runSequence += 1;
-  await send('Emulation.setDeviceMetricsOverride', { ...CLIPBOARD_SHELF_SIZE, deviceScaleFactor: 2, mobile: false });
+  await send('Emulation.setDeviceMetricsOverride', { ...CLIPBOARD_SHELF_SIZE, deviceScaleFactor: 1.25, mobile: false });
   await send('Page.navigate', {
     url: fileUrl(path.join(TMP, '__bar_check.html')) + '?scenario=main&probe=0&run=shot-' + runSequence
   });

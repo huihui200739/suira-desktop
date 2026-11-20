@@ -9,7 +9,7 @@
  * 职责：
  * - 从 window.suira.content 拉取内容库列表，按类型渲染卡片：
  *   图片用 thumbnail 缩略图，文字用前 180 字摘要，files 用文件名 + 文件数，link 用域名；
- * - 键盘（← → Home End Enter Esc）与滚轮横向浏览，单击复制并粘贴；
+ * - 键盘（← → Home End Enter Esc）与滚轮横向浏览，单击选择，双击粘贴；
  * - Enter 调 window.suira.returnTo.commit({ itemId, intent: 'paste-current' })：
  *   直接粘回成功就关闭，只是复制兜底就在底部提示行显示原因并保留窗口；
  * - clipboardBar.onShown 时重新拉取并重置选中项，content.onChanged 仅在可见时刷新。
@@ -161,21 +161,11 @@
   }
 
   function selectionTitle(item) {
+    if (item.kind === 'link') return linkDomain(item);
     if (item.title) return item.title;
     if (item.kind === 'image') return '图片';
     if (item.kind === 'files') return filesTitle(item);
-    if (item.kind === 'link') return linkDomain(item);
     return textSummary(item);
-  }
-
-  function selectionMeta(item) {
-    const bits = [];
-    if (item.appName) bits.push(`来源 ${item.appName}`);
-    const time = relativeTime(item.createdAt);
-    const dimensions = item.meta.width && item.meta.height ? `${item.meta.width} × ${item.meta.height}` : '';
-    if (dimensions) bits.push(dimensions);
-    if (time) bits.push(time);
-    return bits.join('，');
   }
 
   /* ---------- 渲染 ---------- */
@@ -190,27 +180,32 @@
   function cardMarkup(item, index) {
     const label = KIND_LABELS[item.kind] || '内容';
     const time = relativeTime(item.createdAt);
-    let visual = '';
+    let visual;
     let visualClass = 'card-visual';
-
     if (item.kind === 'image') {
       visual = imageVisual(item);
       if (!item.thumbnail) visualClass += ' is-placeholder';
-    } else if (item.kind === 'files') {
+    } else if (item.kind === 'files' || item.kind === 'link') {
+      const isLink = item.kind === 'link';
+      const name = isLink ? linkDomain(item) : filesTitle(item);
+      const url = isLink ? firstUrl(item.text) || firstUrl(item.title) : '';
+      const details = isLink ? url.replace(/^https?:\/\//i, '') : `${fileCount(item)} 个文件`;
       visualClass += ' is-stack';
-      visual = `<span class="card-glyph">${window.SuiraToolArt?.render('file')||GLYPHS.file}</span><span class="card-count">${fileCount(item)} 个文件</span>`;
-    } else if (item.kind === 'link') {
-      visualClass += ' is-stack';
-      visual = `<span class="card-glyph">${window.SuiraToolArt?.render('url')||GLYPHS.link}</span>
-        <b class="card-name" title="${escapeHtml(linkDomain(item))}">${escapeHtml(linkDomain(item))}</b>`;
+      visual = `<span class="card-glyph" aria-hidden="true">${isLink ? GLYPHS.link : GLYPHS.file}</span>
+        <div class="card-stack"><b class="card-name">${escapeHtml(name)}</b>
+          ${details ? `<span class="${isLink ? 'card-caption' : 'card-count'}">${escapeHtml(details)}</span>` : ''}</div>`;
     } else {
       visual = `<p class="card-snippet">${escapeHtml(textSummary(item))}</p>`;
     }
 
-    const tooltip = [label, selectionTitle(item), time].filter(Boolean).join('，');
+    const edit = item.kind === 'image' && window.suira?.imageEditor
+      ? '<button class="card-edit" type="button" tabindex="-1" data-edit-image aria-label="编辑这张图片">编辑</button>' : '';
+    const source = item.appName ? `<span class="card-source-icon" data-source-app="${escapeHtml(item.appName)}" role="img" aria-label="来源：${escapeHtml(item.appName)}"><span>${escapeHtml(item.appName.slice(0, 1).toUpperCase())}</span></span>` : '';
+    const tooltip = [label, selectionTitle(item), item.appName, time].filter(Boolean).join('，');
     return `<article class="bar-card" id="bar-card-${index}" role="option" aria-selected="false" tabindex="-1" data-index="${index}" data-id="${escapeHtml(item.id)}" data-kind="${escapeHtml(item.kind)}" title="${escapeHtml(tooltip)}">
-      <div class="card-head"><span class="card-type">${label}${item.pinned ? ' ★' : ''}</span>${item.kind==='image'&&window.suira?.imageEditor?'<button class="card-edit" type="button" data-edit-image aria-label="编辑这张图片">编辑</button>':''}<span class="card-index">${index + 1}</span><span class="card-time">${escapeHtml(time)}</span>${item.appName?`<span class="card-source-icon" data-source-app="${escapeHtml(item.appName)}" role="img" aria-label="来源：${escapeHtml(item.appName)}"><span>${escapeHtml(item.appName.slice(0,1).toUpperCase())}</span></span>`:''}</div>
+      <div class="card-head"><span class="card-type">${label}${item.pinned ? ' <span class="card-favorite" aria-label="已收藏">★</span>' : ''}</span>${edit}</div>
       <div class="${visualClass}">${visual}</div>
+      <div class="card-foot">${source}<span class="card-time">${escapeHtml(time)}</span></div>
     </article>`;
   }
 
@@ -291,24 +286,27 @@
       return;
     }
     line.classList.remove('is-empty');
-    const meta = selectionMeta(item);
-    line.innerHTML = `<span class="sel-kind">${escapeHtml(KIND_LABELS[item.kind] || '内容')}</span>
-      <span class="sel-title">${escapeHtml(selectionTitle(item))}</span>
-      ${meta ? `<span class="sel-meta">${escapeHtml(meta)}</span>` : ''}`;
+    line.innerHTML = `<span class="sel-position" title="← → 选择">${state.selected + 1} / ${state.items.length}</span>
+      <span class="sel-title">${escapeHtml(selectionTitle(item))}</span>`;
   }
 
   function syncSelection() {
-    const track = $('#bar-track');
     const cards = $$('.bar-card');
+    const focusedCard = document.activeElement?.closest('.bar-card');
     cards.forEach((card, index) => {
       const active = index === state.selected;
       card.classList.toggle('is-selected', active);
       card.setAttribute('aria-selected', active ? 'true' : 'false');
       card.setAttribute('tabindex', active ? '0' : '-1');
     });
-    if (track) {
-      if (state.selected >= 0) track.setAttribute('aria-activedescendant', `bar-card-${state.selected}`);
-      else track.removeAttribute('aria-activedescendant');
+    if (focusedCard && cards[state.selected] && focusedCard !== cards[state.selected]) {
+      cards[state.selected].focus({ preventScroll: true });
+    }
+    const actionHost = $('#bar-action-strip');
+    const actionId = state.visible && !state.previewItem ? currentSelectedId() : '';
+    if (actionHost.dataset.itemId !== actionId) {
+      actionHost.dataset.itemId = actionId;
+      actionHost.dispatchEvent(new Event('bar-selection-change'));
     }
     renderSelectionLine();
     const item = state.items[state.selected];
@@ -355,8 +353,6 @@
           card.id = next.id;
           card.dataset.index = String(index);
           card.title = next.title;
-          const number = card.querySelector('.card-index');
-          if (number) number.textContent = String(index+1);
         }
         card._contentMarkup = markup;
         card._recordSignature = JSON.stringify(item);
@@ -411,6 +407,7 @@
     if (!total) return;
     state.interactionRevision++;
     const next = Math.max(0, Math.min(total - 1, Number(index) || 0));
+    if (next !== state.selected) closePreview(false);
     state.selected = next;
     syncSelection();
     scrollCardIntoView(next, options.behavior || 'smooth');
@@ -468,7 +465,9 @@
       return kindMatch && (!query || [item.title, item.text, item.filePath, item.appName].join(' ').toLocaleLowerCase().includes(query));
     });
     const index = keepId ? state.items.findIndex(item => item.id === keepId) : -1;
-    state.selected = index >= 0 ? index : state.items.length ? 0 : -1;
+    const selected = index >= 0 ? index : state.items.length ? 0 : -1;
+    if (state.previewItem && state.previewItem.id !== state.items[selected]?.id) closePreview(false);
+    state.selected = selected;
     render();
     if (reset) {
       resetScroll();
@@ -553,7 +552,7 @@
   }
 
   async function submitSelected() {
-    if (state.committing || state.loading) return;
+    if (state.committing || state.editing || state.loading) return;
     const item = state.items[state.selected];
     if (!item) return;
     const api = state.returnApi;
@@ -609,20 +608,34 @@
   /* ---------- 用户操作 ---------- */
 
   let previewRevision=0;
-  function closePreview(focus=true){previewRevision++;state.previewItem=null;$('#bar-preview').hidden=true;if(focus)$('#bar-preview-toggle').focus();}
+  function closePreview(focus = true) {
+    previewRevision++;
+    if (!state.previewItem) return;
+    state.previewItem = null;
+    $('#bar-preview').hidden = true;
+    $('#bar-preview-toggle').setAttribute('aria-expanded', 'false');
+    $('#bar-preview-content').replaceChildren();
+    syncSelection();
+    if (focus) $('#bar-preview-toggle').focus({ preventScroll: true });
+  }
   async function previewSelected(){
     const selected=state.items[state.selected];if(!selected)return;
     const revision=++previewRevision;
     try{
       const raw=typeof state.contentApi?.get==='function'?await state.contentApi.get(selected.id):selected;
-      if(revision!==previewRevision)return;
+      if (revision !== previewRevision || !state.visible || currentSelectedId() !== selected.id) return;
       const item=normalizeItem(raw,0);if(!item)throw Error('这条记录已不存在');
       state.previewItem=item;$('#bar-preview-title').textContent=selectionTitle(item);
       const body=$('#bar-preview-content');body.replaceChildren();
       if(item.kind==='image'&&item.thumbnail){const image=document.createElement('img');image.src=item.thumbnail;image.alt=item.title||'图片预览';body.append(image);}
       else{const text=document.createElement('pre');text.textContent=item.text||item.filePath||item.title;body.append(text);}
-      $('#bar-preview').hidden=false;body.focus();
-    }catch(error){showNotice(errorText(error,'预览失败'),true);}
+      $('#bar-preview').hidden = false;
+      $('#bar-preview-toggle').setAttribute('aria-expanded', 'true');
+      syncSelection();
+      body.focus({ preventScroll: true });
+    } catch (error) {
+      if (revision === previewRevision) showNotice(errorText(error, '预览失败'), true);
+    }
   }
   async function copySelected(source='selection'){
     // 预览里的 Ctrl+C 复制预览项；底部「复制」按钮始终作用于当前选中项，
@@ -646,7 +659,8 @@
       return;
     }
     // 按钮的 Enter / Space 交给原生点击，不能被全局 Enter 抢走去粘贴。
-    if (event.target.closest?.('button') && (key === 'Enter' || key === ' ')) return;
+    if (event.target.closest?.('.relay-result, #bar-action-strip [popover]')) return;
+    if (event.target.closest?.('button, summary') && (key === 'Enter' || key === ' ')) return;
     const search = $('#bar-search');
     if ((event.ctrlKey || event.metaKey) && key.toLowerCase() === 'f') {
       event.preventDefault(); search?.focus(); search?.select(); return;
@@ -710,11 +724,14 @@
     if (!card) return;
     const index = Number(card.dataset.index);
     if (!Number.isFinite(index)) return;
-    // 鼠标点中另一张卡片时，旧预览不能继续留在屏幕上并影响「复制」的目标
-    if(state.previewItem && state.previewItem.id!==state.items[index]?.id) closePreview();
-    selectIndex(index);
-    if(closestFrom(event.target,'[data-edit-image]')) {editSelectedImage();return;}
-    submitSelected();
+    if (state.selected !== index) {
+      state.interactionRevision++;
+      closePreview(false);
+      state.selected = index;
+      syncSelection();
+    }
+    card.focus({ preventScroll: true });
+    if (closestFrom(event.target, '[data-edit-image]')) editSelectedImage();
   }
 
   async function editSelectedImage() {
@@ -742,6 +759,7 @@
           state.query = ''; state.filter = 'all';
           if ($('#bar-search')) $('#bar-search').value = '';
           load({ resetSelection: true });
+          if (document.activeElement !== document.body) document.activeElement.blur();
         });
         if (typeof off === 'function') state.offShown = off;
         // 主进程每次 show 都会发 clipboard-bar:shown，可见性变化不再重复拉取
@@ -781,7 +799,7 @@
     $('#bar-submit')?.addEventListener('click', submitSelected);
     $('#bar-pin')?.addEventListener('click', toggleSelectedPin);
     $('#bar-edit')?.addEventListener('click', editSelectedImage);
-    $('#bar-preview-toggle')?.addEventListener('click',previewSelected);
+    $('#bar-preview-toggle')?.addEventListener('click', () => state.previewItem ? closePreview() : previewSelected());
     $('#bar-preview-close')?.addEventListener('click',()=>closePreview());
     $('#bar-copy')?.addEventListener('click',()=>copySelected('selection'));
     track?.addEventListener('contextmenu',event=>{const card=closestFrom(event.target,'.bar-card');if(!card)return;event.preventDefault();selectIndex(Number(card.dataset.index));previewSelected();});
@@ -796,6 +814,10 @@
     });
     if (track) {
       track.addEventListener('click', onTrackClick);
+      track.addEventListener('dblclick', event => {
+        const card = closestFrom(event.target, '.bar-card');
+        if (card?.dataset.id === currentSelectedId() && !closestFrom(event.target, 'button')) submitSelected();
+      });
       track.addEventListener('wheel', onWheel, { passive: false });
     }
     const retry = $('#bar-retry');
@@ -809,6 +831,11 @@
     document.addEventListener('visibilitychange', () => {
       const wasVisible = state.visible;
       state.visible = document.visibilityState === 'visible';
+      if (!state.visible) {
+        closePreview(false);
+        document.getElementById('relay-result')?.close();
+        syncSelection();
+      }
       if (state.visible && !wasVisible && !state.hasOnShown) {
         // 没有 onShown 接口时，靠可见性变化兜底刷新
         load({ resetSelection: true });
@@ -838,5 +865,9 @@
     load({ resetSelection: true });
   }
 
+  window.ClipboardBarSelection = {
+    item: () => state.previewItem || !state.visible ? null : state.items[state.selected],
+    notice: showNotice
+  };
   init();
 })();

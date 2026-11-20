@@ -14,7 +14,7 @@
   const scene=document.createElement('div');scene.className='glass-scene';scene.setAttribute('aria-hidden','true');surface.prepend(scene);
   const card=document.getElementById('setting-theme')?.closest('.setting-card');
   if(card){
-   const row=document.createElement('label');row.className='setting-row';row.innerHTML='<span><b>玻璃浓度</b><small>从轻透到纯色，所有窗口同步；系统关闭透明效果时使用纯色</small></span><span class="glass-density"><input data-glass-setting type="range" min="0" max="3" step="1" value="1" aria-label="玻璃浓度"><output>实时玻璃</output></span>';
+   const row=document.createElement('label');row.className='setting-row';row.innerHTML='<span><b>玻璃浓度</b><small>调整支持玻璃效果的窗口；系统关闭透明效果时使用纯色</small></span><span class="glass-density"><input data-glass-setting type="range" min="0" max="3" step="1" value="1" aria-label="玻璃浓度"><output>实时玻璃</output></span>';
    card.append(row);const input=row.querySelector('input');input.addEventListener('input',()=>{input.setAttribute('aria-valuetext',labels[Number(input.value)]);input.nextElementSibling.textContent=labels[Number(input.value)];});input.addEventListener('change',async event=>{try{const result=await api.settings.update({panelMaterial:modes[Number(event.target.value)]});sync(result?.settings||{panelMaterial:mode});}catch{sync({panelMaterial:mode});}});
   }
   api?.settings?.get?.().then(sync).catch(()=>sync());api?.settings?.onChanged?.(sync);sync();

@@ -19,7 +19,7 @@ async function until(fn){let last;for(let i=0;i<180;i++){try{const v=await fn();
  let result=await run('今天的第一段','text.to-markdown');assert.ok(result.ok,JSON.stringify(result));let docs=await main.evaluate('window.suira.workspace.list("markdown")');assert.equal(docs.length,1);assert.ok(docs[0].title.startsWith('今天 · '));
  await run('今天的第二段','text.to-markdown');assert.equal((await main.evaluate('window.suira.workspace.list("markdown")')).length,1);
  console.log('CHECK '+"markdown");
- await main.evaluate('window.suira.workspace.open("markdown")');const md=await page('tool=markdown','Boolean(window.WorkspaceUI?.documentEditor)');
+ await main.evaluate('window.suira.workspace.open("markdown")');const md=await page('tool=markdown','Boolean(window.WorkspaceUI && !document.getElementById("md-body").hidden && document.getElementById("md-editor").value)');
  await md.evaluate('document.querySelector("[data-md-view=edit]").click();var relayArea37=document.getElementById("md-editor");relayArea37.value+="\\n刚输入尚未保存";relayArea37.dispatchEvent(new Event("input"));true');
  result=await run('接力追加','text.to-markdown');assert.ok(result.ok,JSON.stringify(result));await until(()=>md.evaluate('document.getElementById("md-editor").value.includes("刚输入尚未保存\\n\\n接力追加")'));
  console.log('CHECK '+"note");
@@ -42,7 +42,7 @@ async function until(fn){let last;for(let i=0;i<180;i++){try{const v=await fn();
  overlay=await sourceCapture('capture-text');const before=await md.evaluate('document.getElementById("md-editor").value');await overlay.evaluate('document.querySelector("[data-action=cancel]").click();true');await until(()=>md.evaluate('document.visibilityState==="visible"'));assert.equal(await md.evaluate('document.getElementById("md-editor").value'),before);
  // Visual slash capture retains content on both sides of a selection.
  console.log('CHECK '+"visual capture");
- await md.evaluate('document.querySelector("[data-md-view=write]").click();WorkspaceUI.documentEditor.focus();WorkspaceUI.documentEditor.setSelection(2);true');await md.evaluate('WorkspaceUI.documentEditor.apply("capture-text");true');await until(()=>overlay.evaluate('document.visibilityState==="visible"&&document.getElementById("loading-state").hidden'));await overlay.evaluate('state.selection={x:30,y:30,w:500,h:150};state.selectionReady=true;autoAdvanceForIntent();true');await until(()=>md.evaluate('WorkspaceUI.documentEditor.getMarkdown().includes("明天下午3点开会")'));
+ await md.evaluate('document.querySelector("[data-md-view=write]").click();true');await until(()=>md.evaluate('Boolean(window.WorkspaceUI?.documentEditor)'));await md.evaluate('WorkspaceUI.documentEditor.focus();WorkspaceUI.documentEditor.setSelection(2);true');await md.evaluate('WorkspaceUI.documentEditor.apply("capture-text");true');await until(()=>overlay.evaluate('document.visibilityState==="visible"&&document.getElementById("loading-state").hidden'));await overlay.evaluate('state.selection={x:30,y:30,w:500,h:150};state.selectionReady=true;autoAdvanceForIntent();true');await until(()=>md.evaluate('WorkspaceUI.documentEditor.getMarkdown().includes("明天下午3点开会")'));
  // OCR result, translation result and clipboard use the same component.
  console.log('CHECK '+"OCR relay");
  await main.evaluate('window.suira.panel.run("ocr")');await until(()=>overlay.evaluate('document.visibilityState==="visible"&&document.getElementById("loading-state").hidden'));await overlay.evaluate('state.selection={x:30,y:30,w:500,h:150};state.selectionReady=true;autoAdvanceForIntent();true');await until(()=>overlay.evaluate('document.getElementById("ocr-result-text").value==="明天下午3点开会"&&document.querySelectorAll("#ocr-action-strip button[data-action-id]").length>3')); await overlay.evaluate('[...document.querySelectorAll("#ocr-action-strip [data-action-id]")].find(button=>button.dataset.actionId==="output.copy").click();true');await until(()=>fs.existsSync(copied)&&fs.readFileSync(copied,'utf8')==='明天下午3点开会');await shot(overlay,'ocr-result');await overlay.evaluate('document.querySelector("[data-action=cancel]").click();true');
@@ -51,12 +51,59 @@ async function until(fn){let last;for(let i=0;i<180;i++){try{const v=await fn();
  await tool.evaluate('document.getElementById("tool-result").focus();true');await tool.send('Input.dispatchKeyEvent',{type:'keyDown',key:'k',code:'KeyK',modifiers:2});await tool.send('Input.dispatchKeyEvent',{type:'keyUp',key:'k',code:'KeyK',modifiers:2});await until(()=>tool.evaluate('document.querySelector("#tool-action-strip details").open'));await until(()=>tool.evaluate('document.querySelector("#tool-action-strip .action-strip-menu").matches(":popover-open")'));
  await shot(tool,'full-action-list');await tool.send('Input.dispatchKeyEvent',{type:'keyDown',key:'Escape',code:'Escape'});await tool.evaluate('document.getElementById("tool-result").blur();true');await tool.send('Input.dispatchKeyEvent',{type:'keyDown',key:'1',code:'Digit1'});await until(()=>tool.evaluate('document.getElementById("tool-result").value.startsWith("译文：")'));
  console.log('CHECK '+"clipboard");
- await main.evaluate('window.suira.panel.run("clipboard")');const bar=await page('/clipboardbar.html');await until(()=>bar.evaluate('document.querySelectorAll("#bar-action-strip .action-strip-direct button").length===3'));await bar.evaluate(`document.querySelector('[data-id="${english.id}"]').click();true`);await until(()=>bar.evaluate('document.querySelector("#bar-action-strip .action-strip-direct button").dataset.actionId==="text.translate"'));await bar.evaluate('document.querySelector(".bar-card[data-kind=image]").click();true');await until(()=>bar.evaluate('document.querySelector("#bar-action-strip .action-strip-direct button").dataset.actionId==="ocr.local"'));
+ assert.equal((await main.evaluate('window.suira.clipboardBar.show()')).visible, true);
+ const bar=await page('/clipboardbar.html');
+ const firstInMore = async id => {
+   await until(()=>bar.evaluate(`document.querySelector('#bar-action-strip [popover] button')?.dataset.actionId===${JSON.stringify(id)}`));
+   await bar.evaluate('document.querySelector("#bar-action-strip summary").click();true');
+   await until(()=>bar.evaluate(`document.querySelector('#bar-action-strip [popover] button')?.dataset.actionId===${JSON.stringify(id)} && document.querySelector('#bar-action-strip [popover]').matches(':popover-open')`));
+ };
+ await bar.evaluate(`document.querySelector('[data-id="${english.id}"]').click();true`);
+ await firstInMore('text.translate');
+ await bar.evaluate('document.querySelector(".bar-card[data-kind=image]").click();true');
+ await firstInMore('ocr.local');
+ if (process.argv.includes('--clipboard-shots')) {
+   const samples = [
+     {text:'周五 14:30 评审新版。会前整理录音、截图和所有需要确认的细节。'},
+     {text:'https://example.com/studio/design-review?view=notes'},
+     {text:'从一段文字、一张截图，到一份可以继续编辑的文档。'}
+   ];
+   for (const sample of samples) await main.evaluate(`window.suira.content.addText(${JSON.stringify(sample)})`);
+   const captureClipboard = async (theme, filename) => {
+     await bar.evaluate(`window.suira.settings.update(${JSON.stringify({theme})})`);
+     await until(()=>bar.evaluate(`matchMedia('(prefers-color-scheme: dark)').matches===${theme==='dark'}`));
+     await bar.send('Emulation.setDeviceMetricsOverride',{width:1460,height:310,deviceScaleFactor:1.25,mobile:false});
+     await wait(250);
+     const appearance = await bar.evaluate(`(()=>{
+       const track = document.getElementById('bar-track');
+       const card = track.querySelector('.bar-card[data-kind=link]');
+       card.click();
+       track.scrollTo({left:0,behavior:'instant'});
+       const x=card.getBoundingClientRect(), region=track.getBoundingClientRect();
+       const background=getComputedStyle(document.getElementById('bar')).backgroundColor;
+       return {selected:card.classList.contains('is-selected') && x.left>=region.left && x.right<=region.right,background};
+     })()`);
+     assert.ok(appearance.selected, 'The selected link must appear in the captured viewport');
+     assert.match(appearance.background, /^rgb\(/, 'The reading surface must be opaque');
+     await wait(150);
+     const png=await bar.send('Page.captureScreenshot',{format:'png',omitBackground:true});
+     fs.writeFileSync(path.join(root,'docs','product',filename),Buffer.from(png.data,'base64'));
+   };
+   await until(()=>bar.evaluate(`Boolean(document.querySelector('.bar-card[data-kind=link]'))`));
+   await captureClipboard('light','clipboard.png');
+   await captureClipboard('dark','clipboard-dark.png');
+   await bar.send('Emulation.clearDeviceMetricsOverride');
+   await bar.evaluate('window.suira.settings.update({theme:"light"})');
+ }
  console.log('CHECK '+"late result");
  await tool.evaluate('document.getElementById("tool-result").value="SLOW";document.getElementById("tool-result").dispatchEvent(new Event("input"));true');await wait(160);await tool.evaluate('document.getElementById("tool-result").blur();true');await tool.send('Input.dispatchKeyEvent',{type:'keyDown',key:'1',code:'Digit1'});await wait(50);await tool.evaluate('document.getElementById("tool-result").value="新的结果";document.getElementById("tool-result").dispatchEvent(new Event("input"));true');await wait(450);assert.equal(await tool.evaluate('document.getElementById("tool-result").value'),'新的结果','A late relay result never replaces a newer edit');
  await shot(tool,'text-result');await shot(bar,'clipboard-image');
  console.log('CHECK '+"nested result");
- await bar.evaluate('document.querySelector("#bar-action-strip .action-strip-direct button").click();true');await until(()=>bar.evaluate('Boolean(document.querySelector("#relay-result[open] textarea"))'));await bar.evaluate('document.querySelector("#relay-result textarea").focus();true');await bar.send('Input.dispatchKeyEvent',{type:'keyDown',key:'k',code:'KeyK',modifiers:2});await until(()=>bar.evaluate('document.querySelector("#relay-result details").open'));assert.equal(await bar.evaluate('document.querySelector("#bar-action-strip details").open'),false,'Shortcuts belong to the visible result');await bar.send('Input.dispatchKeyEvent',{type:'keyDown',key:'Escape',code:'Escape'});await bar.send('Input.dispatchKeyEvent',{type:'keyUp',key:'Escape',code:'Escape'});await wait(80);if(await bar.evaluate('Boolean(document.querySelector("#relay-result[open]"))')){await bar.send('Input.dispatchKeyEvent',{type:'keyDown',key:'Escape',code:'Escape'});await bar.send('Input.dispatchKeyEvent',{type:'keyUp',key:'Escape',code:'Escape'});}await until(()=>bar.evaluate('!document.querySelector("#relay-result[open]")')).catch(async error=>{console.error('EXIT_STATE',await bar.evaluate('({visible:document.visibilityState,dialog:document.getElementById("relay-result")?.outerHTML.slice(0,500),details:document.querySelector("#relay-result details")?.open,focus:document.activeElement?.outerHTML.slice(0,300)})'));throw error;});
+ await main.evaluate('window.suira.clipboardBar.show()');
+ await until(()=>bar.evaluate(`document.visibilityState==='visible' && Boolean(document.querySelector('[data-id="${english.id}"]'))`));
+ await bar.evaluate(`document.querySelector('[data-id="${english.id}"]').click();true`);
+ await firstInMore('text.translate');
+ await bar.evaluate('document.querySelector("#bar-action-strip [popover] button").click();true');await until(()=>bar.evaluate('Boolean(document.querySelector("#relay-result[open] textarea"))'));await bar.evaluate('document.querySelector("#relay-result textarea").focus();true');await bar.send('Input.dispatchKeyEvent',{type:'keyDown',key:'k',code:'KeyK',modifiers:2});await until(()=>bar.evaluate('document.querySelector("#relay-result details").open'));assert.equal(await bar.evaluate('document.querySelector("#bar-action-strip details").open'),false,'Shortcuts belong to the visible result');await bar.send('Input.dispatchKeyEvent',{type:'keyDown',key:'Escape',code:'Escape'});await bar.send('Input.dispatchKeyEvent',{type:'keyUp',key:'Escape',code:'Escape'});await wait(80);if(await bar.evaluate('Boolean(document.querySelector("#relay-result[open]"))')){await bar.send('Input.dispatchKeyEvent',{type:'keyDown',key:'Escape',code:'Escape'});await bar.send('Input.dispatchKeyEvent',{type:'keyUp',key:'Escape',code:'Escape'});}await until(()=>bar.evaluate('!document.querySelector("#relay-result[open]")')).catch(async error=>{console.error('EXIT_STATE',await bar.evaluate('({visible:document.visibilityState,dialog:document.getElementById("relay-result")?.outerHTML.slice(0,500),details:document.querySelector("#relay-result details")?.open,focus:document.activeElement?.outerHTML.slice(0,300)})'));throw error;});
  const attachments=(await main.evaluate('window.suira.content.list({limit:200})')).filter(item=>item.meta?.documentAttachment);assert.ok(attachments.length>0&&attachments.every(item=>item.pinned),'Inserted image attachments survive retention cleanup');
- const proof={version,lateRelayResultProtected:true,documentImageRetained:true,fixtureDesktop:true,fixtureOcrAndTranslator:true,todayDocumentReused:true,currentDocumentPreservesUnsavedText:true,recentNotePreservesUnsavedText:true,calendarDraftNeedsConfirmation:true,calendarCancelWritesNothing:true,calendarExplicitSave:true,textPinLiteralAndCopy:true,pinMenuRelay:true,sourceCursorTextCapture:true,sourceCursorImageCapture:true,captureImageReferenceReadable:true,captureCancelPreservesSource:true,visualCursorTextCapture:true,ocrResultRelay:true,translationRelay:true,ctrlKFullList:true,numberShortcut:true,englishClipboardTranslation:true,imageClipboardOcr:true};fs.writeFileSync(path.join(root,'docs',`relay-${version}.json`),JSON.stringify(proof,null,2)+'\n');console.log('PASS relay workflows',JSON.stringify(proof));
+ const proof={version,lateRelayResultProtected:true,documentImageRetained:true,fixtureDesktop:true,fixtureOcrAndTranslator:true,todayDocumentReused:true,currentDocumentPreservesUnsavedText:true,recentNotePreservesUnsavedText:true,calendarDraftNeedsConfirmation:true,calendarCancelWritesNothing:true,calendarExplicitSave:true,textPinLiteralAndCopy:true,pinMenuRelay:true,sourceCursorTextCapture:true,sourceCursorImageCapture:true,captureImageReferenceReadable:true,captureCancelPreservesSource:true,visualCursorTextCapture:true,ocrResultRelay:true,translationRelay:true,ctrlKFullList:true,numberShortcut:true,englishClipboardTranslation:true,imageClipboardOcr:true};if (process.argv.includes('--shots')) fs.writeFileSync(path.join(root,'docs',`relay-${version}.json`),JSON.stringify(proof,null,2)+'\n');console.log('PASS relay workflows',JSON.stringify(proof));
 })().catch(e=>{console.error(e);if(fs.existsSync(path.join(tmp,'app.log')))console.error(fs.readFileSync(path.join(tmp,'app.log'),'utf8').slice(-1500));process.exitCode=1;}).finally(async()=>{sockets.forEach(s=>s.close());if(child&&child.exitCode===null){const done=new Promise(r=>child.once('exit',r));child.kill();await done;}await wait(300);fs.rmSync(tmp,{recursive:true,force:true,maxRetries:4,retryDelay:150});});

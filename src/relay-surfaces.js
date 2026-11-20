@@ -8,7 +8,8 @@
     dialog=document.createElement('dialog');dialog.id='relay-result';dialog.className='relay-result';
     const head=document.createElement('header'),title=document.createElement('b'),close=document.createElement('button'),area=document.createElement('textarea'),host=document.createElement('div');
     title.textContent=item.title||'处理结果';close.type='button';close.textContent='关闭';close.onclick=()=>dialog.close();area.value=item.text||'';area.setAttribute('aria-label','处理结果');head.append(title,close);dialog.append(head,area,host);document.body.append(dialog);
-    const child=strip.mount(host,{getItem:()=>textItem(area.value,[item.id]),onResult:result=>{if(result.output)showResult(result.output);}});const owned=dialog;dialog.addEventListener('close',()=>{child.destroy();owned.remove();},{once:true});dialog.addEventListener('keydown',event=>{if(event.key==='Escape'&&!dialog.querySelector('details')?.open){event.preventDefault();event.stopPropagation();dialog.close();}});area.addEventListener('input',()=>child.refresh());dialog.show();
+    const child=strip.mount(host,{getItem:()=>textItem(area.value,[item.id]),onResult:result=>{if(result.output)showResult(result.output);}});const owned=dialog;dialog.addEventListener('close',()=>{child.destroy();owned.remove();},{once:true});dialog.addEventListener('keydown',event=>{if(event.key==='Escape'&&!dialog.querySelector('details')?.open){event.preventDefault();event.stopPropagation();dialog.close();}});area.addEventListener('input',()=>child.refresh());if (document.getElementById('bar-track')) dialog.showModal();
+    else dialog.show();
   }
   function mount(host,getItem,options={}){const instance=strip.mount(host,{getItem,onResult:result=>{if(result.output)showResult(result.output);},...options});mounts.push(instance);return instance;}
   if(document.getElementById('ocr-result')){
@@ -20,9 +21,21 @@
     const host=document.createElement('div');host.id='tool-action-strip';document.querySelector('.text-tool-foot').before(host);
     mount(host,()=>textItem(document.getElementById('tool-result').value),{onResult:result=>{if(result.output){const area=document.getElementById('tool-result');area.value=result.output.text;area.dispatchEvent(new Event('input'));}}});
   }
-  if(document.getElementById('bar-track')){
-    const host=document.createElement('div');host.id='bar-action-strip';document.querySelector('.bar-foot').before(host);
-    mount(host,async()=>{const selected=document.querySelector('.clip-card[aria-selected="true"],.bar-card[aria-selected="true"],[role="option"][aria-selected="true"]');const id=selected?.dataset.id||selected?.dataset.itemId;return id?api.content.get(id):null;});
+  const clipboardHost = document.getElementById('bar-action-strip');
+  if (clipboardHost && api.actions) {
+    const instance = strip.mount(clipboardHost, {
+      getItem: () => window.ClipboardBarSelection?.item(),
+      onResult: result => { if (result.output) showResult(result.output); },
+      onStatus: (message, error) => window.ClipboardBarSelection?.notice(message, error),
+      menuOnly: true
+    });
+    function updateClipboardActions() {
+      clipboardHost.hidden = !clipboardHost.dataset.itemId;
+      instance.refresh({ reset: true });
+    }
+    clipboardHost.addEventListener('bar-selection-change', updateClipboardActions);
+    updateClipboardActions();
+    window.addEventListener('beforeunload', () => instance.destroy(), { once: true });
   }
   if(document.getElementById('pin-menu')){
     const menu=document.getElementById('pin-menu'),host=document.createElement('div');host.id='pin-action-strip';menu.prepend(host);
@@ -42,6 +55,7 @@
     api.relay?.onRequest?.(async request=>{if(request.kind!=='notes.flush')return;try{await window.NoteUI.flush();await api.relay.reply({token:request.token,ok:true});}catch(error){await api.relay.reply({token:request.token,ok:false,error:error.message});}});
   }
   window.SuiraRelay={showResult};
+  if (!mounts.length) return;
   let refreshTimer;const refresh=()=>{clearTimeout(refreshTimer);refreshTimer=setTimeout(()=>{mounts.forEach(instance=>instance.refresh());dateRefresh();},100);};
   document.addEventListener('input',refresh);
   new MutationObserver(records=>{if(records.some(record=>!record.target.closest?.('.action-strip')&&!record.target.parentElement?.closest('.action-strip')))refresh();}).observe(document.body,{subtree:true,childList:true,characterData:true,attributes:true,attributeFilter:['hidden','aria-selected']});

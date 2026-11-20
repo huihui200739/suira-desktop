@@ -1729,12 +1729,10 @@ function createClipboardBarWindow() {
     ...clipboardBarBounds(),
     show: false,
     frame: false,
-    thickFrame: SYSTEM_GLASS,
     transparent: true,
-    backgroundMaterial: SYSTEM_GLASS?'acrylic':undefined,
     backgroundColor: '#00000000',
-    hasShadow: SYSTEM_GLASS,
-    resizable: SYSTEM_GLASS,
+    hasShadow: false,
+    resizable: false,
     movable: false,
     maximizable: false,
     minimizable: false,
@@ -1752,7 +1750,7 @@ function createClipboardBarWindow() {
     }
   });
   clipboardBarWindow.setAlwaysOnTop(true, 'floating');
-  prepareFloatingSurface(clipboardBarWindow, 24, true);
+  prepareFloatingSurface(clipboardBarWindow, 24);
   clipboardBarWindow.on('will-resize',event=>event.preventDefault());
   clipboardBarWindow.__loaded = clipboardBarWindow.loadFile(path.join(__dirname, 'src', 'clipboardbar.html'));
   clipboardBarWindow.__loaded.catch(error => console.warn('剪贴板条加载失败:', error.message));

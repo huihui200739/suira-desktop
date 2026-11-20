@@ -5,11 +5,10 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>随序 剪贴板历史</title>
   <link rel="stylesheet" href="theme.css">
+  <link rel="stylesheet" href="tool-art.css">
+  <link rel="stylesheet" href="ui-motion.css">
+  <link rel="stylesheet" href="action-strip.css">
   <link rel="stylesheet" href="clipboardbar.css">
-  <link rel="stylesheet" href="tool-art.css"><link rel="stylesheet" href="tool-surfaces.css">
-  <link rel="stylesheet" href="liquid-glass.css">
-<link rel="stylesheet" href="ui-motion.css"><link rel="stylesheet" href="glass-select.css">
-<link rel="stylesheet" href="action-strip.css">
 </head>
 <body>
   <!-- 跟随唤出所在显示器的底部内容架，尺寸由主进程适配工作区。 -->
@@ -19,8 +18,8 @@
         <svg viewBox="0 0 24 24"><rect x="6" y="4.5" width="12" height="16" rx="2"/><path d="M9.5 4.5V3h5v1.5"/><path d="M9.5 10h5M9.5 13.5h5M9.5 17h3"/></svg>
       </span>
       <h1 class="bar-title">剪贴板历史</h1>
-      <label class="bar-search"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m15.5 15.5 4 4"/></svg><input id="bar-search" type="search" placeholder="搜索内容" aria-label="搜索剪贴板历史" autocomplete="off" spellcheck="false"><kbd>Ctrl F</kbd></label>
-      <nav class="bar-filters" data-selection-group aria-label="内容类型">
+      <label class="bar-search"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m15.5 15.5 4 4"/></svg><input id="bar-search" type="search" placeholder="搜索剪贴板" aria-label="搜索剪贴板历史" autocomplete="off" spellcheck="false"><kbd>Ctrl+F</kbd></label>
+      <nav class="bar-filters" aria-label="内容类型">
         <button type="button" data-filter="all" aria-pressed="true">全部</button>
         <button type="button" data-filter="text" aria-pressed="false">文字</button>
         <button type="button" data-filter="image" aria-pressed="false">图片</button>
@@ -29,7 +28,7 @@
         <button type="button" data-filter="favorite" aria-pressed="false">收藏</button>
       </nav>
       <span class="bar-count" id="bar-count">0 条</span>
-      <div class="bar-tools"><button id="bar-library" type="button" title="打开完整内容库" aria-label="打开完整内容库">内容库 ↗</button><button id="bar-close" type="button" title="Esc 关闭" aria-label="关闭剪贴板">×</button></div>
+      <div class="bar-tools"><button id="bar-library" type="button" title="打开完整内容库" aria-label="打开完整内容库">内容库 <span aria-hidden="true">↗</span></button><button id="bar-close" type="button" title="Esc 关闭" aria-label="关闭剪贴板">×</button></div>
     </header>
 
     <div class="bar-body">
@@ -46,15 +45,24 @@
       <button class="bar-retry" id="bar-refresh-retry" type="button" hidden>刷新失败，重试</button>
       <span class="bar-selection" id="bar-selection">← → 选择</span>
       <span class="bar-notice" id="bar-notice" role="status" aria-live="polite" hidden></span>
-      <div class="bar-actions"><button id="bar-preview-toggle" type="button" disabled title="空格预览，Esc 返回">预览</button><button id="bar-copy" type="button" disabled title="只复制，不自动粘贴（Ctrl+C）">复制</button><button id="bar-edit" type="button" hidden>编辑图片</button><button id="bar-pin" type="button" disabled>收藏</button><button id="bar-submit" type="button" disabled>粘贴到当前窗口 <kbd>Enter</kbd></button></div>
+      <div class="bar-actions">
+        <button id="bar-preview-toggle" type="button" disabled title="空格预览，Esc 返回" aria-controls="bar-preview" aria-expanded="false">预览</button>
+        <button id="bar-copy" type="button" disabled title="复制到剪贴板（Ctrl+C）">复制</button>
+        <button id="bar-edit" type="button" hidden>编辑图片</button>
+        <button id="bar-pin" type="button" disabled>收藏</button>
+        <div id="bar-action-strip" hidden></div>
+        <button id="bar-submit" type="button" aria-label="粘贴到当前窗口" disabled><span>粘贴<span class="paste-target">到当前窗口</span></span><kbd>Enter</kbd></button>
+      </div>
     </footer>
     <section class="bar-preview" id="bar-preview" role="dialog" aria-modal="false" aria-labelledby="bar-preview-title" hidden>
-      <header><b id="bar-preview-title">内容预览</b><span>Esc 返回</span><button id="bar-preview-close" aria-label="关闭内容预览" type="button">×</button></header>
+      <header><span>内容预览</span><b id="bar-preview-title"></b><button id="bar-preview-close" aria-label="关闭内容预览" type="button" title="Esc 返回">返回</button></header>
       <div id="bar-preview-content" tabindex="0"></div>
     </section>
   </main>
   <script src="ui-motion.js"></script>
-  <script src="tool-art.js"></script><script src="clipboardbar.js"></script>
-  <script src="liquid-glass.js"></script>
-<script src="icons.js"></script><script src="glass-select.js"></script><script src="action-strip.js"></script><script src="relay-surfaces.js"></script></body>
+  <script src="tool-art.js"></script>
+  <script src="clipboardbar.js"></script>
+  <script src="action-strip.js"></script>
+  <script src="relay-surfaces.js"></script>
+</body>
 </html>
