@@ -129,3 +129,5 @@ window.SuiraRichDocument={create({element,onChange,onSelection,notify,openLink,r
   destroy(){disposed=true;closeMenu();bubble?.remove();document.removeEventListener('pointerdown',outside);document.removeEventListener('keydown',key);window.removeEventListener('resize',reposition);element.removeEventListener('scroll',reposition);editor.destroy();},
  };
 }};
+
+import './note-editor.mjs';

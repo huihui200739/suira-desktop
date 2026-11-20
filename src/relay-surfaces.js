@@ -47,11 +47,11 @@
     document.querySelector('.note-tools').prepend(button);menu.append(host);document.getElementById('note').append(menu);
     button.onclick=()=>{menu.hidden=!menu.hidden;button.setAttribute('aria-expanded',String(!menu.hidden));};
     document.addEventListener('keydown',event=>{if(event.key==='Escape'&&!menu.hidden&&!menu.querySelector('details')?.open){event.preventDefault();event.stopImmediatePropagation();menu.hidden=true;button.setAttribute('aria-expanded','false');button.focus();}},true);
-    const instance=mount(host,()=>textItem(document.getElementById('note-body').value),{reveal:()=>{menu.hidden=false;}});
+    const instance=mount(host,()=>textItem(window.NoteUI.text()),{reveal:()=>{menu.hidden=false;}});
     document.addEventListener('pointerdown',event=>{if(!menu.contains(event.target)&&!button.contains(event.target)){menu.hidden=true;button.setAttribute('aria-expanded','false');}});
-    const hint=document.createElement('button');hint.type='button';hint.id='note-date-hint';hint.className='note-date-hint';hint.textContent='加到日历？';hint.hidden=true;document.querySelector('.note-foot').prepend(hint);hint.onclick=()=>instance.run('text.to-calendar');
-    let timer,revision=0;function parse(){const token=++revision;clearTimeout(timer);timer=setTimeout(async()=>{try{const draft=await api.dates?.parse(document.getElementById('note-body').value);if(token===revision&&hint.hidden!==!draft)hint.hidden=!draft;}catch{if(token===revision&&!hint.hidden)hint.hidden=true;}},200);}
-    dateRefresh=parse;document.getElementById('note-body').addEventListener('input',parse);api.notes?.onChanged?.(parse);api.notes?.onOpened?.(parse);parse();
+    const hint=document.createElement('button');hint.type='button';hint.id='note-date-hint';hint.className='note-date-hint';hint.textContent='加到日历？';hint.hidden=true;document.querySelector('.note-status').prepend(hint);hint.onclick=()=>instance.run('text.to-calendar');
+    let timer,revision=0;function parse(){const token=++revision;clearTimeout(timer);timer=setTimeout(async()=>{try{const draft=await api.dates?.parse(window.NoteUI.text());if(token===revision&&hint.hidden!==!draft)hint.hidden=!draft;}catch{if(token===revision&&!hint.hidden)hint.hidden=true;}},200);}
+    dateRefresh=parse;document.getElementById('note-body').addEventListener('note-input',parse);api.notes?.onChanged?.(parse);api.notes?.onOpened?.(parse);parse();
     api.relay?.onRequest?.(async request=>{if(request.kind!=='notes.flush')return;try{await window.NoteUI.flush();await api.relay.reply({token:request.token,ok:true});}catch(error){await api.relay.reply({token:request.token,ok:false,error:error.message});}});
   }
   window.SuiraRelay={showResult};

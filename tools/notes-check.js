@@ -116,10 +116,11 @@ const MOCK = `
     open: function(id){ calls.open.push(id); return Promise.resolve({ ok: true, id: id }); },
     openLatest: function(){ calls.open.push('latest'); return Promise.resolve({ ok: true }); },
     create: function(){ calls.create += 1; return Promise.resolve({ ok: true, id: 'new' }); },
+    pickFile: function(){ return Promise.resolve('C:/示例/发票.pdf'); },
     update: function(payload){
-      calls.update.push({ id: payload && payload.id, text: payload && payload.text });
+      calls.update.push(payload);
       var target = notes.filter(function(n){ return n.id === (payload && payload.id); })[0];
-      if (target) { target.text = payload.text; target.updatedAt = Date.now(); }
+      if (target) Object.assign(target, payload, {updatedAt:Date.now()});
       return Promise.resolve({ ok: true, note: target ? clone(target) : null });
     },
     togglePin: function(id){
@@ -160,7 +161,7 @@ const PROBE = `
       state: note.dataset.state,
       pinned: note.dataset.pinned,
       title: document.getElementById('note-title').textContent,
-      text: body.value,
+      text: window.NoteUI.text(),
       count: document.getElementById('note-count').textContent,
       saved: document.getElementById('note-saved').textContent,
       savedState: document.getElementById('note-saved').dataset.state,
@@ -183,15 +184,55 @@ const PROBE = `
 
   // 输入：标题随正文长出来，字数跟着变，保存是防抖的
   var body = document.getElementById('note-body');
-  body.focus();
-  body.value = '  换个开头\\n第二行';
-  body.dispatchEvent(new Event('input', { bubbles: true }));
+  body.querySelector('.tiptap').focus();
+  document.execCommand('selectAll');
+  document.execCommand('insertText', false, '  换个开头\\n第二行');
   await sleep(60);
   output.afterInput = snapshot();
   output.updateCallsImmediately = (window.__calls.update || []).length;
   await sleep(600);
   output.updateCallsAfterDebounce = (window.__calls.update || []).length;
   output.lastUpdateText = ((window.__calls.update || []).slice(-1)[0] || {}).text;
+
+  if (scenario === 'toolbar') {
+    var command = function(name){ document.querySelector('[data-format="'+name+'"]').click(); };
+    body.querySelector('.tiptap').focus();
+    document.execCommand('selectAll');
+    await sleep(80);
+    for (var mark of ['bold','italic','underline','strike']) command(mark);
+    output.markup = body.innerHTML;
+    command('large'); output.large = !!body.querySelector('h1');
+    command('small'); output.small = !!body.querySelector('h2');
+    command('body'); output.paragraph = !body.querySelector('h1,h2');
+    document.getSelection().collapseToEnd();
+    await sleep(80);
+    command('bulletList'); output.bullets = !!body.querySelector('ul > li');
+    command('bulletList');
+    command('taskList');
+    body.querySelector('input[type=checkbox]').click();
+    await sleep(110);
+    document.getElementById('note-attach').click();
+    await sleep(110);
+    document.getElementById('note-ledger').click();
+    document.querySelector('#note-ledger-form [name=amount]').value = '12.50';
+    document.getElementById('note-ledger-form').requestSubmit();
+    document.getElementById('note-close').click();
+    await sleep(100);
+    output.savedToolbar = window.__calls.update.at(-1);
+    window.__pushOpened('n1');
+    await sleep(100);
+    window.__pushOpened('n2');
+    await sleep(100);
+    output.reopened = {
+      checked: Boolean(body.querySelector('li[data-checked=true]')),
+      attachment: body.querySelector('.note-file')?.textContent,
+      text: window.NoteUI.text(),
+      html:body.innerHTML,
+      hidden: window.__calls.hide
+    };
+    window.__notesResult = output;
+    return;
+  }
 
   // 全部速记：列出并可切换
   document.getElementById('note-index-btn').click();
@@ -281,6 +322,8 @@ function buildFixtures() {
   fs.copyFileSync(path.join(ROOT, 'src', 'notes.css'), path.join(TMP, 'notes.css'));
   fs.mkdirSync(path.join(TMP,'art'),{recursive:true});for(const asset of ['utility-surface.css','liquid-glass.js','liquid-glass.css','companion.js','companion.css','art/companion-courier.png'])fs.copyFileSync(path.join(ROOT,'src',asset),path.join(TMP,asset));
   fs.copyFileSync(path.join(ROOT, 'src', 'notes.js'), path.join(TMP, 'notes.js'));
+  fs.mkdirSync(path.join(TMP,'vendor'));
+  for (const asset of ['document-editor.js','purify.js']) fs.copyFileSync(path.join(ROOT,'src/vendor',asset),path.join(TMP,'vendor',asset));
   const page = html
     .replace('<script src="notes.js"></script>', [
       '<script>window.__errs=[];window.addEventListener("error",function(e){window.__errs.push(String(e.message||e.error));});window.addEventListener("unhandledrejection",function(e){window.__errs.push("rejection: "+String((e.reason&&e.reason.message)||e.reason));});</script>',
@@ -435,6 +478,12 @@ async function runScenario(send, scenario, width, height) {
     check('Esc 先收浮层，再收窗口', main.escClosedIndexOnly === true && main.hideCallsAfterEsc > main.hideCalls,
       JSON.stringify({ esc: main.escClosedIndexOnly, after: main.hideCallsAfterEsc }));
     check('没有未捕获的页面错误', (main.errors || []).length === 0, JSON.stringify(main.errors));
+
+    const toolbar = await runScenario(browser.send, 'toolbar', 760, 550);
+    check('四个文字格式都写入所选正文', ['strong','em','u','s'].every(tag => toolbar.markup?.includes('<'+tag+'>')), JSON.stringify(toolbar));
+    check('大标题、小标题、正文与项目符号可切换', toolbar.large && toolbar.small && toolbar.paragraph && toolbar.bullets);
+    check('关窗补保存后重开仍有已勾选清单、附件和账目', toolbar.reopened?.checked && toolbar.reopened?.attachment === '发票.pdf'
+      && toolbar.reopened?.text.includes('支出 ¥12.50') && toolbar.reopened?.hidden === 1, JSON.stringify({saved:toolbar.savedToolbar,reopened:toolbar.reopened}));
 
     console.log('\n== 失败路径 ==');
     const pinError = await runScenario(browser.send, 'pinerror', 380, 460);

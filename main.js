@@ -4013,12 +4013,32 @@ function registerIpc() {
   ipcMain.handle('notes:update', async (_event, payload) => {
     const id = String(payload?.id || '');
     if (!store || !id) return { ok: false, error: '参数不完整' };
-    const note = store.updateNoteText(id, payload?.text ?? '', payload?.title);
+    if (typeof payload?.richText === 'string' && payload.richText.length > notesLib.RICH_TEXT_LIMIT) {
+      return {ok:false, error:'格式内容超过速记容量，请删减后保存。'};
+    }
+    const note = store.updateNoteText(id, payload?.text, payload?.title, payload?.richText);
     if (!note) return { ok: false, error: '这条速记已不存在' };
     scheduleNoteSave();
     // 同屏开着多个速记窗口时，列表与其它窗口也要看到最新正文
     broadcastNotes();
     return { ok: true, note };
+  });
+  ipcMain.handle('notes:pick-file', async (event) => {
+    const win = BrowserWindow.fromWebContents(event.sender);
+    if (!win || ![...noteWindows.values()].includes(win)) return null;
+    const result = await dialog.showOpenDialog(win, {title:'引用本地文件', properties:['openFile']});
+    return result.canceled ? null : result.filePaths[0];
+  });
+  ipcMain.handle('notes:reveal-file', async (event, file) => {
+    const win = BrowserWindow.fromWebContents(event.sender);
+    // Only reveal local drive paths. Network shares and device paths are excluded.
+    if (!win || ![...noteWindows.values()].includes(win) || typeof file !== 'string' || !/^[a-z]:[\\/]/i.test(file)) {
+      return {ok:false, error:'无法定位该本地文件。'};
+    }
+    const stat = await fs.promises.stat(file).catch(() => null);
+    if (!stat?.isFile()) return {ok:false, error:'找不到原文件，它可能已被移动。'};
+    shell.showItemInFolder(file);
+    return {ok:true};
   });
   ipcMain.handle('notes:toggle-pin', async (_event, id) => {
     const noteId = String(id || '');

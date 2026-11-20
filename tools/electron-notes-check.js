@@ -147,7 +147,7 @@ async function evaluate(send, expression) {
       JSON.stringify((openedWindows || []).map((target) => target.url.split('/').pop())));
 
     const updated = await evaluate(connection.send,
-      `window.suira.notes.update({ id: ${JSON.stringify(noteId)}, text: '真实 Electron 速记\\n第二行' })`);
+      `window.suira.notes.update({ id: ${JSON.stringify(noteId)}, text: '真实 Electron 速记\\n第二行', richText:'<h1>真实 Electron 速记</h1><p>第二行</p>' })`);
     check('update 返回 ok', Boolean(updated && updated.ok), JSON.stringify(updated));
     check('标题由正文推导', updated && updated.note && updated.note.title === '真实 Electron 速记',
       updated && updated.note && updated.note.title);
@@ -165,6 +165,12 @@ async function evaluate(send, expression) {
     check('已开窗口的 open 返回 ok（置前而不是重复建）', Boolean(reopened && reopened.ok), JSON.stringify(reopened));
 
     await sleep(900);
+    const noteTarget = (await listTargets()).find(target => target.url.endsWith('/notes.html'));
+    const noteConnection = await connect(noteTarget.webSocketDebuggerUrl);
+    try {
+      check('富文本通过真实 IPC 渲染为标题', await evaluate(noteConnection.send,
+        `document.querySelector('#note-body h1')?.textContent`) === '真实 Electron 速记');
+    } finally { noteConnection.ws.close(); }
     console.log('\n== 落盘 ==');
     const dataFile = path.join(userData, 'suira-data.json');
     check('数据文件已写出', fs.existsSync(dataFile));
@@ -173,6 +179,7 @@ async function evaluate(send, expression) {
       JSON.stringify((raw.notes || []).length));
     const leaked = (raw.notes || []).filter((note) => typeof note.text === 'string' && note.text.length > 0);
     check('正文在磁盘上是加密信封（不落明文）', leaked.length === 0, JSON.stringify(leaked.slice(0, 1)));
+    check('富文本同样使用加密信封', (raw.notes || []).some(note => typeof note.richText === 'object' && note.richText !== null));
     check('磁盘上不出现刚写的明文', !fs.readFileSync(dataFile, 'utf8').includes('真实 Electron 速记'));
 
     console.log('\n== 清理 ==');

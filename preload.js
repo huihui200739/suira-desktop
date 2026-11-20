@@ -89,6 +89,8 @@ contextBridge.exposeInMainWorld('suira', {
     openLatest: () => ipcRenderer.invoke('notes:open-latest'),
     create: () => ipcRenderer.invoke('notes:create'),
     update: (payload) => ipcRenderer.invoke('notes:update', payload),
+    pickFile: () => ipcRenderer.invoke('notes:pick-file'),
+    revealFile: (file) => ipcRenderer.invoke('notes:reveal-file', file),
     togglePin: (id) => ipcRenderer.invoke('notes:toggle-pin', id),
     remove: (id) => ipcRenderer.invoke('notes:delete', id),
     minimizeWindow: () => ipcRenderer.invoke('notes:minimize-window'),

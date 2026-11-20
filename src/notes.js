@@ -11,9 +11,8 @@ const $ = (selector) => document.querySelector(selector);
 const state = {
   id: '',
   pinned: false,
-  saving: false,
   dirty: false,
-  error: ''
+  source: null
 };
 
 function setSaved(text, kind = '') {
@@ -39,10 +38,17 @@ function renderNote(note) {
   document.title = `随序 ${note.title || '速记'}`;
   $('#note-title').textContent = note.text || note.customTitle ? (note.title || '速记') : '随序速记';
   $('#note-page-title').value = note.customTitle || '';
-  // 只在内容真的不同时覆盖：否则每次广播都会把光标弹到末尾
-  const body = $('#note-body');
-  if (body.value !== (note.text || '')) body.value = note.text || '';
-  renderCount(body.value);
+  if (state.source?.id !== note.id || state.source.text !== note.text || state.source.richText !== note.richText) {
+    const rich = note.richText && DOMPurify.sanitize(note.richText, {
+      ALLOWED_TAGS:['p','h1','h2','strong','em','u','s','ul','li','label','input','div','span','br'],
+      ALLOWED_ATTR:['data-type','data-checked','data-note-file','type','checked'],
+      ADD_URI_SAFE_ATTR:['data-note-file'], ALLOW_DATA_ATTR:false, ALLOW_ARIA_ATTR:false
+    });
+    editor.load(note.text || '', rich);
+    state.source = note;
+  }
+  renderCount(editor.text());
+  renderFormats();
   $('#note').dataset.pinned = String(state.pinned);
   $('#note').dataset.state = 'ready';
   $('#note-pin').setAttribute('aria-pressed', String(state.pinned));
@@ -54,11 +60,14 @@ function renderNote(note) {
 let saveTimer = null;
 let saveInFlight = null;
 let titleDirty = false;
+let bodyDirty = false;
 let indexNotes = [];
 let indexRevision = 0;
 
 function noteDraft() {
-  return {id:state.id, text:$('#note-body').value, ...(titleDirty ? {title:$('#note-page-title').value} : {})};
+  return {id:state.id,
+    ...(bodyDirty ? {text:editor.text(), richText:editor.html()} : {}),
+    ...(titleDirty ? {title:$('#note-page-title').value} : {})};
 }
 
 async function pushText() {
@@ -66,18 +75,20 @@ async function pushText() {
   if (!state.id || !state.dirty) return true;
   const draft = noteDraft();
   state.dirty = false;
-  titleDirty = false;
+  titleDirty = bodyDirty = false;
   setSaved('正在保存…', 'saving');
   const save = (async () => {
     try {
       const result = await window.suira.notes.update(draft);
       if (!result?.ok) throw new Error(result?.error || '保存失败');
+      state.source = result.note || {...state.source, ...draft};
       if (!state.dirty) setSaved('已保存');
       showError('');
       return true;
     } catch (error) {
       state.dirty = true;
       titleDirty ||= Object.hasOwn(draft, 'title');
+      bodyDirty ||= Object.hasOwn(draft, 'text');
       setSaved('未保存', 'error');
       showError(error.message || '保存失败');
       return false;
@@ -96,28 +107,69 @@ function scheduleSave() {
 
 /* ---------- 启动 ---------- */
 
+const formats = [...document.querySelectorAll('[data-format]')];
+let editor;
+function renderFormats() {
+  if (!editor) return;
+  const styles = {large:['heading',{level:1}], small:['heading',{level:2}], body:['paragraph']};
+  for (const button of formats) {
+    const type = button.dataset.format;
+    button.setAttribute('aria-pressed', String(editor.active(...(styles[type] || [type]))));
+  }
+}
+
 async function boot() {
   const body = $('#note-body');
-
   const title = $('#note-page-title');
   const update = () => {
     state.dirty = true;
-    renderCount(body.value);
-    const first = body.value.split(/\r?\n/).find(line => line.trim())?.trim();
+    const text = editor.text();
+    renderCount(text);
+    const first = text.split(/\r?\n/).find(line => line.trim())?.trim();
     $('#note-title').textContent = (title.value.trim() || first || '随序速记').slice(0, 120);
     scheduleSave();
   };
-  body.addEventListener('input', update);
+  editor = window.SuiraNoteEditor({element:body, onSelection:renderFormats,
+    onChange:() => {
+      bodyDirty = true;
+      update();
+      body.dispatchEvent(new Event('note-input'));
+    },
+    onLimit:() => showError('速记正文最多 2 万字，请删减内容后再试。')});
   title.addEventListener('input', () => { titleDirty = true; update(); });
   title.addEventListener('keydown', event => {
-    if (event.key === 'Enter' && !event.isComposing) { event.preventDefault(); body.focus(); }
+    if (event.key === 'Enter' && !event.isComposing) { event.preventDefault(); editor.focusEnd(); }
   });
-  $('#note-checklist').addEventListener('click', () => {
-    const start = body.selectionStart;
-    const prefix = start && body.value[start-1] !== '\n' ? '\n- [ ] ' : '- [ ] ';
-    body.setRangeText(prefix, start, start, 'end');
-    body.focus();
-    update();
+  // Mouse clicks keep the selected text. Tab and Enter can also reach each tool.
+  $('.note-format').addEventListener('mousedown', event => {
+    if (event.target.closest('button')) event.preventDefault();
+  });
+  for (const button of formats) button.addEventListener('click', () => editor.command(button.dataset.format));
+  $('#note-attach').addEventListener('click', async () => {
+    const button = $('#note-attach');
+    button.disabled = true;
+    try {
+      const file = await window.suira.notes.pickFile();
+      if (file) {
+        if (file.length <= 4096 && /^[a-z]:[\\/]/i.test(file)) editor.attach(file);
+        else showError('请选择本机磁盘上的文件。');
+      }
+    } catch { showError('无法选择附件。'); }
+    finally { button.disabled = false; }
+  });
+  body.addEventListener('note-file-error', event => showError(event.detail));
+  const ledger = $('#note-ledger-dialog');
+  const form = $('#note-ledger-form');
+  $('#note-ledger').addEventListener('click', () => { form.reset(); ledger.showModal(); });
+  $('#note-ledger-cancel').addEventListener('click', () => ledger.close());
+  form.addEventListener('submit', event => {
+    event.preventDefault();
+    const fields = new FormData(form);
+    const memo = String(fields.get('memo') || '').trim();
+    const date = new Date().toLocaleDateString('zh-CN');
+    const amount = Number(fields.get('amount')).toFixed(2);
+    ledger.close();
+    editor.ledger(`${date} · ${fields.get('kind')} ¥${amount}${memo ? ` · ${memo}` : ''}`);
   });
   $('#note-search').addEventListener('input', renderIndex);
   $('#note-pages').addEventListener('click', async event => {
@@ -136,12 +188,16 @@ async function boot() {
   // 只监听 textarea 会让 Esc 完全失效。
   document.addEventListener('keydown', (event) => {
     if (event.key !== 'Escape' || event.defaultPrevented) return;
+    if (event.isComposing || ledger.open) return;
     event.preventDefault();
     if (!$('#note-index').hidden) closeIndex();
     else closeWindow();
   });
 
   $('#note-index-btn').addEventListener('click', () => toggleIndex());
+  matchMedia('(max-width: 580px)').addEventListener('change', ({matches}) => {
+    if (matches && !$('#note-index').hidden) closeIndex();
+  });
 
   $('#note-close').addEventListener('click', closeWindow);
   $('#note-min').addEventListener('click', () => window.suira.notes.minimizeWindow());
@@ -177,7 +233,9 @@ async function boot() {
     try {
       const result = await window.suira.notes.remove(state.id);
       if (!result || result.ok === false) throw new Error((result && result.error) || '删除失败');
-      closeWindow();
+      clearTimeout(saveTimer);
+      state.dirty = false;
+      await window.suira.notes.hideWindow();
     } catch (error) {
       showError(error.message || '删除失败');
     }
@@ -192,9 +250,7 @@ async function boot() {
       const note = await window.suira.notes.get(id);
       renderNote(note);
       if (innerWidth >= 620) await openIndex();
-      body.focus();
-      // 光标放到末尾：接着上次的写，而不是从开头插入
-      body.setSelectionRange(body.value.length, body.value.length);
+      editor.focusEnd();
     } catch (error) {
       showError(error.message || '读取速记失败');
     }
@@ -209,7 +265,7 @@ async function boot() {
     $('#note').dataset.pinned = String(state.pinned);
     $('#note-pin').setAttribute('aria-pressed', String(state.pinned));
     $('#note-pin').setAttribute('title',state.pinned?'取消置顶':'钉在桌面上');
-    if (!state.dirty && !saveInFlight && ![body,title].includes(document.activeElement)) renderNote(mine);
+    if (!state.dirty && !saveInFlight && (mine.text !== state.source?.text || mine.richText !== state.source?.richText || mine.customTitle !== state.source?.customTitle)) renderNote(mine);
     if (!$('#note-index').hidden) { indexNotes = notes || []; renderIndex(); }
   });
 }
@@ -278,5 +334,5 @@ window.addEventListener('beforeunload', () => {
   if (state.id && state.dirty) window.suira.notes.update(noteDraft());
 });
 
-window.NoteUI={flush:async()=>{ clearTimeout(saveTimer); if (!(await pushText())) throw Error('速记保存失败'); }};
+window.NoteUI={text:()=>editor.text(), flush:async()=>{ clearTimeout(saveTimer); if (!(await pushText())) throw Error('速记保存失败'); }};
 boot();

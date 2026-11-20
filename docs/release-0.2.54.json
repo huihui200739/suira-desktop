@@ -1,0 +1,23 @@
+{
+  "version": "0.2.54",
+  "artifact": "Suira-0.2.54-x64.exe",
+  "bytes": 171731225,
+  "sha256": "DF4AB724F04DA9EAC5417B0C033B80BD9C18CE817606702EFC504579E4A9548A",
+  "sha512": "PNcn/EzwsUEDAnDC01isiL85CEY1UgzEGGb1+LN9g/l18tkbztPi8aoORPfRg1dysBQyOJKnbvaW0xF74LURog==",
+  "platform": "win32",
+  "arch": "x64",
+  "electron": "45.0.0",
+  "checkedSourceFiles": 163,
+  "checks": [
+    "source-payload-byte-match",
+    "no-test-profile-or-obsolete-key-hook",
+    "installer-archive-crc",
+    "updater-feed-and-sha512-match",
+    "original-font-and-license-sha256-in-nsis-payload"
+  ],
+  "fontSha256": "0ddef90648998900175cfdca9a6f087a2544c182f130b0ad4f7e94a03a115e79",
+  "signature": "unsigned",
+  "published": false,
+  "payloadSha256": "C8BF3631F4BD248FCADC1C6224F57D35096C4E8D6DBA33F425B6B414108B87D3",
+  "executableSha256": "48846DDA6B55BD7CF985EC29E611E3ECFA04B412F32E6D34D537BFBE9A41D568"
+}

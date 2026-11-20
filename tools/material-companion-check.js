@@ -21,7 +21,7 @@ async function until(fn){let error;for(let i=0;i<180;i++){try{const value=await 
   await until(()=>note.evaluate('window.suira.settings.get().then(s=>s.companionMotion===false)'));
   await note.evaluate('document.querySelector("[data-buddy-hide]").click();true');await until(()=>note.evaluate('document.querySelector(".suira-companion").hidden'));
   await main.evaluate('window.suira.settings.update({companionEnabled:true,companionMotion:true})');await until(()=>note.evaluate('!document.querySelector(".suira-companion").hidden'));
-  await note.evaluate('(()=>{const e=document.getElementById("note-body");e.value="保存后的伙伴反馈";e.dispatchEvent(new Event("input",{bubbles:true}));return true;})()');
+  await note.evaluate('(()=>{document.querySelector("#note-body .tiptap").focus();document.execCommand("selectAll");document.execCommand("insertText",false,"保存后的伙伴反馈");return true;})()');
   await until(()=>note.evaluate('document.querySelector(".suira-companion").dataset.pose==="saved"'));
   console.log('PASS smallest-window controls, persisted quiet mode, hide/restore, actual save response');return;
  }

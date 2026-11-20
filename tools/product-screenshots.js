@@ -143,7 +143,7 @@ class RegionCheck {
     };
     const shot = async (client, name, theme = 'light') => {
       const reviewDir = process.env.SUIRA_REVIEW_SHOTS;
-      if (!screenshots || (reviewDir && !['clipboard','clipboard-dark','clipboard-hover','clipboard-text-hover','clipboard-link-hover','clipboard-batch-share','notes','markdown-dark'].includes(name))) return;
+      if (!screenshots || (reviewDir && !['clipboard','clipboard-dark','clipboard-hover','clipboard-text-hover','clipboard-link-hover','clipboard-batch-share','notes','notes-narrow','markdown-dark'].includes(name))) return;
       console.log('SHOT '+name);
       await client.evaluate('window.suira.settings.update('+JSON.stringify({theme})+')');
       await client.evaluate('document.fonts.ready'); await wait(350);
@@ -159,6 +159,21 @@ class RegionCheck {
       }
       finally { fs.rmSync(temporary,{force:true}); }
     };
+    async function captureNote() {
+      await main.evaluate('window.suira.notes.create()');
+      const note=await page(t => t.url.endsWith('/notes.html')); await check('/notes.html');await until(()=>note.evaluate('document.getElementById("note").dataset.state==="ready"'));await note.evaluate('(()=>{document.querySelector("#note-body .tiptap").focus();document.execCommand("selectAll");document.execCommand("insertText",false,"随手记下，接着做\\n\\n把想法先放在这里，稍后再整理。");return true})()');
+      await note.evaluate('window.NoteUI.flush()');
+      await shot(note,'notes','dark');
+      return note;
+    }
+    if (process.argv.includes('--notes-only')) {
+      const note = await captureNote();
+      const surface = (await info()).surfaces.find(entry => entry.url.endsWith('/notes.html'));
+      fs.writeFileSync(control, JSON.stringify({id:surface.id, size:[320, 320]}));
+      await info();
+      await shot(note, 'notes-narrow');
+      return;
+    }
     await check('/index.html');
     await checkPlacement(main,'/index.html');
     const demoTask=await main.evaluate(`window.suira.tasks.create('整理灵感，开始下一步')`);
@@ -344,10 +359,7 @@ class RegionCheck {
     await checkPlacement(markdown,'tool=markdown');
     assert.equal(await markdown.evaluate('document.querySelector(".tool-kind").getAttribute("aria-label")'),'Markdown 文档');
     await until(()=>calendar.evaluate('document.documentElement.dataset.windowActive==="false"'));
-    await main.evaluate('window.suira.notes.create()');
-    const note=await page(t => t.url.endsWith('/notes.html')); await check('/notes.html');await until(()=>note.evaluate('document.getElementById("note").dataset.state==="ready"'));await note.evaluate('(()=>{const e=document.getElementById("note-body");e.value="随手记下，接着做\\n\\n把想法先放在这里，稍后再整理。";e.dispatchEvent(new Event("input",{bubbles:true}));return true})()');
-    await note.evaluate('window.NoteUI.flush()');
-    await shot(note,'notes','dark');
+    const note = await captureNote();
     const noteId = await note.evaluate('state.id');
     await note.evaluate(`(()=>{const title=document.getElementById('note-page-title');title.value='周末速记';title.dispatchEvent(new Event('input',{bubbles:true}));})()`);
     await note.evaluate('window.NoteUI.flush()');

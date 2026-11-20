@@ -1,4 +1,4 @@
-/* Notebook layout; plain text pages share the same saved content as other tools. */
+/* Notebook layout and editor controls. */
 html,body { height:100%; margin:0; overflow:hidden; }
 html.notes-window {
   color-scheme:light;
@@ -15,7 +15,7 @@ html.notes-window {
   --focus-ring:var(--writing-focus);
 }
 .note {
-  --note-inset: clamp(18px, 5vw, 44px);
+  --note-inset: clamp(14px, 3.6vw, 42px);
   --note-paper: var(--writing-paper);
   --note-ink: var(--writing-ink);
   --note-muted: var(--writing-muted);
@@ -49,13 +49,53 @@ html.notes-window {
 .note-writing { grid-area:writing; min-width:0; min-height:0; display:flex; flex-direction:column; gap:12px; padding:24px var(--note-inset) 12px; }
 .note-page-title,.note .note-body { display:block; width:100%; min-width:0; padding:0; margin:0; border:0; background:transparent; color:var(--note-ink); caret-color:var(--note-accent); }
 .note-page-title { flex:none; border-radius:4px; font-size:clamp(22px,4.5vw,28px); font-weight:600; }
-.note .note-body { flex:1; min-height:0; outline:none; resize:none; font:16px/1.75 var(--font-ui); scrollbar-width:thin; }
+.note .note-body { flex:1; min-height:0; overflow:auto; font:16px/1.65 var(--font-ui); scrollbar-width:thin; }
+.note-body .tiptap { min-height:100%; outline:none; overflow-wrap:anywhere; white-space:pre-wrap; }
+.note-body p { margin:0; min-height:1lh; }
+.note-body :is(h1,h2) { margin:8px 0 4px; line-height:1.4; }
+.note-body h1 { font-size:25px; }
+.note-body h2 { font-size:20px; }
+.note-body ul { margin:4px 0; padding-inline-start:24px; }
+.note-body ul[data-type="taskList"] { padding-inline-start:0; list-style:none; }
+.note-body ul[data-type="taskList"] li { display:flex; align-items:baseline; gap:8px; }
+.note-body ul[data-type="taskList"] li > div { min-width:0; }
+.note-body li[data-checked="true"] > div > p { color:var(--note-muted); text-decoration:line-through; }
+.note-body input[type="checkbox"] { accent-color:var(--note-ink); }
+.note-body p.is-editor-empty:first-child::before { content:attr(data-placeholder); float:inline-start; height:0; color:var(--note-muted); pointer-events:none; }
+.note .note-file { max-width:100%; padding:1px 8px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; vertical-align:bottom; border:1px solid var(--note-line); border-radius:6px; background:var(--note-side); color:var(--note-ink); }
+.note .note-file:hover { background:var(--note-tint); }
 .note :is(.note-page-title,.note-body)::placeholder { color:var(--note-muted); opacity:1; }
-.note .note-foot { grid-area:foot; justify-self:stretch; display:flex; align-items:center; gap:8px; min-width:0; min-height:40px; padding:4px var(--note-inset); border-block-start:1px solid var(--note-line); background:var(--note-paper); color:var(--note-muted); font-size:12px; }
+.note .note-foot { grid-area:foot; display:grid; gap:4px; min-width:0; padding:0 var(--note-inset) 7px; color:var(--note-muted); font-size:12px; container-type:inline-size; }
+.note-format { display:flex; flex-wrap:wrap; align-items:center; gap:3px; width:fit-content; max-width:100%; padding:4px; border:1px solid var(--note-line); border-radius:12px; background:var(--note-side); }
+.note-format-group { display:flex; align-items:center; gap:2px; }
+.note-format-group + .note-format-group { padding-inline-start:3px; border-inline-start:1px solid var(--note-line); }
+.note-format .note-format-group button { color:var(--note-ink); min-width:28px; padding:0 5px; white-space:nowrap; }
+.note-format button[aria-pressed="true"] { background:var(--writing-selected); }
+.note-marks button { font-size:14px; }
+.note-format #note-ledger { border:1px solid var(--note-line); margin-inline-start:3px; }
+.note-format button:disabled { opacity:.5; cursor:wait; }
+.note-status { display:flex; align-items:center; gap:8px; min-width:0; }
+.note-status button { height:24px; }
+.note-status button[hidden] { display:none; }
+@container (max-width:400px) {
+  .note-format-group + .note-format-group { border-inline-start:0; padding-inline-start:0; }
+}
+.note-ledger-dialog { width:min(310px,calc(100% - 24px)); padding:14px; max-height:calc(100% - 20px); overflow:auto; border:1px solid var(--note-line); border-radius:12px; background:var(--note-paper); color:var(--note-ink); }
+.note-ledger-dialog::backdrop { background:var(--writing-scrim); }
+.note-ledger-dialog form { display:grid; gap:10px; }
+.note-ledger-dialog h2 { font-size:17px; margin:0; }
+.note-ledger-dialog fieldset { display:flex; gap:12px; padding:0; margin:0; border:0; }
+.note-ledger-dialog legend { padding:0; font-size:12px; color:var(--note-muted); }
+.note-ledger-dialog label:has(input:not([type="radio"])) { display:grid; gap:4px; font-size:12px; }
+.note-ledger-dialog input:not([type="radio"]) { width:100%; border:1px solid var(--note-line); border-radius:6px; padding:6px 8px; color:var(--note-ink); }
+.note-ledger-actions { display:flex; justify-content:flex-end; gap:6px; }
+.note-ledger-actions button { padding:6px 9px; border-radius:6px; color:var(--note-ink); }
+.note-ledger-actions button:is(:hover,[type="submit"]) { background:var(--note-tint); }
 .note-saved { margin-inline-end:auto; white-space:nowrap; }
 .note-count { white-space:nowrap; font-variant-numeric:tabular-nums; }
 .note-saved[data-state="error"] { color:var(--note-ink); font-weight:600; }
 .note .note-index { grid-area:index; min-width:0; min-height:0; padding:12px; display:flex; flex-direction:column; gap:10px; background:var(--note-side); border:0; border-inline-end:1px solid var(--note-line); border-radius:0; box-shadow:none; }
+.note .note-index[hidden] { display:none; }
 .note-index input { min-width:0; width:100%; height:34px; padding:0 10px; border:1px solid var(--note-line); border-radius:9px; background:var(--note-tint); color:var(--note-ink); }
 .note-new-page { display:flex; align-items:center; gap:6px; padding:6px; border-radius:8px; color:var(--note-ink); text-align:start; }
 .note-new-page:hover { background:var(--note-tint); }
@@ -66,7 +106,7 @@ html.notes-window {
 .note .note-pages button[aria-current="true"] { border-color:var(--note-line); background:var(--writing-hover); color:var(--note-ink); }
 .note-pages :is(small,b,span) { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .note .note-pages :is(small,span), .note-index-empty { color:var(--note-muted); font-size:12px; }
-.note-error { position:absolute; inset:auto 16px 59px; z-index:4; padding:8px 12px; margin:0; border:1px solid var(--note-line); border-radius:8px; background:var(--note-side); color:var(--note-ink); }
+.note-error { position:absolute; inset:auto 16px 118px; z-index:4; padding:8px 12px; margin:0; border:1px solid var(--note-line); border-radius:8px; background:var(--note-side); color:var(--note-ink); }
 @media (max-width:580px) {
   .note.with-index { grid-template:"head" 46px "writing" minmax(0,1fr) "foot" auto / minmax(0,1fr); }
   .note.with-index .note-index { position:absolute; z-index:3; inset:48px 8px auto; max-height:70%; border:1px solid var(--note-line); border-radius:12px; }

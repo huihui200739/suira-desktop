@@ -10,9 +10,6 @@
   <link rel="stylesheet" href="notes.css">
 </head>
 <body>
-  <!--
-    速记用轻量的纯文本页面，并保留独立置顶的能力。
-  -->
   <main class="note" id="note" data-state="loading">
     <header class="note-head">
       <span class="note-mark" aria-hidden="true">
@@ -38,19 +35,52 @@
 
     <section class="note-writing" aria-label="当前页面">
       <input class="note-page-title" id="note-page-title" placeholder="添加标题" aria-label="页面标题" maxlength="120" autocomplete="off">
-      <textarea class="note-body" id="note-body" placeholder="写下此刻想到的内容…" aria-label="速记正文"
-        spellcheck="false" autocomplete="off"></textarea>
+      <div class="note-body" id="note-body"></div>
     </section>
 
     <footer class="note-foot">
-      <span class="note-count" id="note-count">0 字</span>
-      <span class="note-saved" id="note-saved" role="status" aria-live="polite">已保存</span>
-      <button id="note-checklist" type="button" title="插入清单项（纯文本）" aria-label="插入清单项"><svg viewBox="0 0 24 24"><path d="m3 7 2 2 4-4m2 2h10M3 15h5v5H3zM11 17h10"/></svg></button>
-      <button id="note-delete" type="button" title="删除这条速记">删除</button>
+      <div class="note-format" role="group" aria-label="速记格式与插入工具">
+        <div class="note-format-group">
+          <button type="button" data-format="large" title="大标题" aria-pressed="false">大标题</button>
+          <button type="button" data-format="small" title="小标题" aria-pressed="false">小标题</button>
+          <button type="button" data-format="body" title="正文" aria-pressed="true">正文</button>
+        </div>
+        <div class="note-format-group note-marks">
+          <button type="button" data-format="bold" title="加粗 (Ctrl+B)" aria-label="加粗" aria-pressed="false"><b>B</b></button>
+          <button type="button" data-format="italic" title="斜体 (Ctrl+I)" aria-label="斜体" aria-pressed="false"><i>I</i></button>
+          <button type="button" data-format="underline" title="下划线 (Ctrl+U)" aria-label="下划线" aria-pressed="false"><u>U</u></button>
+          <button type="button" data-format="strike" title="删除线" aria-label="删除线" aria-pressed="false"><s>S</s></button>
+        </div>
+        <div class="note-format-group">
+          <button id="note-checklist" type="button" data-format="taskList" title="清单" aria-label="清单" aria-pressed="false"><svg viewBox="0 0 24 24"><path d="m3 7 2 2 4-4m2 2h10M3 15h5v5H3zM11 17h10"/></svg></button>
+          <button type="button" data-format="bulletList" title="项目符号" aria-label="项目符号" aria-pressed="false"><svg viewBox="0 0 24 24"><path d="M9 6h12M9 12h12M9 18h12M4 6h.01M4 12h.01M4 18h.01"/></svg></button>
+          <button type="button" id="note-attach" title="插入本地文件引用" aria-label="插入本地文件引用"><svg viewBox="0 0 24 24"><path d="m10 13 5-5a2 2 0 0 1 3 3l-7.5 7.5a4 4 0 0 1-5.7-5.7L13 4.5a5 5 0 1 1 7 7l-8.5 8.5"/></svg></button>
+          <button type="button" id="note-ledger" title="记一笔" aria-label="记一笔"><svg viewBox="0 0 24 24"><rect x="3" y="6" width="18" height="12" rx="2"/><circle cx="12" cy="12" r="2.5"/><path d="M6 12h.01M18 12h.01"/></svg></button>
+        </div>
+      </div>
+      <div class="note-status">
+        <span class="note-count" id="note-count">0 字</span>
+        <span class="note-saved" id="note-saved" role="status" aria-live="polite">已保存</span>
+        <button id="note-delete" type="button" title="删除这条速记">删除</button>
+      </div>
     </footer>
 
+    <dialog class="note-ledger-dialog" id="note-ledger-dialog" aria-labelledby="note-ledger-title">
+      <form id="note-ledger-form">
+        <h2 id="note-ledger-title">记一笔</h2>
+        <fieldset><legend>收支类型</legend>
+          <label><input type="radio" name="kind" value="支出" checked> 支出</label>
+          <label><input type="radio" name="kind" value="收入"> 收入</label>
+        </fieldset>
+        <label>金额（元）<input name="amount" type="number" min="0.01" max="999999999.99" step="0.01" required autofocus></label>
+        <label>备注<input name="memo" maxlength="100" placeholder="选填"></label>
+        <div class="note-ledger-actions"><button type="button" id="note-ledger-cancel">取消</button><button type="submit">插入速记</button></div>
+      </form>
+    </dialog>
     <p class="note-error" id="note-error" role="alert" hidden></p>
   </main>
+  <script src="vendor/purify.js"></script>
+  <script src="vendor/document-editor.js"></script>
   <script src="notes.js"></script>
 <script src="ui-motion.js"></script><script src="icons.js"></script><script src="glass-select.js"></script><script src="action-strip.js"></script><script src="relay-surfaces.js"></script></body>
 </html>
