@@ -216,11 +216,11 @@ button { color: inherit; }
   min-height: 46px;
   padding: var(--space-1) var(--space-2);
   border: 1px solid var(--floating-edge);
-  border-radius: 16px;
+  border-radius: var(--radius-card);
   background: linear-gradient(160deg, var(--floating-light), transparent 70%),
     color-mix(in srgb, var(--paper-raised) 76%, transparent);
   box-shadow:var(--overlay-tool-dock-shadow);
-  backdrop-filter: blur(28px) saturate(1.25);
+  backdrop-filter: blur(16px) saturate(1.25);
 }
 .tool-dock[hidden] { display: none; }
 #capture-root[data-intent="record"] .tool-dock > :not(.tool-tooltip):not([data-tool="select"]):not([data-action="cancel"]):not(.complete-button) { display: none; }

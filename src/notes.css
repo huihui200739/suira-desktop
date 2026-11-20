@@ -36,7 +36,7 @@ html, body {
   display: flex;
   align-items: center;
   gap: 10px;
-  min-height: 44px;
+  min-height: var(--titlebar-height);
   padding: 0 6px 0 14px;
   border-bottom: 1px solid var(--line);
   /* 标题栏是拖动区；按钮要单独声明 no-drag，否则点不动 */

@@ -4223,6 +4223,12 @@ function registerIpc() {
   });
   ipcMain.handle('workspace:opened-file',event=>{const win=BrowserWindow.fromWebContents(event.sender);const id=win?.__openedDoc||'';if(win)win.__openedDoc='';return id;});
   ipcMain.handle('workspace:save-file',async(_event,id)=>{try{return {ok:true,...await markdownFiles.save(String(id))};}catch(error){return {ok:false,error:error.message};}});
+  ipcMain.handle('workspace:preview-images', async (event, id, references) => {
+    const active = activeDocuments.get(event.sender.id);
+    if (!active || active.id !== id) return [];
+    const images = await markdownFiles.previewImages(id, references);
+    return activeDocuments.get(event.sender.id) === active ? images : [];
+  });
   ipcMain.handle('workspace:open-link', async (_event,url) => {
     if(/^suira-image:\/\/[-\w]+$/.test(String(url))){const item=store.getItem(String(url).slice(14));if(item?.kind!=='image'||!item.filePath)return {ok:false,error:'截图已被清理'};const error=await shell.openPath(item.filePath);return error?{ok:false,error}:{ok:true};}
     if(!isSafeHttpUrl(url))return {ok:false,error:'只能打开 http(s) 链接'};

@@ -105,7 +105,6 @@ kbd { font:inherit;font-variant-numeric:tabular-nums; font-size: var(--text-1); 
 @media (max-height: 260px) { .bar-head { flex-basis: 48px; } .bar-body { padding-block: var(--space-2) var(--space-1); } .bar-card { width: 190px; gap: var(--space-1); padding: var(--space-2); } .bar-foot { flex-basis: 34px; } .card-caption { display: none; } }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; } }
 
-.bar-card { box-shadow:var(--shadow-card); }
 .bar-card { gap:var(--space-1); }
 .card-head { flex:0 0 var(--space-5);gap:var(--space-1); }
 .card-type { margin-right:auto; }

@@ -207,3 +207,7 @@
 }
 
 @media(min-width:541px) { .mia-shell :is(#md-notes-back,#md-outline-back,#md-empty-notes) { display:none; } }
+
+/* Render local attachments inside the reading column, including split view. */
+.markdown-preview img { max-inline-size:100%; block-size:auto; }
+.markdown-preview li input[type="checkbox"] { accent-color:var(--accent); margin-inline:0 var(--space-1); vertical-align:middle; }

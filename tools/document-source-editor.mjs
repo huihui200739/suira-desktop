@@ -1,6 +1,7 @@
 import {renderMenu,validURL,escape} from './document-menu.mjs';
-import {continueList, editLines, inFencedCode, sourceHighlight, mountEditorLayout, renderLocations, iconButton} from '../vendor/miaoyan-windows/lib/index.mjs';
+import {continueList, editLines, inFencedCode, sourceHighlight, mountEditorLayout, renderLocations, iconButton, localImageReference, maxLocalImageReferences} from '../vendor/miaoyan-windows/lib/index.mjs';
 
+window.SuiraLocalImage = { localImageReference, maxLocalImageReferences };
 window.SuiraSourceHighlight = sourceHighlight;
 window.SuiraMarkdownLayout = { mountEditorLayout, renderLocations, iconButton };
 

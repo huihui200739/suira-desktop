@@ -13,7 +13,8 @@
   let requestedView = localStorage.getItem(viewStorageKey);
   if (!views.has(requestedView)) requestedView = 'edit';
   let renderedText = null, focusedWriting = false, saveInFlight, visualBundle;
-  let viewRevision = 0;
+  let viewRevision = 0, previewRevision = 0, imageRequest = null, queuedImagePreview = null;
+  let imagePreviewDocument = null;
   const editor = $('md-editor'), previewPane = $('md-preview');
   const sourceHighlight = window.SuiraSourceHighlight?.attach(editor, $('md-source-highlight'));
   let sourceHeadingPositions, ignoreEditorScroll, ignorePreviewScroll;
@@ -135,12 +136,30 @@
     clearTimeout(previewTimer);
     const text = editor.value;
     if (renderedText === text) return;
-    const { html, headings } = window.SuiraMarkdown.renderWithOutline(text);
+    const id = current;
+    const external = Boolean(docs.find(doc => doc.id === id)?.meta?.externalPath);
+    const showImages = external && ['split', 'preview'].includes($('md-split').dataset.view);
+    const { html, headings, images } = window.SuiraMarkdown.renderWithOutline(text, { localImages:external });
+    const change = ++previewRevision;
+    // Keep decoded images in this preview only. Text edits should not reread
+    // unchanged files or retain attachments from a previously opened document.
+    const existing = showImages && imagePreviewDocument === id
+      ? new Map([...previewPane.querySelectorAll('img[data-md-image-url]')].map(image => [image.dataset.mdImageUrl, image]))
+      : new Map();
+    imagePreviewDocument = showImages ? id : null;
     const scroll = previewPane.scrollTop;
     previewPane.innerHTML = html;
-    for (const input of previewPane.querySelectorAll('input')) {
-      if (input.type === 'checkbox') input.disabled = true;
-      else input.remove();
+    if (showImages && images.length) {
+      const referenced = new Set(images);
+      for (const placeholder of previewPane.querySelectorAll('[data-md-local-image]')) {
+        const url = placeholder.dataset.mdLocalImage;
+        if (!referenced.has(url) || !existing.has(url)) continue;
+        const image = existing.get(url).cloneNode(false);
+        image.alt = placeholder.textContent;
+        placeholder.replaceWith(image);
+      }
+      const missing = images.filter(url => !existing.has(url));
+      if (missing.length) queuePreviewImages(id, missing, change);
     }
     renderedText = text;
     sourceHeadingPositions = null;
@@ -150,6 +169,31 @@
     syncScroll(editor);
     $('md-words').textContent = `${text.length.toLocaleString()} 字符 · ${text.split('\n').length} 行`;
     updateActiveHeading();
+  }
+  function queuePreviewImages(id, images, change) {
+    queuedImagePreview = { id, images, change };
+    if (imageRequest) return;
+    imageRequest = (async () => {
+      while (queuedImagePreview) {
+        const request = queuedImagePreview;
+        queuedImagePreview = null;
+        if (request.id !== current || request.change !== previewRevision) continue;
+        const loaded = await api.previewImages(request.id, request.images).catch(() => []);
+        if (request.id !== current || request.change !== previewRevision || !['split','preview'].includes($('md-split').dataset.view)) continue;
+        const byUrl = new Map(loaded.map(({url,data}) => [url,data]));
+        for (const placeholder of previewPane.querySelectorAll('[data-md-local-image]')) {
+          const data = byUrl.get(placeholder.dataset.mdLocalImage);
+          if (!data) continue;
+          const image = document.createElement('img');
+          image.alt = placeholder.textContent;
+          image.dataset.mdImageUrl = placeholder.dataset.mdLocalImage;
+          image.loading = 'lazy';
+          image.decoding = 'async';
+          image.src = data;
+          placeholder.replaceWith(image);
+        }
+      }
+    })().finally(() => { imageRequest = null; });
   }
   previewPane.addEventListener('click', event => {
     const link = event.target.closest('a[href]');
@@ -168,7 +212,7 @@
       const locations = [
         { id:'all', label:'全部', icon:'library' },
         { id:'recent', label:'最近打开', icon:'recent' },
-        { id:'local', label:'随序文档' },
+        { id:'local', label:'随序文档', icon:'files' },
         ...[...folders].sort((a,b)=>a[1].localeCompare(b[1],'zh-CN')).map(([key,folder])=>({
           id:'folder:'+key, label:folder.split('/').at(-1) || folder, title:folder
         }))
@@ -248,6 +292,8 @@
     renderedText = null;
     viewRevision++;
     current = item?.id || '';
+    previewRevision++;
+    api.activeDocument?.(current);
     revision = savedRevision = 0;
     if (!current) setWritingFocus(false);
     if (item) documentLayout?.shell.classList.remove('mia-notes-only');
@@ -268,7 +314,6 @@
       sourceHeadingPositions = null;
     }
     documentIdentity(item);
-    api.activeDocument?.(current);
     for (const button of ['md-save', 'md-export', 'md-export-format', 'md-delete']) $(button).disabled = !item;
     docList({ revealActive:true });
     syncDocumentNavigation();
@@ -301,6 +346,7 @@
     if(/^---\r?\n[\s\S]*?\n---(?:\r?\n|$)/.test(text)||/(?:^|\n)\[\^[^\]]+\]:/.test(text))return false;
     let safe=true;
     const walk=tokens=>{for(const token of tokens||[]){
+      if (token.type === 'image' && window.SuiraLocalImage?.localImageReference(token.href)) safe = false;
       if(token.type==='html'){
         const tags=(token.raw||token.text||'').match(/<[^>]*>/g)||[];
         if(!tags.length||tags.some(tag=>!/^<\/?(?:span|u|br)\b[^>]*>$/i.test(tag)||/\bon\w+\s*=|\b(?:src|href)\s*=/i.test(tag)))safe=false;
@@ -353,6 +399,8 @@
       }).catch(error => { if (change === viewRevision) notify(error.message); });
       view = 'edit';
     }
+    const isPreview = mode => mode === 'split' || mode === 'preview';
+    if (isPreview(view) !== isPreview($('md-split').dataset.view) && docs.find(doc => doc.id === current)?.meta?.externalPath) renderedText = null;
     $('md-split').dataset.view=view;
     document.querySelectorAll('[data-md-view]').forEach(b=>{b.classList.toggle('is-active',b.dataset.mdView===view);b.setAttribute('aria-pressed',String(b.dataset.mdView===view));});
     $('md-sync-scroll').closest('label').hidden=view!=='split';

@@ -1,5 +1,5 @@
 .is-image-editor { border-radius:var(--radius-panel);overflow:hidden; background:var(--paper);color:var(--ink);font-family:var(--font-ui); }
-.is-image-editor .editor-head { position:fixed;inset:0 0 auto;display:flex;align-items:center;gap:16px;height:60px;padding:0 12px 0 22px;background:linear-gradient(135deg,var(--floating-light),transparent),var(--floating-surface);border-bottom:1px solid var(--line);-webkit-app-region:drag; }
+.is-image-editor .editor-head { position:fixed;inset:0 0 auto;display:flex;align-items:center;gap:16px;height:var(--titlebar-height);padding:0 12px 0 22px;background:linear-gradient(135deg,var(--floating-light),transparent),var(--floating-surface);border-bottom:1px solid var(--line);-webkit-app-region:drag; }
 .editor-brand { display:flex;align-items:center;gap:10px;min-width:0;flex:1; }
 .editor-brand img { width:28px;height:28px; }
 .editor-brand b { font-size:var(--text-3);white-space:nowrap; }
@@ -8,10 +8,10 @@
 #editor-open,.editor-empty button { border:1px solid var(--line);border-radius:10px;padding:8px 14px;background:var(--floating-key);color:var(--ink);cursor:pointer; }
 #editor-open:hover,.editor-empty button:hover { background:var(--control-selected); }
 .editor-window-controls { display:flex; }
-.editor-window-controls button { width:34px;height:32px;border:0;border-radius:8px;background:transparent;cursor:pointer;color:var(--ink-soft);font-size:20px; }
+.editor-window-controls button { width:var(--window-control-width);height:var(--window-control-height);border:0;border-radius:var(--radius-inner);background:transparent;cursor:pointer;color:var(--ink-soft);font-size:20px; }
 .editor-window-controls button:hover { background:var(--control-selected); }
 .editor-window-controls [data-window="close"]:hover { background:var(--image-editor-editor-window-controls-close-hover-surface);color:var(--image-editor-editor-window-controls-close-hover-ink); }
-.editor-empty { position:absolute;inset:60px 0 40px;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:14px; }
+.editor-empty { position:absolute;inset:var(--titlebar-height) 0 40px;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:14px; }
 .editor-empty[hidden] { display:none; }
 .editor-empty svg { width:64px;height:64px;fill:none;stroke:var(--accent-deep);stroke-width:1.5;opacity:.7; }
 .editor-empty h1 { margin:8px 0 0;font-size:var(--text-4);font-weight:600; }

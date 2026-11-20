@@ -2,3 +2,4 @@ export { continueList, editLines, inFencedCode, sourceLineRange, toggleTaskAtSou
 export { sourceHighlight } from './highlight.mjs';
 
 export { mountEditorLayout, renderLocations, iconButton } from './layout.mjs';
+export { localImageReference, matchesImageType, maxLocalImageBytes, maxLocalImageReferences } from './preview.mjs';

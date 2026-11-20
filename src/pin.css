@@ -4,7 +4,7 @@ html, body { width:100%;height:100%;margin:0;overflow:hidden;background:transpar
 button { font:inherit;font-variant-numeric:tabular-nums;color:inherit;cursor:pointer;border:0;background:transparent; }
 .pin-surface { position:relative;width:100%;height:100%;border:1px solid var(--floating-edge);border-radius:var(--radius-panel);overflow:hidden;background:var(--floating-surface); }
 #pin-image { display:block;width:100%;height:100%;object-fit:contain;pointer-events:none; }
-.pin-bar { position:absolute;left:50%;bottom:8px;transform:translateX(-50%);display:flex;align-items:center;gap:2px;max-width:calc(100% - 12px);padding:4px;border-radius:12px;border:1px solid var(--floating-edge);background:var(--surface);box-shadow:var(--control-shadow),var(--shadow-lift);backdrop-filter:blur(18px);opacity:0;transition:opacity var(--dur-fast); }
+.pin-bar { position:absolute;left:50%;bottom:8px;transform:translateX(-50%);display:flex;align-items:center;gap:2px;max-width:calc(100% - 12px);padding:4px;border-radius:var(--radius-inner);border:1px solid var(--floating-edge);background:var(--surface);box-shadow:var(--control-shadow),var(--shadow-lift);backdrop-filter:blur(12px);opacity:0;transition:opacity var(--dur-fast); }
 .pin-surface:hover .pin-bar,.pin-bar:focus-within { opacity:1; }
 .pin-bar button { flex:0 0 28px;width:28px;height:28px;padding:0;display:grid;place-items:center;border-radius:var(--radius-sm);color:var(--ink-soft); }
 .pin-bar button:hover:not(:disabled) { background:var(--control-selected);color:var(--ink); }

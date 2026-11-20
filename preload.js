@@ -239,6 +239,7 @@ contextBridge.exposeInMainWorld('suira', {
     onClosing: callback => subscribe('workspace:closing',callback),
     closeReady: () => ipcRenderer.invoke('workspace:close-ready'),
     calendarExport: () => ipcRenderer.invoke('workspace:calendar-export'),
+    previewImages: (id,references) => ipcRenderer.invoke('workspace:preview-images',id,references),
     openLink: url => ipcRenderer.invoke('workspace:open-link',url),
     list: type => ipcRenderer.invoke('workspace:list',type),
     save: (type,payload) => ipcRenderer.invoke('workspace:save',type,payload),

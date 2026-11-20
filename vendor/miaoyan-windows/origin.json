@@ -1,12 +1,13 @@
 {
   "repository": "https://github.com/huihui200739/miaoyan-windows",
-  "commit": "78a9460d7c67ccdca3cbd9918eac13f86c7d6d94",
+  "commit": "1cb7c8cd538a17dae986c96e5b1c6e0c23be74e2",
   "files": {
-    "lib/index.mjs": "866ddf3bf1599b3d028775f0e9ea246d8c71c606ede0c0533a1674c99440a49e",
+    "lib/index.mjs": "e26ba06e5671f94be097bc289eb14287038652043d12dad5f059a199f4fb3949",
     "lib/editing.mjs": "6e1a7ce37734330f4d46a98416bd4eff46ebd04c500ae2cf2923cfd3a62d4267",
     "lib/highlight.mjs": "e195197123420bae6fe36790c8d3c6d7507ddae6996777cb04bff07eb526d60b",
     "LICENSE": "a8cfae3105018e6018e5a046977a9919c0e975d8d5eab79fd19339182211f058",
-    "lib/layout.mjs": "e1109da1d70298ed90fd0f6d1a6a2895ad80593c69eb9f2c2b25cad750ff7056",
-    "lib/layout.css": "4859b4446eeeb1a4d6a9b96f5b6ab489917ab85ef1fa78a558730ab2ec3df48c"
+    "lib/layout.mjs": "dbc525ca2f2e02922e26a982393d8ccfe5ed752cf91a3195890bbaa6509b3295",
+    "lib/layout.css": "4859b4446eeeb1a4d6a9b96f5b6ab489917ab85ef1fa78a558730ab2ec3df48c",
+    "lib/preview.mjs": "df9fe266df6d812927dc0c563cf9920e9c936cdb717e8e1efa22c2e47ff52d36"
   }
 }

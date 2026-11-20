@@ -20,6 +20,13 @@ const article='# 山间拍摄手记\n\n在山里把一个周末放慢。带上�
    store.addItem({ kind:'text', title, text, pinned:true, source:{type:'user'}, meta:{workspace:'markdown',externalPath,recentHidden:index===2} });
  }
  const workspace=createWorkspace(store),doc=workspace.save('markdown',{title:'山间拍摄手记',text:article});
+ const localMarkdown='# 本地图像\n\n![照片](assets/photo.png)\n\n- [x] 已完成\n  - [ ] 子项\n\n- [ ] 待处理';
+ const localPath=path.join(tmp,'本地图像.md');
+ fs.writeFileSync(localPath,localMarkdown);
+ fs.mkdirSync(path.join(tmp,'assets'));
+ fs.writeFileSync(path.join(tmp,'assets/photo.png'), Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jxL0AAAAASUVORK5CYII=', 'base64'));
+ const external=(await require('../lib/markdown-files').createMarkdownFiles(store,workspace).open(localPath)).item;
+ external.updatedAt=1;
  const item=store.addItem({kind:'text',title:'出发前的三件小事',text:'检查电池\n整理路线\n预留时间',source:{type:'user'}}),task=store.createTask('周末拍摄');store.addItemToTask(task.id,item.id);await store.save();
  const server=net.createServer();await new Promise(r=>server.listen(0,'127.0.0.1',r));const port=server.address().port;await new Promise(r=>server.close(r));
  const entry=path.join(tmp,'app.js');fs.writeFileSync(entry,`const path=require('node:path');const {app,clipboard,globalShortcut,dialog}=require('electron');app.setPath('userData',${JSON.stringify(profile)});app.getVersion=()=>${JSON.stringify(version)};clipboard.read=async()=>[];clipboard.readText=async()=>'';globalShortcut.register=()=>true;globalShortcut.unregister=()=>{};globalShortcut.unregisterAll=()=>{};dialog.showSaveDialog=async(_w,o)=>({canceled:false,filePath:path.join(${JSON.stringify(tmp)},path.basename(o.defaultPath))});require(${JSON.stringify(path.join(root,'main.js'))});`);
@@ -62,6 +69,20 @@ const article='# 山间拍摄手记\n\n在山里把一个周末放慢。带上�
  await checkLayout(800,640,1.25);
  await shot(md,'source-compact');
  await checkLayout(1440,960,1);
+ await md.evaluate(`document.querySelector('[data-document="${external.id}"]').click();true`);
+ await until(()=>md.evaluate('document.getElementById("md-title").value === "本地图像"'));
+ await md.evaluate('document.querySelector("[data-md-view=split]").click();true');
+ await until(()=>md.evaluate('document.querySelector("#md-preview img")?.naturalWidth===1'));
+ assert.equal(await md.evaluate('document.querySelector("#md-preview li > p > input[type=checkbox]")?.nextSibling.textContent.trim()'),'已完成', await md.evaluate('document.querySelector("#md-preview").innerHTML'));
+ assert.equal(await md.evaluate('document.querySelector("#md-preview li li > input[type=checkbox]")?.nextSibling.textContent.trim()'),'子项');
+ assert.equal((await md.evaluate(`window.suira.workspace.export(${JSON.stringify(external.id)},'html')`)).ok,true);
+ const exportedTasks = fs.readFileSync(path.join(tmp,'本地图像.html'),'utf8');
+ assert.match(exportedTasks, /<li><p><input type="checkbox" disabled="" checked=""> 已完成<\/p>/);
+ assert.doesNotMatch(exportedTasks, /<img|assets\/photo\.png/);
+ await md.evaluate(`document.querySelector('[data-document="${doc.id}"]').click();true`);
+ await until(()=>md.evaluate('document.getElementById("md-title").value === "山间拍摄手记"'));
+ assert.equal(await md.evaluate('document.querySelector("#md-preview img")===null'),true);
+ await md.evaluate('document.querySelector("[data-md-view=edit]").click();true');
  await md.evaluate('document.getElementById("md-outline-toggle").click();true');
  await md.evaluate('document.querySelector("[data-md-view=write]").click();true');
  await until(()=>md.evaluate('Boolean(window.WorkspaceUI.documentEditor && document.querySelector("#md-rich h1"))'));

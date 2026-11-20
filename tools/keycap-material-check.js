@@ -54,7 +54,7 @@ async function checkKeycapMaterial({send,evaluate}) {
   for(let n=0;n<4;n++){await send('Input.dispatchMouseEvent',{type:'mouseMoved',x:point.x+n,y:point.y+n});await wait(16);}
   assert.equal(await ev('window.__frameLayoutReads'),0,'Moving within a key never re-reads its layout');
   await ev('document.querySelector("[data-key=T]").getBoundingClientRect=window.__originalKeyBounds;true');
-  await send('Input.dispatchMouseEvent',{type:'mouseMoved',x:8,y:8});await wait(140);assert.equal(await ev('getComputedStyle(document.querySelector("[data-key=T] .key-badge")).opacity'),'0','Leaving hides the badge');
+  await send('Input.dispatchMouseEvent',{type:'mouseMoved',x:8,y:8});await wait(140);assert.equal(await ev('getComputedStyle(document.querySelector("[data-key=T] .key-badge")).opacity'),'0.72','Leaving restores the subdued badge');
   await send('Input.dispatchMouseEvent',{type:'mouseMoved',x:point.x,y:point.y});await wait(65);
   const sweepCount=await ev('window.__keycapProbe.admissions');
   await send('Input.dispatchMouseEvent',{type:'mouseMoved',x:8,y:8});

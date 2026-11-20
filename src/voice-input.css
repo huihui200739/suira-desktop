@@ -2,7 +2,7 @@
 html, body { height: 100%; margin: 0; overflow: hidden; background: transparent; }
 body { display: grid; place-items: center; font: 13px var(--font-ui); color: var(--ink); }
 [hidden] { display: none !important; }
-.dictation { display: flex; width: 204px; height: 44px; align-items: center; padding: 0 6px; border-radius: 22px; border: 1px solid var(--line-strong); background: var(--slate-2); }
+.dictation { display: flex; width: 204px; height: 44px; align-items: center; padding: 0 6px; border-radius: var(--radius-pill); border: 1px solid var(--line-strong); background: var(--slate-2); }
 button { border: 0; background: transparent; color: inherit; cursor: pointer; font: inherit; }
 #record, #notice { flex: 1; min-width: 0; height: 100%; display: grid; place-items: center; }
 #record { color: var(--accent-deep); }

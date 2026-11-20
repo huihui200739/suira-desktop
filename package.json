@@ -127,6 +127,7 @@
       "pin-preload.js",
       "theme-preload.js",
       "lib/**/*",
+      "vendor/miaoyan-windows/lib/preview.mjs",
       "src/**/*",
       "!src/__fx_*",
       "assets/suira-icon.png",

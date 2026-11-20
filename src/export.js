@@ -2,8 +2,7 @@
 window.renderExport = async ({title,text}) => {
   document.title=title;
   const content=document.getElementById('export-content');
-  content.innerHTML=SuiraMarkdown.safeHTML(marked.parse(text,{gfm:true}));
-  content.querySelectorAll('input').forEach(input=>{if(input.type!=='checkbox')input.remove();else input.disabled=true;});
+  content.innerHTML=SuiraMarkdown.safeHTML(marked.parse(text,{gfm:true}), {taskBoxes:true});
   const escape=value=>String(value).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const computed=getComputedStyle(document.documentElement);
   const tokens=['ink','paper-raised','paper-soft','line','line-strong','ink-soft','accent','font-ui'];

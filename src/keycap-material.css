@@ -15,6 +15,7 @@
 .liquid-ui .panel[data-presentation] .key:is(.is-unbound,.is-unimplemented) .key-contact { opacity:0; }
 .liquid-ui .panel[data-presentation] .key:is(.is-unbound,.is-unimplemented) .key-letter { color:var(--ink-soft); }
 .panel[data-presentation] .key .key-badge { opacity:0;transition:opacity 120ms var(--ease-out); }
+.panel[data-presentation] .key.is-bound .key-badge { opacity:.72; }
 .panel[data-presentation] .key:is(:hover,:focus-visible) .key-badge { opacity:1; }
 .panel .key-contact {
   position:absolute; top:calc(var(--key-size) * .15); left:calc(var(--key-size) * .08);
