@@ -46,7 +46,7 @@
     if (focusedWriting && ['edit', 'split'].includes($('md-split').dataset.view)) editor.focus();
   }
   document.addEventListener('keydown', event => {
-    if (event.isComposing || event.defaultPrevented || !current || !document.querySelector('#page-markdown.is-active')) return;
+    if ($('md-delete-dialog').open || event.isComposing || event.defaultPrevented || !current || !document.querySelector('#page-markdown.is-active')) return;
     if (event.ctrlKey && event.shiftKey && event.key.toLowerCase() === 'f') {
       event.preventDefault();
       setWritingFocus(!focusedWriting);
@@ -232,16 +232,20 @@
       return !query || doc.title.toLowerCase().includes(query) || doc.text.toLowerCase().includes(query);
     });
     const list = $('md-list');
-    const previousFocus = list.contains(document.activeElement) ? document.activeElement.dataset.document : null;
+    const previousFocus = list.contains(document.activeElement) ? document.activeElement : null;
     const previousScroll = list.scrollTop;
     list.innerHTML = visible.map(doc => {
       const active = doc.id===current;
-      return `<button type="button" class="document-row mia-row${active?' is-active':''}" data-document="${esc(doc.id)}" aria-current="${active}" title="${esc(doc.meta?.externalPath || doc.title)}"><b>${esc(doc.title)}</b><time datetime="${new Date(doc.updatedAt).toISOString()}">${documentDate.format(doc.updatedAt)}</time></button>`;
+      return `<div class="md-list-item"><button type="button" class="document-row mia-row${active?' is-active':''}" data-document="${esc(doc.id)}" aria-current="${active}" title="${esc(doc.meta?.externalPath || doc.title)}"><b>${esc(doc.title)}</b><time datetime="${new Date(doc.updatedAt).toISOString()}">${documentDate.format(doc.updatedAt)}</time></button><button type="button" class="md-row-delete" data-delete-doc="${esc(doc.id)}" aria-label="${esc((doc.meta?.externalPath ? '移除记录：' : '删除：') + doc.title)}" title="${doc.meta?.externalPath ? '移除记录' : '删除文档'}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3m3 0-1 13H7L6 7m4 3v7m4-7v7"/></svg></button></div>`;
     }).join('') || `<div class="workspace-empty">${query?'没有匹配的文档':'这里还没有文档'}</div>`;
     list.scrollTop = previousScroll;
     for (const button of list.querySelectorAll('[data-document]')) {
       button.onclick = safe(() => selectDoc(button.dataset.document));
-      if (button.dataset.document===previousFocus && !narrowDocumentLayout()) button.focus({preventScroll:true});
+      if (button.dataset.document===previousFocus?.dataset.document && !narrowDocumentLayout()) button.focus({preventScroll:true});
+    }
+    for (const button of list.querySelectorAll('[data-delete-doc]')) {
+      button.onclick = safe(() => deleteDocument(button.dataset.deleteDoc));
+      if (button.dataset.deleteDoc===previousFocus?.dataset.deleteDoc) button.focus({preventScroll:true});
     }
     if (revealActive) list.querySelector('.is-active')?.scrollIntoView({block:'nearest'});
   }
@@ -341,7 +345,58 @@
   $('md-new').onclick=safe(async()=>{await flush();const result=await checked(api.save('markdown',{title:'未命名文档',text:'# 新的想法\n\n'}));docs.unshift(result.item);if(documentLocation.startsWith('folder:'))documentLocation='local';$('md-search').value='';await selectDoc(result.item.id);$('md-title').focus();$('md-title').select();});
   $('md-import').onclick=safe(async()=>{await flush();const result=await api.import();if(result.canceled)return;await checked(Promise.resolve(result));docs=[result.item,...docs.filter(item=>item.id!==result.item.id)];if(documentLocation!=='all'&&documentLocation!=='recent')documentLocation='folder:'+documentFolder(result.item).toLowerCase();$('md-search').value='';await selectDoc(result.item.id);if(result.recovered)notify('已恢复尚未写回原文件的草稿，请检查后再保存');});
   $('md-export').onclick=safe(async()=>{await flush();const result=await api.export(current,$('md-export-format').value);if(result.canceled)return;await checked(Promise.resolve(result));notify('文档已导出');});
-  $('md-delete').onclick=safe(async()=>{const id=current;if(!id||!confirm('删除这篇文档？此操作会移除随序中的文档记录。'))return;await flush();await checked(api.remove('markdown',id));if(current===id){current='';revision=savedRevision=0;await loadDocs();}});
+  async function deleteDocument(id) {
+    const item = docs.find(doc => doc.id === id);
+    const dialog = $('md-delete-dialog');
+    if (!item || dialog.open || deletingDocument) return;
+    deletingDocument = true;
+    try {
+      const external = Boolean(item.meta?.externalPath);
+      const action = external ? '移除记录' : '删除文档';
+      $('md-delete-title').textContent = action;
+      $('md-delete-detail').textContent = external
+        ? '「' + item.title + '」将从随序中移除。磁盘上的原文件会保留，尚未写回的随序草稿会一并移除。'
+        : '「' + item.title + '」将从随序中删除，删除后无法恢复。';
+      $('md-delete-confirm').textContent = action;
+      dialog.returnValue = '';
+      const confirm = $('md-delete-confirm');
+      const decision = new Promise(resolve => {
+        const accept = event => { event.preventDefault(); resolve(true); };
+        confirm.addEventListener('click', accept, { once:true });
+        dialog.addEventListener('close', () => {
+          confirm.removeEventListener('click', accept);
+          resolve(false);
+        }, { once:true });
+      });
+      dialog.showModal();
+      if (!await decision) return;
+      // Keep the editor inert until its pending save and the removal complete.
+      $('md-delete-confirm').disabled = $('md-delete-cancel').disabled = true;
+      await flush();
+      const rows = [...$('md-list').querySelectorAll('[data-document]')].map(row => row.dataset.document);
+      const index = rows.indexOf(id);
+      const next = index < 0 ? undefined : rows[index + 1] || rows[index - 1];
+      await checked(api.remove('markdown', id));
+      docs = docs.filter(doc => doc.id !== id);
+      if (current === id) await selectDoc(next);
+      else docList();
+      dialog.close();
+      const nextRow = [...$('md-list').querySelectorAll('[data-document]')].find(row => row.dataset.document === next);
+      const search = $('md-search');
+      const focusTarget = nextRow?.checkVisibility() ? nextRow : search.checkVisibility() ? search : current ? $('md-title') : $('md-new');
+      focusTarget.focus({preventScroll:true});
+      notify(external ? '已从随序移除记录' : '文档已删除');
+    } finally {
+      if (dialog.open) dialog.close();
+      $('md-delete-confirm').disabled = $('md-delete-cancel').disabled = false;
+      deletingDocument = false;
+    }
+  }
+  let deletingDocument = false;
+  $('md-delete-dialog').addEventListener('cancel', event => {
+    if ($('md-delete-confirm').disabled) event.preventDefault();
+  });
+  $('md-delete').onclick = safe(() => deleteDocument(current));
   function supportsVisualEditing(text){
     if(/^---\r?\n[\s\S]*?\n---(?:\r?\n|$)/.test(text)||/(?:^|\n)\[\^[^\]]+\]:/.test(text))return false;
     let safe=true;
@@ -521,7 +576,7 @@
   const updateFindAfterEditing=event=>{if(!findBar.hidden){clearTimeout(findTimer);if(!event.isComposing)findTimer=setTimeout(()=>refreshDocumentFind(false),150);}};
   $('md-editor').addEventListener('input',updateFindAfterEditing);$('md-editor').addEventListener('compositionend',updateFindAfterEditing);
   document.addEventListener('keydown',event=>{
-    if(event.isComposing||!document.querySelector('#page-markdown.is-active'))return;
+    if($('md-delete-dialog').open||event.isComposing||!document.querySelector('#page-markdown.is-active'))return;
     if((event.ctrlKey||event.metaKey)&&!event.shiftKey&&event.key.toLowerCase()==='f'&&current){event.preventDefault();openDocumentFind();}
     else if(!findBar.hidden&&event.key==='Escape'){event.preventDefault();closeDocumentFind();}
     else if(event.target===$('md-find-query')&&event.key==='Enter'){event.preventDefault();clearTimeout(findTimer);nextFindMatch(event.shiftKey?-1:1);}

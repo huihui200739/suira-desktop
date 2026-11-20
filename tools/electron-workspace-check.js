@@ -75,7 +75,11 @@ async function until(fn){let error;for(let n=0;n<140;n++){try{const value=await 
   assert.equal(await main.evaluate('document.getElementById("md-status").closest(".document-foot")!==null'),true);
   assert.equal(await main.evaluate('document.getElementById("md-outline-toggle").closest(".mia-actions")!==null'),true,"The outline toggle sits by the document title");
   await main.evaluate('document.getElementById("md-more").click();true');assert.equal(await main.evaluate('document.getElementById("md-file-menu").hidden'),false);
-  await main.evaluate('window.__confirm35=window.confirm;window.confirm=()=>false;document.getElementById("md-delete").click();true');await wait(80);assert.equal(await main.evaluate('document.getElementById("md-title").value'),"工作台计划","Canceling deletion preserves the current document");await main.evaluate('window.confirm=window.__confirm35;true');
+  await main.evaluate('document.getElementById("md-delete").click();true');
+  assert.equal(await main.evaluate('document.getElementById("md-delete-dialog").open'),true);
+  await main.evaluate('document.getElementById("md-delete-cancel").click();true');
+  await until(()=>main.evaluate('!document.getElementById("md-delete-dialog").open'));
+  assert.equal(await main.evaluate('document.getElementById("md-title").value'),"工作台计划","Canceling deletion preserves the current document");
   await main.send('Emulation.setDeviceMetricsOverride',{width:900,height:700,deviceScaleFactor:1,mobile:false});
   assert.ok(await main.evaluate('document.documentElement.scrollWidth<=innerWidth'), 'Compact document window must not overflow');
   assert.ok(await main.evaluate('document.querySelector(".window-actions").getBoundingClientRect().right<=innerWidth'), 'Window controls remain reachable');
@@ -111,6 +115,13 @@ async function until(fn){let error;for(let n=0;n<140;n++){try{const value=await 
   await main.evaluate(`document.getElementById('md-editor').value=${JSON.stringify(beforeFind)};document.getElementById('md-editor').dispatchEvent(new Event('input'));window.WorkspaceUI.flush()`);
   await main.evaluate(`document.getElementById('md-find-close').click();true`);
   await shot('40-markdown-window.png');
+  if(process.env.SUIRA_QA_SHOTS){
+    await main.send('Emulation.setEmulatedMedia',{features:[{name:'prefers-color-scheme',value:'dark'}]});
+    await main.evaluate(`document.querySelector('[data-md-view="edit"]').click();document.getElementById('md-editor').focus();true`);
+    await shot('markdown-white-source.png');
+    fs.copyFileSync(path.join(tmp,'markdown-white-source.png'),path.join(process.env.SUIRA_QA_SHOTS,'markdown-white-source.png'));
+    await main.send('Emulation.setEmulatedMedia',{features:[]});
+  }
   await main.evaluate(`document.getElementById('md-editor').value=${JSON.stringify(markdown)};document.getElementById('md-editor').dispatchEvent(new Event('input'));window.WorkspaceUI.flush()`);
   await main.send('Page.enable');
   const reloaded=new Promise((resolve,reject)=>{const timer=setTimeout(()=>reject(Error('Reload timed out')),10000);const onMessage=event=>{const data=JSON.parse(event.data);if(data.method==='Page.loadEventFired'){main.ws.removeEventListener('message',onMessage);clearTimeout(timer);resolve();}};main.ws.addEventListener('message',onMessage);});
@@ -125,6 +136,34 @@ async function until(fn){let error;for(let n=0;n<140;n++){try{const value=await 
     if(format==='pdf')assert.equal(bytes.subarray(0,4).toString(),'%PDF');
     else {const html=bytes.toString();assert.ok(html.includes('<table>'));assert.ok(!html.includes('<script'));assert.ok(!html.includes('onerror='));}
   }
+  const originalId=mdItems[0].id, originalPath=path.join(tmp,'input.md');
+  const deleteRow=async id=>{
+    await main.evaluate(`document.querySelector('[data-delete-doc="${ id }"]').click();true`);
+    assert.equal(await main.evaluate('document.getElementById("md-delete-dialog").open'),true);
+    await main.evaluate('document.getElementById("md-delete-confirm").click();true');
+    await until(()=>main.evaluate(`!document.getElementById('md-delete-dialog').open&&!document.querySelector('[data-document="${ id }"]')`));
+  };
+  async function newDocument(title){
+    await main.evaluate(`document.getElementById('md-new').click();true`);
+    await until(()=>main.evaluate(`document.getElementById('md-title').value==='未命名文档'`));
+    await main.evaluate(`document.getElementById('md-title').value=${JSON.stringify(title)};document.getElementById('md-title').dispatchEvent(new Event('input'));window.WorkspaceUI.flush()`);
+    const items=await main.evaluate(`window.suira.workspace.list('markdown')`);
+    return items.find(item=>item.title===title).id;
+  }
+  const alternate=await newDocument('备用草稿');
+  const temporary=await newDocument('待删除草稿');
+  await deleteRow(alternate);
+  assert.equal(await main.evaluate('document.getElementById("md-title").value'),'待删除草稿');
+  await deleteRow(temporary);
+  assert.equal(await main.evaluate('document.getElementById("md-title").value'),'工作台计划');
+  const originalBytes=fs.readFileSync(originalPath);
+  await main.evaluate('document.getElementById("md-import").click();true');
+  const external=await until(async()=> (await main.evaluate(`window.suira.workspace.list('markdown')`)).find(item=>item.meta?.externalPath));
+  await until(()=>main.evaluate(`Boolean(document.querySelector('[data-delete-doc="${external.id}"]'))`));
+  await deleteRow(external.id);
+  assert.deepEqual(fs.readFileSync(originalPath),originalBytes);
+  assert.equal(await main.evaluate(`document.querySelector('[data-document="${originalId}"]').getAttribute('aria-current')`),'true');
+  console.log('PASS Markdown sidebar deletion preserves the active editor, selects a neighboring document, and keeps external files');
   console.log('CALENDAR EXPORT');
   const ics=await calendarClient.evaluate('window.suira.workspace.calendarExport()');assert.ok(ics.ok);assert.ok(fs.readFileSync(path.join(tmp,'output.md'),'utf8').includes('BEGIN:VEVENT'));
   // Window buttons must target their own window. Closing the calendar leaves Markdown alive.

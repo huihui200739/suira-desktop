@@ -47,7 +47,7 @@ ipcMain.handle=(name,fn)=>handle(name,name==='app:info'?async(...args)=>{
  fs.writeFileSync(${JSON.stringify(control)},'{}');
  const target=command.id ? BrowserWindow.fromId(command.id) : null;
  if(target){if(command.size)target.setSize(...command.size);if(command.bounds)target.setBounds(command.bounds);if(command.focus){target.show();target.focus();}if(command.maximize)target.maximize();if(command.restore)target.unmaximize();}
- const {screen}=require('electron');return {...await fn(...args),openedUrl,copiedFiles,surfaces:BrowserWindow.getAllWindows().filter(w=>w.__surfaceRadius).map(w=>({id:w.id,url:w.webContents.getURL(),bounds:w.getBounds(),displayBounds:screen.getDisplayMatching(w.getBounds()).bounds,area:screen.getDisplayMatching(w.getBounds()).workArea,physicalArea:screen.dipToScreenRect(w,screen.getDisplayMatching(w.getBounds()).workArea),focused:w.isFocused(),material:w.__surfaceMaterial,maximized:w.isMaximized(),handle:w.getNativeWindowHandle().readBigUInt64LE().toString()}))};
+ const {screen}=require('electron');return {...await fn(...args),openedUrl,copiedFiles,surfaces:BrowserWindow.getAllWindows().filter(w=>w.__surfaceRadius||['notes.html','clipboardbar.html'].some(page=>w.webContents.getURL().endsWith('/'+page))).map(w=>({id:w.id,url:w.webContents.getURL(),bounds:w.getBounds(),displayBounds:screen.getDisplayMatching(w.getBounds()).bounds,area:screen.getDisplayMatching(w.getBounds()).workArea,physicalArea:screen.dipToScreenRect(w,screen.getDisplayMatching(w.getBounds()).workArea),focused:w.isFocused(),material:w.__surfaceMaterial,shadow:w.hasShadow(),maximized:w.isMaximized(),handle:w.getNativeWindowHandle().readBigUInt64LE().toString()}))};
 }:fn);
 require(${JSON.stringify(path.join(root, 'main.js'))});`);
     const exe = [process.env.SUIRA_ELECTRON, 'C:\\suira-electron\\electron.exe',
@@ -66,8 +66,13 @@ require(${JSON.stringify(path.join(root, 'main.js'))});`);
         await client.evaluate('window.suira.settings.update('+JSON.stringify({theme:scheme})+')');
         await wait(180);
         const facts=await client.evaluate(`document.fonts.ready.then(()=>{const s=getComputedStyle(document.documentElement);return {url:location.pathname.split('/').pop(),main:document.documentElement.classList.contains('workbench'),font:getComputedStyle(document.body).fontFamily,fontLoaded:[...document.fonts].some(f=>f.family.replaceAll('"','')==='MiSans VF'&&f.status==='loaded'),accent:s.getPropertyValue('--accent').trim(),focus:s.getPropertyValue('--focus-ring').trim(),buttons:[...document.querySelectorAll('.primary-btn,.utility-primary')].filter(b=>!b.matches(':hover,.mia-icon')&&b.getClientRects().length).map(b=>({id:b.id,label:b.textContent,root:document.documentElement.className,primary:getComputedStyle(b).getPropertyValue('--glass-primary').trim(),background:getComputedStyle(b).backgroundColor,ink:getComputedStyle(b).color}))}})`);
-        assert.equal(facts.accent,scheme==='light'?'#5b5bd6':'#b1a9ff');
-        assert.equal(facts.focus,scheme==='light'?'#9b9ef0':'#5958b1');
+        const markdown = await client.evaluate('document.documentElement.dataset.tool === "markdown"');
+        const writing = markdown || facts.url === 'notes.html';
+        assert.equal(facts.accent,markdown?'#757575':scheme==='light'?'#5b5bd6':'#b1a9ff');
+        assert.equal(facts.focus,writing?'#757575':scheme==='light'?'#9b9ef0':'#5958b1');
+        if (facts.url === 'notes.html') {
+          assert.equal(await client.evaluate('getComputedStyle(document.getElementById("note")).backgroundColor'),'rgb(255, 255, 255)');
+        }
         assert.equal(facts.fontLoaded,facts.main,'VF must be decoded only by the main workbench');
         for(const button of facts.buttons){assert.equal(button.background,'rgb(91, 91, 214)',JSON.stringify(button));assert.equal(button.ink,'rgb(255, 255, 255)');}
         palettes.push({scheme,...facts});
@@ -96,7 +101,12 @@ class RegionCheck {
   SetProcessDpiAwarenessContext(new IntPtr(-4));var region=CreateRectRgn(0,0,0,0);
   try{Rect rect;var hwnd=new IntPtr(long.Parse(args[0]));if(!GetWindowRect(hwnd,out rect))throw new Exception("Missing HWND");
    bool system=GetWindowRgn(hwnd,region)==0;int w=rect.r-rect.l,h=rect.b-rect.t;bool ok;
-   if(system){
+   if(args.Length==3 && args[2]=="square"){
+    int corner;int cornerResult=DwmGetWindowAttribute(hwnd,33,out corner,4);
+    bool fullRegion=system||(PtInRegion(region,0,0)&&PtInRegion(region,w-1,0)&&PtInRegion(region,0,h-1)&&PtInRegion(region,w-1,h-1));
+    ok=fullRegion&&(GetWindowLong(hwnd,-16)&0x40000)==0&&(cornerResult!=0||corner==1);
+    File.WriteAllText(args[1]+".debug","style="+GetWindowLong(hwnd,-16).ToString("x")+", ex="+GetWindowLong(hwnd,-20).ToString("x")+", corner="+corner+", cornerResult="+cornerResult+", fullRegion="+fullRegion);
+   }else if(system){
     int corner;DwmGetWindowAttribute(hwnd,33,out corner,4);
     ok=(GetWindowLong(hwnd,-20)&0x80000)==0&&corner==(args.Length>=6?1:2);
     if(args.Length>=6){Rect visible;if(DwmRect(hwnd,9,out visible,16)!=0)throw new Exception("Missing DWM frame bounds");ok=ok&&visible.l>=int.Parse(args[2])-1&&visible.t>=int.Parse(args[3])-1&&visible.r<=int.Parse(args[4])+1&&visible.b<=int.Parse(args[5])+1;File.WriteAllText(args[1]+".debug",visible.l+","+visible.t+","+visible.r+","+visible.b);}
@@ -112,11 +122,13 @@ class RegionCheck {
     const check = async suffix => {
       const surface = await until(async () => (await info()).surfaces.find(s => s.url.includes(suffix)));
       assert.ok(surface, 'Missing clipped surface: ' + suffix);
-      assert.ok(['transparent','native-glass'].includes(surface.material));
+      const square = ['/clipboardbar.html','/notes.html'].includes(suffix);
+      if (square) assert.equal(surface.shadow,false,'Square windows must not have a native shadow');
+      else assert.ok(['transparent','native-glass'].includes(surface.material));
       const result = path.join(tmp, 'region.json');
       // A newly created HWND can be exposed before Windows applies its HRGN.
-      await until(()=>{execFileSync(checker, [surface.handle, result], { windowsHide: true, timeout: 5000, stdio:'pipe' });return true;});
-      assert.equal(JSON.parse(fs.readFileSync(result, 'utf8')), true, 'Native corners must be excluded: ' + suffix);
+      await until(()=>{execFileSync(checker, [surface.handle, result, ...(square ? ['square'] : [])], { windowsHide: true, timeout: 5000, stdio:'pipe' });return true;});
+      assert.equal(JSON.parse(fs.readFileSync(result, 'utf8')), true, 'Native shape must match the surface: ' + suffix + (square ? ' ' + fs.readFileSync(result+'.debug','utf8') : ''));
       console.log('PASS native region: ' + suffix);
       return surface;
     };
@@ -131,7 +143,7 @@ class RegionCheck {
     };
     const shot = async (client, name, theme = 'light') => {
       const reviewDir = process.env.SUIRA_REVIEW_SHOTS;
-      if (!screenshots || (reviewDir && !['clipboard','clipboard-dark','clipboard-hover','clipboard-text-hover','clipboard-link-hover','clipboard-batch-share','notes'].includes(name))) return;
+      if (!screenshots || (reviewDir && !['clipboard','clipboard-dark','clipboard-hover','clipboard-text-hover','clipboard-link-hover','clipboard-batch-share','notes','markdown-dark'].includes(name))) return;
       console.log('SHOT '+name);
       await client.evaluate('window.suira.settings.update('+JSON.stringify({theme})+')');
       await client.evaluate('document.fonts.ready'); await wait(350);
@@ -277,8 +289,9 @@ class RegionCheck {
       }
       assert.equal(await clipboard.evaluate(`document.querySelectorAll('.card-select[aria-pressed="true"]').length`), 2);
       await clipboard.evaluate(`document.querySelector('[data-filter="text"]').click();document.querySelector('[data-filter="image"]').click();document.getElementById('bar-share-images').click();true`);
-      assert.equal(await clipboard.evaluate(`document.querySelectorAll('.bar-card.is-checked').length`), 2);
+      assert.equal(await clipboard.evaluate(`document.getElementById('bar-share-images').textContent`),'分享 2 张图片');
       await moveClipboardPointer(4,48);
+      assert.equal(await clipboard.evaluate(`Array.from(document.querySelectorAll('.bar-card.is-checked .card-select')).filter(button => getComputedStyle(button).opacity === '1').length`),2);
       await shot(clipboard,'clipboard-batch-share');
       await clipboard.evaluate(`document.querySelector('#bar-share button').click();true`);
       await until(() => clipboard.evaluate(`document.getElementById('bar-notice').textContent.includes('已复制 2 张原图')`));
@@ -334,7 +347,7 @@ class RegionCheck {
     await main.evaluate('window.suira.notes.create()');
     const note=await page(t => t.url.endsWith('/notes.html')); await check('/notes.html');await until(()=>note.evaluate('document.getElementById("note").dataset.state==="ready"'));await note.evaluate('(()=>{const e=document.getElementById("note-body");e.value="随手记下，接着做\\n\\n把想法先放在这里，稍后再整理。";e.dispatchEvent(new Event("input",{bubbles:true}));return true})()');
     await note.evaluate('window.NoteUI.flush()');
-    await shot(note,'notes');
+    await shot(note,'notes','dark');
     const noteId = await note.evaluate('state.id');
     await note.evaluate(`(()=>{const title=document.getElementById('note-page-title');title.value='周末速记';title.dispatchEvent(new Event('input',{bubbles:true}));})()`);
     await note.evaluate('window.NoteUI.flush()');

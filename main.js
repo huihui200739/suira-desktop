@@ -1727,13 +1727,12 @@ function createClipboardBarWindow() {
   if (clipboardBarWindow && !clipboardBarWindow.isDestroyed()) return clipboardBarWindow;
   clipboardBarWindow = new BrowserWindow({
     ...clipboardBarBounds(),
-    thickFrame: SYSTEM_GLASS,
-    backgroundMaterial: SYSTEM_GLASS ? 'acrylic' : undefined,
     show: false,
     frame: false,
-    transparent: true,
-    backgroundColor: '#00000000',
+    thickFrame: false,
+    roundedCorners: false,
     hasShadow: false,
+    backgroundColor: '#f7f7f7',
     resizable: false,
     movable: false,
     maximizable: false,
@@ -1752,7 +1751,6 @@ function createClipboardBarWindow() {
     }
   });
   clipboardBarWindow.setAlwaysOnTop(true, 'floating');
-  prepareFloatingSurface(clipboardBarWindow, 24, true);
   clipboardBarWindow.on('will-resize',event=>event.preventDefault());
   clipboardBarWindow.__loaded = clipboardBarWindow.loadFile(path.join(__dirname, 'src', 'clipboardbar.html'));
   clipboardBarWindow.__loaded.catch(error => console.warn('剪贴板条加载失败:', error.message));
@@ -1782,7 +1780,6 @@ async function showClipboardBar() {
   clipboardShowPending = false;
   hideQuickPanel();
   win.setBounds(clipboardBarBounds());
-  clipFloatingSurface(win);
   win.show();
   win.focus();
   win.webContents.send('clipboard-bar:shown');
@@ -3290,15 +3287,14 @@ function createNoteWindow(noteId) {
     minHeight: 200,
     show: false,
     frame: false,
-    thickFrame: SYSTEM_GLASS,
+    thickFrame: false,
+    hasShadow: false,
     // 钉住的速记浮在其它窗口之上；未钉住就是普通窗口，不抢屏幕
     alwaysOnTop: Boolean(note.pinned),
-    transparent: true,
-    backgroundMaterial: SYSTEM_GLASS?'acrylic':undefined,
-    backgroundColor: '#00000000',
+    backgroundColor: '#ffffff',
     title: '随序 · 速记',
     icon: assetPath('suira-icon.png'),
-    roundedCorners: true,
+    roundedCorners: false,
     skipTaskbar: false,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
@@ -3309,7 +3305,6 @@ function createNoteWindow(noteId) {
     }
   });
   noteWindows.set(noteId, win);
-  prepareFloatingSurface(win,24,true);
   win.loadFile(path.join(__dirname, 'src', 'notes.html'));
   win.setMenuBarVisibility(false);
   win.webContents.once('did-finish-load', () => {
@@ -3553,7 +3548,7 @@ function registerIpc() {
   const resizingWindows = new WeakMap();
   ipcMain.on('window:resize-start', (event, edge) => {
     const win = senderWindow(event);
-    if (!win || !win.__surfaceRadius || !win.isResizable() || win.isMaximized() || !WINDOW_EDGES.has(edge)) return;
+    if (!win || (!win.__surfaceRadius && ![...noteWindows.values()].includes(win)) || !win.isResizable() || win.isMaximized() || !WINDOW_EDGES.has(edge)) return;
     resizingWindows.set(win, { edge, bounds: win.getBounds(), cursor: screen.getCursorScreenPoint() });
   });
   ipcMain.on('window:resize-step', event => {

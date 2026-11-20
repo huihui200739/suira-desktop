@@ -192,6 +192,7 @@ const MOCK = `
     }
   };
   window.suira.clipboardBar = {
+    copyImages: function(ids){ calls.copyImages=clone(ids); return Promise.resolve({ok:true,count:ids.length}); },
     saveImage: function(id){ calls.saveImage=id; return Promise.resolve({ok:true}); },
     sourceIcons: function(names){ return Promise.resolve(Object.fromEntries(names.map(name=>[name,THUMB]))); },
     hide: function(){ calls.hide += 1; return Promise.resolve(); },
@@ -573,7 +574,7 @@ async function runChecks(send) {
   check('超长文本被截断到 180 字', initial.snippetLengths.includes(180), JSON.stringify(initial.snippetLengths));
   check('默认选中第 1 条', initial.selectedIndex === 0 && initial.selectedId === 'img-1',
     initial.selectedIndex + ' / ' + initial.selectedId);
-  check('选中卡片圆点标记和原图信息正确', initial.selectionPressed === 'true' && initial.imageMetadata.includes('3158×1974 · 679 KB'), initial.imageMetadata);
+  check('当前卡片默认未勾选，原图信息正确', initial.selectionPressed === 'false' && initial.imageMetadata.includes('3158×1974 · 679 KB'), initial.imageMetadata);
   check('卡片内容不横向溢出', initial.cardOverflow.every((value) => value === 0),
     JSON.stringify(initial.cardOverflow));
   check('页面无整体滚动条 / 溢出', noOverflow(initial),
@@ -656,7 +657,7 @@ async function runChecks(send) {
   check('窄屏轨道仍可横向滚动', narrowView.trackOverflowX === 'auto'
     && narrowView.trackScrollWidth > narrowView.trackClientWidth,
     narrowView.trackScrollWidth + ' > ' + narrowView.trackClientWidth);
-  check('窄屏顶部信息不溢出', narrowView.selectionPressed === 'true' && narrowView.cardOverflow.every((value) => value === 0));
+  check('窄屏顶部信息不溢出', narrowView.selectionPressed === 'false' && narrowView.cardOverflow.every((value) => value === 0));
 
   console.log('\n== 搜索、分类、收藏与输入焦点 ==');
   const editHistory=await evaluate(send, `(async()=>{
@@ -686,6 +687,25 @@ async function runChecks(send) {
     return {shown,opened,error,textHidden,direct,saved,pinned,textEdited,linkOpened,selectOnly,shared};
   })()`);
   check('按卡片类型操作、圆点选中和分享目标正确',Object.values(editHistory).every(Boolean),JSON.stringify(editHistory));
+  const batch = await evaluate(send, `(async()=>{
+    const circle=id=>document.querySelector('[data-id="'+id+'"] .card-select');
+    const share=document.getElementById('bar-share-images');
+    circle('img-1').click();
+    document.querySelector('[data-id="link-1"]').click();
+    const count=share.textContent==='分享 2 张图片';
+    const circles=['img-1','img-2'].every(id=>circle(id).getAttribute('aria-pressed')==='true'&&getComputedStyle(circle(id)).opacity==='1');
+    const checked=[...document.querySelectorAll('.bar-card.is-checked')].map(card=>card.dataset.id).sort().join()==='img-1,img-2';
+    const link=document.querySelector('[data-id="link-1"]').classList.contains('is-selected');
+    share.click();document.querySelector('#bar-share button').click();await new Promise(r=>setTimeout(r,60));
+    const copied=window.__calls.copyImages?.slice().sort().join()==='img-1,img-2';
+    return {count,circles,checked,link,copied};
+  })()`);
+  check('勾选两张图后圆圈持续显示，链接不计入批量分享',Object.values(batch).every(Boolean),JSON.stringify(batch));
+  if(process.env.SUIRA_QA_SHOTS){
+    const output=await capture(send,'clipboardbar-two-images.png');
+    fs.copyFileSync(output,path.join(process.env.SUIRA_QA_SHOTS,'clipboardbar-two-images.png'));
+  }
+  await evaluate(send,'window.__fireShown();true');
   const inspectClipboard=await evaluate(send,`(async()=>{
     const wait=()=>new Promise(r=>setTimeout(r,80)),result={};window.__fireShown();await wait();
     document.querySelector('[data-filter="text"]').click();await wait();

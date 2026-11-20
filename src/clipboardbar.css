@@ -1,4 +1,4 @@
-/* Native acrylic sits behind opaque, readable history cards. */
+/* A flat window edge keeps the card rail clear of the desktop behind it. */
 * { box-sizing: border-box; }
 html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; background: transparent; }
 body { font: var(--text-2)/1.45 var(--font-ui); color: var(--slate-12); }
@@ -16,10 +16,9 @@ kbd {
   --bar-gutter: 16px;
   --bar-active: color-mix(in srgb, var(--accent-3) 62%, var(--slate-1));
   position: absolute; inset: 0; isolation: isolate; display: grid; grid-template-rows: auto minmax(0, 1fr);
-  overflow: hidden; border-radius: var(--radius-panel); border: 1px solid var(--slate-6);
+  overflow: hidden; border: 1px solid var(--slate-6);
   background: var(--slate-2);
 }
-html[data-glass-backend="native"]:not([data-glass-mode="solid"]) .bar { background: color-mix(in srgb, var(--slate-2) 66%, transparent); }
 .bar > .glass-scene { display:none; }
 .bar-head {
   display: flex; align-items: center; min-width: 0; gap: 12px; min-height: 56px;
@@ -66,7 +65,7 @@ html[data-glass-backend="native"]:not([data-glass-mode="solid"]) .bar { backgrou
   cursor: pointer; overflow: hidden;
 }
 .bar-card:hover { border-color: var(--accent-7); }
-.bar-card:is(.is-selected, .is-checked) { border-color: var(--accent-8); background: var(--bar-active); }
+.bar-track:not(.has-checked-images) .bar-card.is-selected, .bar-card.is-checked { border-color: var(--accent-8); background: var(--bar-active); }
 .card-head, .card-foot { display: flex; align-items: center; gap: 8px; min-width: 0; flex: 0 0 20px; font-size: var(--text-1); color: var(--slate-11); }
 .card-head { flex-basis: 24px; justify-content: space-between; gap: 4px; }
 .card-select, .card-actions > button, .card-actions .action-strip summary {
@@ -78,7 +77,7 @@ html[data-glass-backend="native"]:not([data-glass-mode="solid"]) .bar { backgrou
 }
 .card-select svg, .card-actions :is(button, summary) > svg { width: 15px; height: 15px; }
 .card-select { opacity: 0; pointer-events: none; }
-.bar-card:is(:hover, :focus-visible, :has(:focus-visible)) .card-select { opacity: 1; pointer-events: auto; }
+.bar-card:is(.is-checked, :hover, :focus-visible, :has(:focus-visible)) .card-select { opacity: 1; pointer-events: auto; }
 .card-select .card-select-check { visibility: hidden; }
 .card-select[aria-pressed="true"] { color: var(--accent-11); }
 .card-select[aria-pressed="true"] .card-select-check { visibility: visible; }

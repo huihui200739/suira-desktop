@@ -1,14 +1,35 @@
 /* Notebook layout; plain text pages share the same saved content as other tools. */
+html,body { height:100%; margin:0; overflow:hidden; }
+html.notes-window {
+  color-scheme:light;
+  --ink:var(--writing-ink);
+  --ink-soft:var(--writing-muted);
+  --line:var(--writing-line);
+  --line-strong:var(--writing-line);
+  --paper:var(--writing-paper);
+  --paper-raised:var(--writing-paper);
+  --paper-soft:var(--writing-side);
+  --surface-hover:var(--writing-hover);
+  --select-menu-surface:var(--writing-paper);
+  --accent-deep:var(--writing-ink);
+  --focus-ring:var(--writing-focus);
+}
 .note {
   --note-inset: clamp(18px, 5vw, 44px);
-  --note-side: color-mix(in srgb, var(--note-paper) 86%, var(--drawing-black));
-  --note-line: color-mix(in srgb, var(--note-ink) 20%, transparent);
-  --note-tint: color-mix(in srgb, var(--note-ink) 9%, transparent);
+  --note-paper: var(--writing-paper);
+  --note-ink: var(--writing-ink);
+  --note-muted: var(--writing-muted);
+  --note-side: var(--writing-side);
+  --note-line: var(--writing-line);
+  --note-tint: var(--writing-hover);
+  --note-accent: var(--writing-focus);
   display:grid; position:relative; isolation:isolate; height:100%; overflow:hidden;
   grid-template: "head" 52px "writing" minmax(0,1fr) "foot" auto / minmax(0,1fr);
-  border:1px solid var(--note-line); border-radius:22px;
+  border:1px solid var(--note-line);
   background:var(--note-paper); color:var(--note-ink);
 }
+.note :where(button,input,textarea) { font-family:inherit; }
+.note button { border:0; background:transparent; cursor:pointer; }
 .note.with-index { grid-template:". head" 52px "index writing" minmax(0,1fr) "index foot" auto / minmax(150px,26%) minmax(0,1fr); }
 @media (min-width:581px) {
   .note.with-index .note-head { padding-inline-start:var(--note-inset); }
@@ -16,7 +37,7 @@
   .note.with-index::before { content:""; position:absolute; z-index:-1; inset:0 auto auto 0; width:max(150px,26%); height:52px; background:var(--note-side); border-inline-end:1px solid var(--note-line); box-sizing:border-box; }
 }
 .note.with-index #note-new { display:none; }
-.note .note-head { grid-area:head; display:flex; align-items:center; gap:10px; min-width:0; padding:0 12px 0 18px; background:transparent; -webkit-app-region:drag; user-select:none; }
+.note .note-head { grid-area:head; display:flex; align-items:center; gap:8px; min-width:0; padding:0 25px 0 25px; border-block-end:1px solid var(--note-line); background:var(--note-side); -webkit-app-region:drag; user-select:none; }
 .note-mark { color:var(--note-accent); }
 .note svg { display:block; width:18px; height:18px; fill:none; stroke:currentColor; stroke-width:1.6; stroke-linecap:round; stroke-linejoin:round; }
 .note .note-title { flex:1; min-width:0; margin:0; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; font-size:15px; font-weight:600; }
@@ -25,12 +46,12 @@
 .note .note-tools button, .note-foot button { display:grid; place-items:center; padding:0 6px; min-width:28px; height:30px; border-radius:7px; color:var(--note-muted); }
 .note .note-tools button:hover,.note .note-tools button[aria-pressed="true"],.note .note-tools button[aria-expanded="true"],.note-foot button:hover { background:var(--note-tint); color:var(--note-ink); }
 .note :is(button,input):focus-visible { outline:2px solid var(--note-accent); outline-offset:-2px; }
-.note-writing { grid-area:writing; min-width:0; min-height:0; display:flex; flex-direction:column; gap:16px; padding:28px var(--note-inset) 12px; }
+.note-writing { grid-area:writing; min-width:0; min-height:0; display:flex; flex-direction:column; gap:12px; padding:24px var(--note-inset) 12px; }
 .note-page-title,.note .note-body { display:block; width:100%; min-width:0; padding:0; margin:0; border:0; background:transparent; color:var(--note-ink); caret-color:var(--note-accent); }
-.note-page-title { flex:none; border-radius:4px; font-size:clamp(24px,4.5vw,34px); font-weight:650; }
+.note-page-title { flex:none; border-radius:4px; font-size:clamp(22px,4.5vw,28px); font-weight:600; }
 .note .note-body { flex:1; min-height:0; outline:none; resize:none; font:16px/1.75 var(--font-ui); scrollbar-width:thin; }
 .note :is(.note-page-title,.note-body)::placeholder { color:var(--note-muted); opacity:1; }
-.note .note-foot { grid-area:foot; justify-self:stretch; display:flex; align-items:center; gap:8px; min-width:0; margin:0 var(--note-inset) 16px; padding:3px 6px 3px 12px; border:1px solid var(--note-line); border-radius:12px; background:var(--note-tint); color:var(--note-muted); font-size:12px; }
+.note .note-foot { grid-area:foot; justify-self:stretch; display:flex; align-items:center; gap:8px; min-width:0; min-height:40px; padding:4px var(--note-inset); border-block-start:1px solid var(--note-line); background:var(--note-paper); color:var(--note-muted); font-size:12px; }
 .note-saved { margin-inline-end:auto; white-space:nowrap; }
 .note-count { white-space:nowrap; font-variant-numeric:tabular-nums; }
 .note-saved[data-state="error"] { color:var(--note-ink); font-weight:600; }
@@ -42,7 +63,7 @@
 .note-pages { flex:1; min-height:0; overflow-y:auto; scrollbar-width:thin; }
 .note .note-pages button { display:grid; gap:3px; min-width:0; width:100%; margin-block-end:6px; padding:9px 10px; border:1px solid transparent; border-radius:10px; background:transparent; color:var(--note-ink); text-align:start; }
 .note .note-pages button:hover { background:var(--note-tint); }
-.note .note-pages button[aria-current="true"] { border-color:var(--note-accent); background:var(--note-tint); color:var(--note-ink); }
+.note .note-pages button[aria-current="true"] { border-color:var(--note-line); background:var(--writing-hover); color:var(--note-ink); }
 .note-pages :is(small,b,span) { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .note .note-pages :is(small,span), .note-index-empty { color:var(--note-muted); font-size:12px; }
 .note-error { position:absolute; inset:auto 16px 59px; z-index:4; padding:8px 12px; margin:0; border:1px solid var(--note-line); border-radius:8px; background:var(--note-side); color:var(--note-ink); }
@@ -50,10 +71,13 @@
   .note.with-index { grid-template:"head" 46px "writing" minmax(0,1fr) "foot" auto / minmax(0,1fr); }
   .note.with-index .note-index { position:absolute; z-index:3; inset:48px 8px auto; max-height:70%; border:1px solid var(--note-line); border-radius:12px; }
   .note-writing { padding-block-start:18px; gap:10px; }
-  .note .note-foot { margin-inline:10px; margin-block-end:8px; gap:3px; }
-  .note .note-head { padding-inline:10px 4px; gap:5px; }
+  .note .note-foot { gap:4px; }
+  .note .note-head { padding-inline:10px 25px; gap:5px; }
 }
 @media (max-width:340px) {
   .note-mark,.note-tools-sep { display:none; }
+  .note .note-tools button { min-width:24px; padding:0 3px; }
   .note-count { display:none; }
 }
+
+.note ::selection { background:var(--writing-selected); color:var(--writing-ink); }

@@ -354,10 +354,11 @@
   function updateShareButton() {
     const count = state.checkedImages.size;
     const button = $('#bar-share-images');
+    $('#bar-track').classList.toggle('has-checked-images', count > 0);
     if (count === 0 && shareAnchor === button) closeShare();
     button.hidden = count === 0;
     button.disabled = state.sharingImages;
-    button.textContent = `分享 ${count} 张`;
+    button.textContent = `分享 ${count} 张图片`;
   }
 
   function syncSelection() {
@@ -382,7 +383,7 @@
         else button.removeAttribute('aria-disabled');
         if (action === 'select') {
           const batchSelectable = card.dataset.kind === 'image' && state.barApi?.copyImages;
-          button.setAttribute('aria-pressed', String(batchSelectable ? checked : active));
+          button.setAttribute('aria-pressed', String(batchSelectable ? checked : active && !state.checkedImages.size));
         }
         if (action === 'share') button.setAttribute('aria-expanded', String(button === shareAnchor));
       }

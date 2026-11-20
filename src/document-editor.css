@@ -13,7 +13,7 @@
   --mia-line:var(--md-rule);
   --mia-hover:var(--md-hover);
   --mia-selected:var(--md-selected);
-  --mia-accent:var(--jade-11);
+  --mia-accent:var(--writing-focus);
   --ink:var(--md-text);
   --ink-muted:var(--md-muted);
   --tool-content:var(--md-page);
@@ -81,7 +81,7 @@
 .liquid-ui.tool-window[data-tool="markdown"] .md-toc-row button { color:var(--md-muted); border-radius:5px; min-height:32px; font-size:12px; background:transparent; }
 .liquid-ui.tool-window[data-tool="markdown"] .md-toc-row [data-heading] { max-width:none; flex:1; text-align:left; padding:7px 6px; text-overflow:ellipsis; white-space:nowrap; overflow:hidden; }
 .liquid-ui.tool-window[data-tool="markdown"] .md-toc-row button:hover { background:var(--md-hover); color:var(--md-text); }
-.liquid-ui.tool-window[data-tool="markdown"] .md-toc-row [data-heading].is-active { background:var(--md-selected); color:var(--document-md-toc-row-data-heading-is-active-ink); }
+.liquid-ui.tool-window[data-tool="markdown"] .md-toc-row [data-heading].is-active { background:var(--md-selected); color:var(--md-text); }
 .liquid-ui.tool-window[data-tool="markdown"] .md-toc-fold { width:16px; padding:0; flex:none; }
 .md-toc-fold svg { width:12px; height:12px; fill:none; stroke:currentColor; stroke-width:1.4; }
 .md-toc-fold[aria-expanded="true"] svg { transform:rotate(90deg); }
@@ -147,7 +147,6 @@
 .md-link-form>div button { width:auto; }
 @media(prefers-color-scheme:dark){
  .md-context-menu,.md-selection-tools {     border-color:var(--document-md-context-menu-md-selection-tools-edge); }
- .liquid-ui.tool-window[data-tool="markdown"] .md-toc-row [data-heading].is-active { color:var(--document-md-toc-row-data-heading-is-active-ink); }
  .md-write-content a { color:var(--document-md-write-content-ink-alt-alt); }
 }
 @media(prefers-reduced-motion:reduce){.md-write-content{scroll-behavior:auto}}
@@ -163,9 +162,9 @@
 .markdown-split[data-view="split"] { grid-template-columns:minmax(0,1fr) minmax(0,1fr); }
 .liquid-ui.tool-window[data-tool="markdown"] .md-source-pane {
   --md-source-padding:var(--mia-copy-inset, 24px);
-  --md-syntax-title:var(--violet-11);
-  --md-syntax-link:var(--jade-11);
-  --md-syntax-code:var(--amber-11);
+  --md-syntax-title:var(--md-text);
+  --md-syntax-link:var(--md-text);
+  --md-syntax-code:var(--md-muted);
   --md-source-font:16px/1.75 var(--font-ui);
   background:var(--md-page);
   border-inline-end:1px solid var(--md-rule);
@@ -217,8 +216,77 @@
 .tool-window[data-tool="markdown"] .mia-list .mia-row { border-bottom-color:color-mix(in srgb,var(--md-rule) 58%,transparent); }
 .tool-window[data-tool="markdown"] .mia-list .mia-row[aria-current="true"] { border-bottom-color:transparent; }
 .tool-window[data-tool="markdown"] .mia-row time { font-variant-numeric:tabular-nums; }
-.tool-window[data-tool="markdown"] .document-foot { border-color:transparent; }
+.tool-window[data-tool="markdown"] .document-foot { border-color:var(--md-rule); }
 
 .tool-window[data-tool="markdown"] .mia-row b { font-weight:600; }
 .tool-window[data-tool="markdown"] .mia-sections { padding-block-start:6px; }
 .tool-window[data-tool="markdown"] .mia-location[aria-current="true"] { font-weight:600; }
+
+/* A neutral writing palette also covers chrome, focus, menus and form controls. */
+html.liquid-ui.tool-window[data-tool="markdown"] {
+  color-scheme: light;
+  --ink: var(--writing-ink);
+  --ink-muted: var(--writing-muted);
+  --ink-soft: var(--writing-muted);
+  --ink-faint: var(--writing-muted);
+  --focus-ring: var(--writing-focus);
+  --accent: var(--writing-focus);
+  --accent-3: var(--writing-hover);
+  --accent-4: var(--writing-selected);
+  --accent-9: var(--writing-focus);
+  --accent-11: var(--writing-ink);
+  --accent-deep: var(--writing-ink);
+  --accent-soft: var(--writing-hover);
+  --accent-glow: var(--writing-selected);
+  --line: var(--writing-line);
+  --line-strong: var(--writing-line);
+  --menu-bg: var(--writing-paper);
+  --menu-ink: var(--writing-ink);
+  --menu-muted: var(--writing-muted);
+  --menu-hover: var(--writing-hover);
+  --tool-content: var(--writing-paper);
+  --paper-raised: var(--writing-paper);
+  --tool-edge: var(--writing-line);
+  --slate-1: var(--writing-paper);
+  --slate-2: var(--writing-side);
+  --slate-3: var(--writing-hover);
+  --slate-4: var(--writing-selected);
+  --slate-6: var(--writing-line);
+  --slate-11: var(--writing-muted);
+  --slate-12: var(--writing-ink);
+}
+.liquid-ui.tool-window[data-tool="markdown"] .titlebar { border-color:var(--writing-line); color:var(--writing-ink); }
+.liquid-ui.tool-window[data-tool="markdown"] .md-source-pane #md-editor:focus-visible { outline:none; }
+.liquid-ui.tool-window[data-tool="markdown"] :is(#md-search,#md-find-query) {
+  border-color:var(--writing-line); background:var(--writing-paper); color:var(--writing-ink);
+}
+.liquid-ui.tool-window[data-tool="markdown"] #md-find-toggle:hover { background:var(--writing-hover); color:var(--writing-ink); }
+.tool-window[data-tool="markdown"] .md-syntax-heading { font-weight:600; }
+.tool-window[data-tool="markdown"] .md-write-content { caret-color:var(--writing-ink); }
+.tool-window[data-tool="markdown"] .md-write-content a { color:var(--writing-ink); }
+.tool-window[data-tool="markdown"] ::selection { color:var(--writing-ink); background:var(--writing-selected); }
+.md-list-item { position:relative; }
+.tool-window[data-tool="markdown"] .md-list-item .mia-row { padding-inline-end:40px; }
+.md-list-item > .md-row-delete {
+  position:absolute; inset:50% 6px auto auto; transform:translateY(-50%);
+  display:grid; place-items:center; width:28px; height:28px; padding:0;
+  border:0; border-radius:6px; background:transparent; color:var(--writing-muted);
+  opacity:0; pointer-events:none;
+}
+.md-list-item:is(:hover,:focus-within) > .md-row-delete { opacity:1; pointer-events:auto; }
+@media (hover:none) { .md-list-item > .md-row-delete { opacity:1; pointer-events:auto; } }
+.md-list-item > .md-row-delete:hover { background:var(--writing-selected); color:var(--writing-ink); }
+.md-row-delete svg { width:16px; height:16px; fill:none; stroke:currentColor; stroke-width:1.6; stroke-linecap:round; stroke-linejoin:round; }
+#md-delete-dialog {
+  color-scheme:light; width:min(360px,calc(100% - 32px)); padding:20px;
+  border:1px solid var(--writing-line); border-radius:12px;
+  background:var(--writing-paper); color:var(--writing-ink);
+}
+#md-delete-dialog::backdrop { background:var(--writing-scrim); }
+#md-delete-title { margin:0; font-size:16px; font-weight:600; }
+#md-delete-detail { margin:8px 0 20px; color:var(--writing-muted); overflow-wrap:anywhere; }
+.md-delete-actions { display:flex; justify-content:flex-end; gap:8px; }
+.md-delete-actions button { padding:6px 12px; border:1px solid var(--writing-line); border-radius:6px; }
+.md-delete-actions button:hover:not(:disabled) { background:var(--writing-hover); }
+.md-delete-actions #md-delete-confirm { background:var(--writing-ink); color:var(--writing-paper); border-color:var(--writing-ink); }
+.md-delete-actions #md-delete-confirm:hover:not(:disabled) { background:var(--writing-muted); }
