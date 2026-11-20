@@ -49,6 +49,8 @@ html[data-glass-backend="native"]:not([data-glass-mode="solid"]) .bar { backgrou
 }
 .bar-tools { order:1; display: flex; align-items: center; gap: 4px; flex: none; }
 
+#bar-share-images { height: 30px; padding-inline: 8px; color: var(--accent-11); background: var(--bar-active); white-space: nowrap; }
+#bar-share-images:hover:not(:disabled) { background: var(--accent-4); }
 #bar-close { width: 32px; font-size: 20px; }
 .bar-body { min-height: 0; min-width: 0; position: relative; }
 .bar-track {
@@ -64,7 +66,7 @@ html[data-glass-backend="native"]:not([data-glass-mode="solid"]) .bar { backgrou
   cursor: pointer; overflow: hidden;
 }
 .bar-card:hover { border-color: var(--accent-7); }
-.bar-card.is-selected { border-color: var(--accent-8); background: var(--bar-active); }
+.bar-card:is(.is-selected, .is-checked) { border-color: var(--accent-8); background: var(--bar-active); }
 .card-head, .card-foot { display: flex; align-items: center; gap: 8px; min-width: 0; flex: 0 0 20px; font-size: var(--text-1); color: var(--slate-11); }
 .card-head { flex-basis: 24px; justify-content: space-between; gap: 4px; }
 .card-select, .card-actions > button, .card-actions .action-strip summary {
@@ -75,6 +77,8 @@ html[data-glass-backend="native"]:not([data-glass-mode="solid"]) .bar { backgrou
   color: var(--slate-12); background: var(--slate-4);
 }
 .card-select svg, .card-actions :is(button, summary) > svg { width: 15px; height: 15px; }
+.card-select { opacity: 0; pointer-events: none; }
+.bar-card:is(:hover, :focus-visible, :has(:focus-visible)) .card-select { opacity: 1; pointer-events: auto; }
 .card-select .card-select-check { visibility: hidden; }
 .card-select[aria-pressed="true"] { color: var(--accent-11); }
 .card-select[aria-pressed="true"] .card-select-check { visibility: visible; }
@@ -188,5 +192,5 @@ html[data-glass-backend="native"]:not([data-glass-mode="solid"]) .bar { backgrou
 }
 
 @media (hover: none) {
-  .bar-card.is-selected .card-actions { opacity:1; pointer-events:auto; }
+  .bar-card.is-selected :is(.card-actions, .card-select) { opacity:1; pointer-events:auto; }
 }

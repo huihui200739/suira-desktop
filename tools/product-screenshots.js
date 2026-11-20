@@ -34,7 +34,8 @@ async function run({ screenshots = false } = {}) {
     const entry = path.join(tmp, 'app.js');
     fs.writeFileSync(entry, `const fs=require('node:fs');
 const {app,BrowserWindow,ipcMain,clipboard,globalShortcut,shell}=require('electron');
-let openedUrl='';
+let openedUrl='', copiedFiles=[];
+require(${JSON.stringify(path.join(root,'lib/clipboard-file-list'))}).copyFileList=(_handle,paths)=>{copiedFiles=paths;};
 shell.openExternal=async url=>{openedUrl=url;};
 app.setPath('userData',${JSON.stringify(path.join(tmp, 'profile'))});
 app.getVersion=()=>${JSON.stringify(require('../package.json').version)};
@@ -46,7 +47,7 @@ ipcMain.handle=(name,fn)=>handle(name,name==='app:info'?async(...args)=>{
  fs.writeFileSync(${JSON.stringify(control)},'{}');
  const target=command.id ? BrowserWindow.fromId(command.id) : null;
  if(target){if(command.size)target.setSize(...command.size);if(command.bounds)target.setBounds(command.bounds);if(command.focus){target.show();target.focus();}if(command.maximize)target.maximize();if(command.restore)target.unmaximize();}
- const {screen}=require('electron');return {...await fn(...args),openedUrl,surfaces:BrowserWindow.getAllWindows().filter(w=>w.__surfaceRadius).map(w=>({id:w.id,url:w.webContents.getURL(),bounds:w.getBounds(),displayBounds:screen.getDisplayMatching(w.getBounds()).bounds,area:screen.getDisplayMatching(w.getBounds()).workArea,physicalArea:screen.dipToScreenRect(w,screen.getDisplayMatching(w.getBounds()).workArea),focused:w.isFocused(),material:w.__surfaceMaterial,maximized:w.isMaximized(),handle:w.getNativeWindowHandle().readBigUInt64LE().toString()}))};
+ const {screen}=require('electron');return {...await fn(...args),openedUrl,copiedFiles,surfaces:BrowserWindow.getAllWindows().filter(w=>w.__surfaceRadius).map(w=>({id:w.id,url:w.webContents.getURL(),bounds:w.getBounds(),displayBounds:screen.getDisplayMatching(w.getBounds()).bounds,area:screen.getDisplayMatching(w.getBounds()).workArea,physicalArea:screen.dipToScreenRect(w,screen.getDisplayMatching(w.getBounds()).workArea),focused:w.isFocused(),material:w.__surfaceMaterial,maximized:w.isMaximized(),handle:w.getNativeWindowHandle().readBigUInt64LE().toString()}))};
 }:fn);
 require(${JSON.stringify(path.join(root, 'main.js'))});`);
     const exe = [process.env.SUIRA_ELECTRON, 'C:\\suira-electron\\electron.exe',
@@ -130,7 +131,7 @@ class RegionCheck {
     };
     const shot = async (client, name, theme = 'light') => {
       const reviewDir = process.env.SUIRA_REVIEW_SHOTS;
-      if (!screenshots || (reviewDir && !['clipboard','clipboard-dark','clipboard-hover','clipboard-text-hover','clipboard-link-hover','notes'].includes(name))) return;
+      if (!screenshots || (reviewDir && !['clipboard','clipboard-dark','clipboard-hover','clipboard-text-hover','clipboard-link-hover','clipboard-batch-share','notes'].includes(name))) return;
       console.log('SHOT '+name);
       await client.evaluate('window.suira.settings.update('+JSON.stringify({theme})+')');
       await client.evaluate('document.fonts.ready'); await wait(350);
@@ -232,6 +233,10 @@ class RegionCheck {
       const fixtureEditor=await page(t=>t.url.includes('mode=image-editor'));
       await until(()=>fixtureEditor.evaluate('Boolean(state.image)'));
       assert.equal((await fixtureEditor.evaluate(`window.suira.imageEditor.finish({dataUrl:${JSON.stringify(demoImage)},action:'copy'})`)).ok,true);
+      if (process.env.SUIRA_REVIEW_SHOTS) {
+        const secondImage = await main.evaluate(`(() => { const canvas = document.createElement('canvas'); canvas.width = 640; canvas.height = 420; const ctx = canvas.getContext('2d'); ctx.fillStyle = '#eef0e7'; ctx.fillRect(0,0,640,420); ctx.fillStyle = '#263a36'; ctx.font = 'bold 26px sans-serif'; ctx.fillText('下周计划',64,90); ctx.font = '18px sans-serif'; ctx.fillText('把资料整理成一份清单',64,140); return canvas.toDataURL(); })()`);
+        assert.equal((await fixtureEditor.evaluate(`window.suira.imageEditor.finish({dataUrl:${JSON.stringify(secondImage)},action:'copy'})`)).ok,true);
+      }
       await fixtureEditor.evaluate('window.suira.imageEditor.window("close")').catch(()=>{});
       await until(async()=>!(await info()).surfaces.some(surface=>surface.url.includes('mode=image-editor')));
     }
@@ -259,6 +264,31 @@ class RegionCheck {
       await until(async () => (await info()).openedUrl === 'https://example.com/project');
       const imageMetadata = await clipboard.evaluate(`document.querySelector('[data-kind=image] .card-metadata').textContent`);
       assert.match(imageMetadata, /640×420 · (?:[\d.,]+ KB|[\d,]+ B)/);
+      await clipboard.evaluate(`document.querySelector('[data-filter="image"]').click();true`);
+      await moveClipboardPointer(4,48);
+      await until(() => clipboard.evaluate(`Array.from(document.querySelectorAll('.card-select')).every(button => getComputedStyle(button).opacity === '0')`));
+      for (let index = 0; index < 2; index++) {
+        const button = await clipboard.evaluate(`(() => { const r = document.querySelectorAll('.card-select')[${index}].getBoundingClientRect(); return { x:r.x+r.width/2, y:r.y+r.height/2 }; })()`);
+        await moveClipboardPointer(button.x, button.y);
+        await until(() => clipboard.evaluate(`getComputedStyle(document.querySelectorAll('.card-select')[${index}]).opacity === '1'`));
+        for (const type of ['mousePressed','mouseReleased']) {
+          await clipboard.send('Input.dispatchMouseEvent',{type,...button,button:'left',clickCount:1});
+        }
+      }
+      assert.equal(await clipboard.evaluate(`document.querySelectorAll('.card-select[aria-pressed="true"]').length`), 2);
+      await clipboard.evaluate(`document.querySelector('[data-filter="text"]').click();document.querySelector('[data-filter="image"]').click();document.getElementById('bar-share-images').click();true`);
+      assert.equal(await clipboard.evaluate(`document.querySelectorAll('.bar-card.is-checked').length`), 2);
+      await moveClipboardPointer(4,48);
+      await shot(clipboard,'clipboard-batch-share');
+      await clipboard.evaluate(`document.querySelector('#bar-share button').click();true`);
+      await until(() => clipboard.evaluate(`document.getElementById('bar-notice').textContent.includes('已复制 2 张原图')`));
+      const copied = (await info()).copiedFiles;
+      const expected = await clipboard.evaluate(`(async () => { const records = await window.suira.content.list({kinds:['image']}); return records.map(item => item.filePath); })()`);
+      assert.deepEqual(copied, expected);
+      assert.ok(copied.every(file => fs.statSync(file).isFile()));
+      await clipboard.evaluate(`document.getElementById('bar-share-images').click();document.querySelector('#bar-share button:last-child').click();true`);
+      assert.ok(await clipboard.evaluate(`document.getElementById('bar-share-images').hidden && !document.querySelector('.bar-card.is-checked')`));
+      console.log('PASS batch image selection, source files, and clear through real IPC');
       await clipboard.evaluate(`document.querySelector('[data-kind=image] [data-card-action=crop]').click();true`);
       const cropEditor = await page(t => t.url.includes('mode=image-editor'));
       await until(() => cropEditor.evaluate(`Boolean(state.image) && document.getElementById('capture-root').dataset.tool === 'select'`));

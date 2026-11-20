@@ -60,6 +60,8 @@
     filter: 'all',
     pinning: false,
     imageActionBusy: false,
+    sharingImages: false,
+    checkedImages: new Set(),
     interactionRevision: 0,
     selected: -1,
     loading: true,
@@ -221,7 +223,8 @@
 
   function cardButton(action, item) {
     const [label, icon] = CARD_ACTIONS[action];
-    const name = action === 'favorite' && item.pinned ? '取消收藏'
+    const name = action === 'select' && item.kind === 'image' ? '勾选图片以分享'
+      : action === 'favorite' && item.pinned ? '取消收藏'
       : action === 'edit' && item.kind === 'image' ? '编辑 · 标注' : label;
     const extra = action === 'favorite' ? ` aria-pressed="${item.pinned}"`
       : action === 'select' ? ' class="card-select" aria-pressed="false"'
@@ -348,13 +351,24 @@
     empty.dataset.mode = mode;
   }
 
+  function updateShareButton() {
+    const count = state.checkedImages.size;
+    const button = $('#bar-share-images');
+    if (count === 0 && shareAnchor === button) closeShare();
+    button.hidden = count === 0;
+    button.disabled = state.sharingImages;
+    button.textContent = `分享 ${count} 张`;
+  }
+
   function syncSelection() {
     const cards = $$('.bar-card');
     const selected = cards[state.selected];
     const focusedCard = document.activeElement?.closest('.bar-card');
     for (const card of cards) {
       const active = card === selected;
+      const checked = state.checkedImages.has(card.dataset.id);
       card.classList.toggle('is-selected', active);
+      card.classList.toggle('is-checked', checked);
       card.tabIndex = active ? 0 : -1;
       if (active) card.setAttribute('aria-current', 'true');
       else card.removeAttribute('aria-current');
@@ -366,10 +380,14 @@
           (card.dataset.kind === 'image' && IMAGE_ACTIONS.includes(action) && state.imageActionBusy);
         if (busy) button.setAttribute('aria-disabled', 'true');
         else button.removeAttribute('aria-disabled');
-        if (action === 'select') button.setAttribute('aria-pressed', String(active));
+        if (action === 'select') {
+          const batchSelectable = card.dataset.kind === 'image' && state.barApi?.copyImages;
+          button.setAttribute('aria-pressed', String(batchSelectable ? checked : active));
+        }
         if (action === 'share') button.setAttribute('aria-expanded', String(button === shareAnchor));
       }
     }
+    updateShareButton();
     const actionId = state.visible && !state.previewItem ? currentSelectedId() : '';
     const anchor = actionId ? selected?.querySelector('.card-more-slot') : null;
     const parent = anchor || $('.bar-body');
@@ -573,6 +591,10 @@
       const anchorLeft = anchor?.getBoundingClientRect().left;
       const anchorId = anchor?.dataset.id;
       const items = (Array.isArray(payload) ? payload : []).map(normalizeItem).filter(Boolean);
+      const availableImages = new Set(items.filter(item => item.kind === 'image').map(item => item.id));
+      for (const id of state.checkedImages) {
+        if (!availableImages.has(id)) state.checkedImages.delete(id);
+      }
       state.allItems = items;
       state.loading = false;
       state.refreshing = false;
@@ -681,16 +703,12 @@
     sharePanel.replaceChildren();
   }
 
-  function openShare(item, button) {
+  function showShareMenu(button, choices) {
     const wasOpen = shareAnchor === button && sharePanel.matches(':popover-open');
     closeShare();
     if (wasOpen) return;
     shareAnchor = button;
     button.setAttribute('aria-expanded', 'true');
-    const choices = [
-      [item.kind === 'image' ? '复制图片以分享' : item.kind === 'link' ? '复制链接以分享' : '复制文字以分享', () => copySelected('share', item)]
-    ];
-    if (item.kind === 'image' && state.barApi?.saveImage) choices.push(['下载原图以分享', () => runImageAction(item, 'save')]);
     for (const [label, run] of choices) {
       const choice = document.createElement('button');
       choice.type = 'button';
@@ -707,6 +725,30 @@
     sharePanel.style.right = `${Math.max(8, innerWidth - rect.right)}px`;
     sharePanel.showPopover();
     sharePanel.firstElementChild.focus({ preventScroll: true });
+  }
+
+  function openShare(item, button) {
+    const label = item.kind === 'image' ? '复制图片以分享' : item.kind === 'link' ? '复制链接以分享' : '复制文字以分享';
+    const choices = [[label, () => copySelected('share', item)]];
+    if (item.kind === 'image' && state.barApi?.saveImage) choices.push(['下载原图以分享', () => runImageAction(item, 'save')]);
+    showShareMenu(button, choices);
+  }
+
+  async function copyCheckedImages() {
+    if (state.sharingImages || !state.checkedImages.size) return;
+    const ids = [...state.checkedImages];
+    state.sharingImages = true;
+    updateShareButton();
+    try {
+      const result = await state.barApi.copyImages(ids);
+      if (!result?.ok) throw new Error(result?.error || '剪贴板暂时不可用');
+      showNotice(`已复制 ${result.count} 张原图，可粘贴到支持文件的应用`, false);
+    } catch (error) {
+      showNotice(errorText(error, '分享失败'), true);
+    } finally {
+      state.sharingImages = false;
+      updateShareButton();
+    }
   }
 
   async function openLink(item) {
@@ -891,8 +933,16 @@
       return;
     }
     const action = button.dataset.cardAction;
-    if (action === 'select') card.focus({ preventScroll: true });
-    else if (action === 'share') openShare(state.items[index], button);
+    if (action === 'select') {
+      if (card.dataset.kind === 'image' && state.barApi?.copyImages) {
+        const id = card.dataset.id;
+        if (state.checkedImages.has(id)) state.checkedImages.delete(id);
+        else state.checkedImages.add(id);
+        syncSelection();
+      } else {
+        card.focus({ preventScroll: true });
+      }
+    } else if (action === 'share') openShare(state.items[index], button);
     else if (action === 'open') openLink(state.items[index]);
     else if (action === 'edit' && state.items[index].kind !== 'image') previewSelected(true);
     else if (action === 'copy') copySelected('selection');
@@ -935,6 +985,7 @@
       try {
         const off = barApi.onShown(() => {
           closeShare();
+          state.checkedImages.clear();
           closePreview(false);
           state.hasOnShown = true;
           state.visible = true;
@@ -992,7 +1043,9 @@
       } catch (error) { showNotice(errorText(error, '无法打开内容库'), true); }
     });
     if (track) {
-      track.addEventListener('scroll', closeShare, { passive: true });
+      track.addEventListener('scroll', () => {
+        if (shareAnchor?.closest('.bar-card')) closeShare();
+      }, { passive: true });
       track.addEventListener('click', onTrackClick);
       track.addEventListener('dblclick', event => {
         const card = closestFrom(event.target, '.bar-card');
@@ -1008,6 +1061,17 @@
       });
     }
 
+    $('#bar-share-images').addEventListener('click', event => {
+      if (!state.checkedImages.size) return;
+      showShareMenu(event.currentTarget, [
+        [`复制 ${state.checkedImages.size} 张原图`, copyCheckedImages],
+        ['取消全部勾选', () => {
+          state.checkedImages.clear();
+          syncSelection();
+          $$('.bar-card')[state.selected]?.focus({ preventScroll: true });
+        }]
+      ]);
+    });
     $('#bar-edit-save').addEventListener('click', saveEditedText);
     sharePanel.addEventListener('toggle', () => {
       if (!sharePanel.matches(':popover-open')) closeShare();
@@ -1017,6 +1081,7 @@
       state.visible = document.visibilityState === 'visible';
       if (!state.visible) {
         closeShare();
+        state.checkedImages.clear();
         closePreview(false);
         document.getElementById('relay-result')?.close();
         syncSelection();

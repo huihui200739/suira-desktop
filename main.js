@@ -3666,6 +3666,35 @@ function registerIpc() {
   ipcMain.handle('clipboard-bar:show', () => showClipboardBar());
   ipcMain.handle('clipboard-bar:hide', () => hideClipboardBar());
   ipcMain.handle('clipboard-bar:toggle', () => toggleClipboardBar());
+  ipcMain.handle('clipboard-bar:copy-images', async (event, ids) => {
+    const win = clipboardBarWindow;
+    if (!win || win.isDestroyed() || !win.isVisible() || event.sender !== win.webContents) {
+      return { ok: false, error: '请从剪贴板历史操作' };
+    }
+    if (!Array.isArray(ids) || ids.length < 1 || ids.length > 120 || ids.some(id => typeof id !== 'string' || id.length > 200)) {
+      return { ok: false, error: '请选择有效的图片记录' };
+    }
+    const items = [...new Set(ids)].map(id => store.getItem(id));
+    if (items.some(item => item?.kind !== 'image' || !item.filePath || !path.isAbsolute(item.filePath))) {
+      return { ok: false, error: '部分图片已不在历史记录中，请重新勾选' };
+    }
+    const paths = [...new Set(items.map(item => item.filePath))];
+    const originals = await Promise.all(paths.map(file => fsp.stat(file).catch(() => null)));
+    if (originals.some(file => !file?.isFile())) return { ok: false, error: '部分原图已被移动或删除' };
+    if (win.isDestroyed() || !win.isVisible()) return { ok: false, error: '剪贴板面板已关闭' };
+    try {
+      require('./lib/clipboard-file-list').copyFileList(win.getNativeWindowHandle(), paths);
+      // Do not record our own file list as another clipboard history item.
+      ++captureGeneration;
+      lastClipboardSequence = inputInjector.clipboardSequence();
+      lastClipboardFilesKey = paths.join('\n').toLowerCase();
+      lastClipboardText = lastClipboardImageHash = lastClipboardImageKey = lastClipboardImageType = '';
+      lastClipboardImageRaw = null;
+      return { ok: true, count: paths.length };
+    } catch (error) {
+      return { ok: false, error: error.message || '无法复制图片文件' };
+    }
+  });
   ipcMain.handle('clipboard-bar:save-image', async (event, id) => {
     const win = clipboardBarWindow;
     if (!win || win.isDestroyed() || !win.isVisible() || event.sender !== win.webContents || win.__savingImage) {
