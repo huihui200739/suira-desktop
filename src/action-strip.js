@@ -13,7 +13,11 @@
     const list=document.createElement('div'),status=document.createElement('span');status.className='action-strip-status';status.setAttribute('role','status');
     menu.setAttribute('popover','manual');
     menu.append(search,list);more.append(summary,menu);
-    if (menuOnly) summary.textContent = '更多';
+    if (menuOnly) {
+      summary.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></svg>';
+      summary.title = '更多操作（Ctrl+K）';
+      summary.setAttribute('aria-label', '更多操作');
+    }
     host.replaceChildren(...(menuOnly ? [more] : [title,direct,more,status]));
     const report = (message, error = false) => {
       status.textContent = message;

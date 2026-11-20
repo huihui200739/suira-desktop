@@ -6,11 +6,12 @@ const {connect}=require('./runtime-client'),{SuiraStore}=require('../lib/store')
 const root=path.resolve(__dirname,'..'),version=require('../package.json').version,tmp=fs.mkdtempSync(path.join(os.tmpdir(),'suira-workspace-relay-')),sockets=[],wait=ms=>new Promise(r=>setTimeout(r,ms));let child;
 async function until(fn){let last;for(let i=0;i<180;i++){try{const v=await fn();if(v)return v;}catch(e){last=e;}await wait(50);}throw last||Error('Relay state timed out');}
 (async()=>{
- const profile=path.join(tmp,'profile'),store=new SuiraStore(path.join(profile,'suira-data.json'));await store.updateSettings({recordClipboard:false,globalShortcutsEnabled:false,panelGuideSeen:true});store.createNote({text:'原笔记'});const english=store.addItem({kind:'text',text:'Hello relay',title:'English sample'});store.addItem({kind:'image',filePath:path.join(tmp,'fixture.png'),title:'测试图片',meta:{width:800,height:600}});await store.save();
+ const profile=path.join(tmp,'profile'),store=new SuiraStore(path.join(profile,'suira-data.json'));await store.updateSettings({recordClipboard:false,globalShortcutsEnabled:false,panelGuideSeen:true});store.createNote({text:'原笔记'});const english=store.addItem({kind:'text',text:'Hello relay',title:'English sample'});const sourceImage=store.addItem({kind:'image',filePath:path.join(tmp,'fixture.png'),title:'测试图片',meta:{width:800,height:600}});await store.save();
  const server=net.createServer();await new Promise(r=>server.listen(0,'127.0.0.1',r));const port=server.address().port;await new Promise(r=>server.close(r));
  const entry=path.join(tmp,'app.js'),copied=path.join(tmp,'copied.txt');
+ const saveChoice=path.join(tmp,'save-image-choice.txt'), savedImage=path.join(tmp,'saved-image.png');
  const hooks=`\nrunTranslation=async text=>{if(text==='SLOW')await new Promise(done=>setTimeout(done,350));return {ok:true,text:'译文：'+text,from:'en',to:'zh',provider:'fixture'};};beginScreenCapture=async(source,options={})=>{createOverlayWindow();capturePayload={dataUrl:fixtureImage.toDataURL(),bounds:{x:0,y:0,width:800,height:600},size:{width:800,height:600},scaleFactor:1,displayId:1,displays:[{id:1,bounds:{x:0,y:0,width:800,height:600},scaleFactor:1}],intent:options.intent||'copy',source};await showOverlayWindow(capturePayload);return {ok:true};};`;
- fs.writeFileSync(entry,`const fs=require('node:fs'),{app,clipboard,globalShortcut,nativeImage}=require('electron');app.setPath('userData',${JSON.stringify(profile)});app.getVersion=()=>${JSON.stringify(version)};clipboard.read=async()=>[];clipboard.readText=async()=>'';clipboard.writeText=async text=>fs.writeFileSync(${JSON.stringify(copied)},text);clipboard.writeImage=async()=>{};globalShortcut.register=()=>true;globalShortcut.unregister=()=>{};globalShortcut.unregisterAll=()=>{};const fixtureImage=nativeImage.createFromBitmap(Buffer.alloc(800*600*4,255),{width:800,height:600});fs.writeFileSync(${JSON.stringify(path.join(tmp,'fixture.png'))},fixtureImage.toPNG());require(${JSON.stringify(path.join(root,'lib/ocr'))}).OcrService.prototype.recognizeFile=async()=>({text:'明天下午3点开会',confidence:99,blocks:[],engine:'fixture'});const Module=require('node:module'),filename=${JSON.stringify(path.join(root,'main.js'))},m=new Module(filename,module);m.filename=filename;m.paths=Module._nodeModulePaths(${JSON.stringify(root)});m._compile('const fixtureImage=require("electron").nativeImage.createFromBitmap(Buffer.alloc(800*600*4,255),{width:800,height:600});\\n'+fs.readFileSync(filename,'utf8')+${JSON.stringify(hooks)},filename);`);
+ fs.writeFileSync(entry,`const fs=require('node:fs'),{app,clipboard,dialog,globalShortcut,nativeImage}=require('electron');app.setPath('userData',${JSON.stringify(profile)});app.getVersion=()=>${JSON.stringify(version)};clipboard.read=async()=>[];clipboard.readText=async()=>'';clipboard.writeText=async text=>fs.writeFileSync(${JSON.stringify(copied)},text);clipboard.writeImage=async()=>{};dialog.showSaveDialog=async()=>{const filePath=fs.readFileSync(${JSON.stringify(saveChoice)},'utf8');return filePath?{canceled:false,filePath}:{canceled:true};};globalShortcut.register=()=>true;globalShortcut.unregister=()=>{};globalShortcut.unregisterAll=()=>{};const fixtureImage=nativeImage.createFromBitmap(Buffer.alloc(800*600*4,255),{width:800,height:600});fs.writeFileSync(${JSON.stringify(path.join(tmp,'fixture.png'))},fixtureImage.toPNG());require(${JSON.stringify(path.join(root,'lib/ocr'))}).OcrService.prototype.recognizeFile=async()=>({text:'明天下午3点开会',confidence:99,blocks:[],engine:'fixture'});const Module=require('node:module'),filename=${JSON.stringify(path.join(root,'main.js'))},m=new Module(filename,module);m.filename=filename;m.paths=Module._nodeModulePaths(${JSON.stringify(root)});m._compile('const fixtureImage=require("electron").nativeImage.createFromBitmap(Buffer.alloc(800*600*4,255),{width:800,height:600});\\n'+fs.readFileSync(filename,'utf8')+${JSON.stringify(hooks)},filename);`);
  const env={...process.env};delete env.ELECTRON_RUN_AS_NODE;const fd=fs.openSync(path.join(tmp,'app.log'),'w');child=spawn('C:/suira-electron/electron.exe',[entry,'--remote-debugging-port='+port],{cwd:root,env,windowsHide:true,stdio:['ignore',fd,fd]});fs.closeSync(fd);
  async function page(suffix,ready='Boolean(window.suira)'){const p=await until(()=>connect(port,t=>t.url.includes(suffix)));sockets.push(p.ws);await until(()=>p.evaluate(ready));return p;}
  const shot=async(client,name)=>{if(!process.argv.includes('--shots'))return;await wait(180);const png=await client.send('Page.captureScreenshot',{format:'png'});fs.writeFileSync(path.join(root,'docs/product',`relay-${version}-${name}.png`),Buffer.from(png.data,'base64'));};
@@ -60,8 +61,24 @@ async function until(fn){let last;for(let i=0;i<180;i++){try{const v=await fn();
  };
  await bar.evaluate(`document.querySelector('[data-id="${english.id}"]').click();true`);
  await firstInMore('text.translate');
- await bar.evaluate('document.querySelector(".bar-card[data-kind=image]").click();true');
- await firstInMore('ocr.local');
+ // Open the floating actions directly on a card other than the current selection.
+ await bar.evaluate(`document.querySelector('[data-id="${sourceImage.id}"] [data-card-action=more]').click();true`);
+ await until(()=>bar.evaluate(`document.querySelector('[data-id="${sourceImage.id}"] #bar-action-strip [popover]')?.matches(':popover-open') && document.querySelector('#bar-action-strip [popover] button')?.dataset.actionId==='ocr.local'`));
+ await bar.send('Input.dispatchKeyEvent',{type:'keyDown',key:'Escape',code:'Escape'});
+ await until(()=>bar.evaluate(`!document.querySelector('#bar-action-strip [popover]').matches(':popover-open')`));
+ const save = () => bar.evaluate(`window.suira.clipboardBar.saveImage(${JSON.stringify(sourceImage.id)})`);
+ fs.writeFileSync(saveChoice,'');
+ assert.equal((await save()).canceled,true);
+ const original=fs.readFileSync(path.join(tmp,'fixture.png'));
+ fs.writeFileSync(saveChoice,path.join(tmp,'fixture.png'));
+ assert.equal((await save()).ok,false);
+ assert.deepEqual(fs.readFileSync(path.join(tmp,'fixture.png')),original);
+ fs.writeFileSync(saveChoice,savedImage);
+ assert.equal((await main.evaluate(`window.suira.clipboardBar.saveImage(${JSON.stringify(sourceImage.id)})`)).ok,false);
+ await bar.evaluate(`document.querySelector('[data-id="${sourceImage.id}"] [data-card-action=save]').click();true`);
+ await until(()=>bar.evaluate(`document.getElementById('bar-notice').textContent==='图片已保存'`));
+ assert.deepEqual(fs.readFileSync(savedImage),original);
+ console.log('PASS 卡片更多操作、另存取消、原图保护及字节一致的图片导出');
  if (process.argv.includes('--clipboard-shots')) {
    const samples = [
      {text:'周五 14:30 评审新版。会前整理录音、截图和所有需要确认的细节。'},

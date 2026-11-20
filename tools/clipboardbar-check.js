@@ -77,7 +77,7 @@ const missingIds = [...jsIds].filter((id) => !htmlIds.has(id));
 check('clipboardbar.js 引用的 ID 都存在于 HTML', missingIds.length === 0, '缺失: ' + missingIds.join(', '));
 
 check('界面文案为中文（标题 / 快捷键提示）',
-  ['剪贴板历史', '← → 选择', '粘贴到当前窗口'].every((text) => (barHtml + barJs).includes(text)));
+  ['剪贴板历史', '更多操作（Ctrl+K）', '粘贴到当前窗口'].every((text) => (barHtml + barJs).includes(text)));
 check('空态文案符合规格', (barHtml + barJs).includes('还没有剪贴板记录，复制一段文字或一张图再试'));
 check('渲染层带 API 不可用提示', barJs.includes('剪贴板历史暂不可用'));
 check('渲染层明确提交当前窗口粘贴意图', barJs.includes("intent: 'paste-current'"));
@@ -189,6 +189,7 @@ const MOCK = `
     }
   };
   window.suira.clipboardBar = {
+    saveImage: function(id){ calls.saveImage=id; return Promise.resolve({ok:true}); },
     sourceIcons: function(names){ return Promise.resolve(Object.fromEntries(names.map(name=>[name,THUMB]))); },
     hide: function(){ calls.hide += 1; return Promise.resolve(); },
     onShown: function(callback){
@@ -230,7 +231,7 @@ const PROBE = `
     }
     var imgs = Array.prototype.slice.call(document.querySelectorAll('.card-thumb'));
     var snippets = Array.prototype.slice.call(document.querySelectorAll('.card-snippet')).map(function(el){ return el.textContent; });
-    var selection = document.getElementById('bar-selection');
+    var selection = selected?.querySelector('.card-position');
     var notice = document.getElementById('bar-notice');
     var empty = document.getElementById('bar-empty');
     return {
@@ -568,7 +569,7 @@ async function runChecks(send) {
   check('超长文本被截断到 180 字', initial.snippetLengths.includes(180), JSON.stringify(initial.snippetLengths));
   check('默认选中第 1 条', initial.selectedIndex === 0 && initial.selectedId === 'img-1',
     initial.selectedIndex + ' / ' + initial.selectedId);
-  check('顶部只显示一次选中位置', initial.selectionText.trim() === '1 / 8', initial.selectionText);
+  check('选中位置移到当前卡片', initial.selectionText.trim() === '1 / 8', initial.selectionText);
   check('卡片内容不横向溢出', initial.cardOverflow.every((value) => value === 0),
     JSON.stringify(initial.cardOverflow));
   check('页面无整体滚动条 / 溢出', noOverflow(initial),
@@ -656,14 +657,18 @@ async function runChecks(send) {
   console.log('\n== 搜索、分类、收藏与输入焦点 ==');
   const editHistory=await evaluate(send, `(async()=>{
     window.__fireShown();await new Promise(r=>setTimeout(r,150));
-    const button=document.querySelector('[data-id="img-1"] [data-edit-image]');const shown=Boolean(button)&&getComputedStyle(button).opacity==='0';button.click();await new Promise(r=>setTimeout(r,60));
+    const button=document.querySelector('[data-id="img-1"] [data-card-action="edit"]');const shown=Boolean(button)&&getComputedStyle(button.closest('.card-actions')).opacity==='0';button.click();await new Promise(r=>setTimeout(r,60));
     const opened=window.__calls.edit?.itemId==='img-1';window.__editFail=true;button.click();await new Promise(r=>setTimeout(r,60));
     const error=document.getElementById('bar-notice').textContent.includes('原图已被移动');window.__editFail=false;
-    const commits=window.__calls.commit.length;document.querySelector('.bar-card[data-id="img-2"] [data-edit-image]').click();await new Promise(r=>setTimeout(r,60));
+    const commits=window.__calls.commit.length;document.querySelector('.bar-card[data-id="img-2"] [data-card-action="edit"]').click();await new Promise(r=>setTimeout(r,60));
     const direct=window.__calls.edit.itemId==='img-2'&&window.__calls.commit.length===commits;
-    document.querySelector('[data-filter="text"]').click();await new Promise(r=>setTimeout(r,60));const textHidden=!document.querySelector('[data-edit-image]');
+    document.querySelector('[data-id="img-1"] [data-card-action=save]').click();await new Promise(r=>setTimeout(r,60));
+    const saved=window.__calls.saveImage==='img-1';
+    document.querySelector('[data-id="img-2"] [data-card-action=pin]').click();await new Promise(r=>setTimeout(r,60));
+    const pinned=window.__calls.action?.id==='img-2' && window.__calls.action?.actionId==='image.pin';
+    document.querySelector('[data-filter="text"]').click();await new Promise(r=>setTimeout(r,60));const textHidden=!document.querySelector('[data-card-action="edit"]');
     document.querySelector('[data-filter="all"]').click();await new Promise(r=>setTimeout(r,60));
-    return {shown,opened,error,textHidden,direct};
+    return {shown,opened,error,textHidden,direct,saved,pinned};
   })()`);
   check('历史图片编辑入口传递选中图片，文字隐藏入口，原图失败显示原因',Object.values(editHistory).every(Boolean),JSON.stringify(editHistory));
   const inspectClipboard=await evaluate(send,`(async()=>{
@@ -675,15 +680,16 @@ async function runChecks(send) {
     result.previewDoesNotPaste=window.__calls.commit.length===before;
     document.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true,cancelable:true}));result.enterDoesNotPaste=window.__calls.commit.length===before;
     document.dispatchEvent(new KeyboardEvent('keydown',{key:'a',ctrlKey:true,bubbles:true,cancelable:true}));result.selectOnlyPreview=getSelection().toString()===${JSON.stringify(LONG_TEXT)};getSelection().removeAllRanges();
-    document.getElementById('bar-copy').click();await wait();result.copyOnly=window.__calls.commit.at(-1).intent==='copy-only'&&window.__calls.hide===hidden;
     document.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true,cancelable:true}));result.escapeReturns=document.getElementById('bar-preview').hidden&&window.__calls.hide===hidden;
-    document.getElementById('bar-preview-toggle').blur();document.dispatchEvent(new KeyboardEvent('keydown',{key:' ',bubbles:true,cancelable:true}));await wait();result.spacePreview=!document.getElementById('bar-preview').hidden;
+    document.querySelector('[data-id="text-1"] [data-card-action=copy]').click();await wait();
+    result.copyOnly=window.__calls.commit.at(-1)?.intent==='copy-only' && window.__calls.commit.at(-1)?.itemId==='text-1' && window.__calls.hide===hidden;
+    document.activeElement.blur();document.dispatchEvent(new KeyboardEvent('keydown',{key:' ',bubbles:true,cancelable:true}));await wait();result.spacePreview=!document.getElementById('bar-preview').hidden;
     document.getElementById('bar-preview-close').click();
     const original=window.suira.content.get,payload='<img src=x onerror="window.__injected=true">';
-    window.suira.content.get=async()=>({id:'test-preview',kind:'text',text:payload});document.getElementById('bar-preview-toggle').click();await wait();
+    window.suira.content.get=async()=>({id:'test-preview',kind:'text',text:payload});document.querySelector('.bar-card.is-selected [data-card-action=preview]').click();await wait();
     result.safeText=document.getElementById('bar-preview-content').textContent===payload&&!document.querySelector('#bar-preview-content img')&&!window.__injected;
     document.getElementById('bar-preview-close').click();window.suira.content.get=()=>new Promise(r=>setTimeout(()=>r({id:'stale',kind:'text',text:'late'}),150));
-    document.getElementById('bar-preview-toggle').click();window.__fireShown();await new Promise(r=>setTimeout(r,240));result.noLatePopup=document.getElementById('bar-preview').hidden;
+    document.querySelector('.bar-card.is-selected [data-card-action=preview]').click();window.__fireShown();await new Promise(r=>setTimeout(r,240));result.noLatePopup=document.getElementById('bar-preview').hidden;
     window.suira.content.get=original;window.__commitResult={ok:true,copied:true,pasted:true};return result;
   })()`);
   for(const [name,ok] of Object.entries(inspectClipboard))check('内容预览与独立复制：'+name,ok,JSON.stringify(inspectClipboard));
@@ -704,7 +710,7 @@ async function runChecks(send) {
   const toolbar = await evaluate(send, `(async function(){
     var wait = function(){return new Promise(r=>setTimeout(r,100));};
     var search = document.getElementById('bar-search');
-    var pin = document.getElementById('bar-pin');
+    var pin = () => document.querySelector('.bar-card.is-selected [data-card-action=favorite]');
     var ids = function(){return Array.from(document.querySelectorAll('.bar-card')).map(c=>c.dataset.id);};
     var query = async function(value){search.value=value;search.dispatchEvent(new Event('input',{bubbles:true}));await wait();};
     var filter = async function(value){document.querySelector('[data-filter="'+value+'"]').click();await wait();};
@@ -718,13 +724,13 @@ async function runChecks(send) {
     await query('Chrome');result.sourceSearch=ids().join()==='text-1';
     search.focus();search.dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowRight',bubbles:true,cancelable:true}));
     result.inputArrowsPreserved=document.querySelector('.is-selected').dataset.id==='text-1';
-    await query('不存在的关键词');result.emptySearch=!ids().length && document.getElementById('bar-empty').dataset.mode==='filtered' && pin.disabled;
+    await query('不存在的关键词');result.emptySearch=!ids().length && document.getElementById('bar-empty').dataset.mode==='filtered' && !pin();
     await query('');await filter('all');
-    pin.click();await wait();result.pinSaved=pin.getAttribute('aria-pressed')==='true';
+    pin().click();await wait();result.pinSaved=pin()?.getAttribute('aria-pressed')==='true';
     await filter('favorite');result.favoriteFilter=ids().join()==='img-1';
-    window.__pinThrow=true;pin.click();await wait();
-    result.pinFailure=document.getElementById('bar-notice').textContent.includes('收藏失败') && ids().join()==='img-1' && pin.getAttribute('aria-pressed')==='true';
-    window.__pinThrow=false;pin.click();await wait();
+    window.__pinThrow=true;pin().click();await wait();
+    result.pinFailure=document.getElementById('bar-notice').textContent.includes('收藏失败') && ids().join()==='img-1' && pin()?.getAttribute('aria-pressed')==='true';
+    window.__pinThrow=false;pin().click();await wait();
     result.unpinRemovesFavorite=!ids().length && document.getElementById('bar-empty-title').textContent==='还没有收藏内容';
     await query('未命中');window.__fireShown();await wait();
     result.reopenResets=ids().length===8 && search.value==='' && document.querySelector('[data-filter="all"]').getAttribute('aria-pressed')==='true';

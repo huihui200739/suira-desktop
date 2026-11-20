@@ -243,7 +243,7 @@ class RegionCheck {
     if (screenshots && process.env.SUIRA_REVIEW_SHOTS) {
       const imageCard = await clipboard.evaluate(`(()=>{const r=document.querySelector('.bar-card[data-kind="image"]').getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2};})()`);
       await moveClipboardPointer(imageCard.x,imageCard.y);
-      await until(()=>clipboard.evaluate(`getComputedStyle(document.querySelector('.card-edit')).opacity==='1'`));
+      await until(()=>clipboard.evaluate(`getComputedStyle(document.querySelector('[data-kind=image] .card-actions')).opacity==='1'`));
       await shot(clipboard,'clipboard-hover');
     }
     await main.evaluate('window.suira.settings.update({theme:"light"})');

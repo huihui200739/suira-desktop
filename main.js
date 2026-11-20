@@ -1758,7 +1758,9 @@ function createClipboardBarWindow() {
   clipboardBarWindow.__loaded.catch(error => console.warn('剪贴板条加载失败:', error.message));
   clipboardBarWindow.setMenuBarVisibility(false);
   // 失焦即收起：底部条不该长期挡在屏幕上
-  clipboardBarWindow.on('blur', () => hideClipboardBar());
+  clipboardBarWindow.on('blur', () => {
+    if (!clipboardBarWindow.__savingImage) hideClipboardBar();
+  });
   clipboardBarWindow.on('closed', () => { clipboardBarWindow = null; });
   clipboardBarWindow.webContents.setWindowOpenHandler(({ url }) => {
     if (isSafeHttpUrl(url)) shell.openExternal(url);
@@ -3663,6 +3665,41 @@ function registerIpc() {
   ipcMain.handle('clipboard-bar:show', () => showClipboardBar());
   ipcMain.handle('clipboard-bar:hide', () => hideClipboardBar());
   ipcMain.handle('clipboard-bar:toggle', () => toggleClipboardBar());
+  ipcMain.handle('clipboard-bar:save-image', async (event, id) => {
+    const win = clipboardBarWindow;
+    if (!win || win.isDestroyed() || !win.isVisible() || event.sender !== win.webContents || win.__savingImage) {
+      return { ok: false, error: '请从剪贴板历史操作' };
+    }
+    const item = store.getItem(String(id || ''));
+    const extension = path.extname(item?.filePath || '').toLowerCase();
+    if (item?.kind !== 'image' || !imageEditor.EXTENSIONS.includes(extension.slice(1))) {
+      return { ok: false, error: '原图片不存在或格式不支持' };
+    }
+    win.__savingImage = true;
+    try {
+      const source = await fsp.stat(item.filePath).catch(() => null);
+      if (!source?.isFile()) return { ok: false, error: '原图片不存在或已被移动' };
+      const name = (item.title || '随序图片').replace(/[\\/:*?"<>|]/g, '_');
+      const result = await dialog.showSaveDialog(win, {
+        title: '另存剪贴板图片',
+        defaultPath: path.join(app.getPath('pictures'), name + extension),
+        filters: [{ name: `${extension.slice(1).toUpperCase()} 图片`, extensions: [extension.slice(1)] }]
+      });
+      if (result.canceled || !result.filePath) return { ok: false, canceled: true };
+      if (path.extname(result.filePath).toLowerCase() !== extension) {
+        return { ok: false, error: `请选择 ${extension} 扩展名以保留原图格式` };
+      }
+      if (await imageEditor.isOriginalDestination(item.filePath, result.filePath)) {
+        return { ok: false, error: '请选择其他位置，原图会保留' };
+      }
+      await fsp.copyFile(item.filePath, result.filePath);
+      return { ok: true };
+    } catch (error) {
+      return { ok: false, error: error.code === 'ENOENT' ? '原图片或保存位置已不可用' : '无法保存图片，请检查目标位置' };
+    } finally {
+      win.__savingImage = false;
+    }
+  });
 
   ipcMain.handle('app:info', event => ({
     name: APP_NAME,

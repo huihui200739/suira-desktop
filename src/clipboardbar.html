@@ -30,20 +30,16 @@
       <div class="bar-tools"><button id="bar-library" type="button" title="打开完整内容库" aria-label="打开完整内容库">内容库 <span aria-hidden="true">↗</span></button><button id="bar-close" type="button" title="Esc 关闭" aria-label="关闭剪贴板">×</button></div>
       <div class="bar-controls">
         <button class="bar-retry" id="bar-refresh-retry" type="button" hidden>刷新失败，重试</button>
-        <span class="bar-selection" id="bar-selection" aria-label="选中位置"></span>
         <span class="bar-notice" id="bar-notice" role="status" aria-live="polite" hidden></span>
         <div class="bar-actions">
-          <button id="bar-preview-toggle" type="button" disabled title="空格预览，Esc 返回" aria-controls="bar-preview" aria-expanded="false">预览</button>
-          <button id="bar-copy" type="button" disabled title="复制到剪贴板（Ctrl+C）">复制</button>
-          <button id="bar-pin" type="button" disabled>收藏</button>
-          <div id="bar-action-strip" hidden></div>
           <button id="bar-submit" type="button" aria-label="粘贴到当前窗口" disabled><span>粘贴</span><kbd>Enter</kbd></button>
         </div>
       </div>
     </header>
 
     <div class="bar-body">
-      <div class="bar-track" id="bar-track" role="listbox" aria-label="剪贴板历史列表" aria-orientation="horizontal"></div>
+      <div id="bar-action-strip" hidden></div>
+      <div class="bar-track" id="bar-track" role="list" aria-label="剪贴板历史列表"></div>
       <div class="bar-empty" id="bar-empty" data-mode="loading">
         <span class="tool-emblem clipboard-empty-emblem" data-tool-object="clipboard" aria-hidden="true"></span>
         <b id="bar-empty-title">正在读取剪贴板历史…</b>
