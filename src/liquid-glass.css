@@ -105,13 +105,10 @@ html { background:transparent!important; color-scheme:normal!important; }
 .liquid-ui.tool-window .document-main { background:var(--tool-content); }
 .liquid-ui.tool-window .document-sidebar { background:var(--glass-chrome); border-radius:0; border-width:0 1px 0 0; box-shadow:none; }
 .liquid-ui.tool-window .markdown-layout { gap:0; }
-.liquid-ui.tool-window.md-home .document-main { background:transparent; border:0; box-shadow:none; }
-.liquid-ui.tool-window.md-home .document-sidebar { background:transparent; border:0; }
-.liquid-ui.tool-window.md-home .document-row { background:var(--glass-button); border-color:var(--glass-edge); border-radius:12px; padding:calc(var(--space-1) * 3.5) var(--space-4); }
 .liquid-ui.tool-window #md-empty { padding:calc(var(--space-1) * 11) var(--space-5) var(--space-4); min-height:300px; }
 .liquid-ui.tool-window .welcome-actions button { border-radius:10px!important; min-height:40px; }
 .liquid-ui.tool-window #md-empty>b { color:var(--ink); font-weight:500; }
-.liquid-ui.tool-window #md-empty>p,.liquid-ui .workspace-empty,.liquid-ui.tool-window.md-home .document-sidebar h3 { color:var(--ink-soft); }
+.liquid-ui.tool-window #md-empty>p,.liquid-ui .workspace-empty { color:var(--ink-soft); }
 .liquid-ui.tool-window #md-empty #md-paste { min-height:28px; padding:var(--space-1) var(--space-2); border:0; box-shadow:none; background:transparent; color:var(--glass-accent-ink); font-size:13px; }
 .liquid-ui.tool-window #md-empty #md-paste:hover { text-decoration:underline; text-underline-offset:4px; }
 .liquid-ui :is(.text-input,.number-input,.shortcut-input,input[type="search"],select,textarea) { color-scheme:light; }
@@ -153,7 +150,6 @@ html { background:transparent!important; color-scheme:normal!important; }
  .liquid-ui .primary-btn { background:var(--glass-primary); color:var(--glass-liquid-ui-primary-btn-ink); }
  .liquid-ui .quiet-btn:hover { background:var(--glass-hover); }
  .liquid-ui :is(.view-switch,.agenda-tabs) button.is-active { background:var(--glass-button); border-color:var(--glass-edge); }
- .liquid-ui.tool-window.md-home .document-row { background:var(--glass-button); }
  .liquid-ui.tool-window .calendar-card { background:var(--glass-liquid-ui-tool-window-calendar-card-surface); }
  .liquid-ui.tool-window .agenda-card { background:var(--glass-liquid-ui-tool-window-agenda-card-surface); }
  .liquid-ui .panel .key.is-unbound .key-face { background:var(--glass-key-is-unbound-key-face-surface); border-color:var(--glass-key-is-unbound-key-face-edge); }

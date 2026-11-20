@@ -17,15 +17,30 @@
   const editor = $('md-editor'), previewPane = $('md-preview');
   const sourceHighlight = window.SuiraSourceHighlight?.attach(editor, $('md-source-highlight'));
   let sourceHeadingPositions, ignoreEditorScroll, ignorePreviewScroll;
-  let allDocuments=false, outlineCollapsed=true, outlineItems=[], activeHeading=-1;
+  let documentLayout, documentLocation = 'all', locationsKey = '';
+  let outlineCollapsed=true, outlineItems=[], activeHeading=-1;
+  const documentDate = new Intl.DateTimeFormat('zh-CN', { dateStyle:'short', timeStyle:'short' });
+  const narrowDocumentLayout = () => matchMedia('(max-width: 540px)').matches;
+  const documentFolder = doc => (doc.meta?.externalPath || '').replaceAll('\\','/').replace(/\/[^/]*$/, '');
+  const switchDocumentLocation = id => {
+    documentLocation = id;
+    outlineCollapsed = true;
+    if (narrowDocumentLayout()) documentLayout.shell.classList.add('mia-notes-only');
+    docList();
+    syncDocumentNavigation();
+    documentLayout.sections.querySelector('[aria-current="true"]')?.focus();
+  };
   const foldedHeadings=new Set();
   function setWritingFocus(enabled) {
     focusedWriting = Boolean(enabled && current);
     document.documentElement.classList.toggle('md-writing-focus', focusedWriting);
+    documentLayout?.shell.classList.toggle('mia-focus', focusedWriting);
+    if (focusedWriting && $('md-format-toggle')?.getAttribute('aria-expanded') === 'true') $('md-format-toggle').click();
     const button = $('md-focus-toggle');
     if (button) {
       button.setAttribute('aria-pressed', String(focusedWriting));
-      button.textContent = focusedWriting ? '退出专注' : '专注';
+      button.title = (focusedWriting ? '退出专注' : '专注模式') + ' · Ctrl+Shift+F';
+      button.setAttribute('aria-label', button.title);
     }
     if (focusedWriting && ['edit', 'split'].includes($('md-split').dataset.view)) editor.focus();
   }
@@ -41,9 +56,7 @@
   });
   function documentIdentity(item) {
     if(document.documentElement.dataset.tool!=='markdown')return;
-    document.querySelector('.brand b').textContent=item?item.title+'.md':'未打开 Markdown';
-    document.querySelector('.brand b').hidden=Boolean(item);
-    $('md-title').hidden=!item;
+    document.title = item ? `${item.title} · 随序 Markdown` : 'Markdown · 随序';
   }
   let agendaMode='countdown', countdownFilter='all', upcomingDays=[];
   let calendarView='month';
@@ -145,7 +158,49 @@
     const url = link.getAttribute('href');
     if (/^(?:https?:\/\/|suira-image:\/\/[-\w]+$)/i.test(url)) safe(() => checked(api.openLink(url)))();
   });
-  function docList(){const query=$('md-search').value.trim().toLowerCase();$('md-list').innerHTML=docs.filter(d=>allDocuments||!d.meta?.recentHidden).filter(d=>(d.title+' '+d.text).toLowerCase().includes(query)).map(d=>`<button class="document-row ${d.id===current?'is-active':''}" data-document="${esc(d.id)}" aria-current="${d.id===current?'true':'false'}"><span class="recent-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M6 3h8l4 4v14H6z M14 3v5h4 M9 12h6 M9 16h6"/></svg></span><div><b>${esc(d.title)}.md</b><small class="recent-path" title="${esc(d.meta?.externalPath||'随序文档')}">${esc(d.meta?.externalPath||'随序文档')}</small><small>${new Date(d.updatedAt).toLocaleDateString('zh-CN')}</small></div><em>›</em></button>`).join('')||'<div class="workspace-empty">没有匹配的文档</div>';$('md-list').querySelector('.is-active')?.scrollIntoView({block:'nearest'});$('md-list').querySelectorAll('[data-document]').forEach(b=>b.onclick=safe(()=>selectDoc(b.dataset.document)));}
+  function docList({ revealActive = false } = {}) {
+    if (documentLayout) {
+      const folders = new Map();
+      for (const doc of docs) {
+        const folder = documentFolder(doc);
+        if (folder && !folders.has(folder.toLowerCase())) folders.set(folder.toLowerCase(), folder);
+      }
+      const locations = [
+        { id:'all', label:'全部', icon:'library' },
+        { id:'recent', label:'最近打开', icon:'recent' },
+        { id:'local', label:'随序文档' },
+        ...[...folders].sort((a,b)=>a[1].localeCompare(b[1],'zh-CN')).map(([key,folder])=>({
+          id:'folder:'+key, label:folder.split('/').at(-1) || folder, title:folder
+        }))
+      ];
+      if (!locations.some(item=>item.id===documentLocation)) documentLocation = 'all';
+      const key = JSON.stringify([locations,documentLocation]);
+      if (key !== locationsKey) {
+        window.SuiraMarkdownLayout.renderLocations(documentLayout.sections, locations, documentLocation, switchDocumentLocation);
+        locationsKey = key;
+      }
+    }
+    const query = $('md-search').value.trim().toLowerCase();
+    const visible = docs.filter(doc => {
+      if (documentLocation==='recent' && doc.meta?.recentHidden) return false;
+      if (documentLocation==='local' && doc.meta?.externalPath) return false;
+      if (documentLocation.startsWith('folder:') && 'folder:'+documentFolder(doc).toLowerCase()!==documentLocation) return false;
+      return !query || doc.title.toLowerCase().includes(query) || doc.text.toLowerCase().includes(query);
+    });
+    const list = $('md-list');
+    const previousFocus = list.contains(document.activeElement) ? document.activeElement.dataset.document : null;
+    const previousScroll = list.scrollTop;
+    list.innerHTML = visible.map(doc => {
+      const active = doc.id===current;
+      return `<button type="button" class="document-row mia-row${active?' is-active':''}" data-document="${esc(doc.id)}" aria-current="${active}" title="${esc(doc.meta?.externalPath || doc.title)}"><b>${esc(doc.title)}</b><time datetime="${new Date(doc.updatedAt).toISOString()}">${documentDate.format(doc.updatedAt)}</time></button>`;
+    }).join('') || `<div class="workspace-empty">${query?'没有匹配的文档':'这里还没有文档'}</div>`;
+    list.scrollTop = previousScroll;
+    for (const button of list.querySelectorAll('[data-document]')) {
+      button.onclick = safe(() => selectDoc(button.dataset.document));
+      if (button.dataset.document===previousFocus && !narrowDocumentLayout()) button.focus({preventScroll:true});
+    }
+    if (revealActive) list.querySelector('.is-active')?.scrollIntoView({block:'nearest'});
+  }
   function flush() {
     if (!saveInFlight) saveInFlight = saveDocument().finally(() => { saveInFlight = null; });
     return saveInFlight;
@@ -163,6 +218,7 @@
         if (index >= 0) docs[index] = item;
         if (current === id) {
           documentIdentity(item);
+          docList();
           savedRevision = version;
           $('md-status').textContent = revision === savedRevision ? savedLabel(item) : '有未保存的修改';
         }
@@ -194,9 +250,9 @@
     current = item?.id || '';
     revision = savedRevision = 0;
     if (!current) setWritingFocus(false);
+    if (item) documentLayout?.shell.classList.remove('mia-notes-only');
     $('md-body').hidden = !item;
     $('md-empty').hidden = Boolean(item);
-    document.documentElement.classList.toggle('md-home', !item);
     if (item) {
       $('md-title').value = item.title;
       editor.value = item.text;
@@ -214,7 +270,7 @@
     documentIdentity(item);
     api.activeDocument?.(current);
     for (const button of ['md-save', 'md-export', 'md-export-format', 'md-delete']) $(button).disabled = !item;
-    docList();
+    docList({ revealActive:true });
     syncDocumentNavigation();
   }
   async function loadDocs() {
@@ -236,9 +292,9 @@
   }
   editor.oninput = () => dirty();
   $('md-title').oninput = () => dirty(false);
-  $('md-search').oninput = docList;
-  $('md-new').onclick=safe(async()=>{await flush();const result=await checked(api.save('markdown',{title:'未命名文档',text:'# 新的想法\n\n'}));docs.unshift(result.item);await selectDoc(result.item.id);$('md-title').focus();$('md-title').select();});
-  $('md-import').onclick=safe(async()=>{await flush();const result=await api.import();if(result.canceled)return;await checked(Promise.resolve(result));docs=[result.item,...docs.filter(item=>item.id!==result.item.id)];await selectDoc(result.item.id);if(result.recovered)notify('已恢复尚未写回原文件的草稿，请检查后再保存');});
+  $('md-search').oninput = () => docList();
+  $('md-new').onclick=safe(async()=>{await flush();const result=await checked(api.save('markdown',{title:'未命名文档',text:'# 新的想法\n\n'}));docs.unshift(result.item);if(documentLocation.startsWith('folder:'))documentLocation='local';$('md-search').value='';await selectDoc(result.item.id);$('md-title').focus();$('md-title').select();});
+  $('md-import').onclick=safe(async()=>{await flush();const result=await api.import();if(result.canceled)return;await checked(Promise.resolve(result));docs=[result.item,...docs.filter(item=>item.id!==result.item.id)];if(documentLocation!=='all'&&documentLocation!=='recent')documentLocation='folder:'+documentFolder(result.item).toLowerCase();$('md-search').value='';await selectDoc(result.item.id);if(result.recovered)notify('已恢复尚未写回原文件的草稿，请检查后再保存');});
   $('md-export').onclick=safe(async()=>{await flush();const result=await api.export(current,$('md-export-format').value);if(result.canceled)return;await checked(Promise.resolve(result));notify('文档已导出');});
   $('md-delete').onclick=safe(async()=>{const id=current;if(!id||!confirm('删除这篇文档？此操作会移除随序中的文档记录。'))return;await flush();await checked(api.remove('markdown',id));if(current===id){current='';revision=savedRevision=0;await loadDocs();}});
   function supportsVisualEditing(text){
@@ -297,7 +353,7 @@
       }).catch(error => { if (change === viewRevision) notify(error.message); });
       view = 'edit';
     }
-    $('md-split').dataset.view=view;document.querySelector('.markdown-toolbar').hidden=false;
+    $('md-split').dataset.view=view;
     document.querySelectorAll('[data-md-view]').forEach(b=>{b.classList.toggle('is-active',b.dataset.mdView===view);b.setAttribute('aria-pressed',String(b.dataset.mdView===view));});
     $('md-sync-scroll').closest('label').hidden=view!=='split';
     if (!current) return;
@@ -319,11 +375,24 @@
     if ($('md-focus-toggle')) $('md-focus-toggle').disabled = !isOpen;
     $('md-search').hidden = showOutline;
     $('md-list').hidden = showOutline;
-    if($('md-sidebar-label'))$('md-sidebar-label').textContent=showOutline?'文档目录':allDocuments?'全部文档':'最近打开';
-    $('md-outline').hidden=!showOutline;if($('md-clear-recent'))$('md-clear-recent').hidden=isOpen||allDocuments;if($('md-all-documents'))$('md-all-documents').hidden=showOutline;
-    for(const button of document.querySelectorAll('[aria-controls="md-outline"]')){button.disabled=!isOpen;button.setAttribute('aria-expanded',String(isOpen&&!outlineCollapsed));button.setAttribute('aria-label',outlineCollapsed?'展开目录':'收起目录');}
+    if (documentLayout) {
+      documentLayout.listHead.hidden = showOutline;
+      $('md-outline-head').hidden = !showOutline;
+    }
+    $('md-outline').hidden=!showOutline;
+    const outline = $('md-outline-toggle');
+    if (outline) {
+      outline.disabled = !isOpen;
+      outline.setAttribute('aria-expanded', String(showOutline));
+      outline.title = showOutline ? '收起目录' : '展开目录';
+      outline.setAttribute('aria-label', outline.title);
+    }
   }
-  function toggleOutline(){outlineCollapsed=!outlineCollapsed;syncDocumentNavigation();}
+  function toggleOutline(){
+    outlineCollapsed=!outlineCollapsed;
+    if (documentLayout && narrowDocumentLayout()) documentLayout.shell.classList.add('mia-notes-only');
+    syncDocumentNavigation();
+  }
   function renderOutline(headings) {
     const counts = new Map();
     outlineItems = [...previewPane.querySelectorAll('[data-md-heading]')].flatMap(node => {
@@ -358,6 +427,10 @@
       }
     }
     activeHeading=index;markActiveHeading();
+    if (documentLayout && narrowDocumentLayout()) {
+      documentLayout.shell.classList.remove('mia-notes-only');
+      if (view==='edit'||view==='split') editor.focus({preventScroll:true});
+    }
   }
   function markActiveHeading(){for(const b of $('md-outline').querySelectorAll('[data-heading]')){const active=+b.dataset.heading===activeHeading;b.classList.toggle('is-active',active);if(active)b.setAttribute('aria-current','location');else b.removeAttribute('aria-current');}}
   function updateActiveHeading(){
@@ -502,48 +575,121 @@
     const theme=document.createElement('button');theme.className='quiet-btn tool-icon';theme.title='切换明暗主题';theme.setAttribute('aria-label',theme.title);theme.innerHTML='<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M12 4a8 8 0 0 1 0 16z" fill="currentColor"/></svg>';theme.onclick=safe(async()=>{const settings=await window.suira.settings.get();await window.suira.settings.update({theme:settings?.theme==='dark'?'light':'dark',themeChosen:true});});top.append(theme);
     const pin=document.createElement('button');pin.className='quiet-btn tool-icon';pin.title='窗口置顶';pin.setAttribute('aria-label',pin.title);pin.innerHTML='<svg viewBox="0 0 24 24"><path d="M8 3h8l-1 7 4 4H5l4-4z M12 14v7"/></svg>';pin.onclick=safe(async()=>pin.setAttribute('aria-pressed',String(await window.suira.window.pin())));top.append(pin);
     if(tool==='markdown'){
-      for(const node of document.querySelectorAll('#page-markdown .page-actions > *'))top.append(node);
-      top.append(document.querySelector('.markdown-toolbar .view-switch'));
-      for(const id of ['md-save','md-export-format','md-export','md-delete'])top.append($(id));
-      const home=document.createElement('button');home.id='md-home';home.className='quiet-btn';home.textContent='最近';home.title='返回最近文档';home.onclick=safe(async()=>{await flush();docs=await api.list('markdown');await selectDoc('');});top.prepend(home);
-      const icons={'md-import':'M3 7h6l2 2h10v11H3z M3 7V4h6l2 3','md-new':'M6 3h8l4 4v14H6z M12 10v7 M9 13h6','md-save':'M4 3h14l3 3v15H3V3z M7 3v6h10V3 M7 21v-8h10v8','md-export':'M12 3v12 M8 11l4 4 4-4 M4 16v5h16v-5','md-delete':'M3 6h18 M9 6V3h6v3 M6 6l1 15h10l1-15 M10 10v7 M14 10v7'};
-      for(const [id,path] of Object.entries(icons)){const button=$(id);button.title=button.textContent;button.setAttribute('aria-label',button.textContent);button.classList.remove('primary-btn');button.classList.add('quiet-btn','tool-icon');button.innerHTML=`<svg viewBox="0 0 24 24" aria-hidden="true"><path d="${path}"/></svg>`;}
-      const viewIcons={write:'M4 20l4-1L20 7l-3-3L5 16z',edit:'m8 6-6 6 6 6 M16 6l6 6-6 6 M14 3l-4 18',split:'M3 4h18v16H3z M12 4v16',preview:'M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z M12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6'};
-      document.querySelectorAll('[data-md-view]').forEach(b=>{b.title=b.textContent;b.setAttribute('aria-label',b.textContent);b.innerHTML=`<svg viewBox="0 0 24 24"><path d="${viewIcons[b.dataset.mdView]}"/></svg>`;});
-      const search=document.createElement('button');search.className='quiet-btn tool-icon';search.title='搜索文档';search.setAttribute('aria-label',search.title);search.innerHTML='<svg viewBox="0 0 24 24"><circle cx="10" cy="10" r="6"/><path d="m15 15 6 6"/></svg>';search.onclick=safe(async()=>{await flush();docs=await api.list('markdown');outlineCollapsed=true;docList();syncDocumentNavigation();$('md-search').focus();});top.prepend(search);
+      const { mountEditorLayout, iconButton } = window.SuiraMarkdownLayout;
+      const shell = document.querySelector('.markdown-layout');
+      const actions = document.createElement('div');
+      actions.setAttribute('role','group');
+      actions.setAttribute('aria-label','编辑器视图和操作');
+      const headingBar = $('md-title').parentElement;
+      headingBar.classList.remove('document-heading');
+      $('md-title').classList.add('mia-title');
+      documentLayout = { shell, ...mountEditorLayout({
+        shell, sidebar:document.querySelector('.document-sidebar'), search:$('md-search'),
+        create:$('md-new'), list:$('md-list'), main:document.querySelector('.document-main'),
+        heading:headingBar, actions, brand:'随序', open:$('md-import')
+      }) };
+      const action = (id,icon,label) => iconButton(Object.assign(document.createElement('button'),{id}),icon,label);
+      const home = action('md-home','library','返回文档库');
+      home.onclick=safe(async()=>{await flush();docs=await api.list('markdown');await selectDoc('');});
+      const panes = action('md-panes','sidebar','显示或收起左栏');
+      panes.setAttribute('aria-pressed','false');
+      panes.onclick = () => {
+        if (narrowDocumentLayout()) {
+          shell.classList.toggle('mia-notes-only');
+          $('md-search').focus();
+        } else panes.setAttribute('aria-pressed',String(shell.classList.toggle('mia-hide-library')));
+      };
+      const back = action('md-notes-back','sidebar','返回编辑区');
+      back.onclick = () => { shell.classList.remove('mia-notes-only'); (current ? $('md-title') : compactMore).focus(); };
+      documentLayout.listHead.prepend(back);
+      top.remove();
+      const shortTitle = document.querySelector('.brand b');
+      shortTitle.textContent = 'Markdown';
+      const view = document.querySelector('.markdown-toolbar .view-switch');
+      for (const button of view.querySelectorAll('button')) {
+        const mode = button.dataset.mdView;
+        iconButton(button,mode==='edit'?'source':mode,button.textContent);
+      }
       const empty=$('md-empty');empty.innerHTML='<span class="welcome-document tool-emblem" data-tool-object="markdown" aria-hidden="true"></span><b>未打开 Markdown</b><p>打开 Markdown 文件，或新建空白文档</p><div class="welcome-actions"><button class="primary-btn" id="welcome-open">打开 Markdown</button><button class="quiet-btn" id="welcome-new">新建空白 Markdown</button></div>';
       $('welcome-open').onclick=()=>$('md-import').click();$('welcome-new').onclick=()=>$('md-new').click();
       const paste=document.createElement('button');paste.className='quiet-btn';paste.id='md-paste';paste.title='从剪贴板新建';paste.textContent='从剪贴板新建';paste.onclick=safe(async()=>{await flush();const clip=await checked(api.clipboard());if(!clip.text.trim())return notify('剪贴板没有文本');const r=await checked(api.save('markdown',{title:'剪贴板文档',text:clip.text}));docs.unshift(r.item);await selectDoc(r.item.id);});empty.querySelector('.welcome-actions').after(paste);
-      const outline=document.createElement('button');outline.id='md-outline-toggle';outline.className='quiet-btn tool-icon';outline.title='文档目录';outline.setAttribute('aria-label',outline.title);outline.setAttribute('aria-controls','md-outline');outline.setAttribute('aria-expanded','false');outline.innerHTML='<svg viewBox="0 0 24 24"><path d="M8 6h13 M8 12h13 M8 18h13 M3 6h1 M3 12h1 M3 18h1"/></svg>';
-      outline.onclick=toggleOutline;top.querySelector('[data-md-view]').parentElement.after(outline);
-      // Keep the original controls/listeners; title and save state each have one home.
-      document.querySelector('.brand>div').append($('md-title'));
+      const outline = action('md-outline-toggle','outline','文档目录');
+      outline.setAttribute('aria-controls','md-outline');
+      outline.onclick = toggleOutline;
       $('md-words').after($('md-status'));
-      const more=document.createElement('button');more.id='md-more';more.type='button';more.className='quiet-btn tool-icon';more.setAttribute('aria-label','更多文档操作');more.setAttribute('aria-expanded','false');more.setAttribute('aria-controls','md-file-menu');more.innerHTML='<svg viewBox="0 0 24 24"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></svg>';
+      const more = action('md-more','more','更多文档操作');
+      more.setAttribute('aria-expanded','false');
+      more.setAttribute('aria-controls','md-file-menu');
       const menu=document.createElement('div');menu.id='md-file-menu';menu.className='md-file-menu';menu.hidden=true;menu.setAttribute('role','dialog');menu.setAttribute('aria-label','更多文档操作');document.body.append(menu);
       const heading=text=>{const h=document.createElement('small');h.textContent=text;menu.append(h);};
-      heading('文件');menu.append($('md-new'),$('md-import'));heading('导出');menu.append($('md-export-format'),$('md-export'));heading('视图');menu.append(outline,theme,pin);heading('文档');menu.append($('md-delete'));
-      const view = top.querySelector('.view-switch');
-      const focus = document.createElement('button');
-      focus.id = 'md-focus-toggle';
-      focus.type = 'button';
-      focus.className = 'quiet-btn';
-      focus.textContent = '专注';
-      focus.title = '专注模式 · Ctrl+Shift+F';
-      focus.setAttribute('aria-pressed', 'false');
+      const clear = document.createElement('button');
+      clear.id = 'md-clear-recent';
+      clear.type = 'button';
+      clear.textContent = '清理最近打开记录';
+      clear.className = 'quiet-btn';
+      clear.onclick = safe(async()=>{
+        await flush();
+        await checked(api.recent('clear'));
+        docs = await api.list('markdown');
+        docList();
+        notify('最近打开记录已清理，文档仍保存在本地');
+      });
+      heading('文件');menu.append(home,$('md-save'),clear);
+      heading('导出');menu.append($('md-export-format'),$('md-export'));
+      heading('视图');menu.append(theme,pin);
+      heading('文档');menu.append($('md-delete'));
+      const focus = action('md-focus-toggle','focus','专注模式 · Ctrl+Shift+F');
+      focus.setAttribute('aria-pressed','false');
       focus.onclick = () => setWritingFocus(!focusedWriting);
-      top.replaceChildren(search, home, outline, view, $('md-save'), focus, more);
-      const closeMenu=(focus=false)=>{menu.hidden=true;more.setAttribute('aria-expanded','false');window.SuiraGlassSelect?.close();if(focus)more.focus();};
-      more.onclick=()=>{if(!menu.hidden){closeMenu();return;}menu.hidden=false;more.setAttribute('aria-expanded','true');const r=more.getBoundingClientRect();menu.style.right=Math.max(8,innerWidth-r.right)+'px';menu.style.top=r.bottom+8+'px';menu.querySelector('button:not(:disabled)')?.focus();};
+      const format = action('md-format-toggle','format','格式工具');
+      const toolbar = document.querySelector('.markdown-toolbar');
+      toolbar.hidden = true;
+      toolbar.id = 'md-format-bar';
+      format.setAttribute('aria-expanded','false');
+      format.setAttribute('aria-controls',toolbar.id);
+      format.onmousedown = event => event.preventDefault();
+      format.onclick = () => {
+        toolbar.hidden = !toolbar.hidden;
+        format.setAttribute('aria-expanded',String(!toolbar.hidden));
+      };
+      actions.append(panes,outline,view,focus,format,more);
+      const compactMore = action('md-empty-more','more','文档库操作');
+      compactMore.setAttribute('aria-controls',menu.id);
+      compactMore.setAttribute('aria-expanded','false');
+      const emptyNotes = action('md-empty-notes','sidebar','查看文档列表');
+      emptyNotes.onclick = () => { shell.classList.add('mia-notes-only'); $('md-search').focus(); };
+      empty.querySelector('.welcome-actions').append(emptyNotes, compactMore);
+      let menuAnchor = more;
+      const closeMenu=(focus=false)=>{menu.hidden=true;menuAnchor.setAttribute('aria-expanded','false');window.SuiraGlassSelect?.close();if(focus)menuAnchor.focus();};
+      for (const trigger of [more,compactMore]) trigger.onclick=()=>{
+        if (!menu.hidden) { closeMenu(); return; }
+        menuAnchor = trigger;
+        menu.hidden = false;
+        trigger.setAttribute('aria-expanded','true');
+        const rect = trigger.getBoundingClientRect();
+        menu.style.right = Math.max(8,innerWidth-rect.right)+'px';
+        menu.style.top = Math.max(8,Math.min(rect.bottom+8,innerHeight-menu.offsetHeight-8))+'px';
+        menu.querySelector('button:not(:disabled)')?.focus();
+      };
       menu.addEventListener('click',event=>{if(event.target.closest('button')&&!event.target.closest('.glass-select'))closeMenu();});
-      document.addEventListener('pointerdown',event=>{if(!menu.hidden&&!menu.contains(event.target)&&!more.contains(event.target)&&!event.target.closest('.glass-select-menu'))closeMenu();},true);
+      document.addEventListener('pointerdown',event=>{if(!menu.hidden&&!menu.contains(event.target)&&!menuAnchor.contains(event.target)&&!event.target.closest('.glass-select-menu'))closeMenu();},true);
       document.addEventListener('keydown',event=>{if(menu.hidden||window.SuiraGlassSelect?.isOpen())return;if(event.key==='Escape'){event.preventDefault();event.stopImmediatePropagation();closeMenu(true);return;}if(!menu.contains(event.target)||event.target.closest('.glass-select'))return;if(!['ArrowDown','ArrowUp','Home','End'].includes(event.key))return;event.preventDefault();const list=[...menu.querySelectorAll('button:not(:disabled)')].filter(b=>b.checkVisibility()),index=list.indexOf(document.activeElement);list[event.key==='Home'?0:event.key==='End'?list.length-1:(index+(event.key==='ArrowDown'?1:-1)+list.length)%list.length]?.focus();},true);
       window.addEventListener('resize',()=>closeMenu());window.addEventListener('blur',()=>closeMenu());
       const foot=document.querySelector('.document-foot>span:last-child');
       foot.innerHTML='<kbd>Ctrl</kbd> + <kbd>S</kbd> 保存';
-      const label=document.createElement('h3');label.id='md-sidebar-label';label.textContent='最近打开';
-      const collapse=document.createElement('button');collapse.id='md-sidebar-collapse';collapse.type='button';collapse.className='md-sidebar-collapse';collapse.setAttribute('aria-controls','md-outline');collapse.setAttribute('aria-label','收起目录');collapse.innerHTML='<svg viewBox="0 0 24 24"><path d="M4 4h16v16H4z M10 4v16 M15 9l-3 3 3 3"/></svg>';collapse.onclick=toggleOutline;
-      const sidebarHead=document.createElement('div');sidebarHead.className='md-sidebar-head';sidebarHead.append(label,collapse);const clear=document.createElement('button');clear.id='md-clear-recent';clear.type='button';clear.className='md-clear-recent';clear.textContent='清理记录';clear.title='清除最近打开记录，保留文档内容';clear.onclick=safe(async()=>{await flush();await checked(api.recent('clear'));docs=await api.list('markdown');docList();notify('最近打开记录已清理，文档仍保存在本地');});sidebarHead.append(clear);const all=document.createElement('button');all.id='md-all-documents';all.type='button';all.className='md-clear-recent';all.textContent='全部文档';all.onclick=()=>{allDocuments=!allDocuments;all.textContent=allDocuments?'最近打开':'全部文档';docList();syncDocumentNavigation();};sidebarHead.append(all);document.querySelector('.document-sidebar').prepend(sidebarHead);
+      const outlineHead = document.createElement('div');
+      outlineHead.className = 'md-outline-head';
+      outlineHead.id = 'md-outline-head';
+      outlineHead.hidden = true;
+      const collapse = action('md-sidebar-collapse','sidebar','返回文档列表');
+      collapse.setAttribute('aria-controls','md-outline');
+      collapse.onclick = () => { toggleOutline(); $('md-search').focus(); };
+      const outlineBack = action('md-outline-back','sidebar','返回编辑区');
+      outlineBack.onclick = back.onclick;
+      const outlineLabel = document.createElement('b');
+      outlineLabel.textContent = '文档目录';
+      outlineHead.append(outlineLabel,outlineBack,collapse);
+      document.querySelector('.document-sidebar').append(outlineHead);
     }else{
       top.append($('calendar-export'));
       const clock=document.createElement('time');clock.className='calendar-clock';top.append(clock);
@@ -560,7 +706,7 @@
     }
   }
   const visual=document.createElement('div');visual.id='md-rich';visual.className='md-rich';$('md-split').prepend(visual);
-  const writeButton=document.createElement('button');writeButton.type='button';writeButton.dataset.mdView='write';writeButton.textContent='写作';writeButton.title='可视化写作';writeButton.setAttribute('aria-label','可视化写作');writeButton.innerHTML='<svg viewBox="0 0 24 24"><path d="M4 20l4-1L20 7l-3-3L5 16z"/></svg>';writeButton.onclick=()=>setDocumentView('write');document.querySelector('[data-md-view]').parentElement.prepend(writeButton);
+  const writeButton=document.createElement('button');writeButton.dataset.mdView='write';window.SuiraMarkdownLayout.iconButton(writeButton,'new','可视化写作');writeButton.onclick=()=>setDocumentView('write');document.querySelector('[data-md-view]').parentElement.prepend(writeButton);
   document.querySelector('[data-md-view="edit"]').setAttribute('aria-label','Markdown 源码');document.querySelector('[data-md-view="edit"]').setAttribute('title','Markdown 源码');
   sourceDocument=window.SuiraSourceDocument.create({element:$('md-editor'),preview:$('md-preview'),enabled:()=>Boolean(current&&document.querySelector('#page-markdown.is-active')&&$('md-split').dataset.view!=='write'),readOnly:()=>$('md-split').dataset.view==='preview',activate:()=>{if($('md-split').dataset.view==='preview')setDocumentView('edit');},onChange:dirty,notify,readClipboard:()=>checked(api.clipboard()),capture:async kind=>{const id=current;await flush();const result=await api.capture({kind});if(current!==id)throw Error('当前文档已切换，未插入截图');return result;}});
   const editingController=()=>$('md-split').dataset.view==='write'?richDocument:sourceDocument;

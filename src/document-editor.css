@@ -1,32 +1,73 @@
-/* A continuous, opaque reading plane. The launcher keeps its glass material. */
-.md-format-menus .fluent-icon { width:16px;height:16px; }
-.liquid-ui.tool-window[data-tool="markdown"]:not(.md-home) {
-
-
- --ink:var(--md-text);  --ink-muted:var(--md-muted);
- --glass-accent-ink:var(--accent-deep); --tool-content:var(--md-page); --tool-edge:var(--md-rule);
+/* The three panes come from the Windows port. Adapt the surrounding Electron window here. */
+.tool-window[data-tool="markdown"] #page-markdown { padding:0; }
+.liquid-ui.tool-window[data-tool="markdown"] .app-shell { grid-template-rows:38px minmax(0,1fr); }
+.tool-window[data-tool="markdown"] .titlebar { background:var(--md-side); backdrop-filter:none; padding-inline:14px 8px; box-shadow:none; }
+.tool-window[data-tool="markdown"] .titlebar .window-actions { margin-inline-start:auto; }
+.tool-window[data-tool="markdown"] .titlebar .tool-kind { width:22px; height:22px; }
+.liquid-ui.tool-window[data-tool="markdown"] .glass-window>.glass-scene { background:var(--md-page)!important; box-shadow:none; }
+.tool-window[data-tool="markdown"] .mia-shell {
+  --mia-side:var(--md-side);
+  --mia-paper:var(--md-page);
+  --mia-ink:var(--md-text);
+  --mia-muted:var(--md-muted);
+  --mia-line:var(--md-rule);
+  --mia-hover:var(--md-hover);
+  --mia-selected:var(--md-selected);
+  --mia-accent:var(--accent-deep);
+  --ink:var(--md-text);
+  --ink-muted:var(--md-muted);
+  --tool-content:var(--md-page);
+  --tool-edge:var(--md-rule);
 }
-.liquid-ui.tool-window[data-tool="markdown"]:not(.md-home) .glass-window>.glass-scene { background:var(--md-page)!important; box-shadow:none; }
-.liquid-ui.tool-window[data-tool="markdown"]:not(.md-home) .titlebar { background:var(--md-side); backdrop-filter:none; }
-.liquid-ui.tool-window[data-tool="markdown"]:not(.md-home) #page-markdown { padding:0; }
-.liquid-ui.tool-window[data-tool="markdown"]:not(.md-home) .markdown-layout { grid-template-columns:232px minmax(0,1fr); gap:0; overflow:hidden; }
-.liquid-ui.tool-window[data-tool="markdown"]:not(.md-home).md-outline-collapsed .markdown-layout { grid-template-columns:44px minmax(0,1fr); }
-.liquid-ui.tool-window[data-tool="markdown"]:not(.md-home) .document-sidebar { background:var(--md-side); width:auto; min-width:0; padding:18px 12px; overflow:auto; border-right:1px solid var(--md-rule); }
-.liquid-ui.tool-window[data-tool="markdown"]:not(.md-home) .document-main { background:var(--md-page); border-radius:0; border:0; box-shadow:none; min-width:0; }
-.liquid-ui.tool-window[data-tool="markdown"]:not(.md-home) #md-body { display:flex; flex-direction:column; min-height:0; height:100%; }
-.liquid-ui.tool-window[data-tool="markdown"]:not(.md-home) #md-body[hidden] { display:none; }
-.liquid-ui.tool-window[data-tool="markdown"]:not(.md-home) .markdown-toolbar { background:var(--md-page); min-height:44px; flex-shrink:0; flex-wrap:wrap; gap:2px; padding:4px 20px; border-bottom:1px solid var(--md-rule); }
-.liquid-ui.tool-window[data-tool="markdown"]:not(.md-home) .markdown-toolbar button { min-height:30px; color:var(--md-muted); font-size:12px; border-radius:5px; }
-.liquid-ui.tool-window[data-tool="markdown"]:not(.md-home) .markdown-toolbar button:hover { background:var(--md-hover); color:var(--md-text); }
+.tool-window[data-tool="markdown"] .mia-notes {
+  background:var(--mia-side);
+  padding:0;
+  border:0;
+  border-inline-end:1px solid var(--mia-line);
+  border-radius:0;
+  box-shadow:none;
+}
+.tool-window[data-tool="markdown"] .mia-main { background:var(--mia-paper); border:0; border-radius:0; box-shadow:none; }
+.tool-window[data-tool="markdown"] #md-body { display:flex; flex-direction:column; min-height:0; height:100%; }
+.tool-window[data-tool="markdown"] .mia-list-head .text-input { border-radius:18px; }
+.tool-window[data-tool="markdown"] .mia-list .document-row b { max-width:none; }
+.tool-window[data-tool="markdown"] .mia-heading #md-title {
+  width:0;
+  padding:3px 0;
+  color:var(--mia-ink);
+  font-size:20px;
+  font-weight:650;
+}
+.tool-window[data-tool="markdown"] .mia-actions .view-switch { display:flex; gap:1px; padding:0; border:0; background:transparent; box-shadow:none; }
+.liquid-ui.tool-window[data-tool="markdown"] .mia-actions button.mia-icon { background:transparent; box-shadow:none; color:var(--mia-muted); }
+.liquid-ui.tool-window[data-tool="markdown"] .mia-actions button.mia-icon[aria-pressed="true"] { background:var(--mia-selected); color:var(--mia-ink); }
+.liquid-ui.tool-window[data-tool="markdown"] .mia-actions button.mia-icon:hover { background:var(--mia-hover); color:var(--mia-ink); }
+.md-outline-head { display:flex; align-items:center; justify-content:space-between; height:54px; padding-inline:14px 8px; color:var(--mia-muted); font-size:13px; }
+.tool-window[data-tool="markdown"] .markdown-toolbar {
+  background:var(--mia-paper);
+  min-height:40px;
+  flex-shrink:0;
+  flex-wrap:wrap;
+  gap:2px;
+  padding:4px var(--mia-copy-inset);
+  border-bottom:1px solid var(--mia-line);
+}
+.tool-window[data-tool="markdown"] .markdown-toolbar button { min-height:30px; color:var(--md-muted); font-size:12px; border-radius:5px; }
+.tool-window[data-tool="markdown"] .markdown-toolbar button:hover { background:var(--md-hover); color:var(--md-text); }
+.md-format-menus .fluent-icon { width:16px;height:16px; }
 .md-format-menus { display:contents; }
 .md-rich-formats { display:contents; }
 .markdown-toolbar [data-rich-format] { min-width:30px; padding:4px 6px; font-size:14px; }
 .md-format-menus button span { padding-left:6px; color:var(--document-md-format-menus-ink); }
-.liquid-ui.tool-window[data-tool="markdown"]:not(.md-home) .document-foot { background:var(--md-page); border-color:var(--md-rule); color:var(--md-muted); padding:8px 24px; }
-.liquid-ui.tool-window[data-tool="markdown"]:not(.md-home) :is(.markdown-split textarea,.markdown-preview) { background:var(--md-page); color:var(--md-text); border-color:var(--md-rule); border-radius:0; }
-.md-sidebar-head { display:flex; align-items:center; justify-content:space-between; gap:8px; min-height:28px; margin-bottom:12px; }
-.md-clear-recent{margin-left:auto;padding:4px 6px;border-radius:5px;font:11px/1.5 var(--font-ui);font-variant-numeric:tabular-nums;color:var(--md-muted,var(--ink-muted));white-space:nowrap}
-.md-clear-recent:hover{background:var(--md-hover,var(--surface-hover));color:var(--md-text,var(--ink))}
+.tool-window[data-tool="markdown"] .document-foot { background:var(--md-page); border-color:var(--md-rule); color:var(--md-muted); padding-inline:var(--mia-copy-inset); }
+.tool-window[data-tool="markdown"] :is(.markdown-split textarea,.markdown-preview) { background:var(--md-page); color:var(--md-text); border-color:var(--md-rule); border-radius:0; }
+.tool-window[data-tool="markdown"] .markdown-preview { padding:6px var(--mia-copy-inset) 44px; }
+.tool-window[data-tool="markdown"] .md-write-content { padding:6px var(--mia-copy-inset) 100px; }
+.tool-window[data-tool="markdown"] #md-empty { display:flex; flex-direction:column; justify-content:center; height:100%; min-height:0; }
+#md-empty .welcome-actions { display:flex; align-items:center; }
+.md-file-menu #md-home { display:flex; align-items:center; justify-content:flex-start; }
+.md-file-menu #md-home svg { width:18px; height:18px; fill:none; stroke:currentColor; }
+.md-file-menu #md-home::after { content:attr(aria-label); margin-left:8px; }
 .md-file-menu { position:fixed;z-index:100;display:flex;flex-direction:column;gap:var(--space-1);width:224px;max-height:calc(100vh - var(--space-6) * 2);overflow:auto;padding:var(--space-2);border:1px solid var(--line-strong);border-radius:var(--radius-inner);background:var(--tool-content);box-shadow:var(--shadow-float);-webkit-app-region:no-drag; }
 .md-file-menu[hidden] { display:none; }
 .md-file-menu>small { padding:var(--space-2) var(--space-2) var(--space-1);font-size:var(--text-1);color:var(--ink-muted); }
@@ -34,17 +75,8 @@
 .md-file-menu .tool-icon::after { content:attr(aria-label);font-size:var(--text-2); }
 .md-file-menu .glass-select { width:100%; }
 .md-file-menu #md-delete { color:var(--danger); }
-.md-home .md-sidebar-collapse{display:none}
-.tool-window .document-sidebar .md-sidebar-head h3 { margin:0; font-size:12px; font-weight:500; }
-.md-sidebar-collapse { width:28px; height:28px; padding:5px; border-radius:6px; color:var(--md-muted); }
-.md-sidebar-collapse svg { width:18px; height:18px; fill:none; stroke:currentColor; stroke-width:1.5; }
-.md-sidebar-collapse:hover { background:var(--md-hover); }
-.md-sidebar-collapse:disabled { display:none; }
-.md-outline-collapsed .document-sidebar .md-sidebar-head h3 { display:none; }
-.md-outline-collapsed .md-sidebar-collapse svg { transform:rotate(180deg); }
-.liquid-ui.tool-window[data-tool="markdown"].md-outline-collapsed .document-sidebar { padding:18px 7px; overflow:hidden; }
-.liquid-ui.tool-window[data-tool="markdown"] .md-outline { display:block; padding:0; overflow:visible; border:0; }
-.liquid-ui.tool-window[data-tool="markdown"] .md-outline[hidden] { display:none; }
+.tool-window[data-tool="markdown"] .md-outline { display:block; flex:1; min-height:0; padding:0 8px 8px; overflow:auto; border:0; }
+.tool-window[data-tool="markdown"] .md-outline[hidden] { display:none; }
 .md-toc-row { display:flex; gap:2px; align-items:center; min-width:0; }
 .liquid-ui.tool-window[data-tool="markdown"] .md-toc-row button { color:var(--md-muted); border-radius:5px; min-height:32px; font-size:12px; background:transparent; }
 .liquid-ui.tool-window[data-tool="markdown"] .md-toc-row [data-heading] { max-width:none; flex:1; text-align:left; padding:7px 6px; text-overflow:ellipsis; white-space:nowrap; overflow:hidden; }
@@ -114,25 +146,15 @@
 .md-link-form>div { display:flex; justify-content:flex-end; gap:4px; }
 .md-link-form>div button { width:auto; }
 @media(prefers-color-scheme:dark){
- .liquid-ui.tool-window[data-tool="markdown"]:not(.md-home) {         --glass-accent-ink:var(--accent-deep); }
  .md-context-menu,.md-selection-tools {     border-color:var(--document-md-context-menu-md-selection-tools-edge); }
  .liquid-ui.tool-window[data-tool="markdown"] .md-toc-row [data-heading].is-active { color:var(--document-md-toc-row-data-heading-is-active-ink); }
  .md-write-content a { color:var(--document-md-write-content-ink-alt-alt); }
 }
-@media(max-width:1100px){.liquid-ui.tool-window[data-tool="markdown"]:not(.md-home) .markdown-layout{grid-template-columns:200px minmax(0,1fr)}.md-write-content{padding:36px 28px 100px}.liquid-ui.tool-window[data-tool="markdown"]:not(.md-home) .markdown-toolbar{padding:4px 12px}}
 @media(prefers-reduced-motion:reduce){.md-write-content{scroll-behavior:auto}}
-
-.liquid-ui.tool-window[data-tool="markdown"].md-writing-focus:not(.md-home) .markdown-layout {
-  grid-template-columns: minmax(0, 1fr);
-}
-.liquid-ui.tool-window[data-tool="markdown"].md-writing-focus :is(.document-sidebar, .markdown-toolbar, #md-home, #md-more) {
-  display: none;
-}
-.liquid-ui.tool-window[data-tool="markdown"] .markdown-split[data-view="edit"] textarea {
-  padding-inline: max(24px, calc((100% - 760px) / 2));
-}
-.liquid-ui.tool-window[data-tool="markdown"] .markdown-split[data-view="preview"] .markdown-preview {
-  padding-inline: max(24px, calc((100% - 760px) / 2));
+.tool-window[data-tool="markdown"].md-writing-focus :is(#md-panes, #md-outline-toggle, #md-more, #md-format-toggle) { display:none; }
+@media(max-width:850px) {
+  .tool-window[data-tool="markdown"] .document-foot { gap:6px 12px; flex-wrap:wrap; }
+  .tool-window[data-tool="markdown"] .document-foot>span:last-child { display:none; }
 }
 
 /* The source and its passive syntax layer share the textarea's wrapping geometry. */
@@ -140,7 +162,7 @@
 .markdown-split:is([data-view="write"],[data-view="preview"]) > .md-source-pane { display:none; }
 .markdown-split[data-view="split"] { grid-template-columns:minmax(0,1fr) minmax(0,1fr); }
 .liquid-ui.tool-window[data-tool="markdown"] .md-source-pane {
-  --md-source-padding:24px;
+  --md-source-padding:var(--mia-copy-inset, 24px);
   --md-syntax-title:var(--violet-11);
   --md-syntax-link:var(--jade-11);
   --md-syntax-code:var(--amber-11);
@@ -149,7 +171,6 @@
   border-inline-end:1px solid var(--md-rule);
 }
 .liquid-ui.tool-window[data-tool="markdown"] .markdown-split[data-view="edit"] .md-source-pane {
-  --md-source-padding:max(24px, calc((100% - 740px) / 2));
   border-inline-end:0;
 }
 .liquid-ui.tool-window[data-tool="markdown"] .md-source-pane :is(#md-editor,#md-source-highlight) {
@@ -161,7 +182,7 @@
   min-height:0;
   margin:0;
   border:0;
-  padding:24px var(--md-source-padding) 48px;
+  padding:6px var(--md-source-padding) 48px;
   overflow:auto;
   scrollbar-gutter:stable;
   white-space:pre-wrap;
@@ -180,22 +201,9 @@
 .md-syntax-heading { color:var(--md-syntax-title); }
 .md-syntax-link { color:var(--md-syntax-link); }
 .md-syntax-code, .md-syntax-emphasis { color:var(--md-syntax-code); }
-.liquid-ui.tool-window[data-tool="markdown"]:not(.md-home) .document-sidebar #md-search { width:100%; margin:0 0 var(--space-2); }
-.liquid-ui.tool-window[data-tool="markdown"]:not(.md-home) .document-row {
-  width:100%; min-height:48px; border:0; border-bottom:1px solid var(--md-rule);
-  padding:var(--space-2); border-radius:6px; background:transparent; box-shadow:none;
-}
-.liquid-ui.tool-window[data-tool="markdown"]:not(.md-home) .document-row > div { min-width:0; flex:1; text-align:start; }
-.liquid-ui.tool-window[data-tool="markdown"]:not(.md-home) .document-row :is(b,small) { display:block; max-width:none; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-.liquid-ui.tool-window[data-tool="markdown"]:not(.md-home) .document-row :is(.recent-icon,.recent-path,em) { display:none; }
-.liquid-ui.tool-window[data-tool="markdown"]:not(.md-home) .document-row:is(:hover,.is-active) { background:var(--md-hover); }
-.liquid-ui.tool-window[data-tool="markdown"]:not(.md-home) .document-row.is-active { background:var(--md-selected); }
-@media(max-width:900px) {
-  .liquid-ui.tool-window[data-tool="markdown"]:not(.md-home) .markdown-layout { grid-template-columns:minmax(144px,24%) minmax(0,1fr); }
-  .liquid-ui.tool-window[data-tool="markdown"].md-writing-focus:not(.md-home) .markdown-layout { grid-template-columns:minmax(0,1fr); }
-  .liquid-ui.tool-window[data-tool="markdown"] .md-source-pane { --md-source-padding:16px; }
-}
 @media(forced-colors:active) {
   .liquid-ui.tool-window[data-tool="markdown"] .md-source-pane.md-source-ready #md-editor { color:CanvasText; }
   .liquid-ui.tool-window[data-tool="markdown"] .md-source-pane #md-source-highlight { visibility:hidden; }
 }
+
+@media(min-width:541px) { .mia-shell :is(#md-notes-back,#md-outline-back,#md-empty-notes) { display:none; } }

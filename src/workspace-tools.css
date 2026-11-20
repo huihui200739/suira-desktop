@@ -34,11 +34,9 @@
 .calendar-layout[data-view="week"] .calendar-day { min-height:330px; }.calendar-layout[data-view="week"] .calendar-day small { white-space:normal; line-height:1.6; margin-top:10px; }
 .calendar-agenda-row { display:flex; gap:16px; align-items:center; width:100%; padding:18px 20px; text-align:left; border-top:1px solid var(--line); }.calendar-agenda-row time { color:var(--accent); font-size:12px; white-space:nowrap; }.calendar-agenda-row b { flex:1; }.calendar-agenda-row small { color:var(--ink-muted); }
 .agenda-card { max-height:calc(100vh - 264px); overflow:auto; }.tool-window .agenda-card .text-input { min-width:0; }.event-fields>* { min-width:0; flex:1; }
-.tool-window .markdown-layout { height:calc(100vh - 162px); min-height:380px; grid-template-columns:194px minmax(0,1fr); }
 .tool-window[data-tool="markdown"] #page-markdown { display:flex!important; flex-direction:column; height:100%; }
 .tool-window[data-tool="markdown"] .main-scroll { overflow:hidden; }
 .tool-window[data-tool="markdown"] .page-head { flex:0 0 auto; }
-.tool-window[data-tool="markdown"] .markdown-layout { height:auto; min-height:0; flex:1; }
 .tool-window .document-main { min-width:0; }.tool-window #md-body { height:100%; display:flex; flex-direction:column; }
 .tool-window .document-heading { padding:12px 16px; flex-wrap:wrap; gap:8px; }.document-heading>input { min-width:100px; }
 .document-heading select { padding:7px; border:1px solid var(--line); background:var(--paper-raised); font-size:12px; max-width:154px; }
@@ -49,7 +47,7 @@
 .markdown-split[data-view="preview"] { grid-template-columns:1fr; }.markdown-split[data-view="preview"] textarea { display:none; }
 .md-outline { display:flex; gap:8px; overflow:auto; padding:8px 16px; border-bottom:1px solid var(--line); }.md-outline:empty { display:none; }.md-outline button { color:var(--ink-muted); white-space:nowrap; max-width:180px; text-overflow:ellipsis; overflow:hidden; padding:3px 7px; font-size:11px; }
 .document-foot label { font-size:11px; display:flex; align-items:center; gap:4px; }
-@media(max-width:1000px){.tool-window .page{padding:20px}.tool-window .calendar-layout{grid-template-columns:minmax(0,1fr) 252px}.tool-window .calendar-controls{gap:7px}.tool-window .markdown-layout{grid-template-columns:156px minmax(0,1fr)}.tool-window .document-heading input{font-size:16px}.tool-window .markdown-split[data-view="split"]{grid-template-columns:1fr 1fr}.tool-window .calendar-day{padding:8px 5px}}
+@media(max-width:1000px){.tool-window .page{padding:20px}.tool-window .calendar-layout{grid-template-columns:minmax(0,1fr) 252px}.tool-window .calendar-controls{gap:7px}.tool-window .document-heading input{font-size:16px}.tool-window .markdown-split[data-view="split"]{grid-template-columns:1fr 1fr}.tool-window .calendar-day{padding:8px 5px}}
 @media(prefers-reduced-motion:reduce){.tool-window button{transition:none}}
 /* Page tint keeps the glass appearance. Native acrylic stays off for clean corners. */
 body { background:transparent; }
@@ -67,18 +65,10 @@ body { background:transparent; }
 .tool-window .page { padding:20px 30px 26px; }
 .tool-window .page-head { display:none; }
 .tool-window :is(.calendar-card,.agenda-card,.document-sidebar,.document-main,.calendar-stats>div) { backdrop-filter:none; }
-.tool-window .markdown-layout { gap:18px; }
 .tool-window .document-sidebar h3 { margin:10px 8px 20px; color:var(--ink-muted); font-size:13px; font-weight:500; }
 .tool-window .document-heading { padding:12px 18px; }
 .tool-window .markdown-toolbar { min-height:44px; }
 .tool-window .markdown-toolbar button:last-child { margin-left:0; }
-.tool-window.md-home .markdown-layout { display:flex; flex-direction:column; gap:30px; overflow:auto; }
-.tool-window.md-home .document-main { order:-1; flex-shrink:0; background:transparent; box-shadow:none; border:0; }
-.tool-window.md-home .document-sidebar { padding:0 30px; background:transparent; border:0; box-shadow:none; }
-.tool-window.md-home .document-sidebar>input { max-width:280px; }
-.tool-window.md-home #md-list { display:grid; grid-template-columns:repeat(auto-fill,minmax(260px,1fr)); gap:16px; }
-.tool-window.md-home .document-row { padding:22px; border:1px solid var(--floating-edge,var(--line)); border-radius:18px; background:color-mix(in srgb,var(--paper-raised) 55%,transparent); }
-.tool-window.md-home .document-row b { max-width:220px; }
 .tool-window #md-empty { min-height:300px; padding:36px 20px 10px; gap:16px; }
 .tool-window #md-empty>b { font-size:25px; }
 .tool-window #md-empty>p { max-width:none; font-size:15px; }
@@ -149,9 +139,6 @@ body { background:transparent; }
 .tool-window #md-empty>b { font-size:24px;letter-spacing:-.02em; }.tool-window #md-empty>p { margin:0 0 10px; }
 .tool-window #md-empty #md-paste { min-height:26px;border:0;background:transparent;font-size:12px;color:var(--ink-muted); }
 .tool-window .welcome-actions button { min-height:48px;padding:12px 22px;box-shadow:none;font-weight:600; }
-.tool-window.md-home .document-sidebar { padding:0 50px; }.tool-window.md-home .document-sidebar>input { float:right;margin-top:-45px;max-width:200px; }
-.tool-window.md-home #md-list { grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:18px; }
-.tool-window.md-home .document-row { min-height:88px;border-radius:17px;padding:20px;background:color-mix(in srgb,var(--paper-raised) 50%,transparent);box-shadow:var(--workspace-tools-tool-window-md-home-document-row-shadow); }
 .document-row .recent-icon { display:grid;place-items:center;width:36px;height:40px;flex-shrink:0;color:var(--accent);background:color-mix(in srgb,var(--accent) 7%,transparent);border-radius:9px;font-size:22px; }.document-row em { margin-left:auto;color:var(--ink-faint);font-style:normal; }
 .tool-window .calendar-controls { display:none; }.tool-window .calendar-controls.is-open { display:flex; }
 .tool-window[data-tool="calendar"] .page { padding:40px 26px 24px; }
@@ -168,7 +155,7 @@ body { background:transparent; }
 .tool-window .agenda-tabs { width:210px;max-width:100%;margin-bottom:14px; }.tool-window .agenda-tabs .is-active { color:var(--accent);background:color-mix(in srgb,var(--accent) 9%,transparent);box-shadow:none; }
 .tool-window .agenda-card:has([data-agenda="countdown"].is-active)>.setting-title { display:none; }
 .tool-window .agenda-card { max-height:none; }.tool-window .calendar-layout[data-view="agenda"] .calendar-dates { display:none; }
-@media(max-width:1000px){.tool-top-actions{gap:3px}.tool-window .calendar-month #calendar-selected{display:none}.tool-window .calendar-month h2{font-size:18px}.tool-window .calendar-day>span{font-size:22px}.tool-window.md-home .document-sidebar{padding:0 18px}}
+@media(max-width:1000px){.tool-top-actions{gap:3px}.tool-window .calendar-month #calendar-selected{display:none}.tool-window .calendar-month h2{font-size:18px}.tool-window .calendar-day>span{font-size:22px}}
 
 /* Content tools share one quiet surface; the document is the focal layer. */
 .tool-window .app-shell { background:var(--tool-surface); border-color:var(--tool-edge); grid-template-rows:56px minmax(0,1fr); grid-template-columns:minmax(0,1fr); }
@@ -185,7 +172,6 @@ body { background:transparent; }
 .tool-window .tool-top-actions .view-switch .is-active { background:var(--paper-raised); box-shadow:none; }
 .tool-window .primary-btn { box-shadow:none; }
 .tool-window button:hover { border-color:var(--line-strong); }
-.tool-window .markdown-layout { gap:0; grid-template-columns:216px minmax(0,1fr); }
 .tool-window :is(.document-main,.document-sidebar) { border:0; border-radius:0; box-shadow:none; background:transparent; }
 .tool-window .document-sidebar { border-right:1px solid var(--tool-edge); padding:16px 16px 0 0; }
 .tool-window .document-sidebar h3 { margin:0 0 16px; font-size:12px; }
@@ -218,13 +204,6 @@ body { background:transparent; }
 .tool-window .markdown-preview h2 { font-size:22px; margin:28px 0 16px; }
 .tool-window .document-foot { padding:8px 16px; min-height:32px; font-size:12px; border-color:var(--tool-edge); }
 .tool-window .document-foot label { font-size:12px; }
-.tool-window.md-home .markdown-layout { gap:24px; }
-.tool-window.md-home .document-main { background:transparent; }
-.tool-window.md-home .document-sidebar { width:min(720px,100%); margin:0 auto; padding:0 24px; border:0; }
-.tool-window.md-home .document-sidebar>input { float:none; margin:0 0 12px; max-width:none; }
-.tool-window.md-home #md-list { display:flex; flex-direction:column; gap:4px; }
-.tool-window.md-home .document-row { min-height:64px; padding:12px 16px; border:1px solid var(--tool-edge); border-radius:8px; background:color-mix(in srgb,var(--tool-content) 80%,transparent); box-shadow:none; }
-.tool-window.md-home .document-row b { max-width:500px; }
 .tool-window #md-empty { min-height:280px; padding:32px 24px 8px; gap:12px; }
 .tool-window #md-empty>b { font-size:24px; font-weight:500; letter-spacing:0; }
 .tool-window #md-empty>p { font-size:14px; }
@@ -264,5 +243,5 @@ body { background:transparent; }
 .tool-window .countdown-row strong { font-size:24px; font-weight:500; font-variant-numeric:tabular-nums; }
 .agenda-tabs svg { width:16px; height:16px; fill:none; stroke:currentColor; stroke-width:1.5; vertical-align:-3px; margin-right:4px; }
 @media(prefers-color-scheme:dark) { .tool-window .primary-btn { color:var(--workspace-tools-tool-window-primary-btn-ink); } }
-@media(max-width:1000px) { .tool-window .markdown-layout { grid-template-columns:176px minmax(0,1fr); }.tool-window .markdown-preview { padding:20px; }.tool-window .calendar-month h2 { font-size:18px; } }
+@media(max-width:1000px) { .tool-window .markdown-preview { padding:20px; }.tool-window .calendar-month h2 { font-size:18px; } }
 @media(prefers-reduced-transparency:reduce) { .tool-window .app-shell { background:var(--paper); } }

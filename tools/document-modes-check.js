@@ -18,6 +18,8 @@ async function until(fn){let last;for(let i=0;i<120;i++){try{const value=await f
  await main.evaluate('document.getElementById("task-more-toggle").click();true');assert.equal(await main.evaluate('document.getElementById("task-more").matches(":popover-open")'),true);assert.equal(await main.evaluate('(()=>{const r=document.getElementById("task-more").getBoundingClientRect();return r.left>=0&&r.right<=innerWidth&&r.top>=0&&r.bottom<=innerHeight})()'),true);await main.evaluate('document.getElementById("task-more").hidePopover();true');
  assert.equal(await main.evaluate('Boolean(document.querySelector("[data-collect-clipboard]"))'),true,'Empty collection provides real actions');
  await main.evaluate('window.suira.workspace.open("markdown")');const md=await page('tool=markdown');await until(()=>md.evaluate('document.getElementById("md-title").value==="多模式写作"'));
+ assert.equal(await md.evaluate('document.getElementById("md-format-bar").hidden'),true,'The writing toolbar is collapsed by default');
+ await md.evaluate('document.getElementById("md-format-toggle").click();true');
  const view=async name=>{await md.evaluate(`document.querySelector('[data-md-view="${name}"]').click();true`);assert.equal(await md.evaluate('Array.from(document.querySelectorAll("[data-document-menu],[data-rich-format]")).filter(b=>b.getClientRects().length).length'),10,'All modes expose the same format controls');};
  const end=async()=>{await md.evaluate('(()=>{const e=document.getElementById("md-editor");e.focus();e.setSelectionRange(e.value.length,e.value.length);return true;})()');};
  const type=async text=>md.send('Input.insertText',{text});

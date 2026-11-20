@@ -8,6 +8,17 @@ async function until(fn){let last;for(let i=0;i<160;i++){try{const v=await fn();
 const article='# 山间拍摄手记\n\n在山里把一个周末放慢。带上相机，也给想法留点空间。\n\n## 出发之前\n\n- [x] 检查相机与备用电池\n- [ ] 确认日落时间\n\n### 路线安排\n\n沿溪流向北，午后抵达观景台。\n\n#### 一个小提醒\n\n> 比赶路更重要的，是看见沿途的光。\n\n## 装备清单\n\n| 物品 | 数量 |\n| --- | --- |\n| 相机 | 1 |\n| 电池 | 2 |\n\n```js\n// # 代码里的假标题\nconst light = "golden hour";\n```\n\n收尾\n----\n\n把今天看到的颜色，留给明天的作品。\n';
 (async()=>{
  const profile=path.join(tmp,'profile'),store=new SuiraStore(path.join(profile,'suira-data.json'));await store.updateSettings({recordClipboard:false,globalShortcutsEnabled:false,panelGuideSeen:true});
+ const libraryDocs = [
+   ['山间路线', '北线沿溪流，南线经过观景台。', 'C:/笔记/摄影/山间路线.md'],
+   ['日落备忘', '查看日落前后的光线。', 'C:/笔记/摄影/日落备忘.md'],
+   ['取景笔记', '练习在画面中保留留白。', 'C:/笔记/写作/取景笔记.md'],
+   ['相机设置', '山间拍摄前的相机参数。', ''],
+   ['本周构思', '给周末的摄影计划留一点时间。', ''],
+   ['拍摄备份', '为旅行照片准备存储卡。', '']
+ ];
+ for (const [index,[title,text,externalPath]] of libraryDocs.entries()) {
+   store.addItem({ kind:'text', title, text, pinned:true, source:{type:'user'}, meta:{workspace:'markdown',externalPath,recentHidden:index===2} });
+ }
  const workspace=createWorkspace(store),doc=workspace.save('markdown',{title:'山间拍摄手记',text:article});
  const item=store.addItem({kind:'text',title:'出发前的三件小事',text:'检查电池\n整理路线\n预留时间',source:{type:'user'}}),task=store.createTask('周末拍摄');store.addItemToTask(task.id,item.id);await store.save();
  const server=net.createServer();await new Promise(r=>server.listen(0,'127.0.0.1',r));const port=server.address().port;await new Promise(r=>server.close(r));
@@ -20,16 +31,37 @@ const article='# 山间拍摄手记\n\n在山里把一个周末放慢。带上�
  assert.equal(await main.evaluate('Boolean(document.querySelector(".titlebar-center,#show-quick,#title-capture"))'),false,'Shortcut hints are removed');
  assert.equal(await main.evaluate('getComputedStyle(document.querySelector(".glass-scene")).backgroundColor'),'rgb(249, 249, 251)','Workbench has an opaque reading canvas');
  assert.equal(await main.evaluate('getComputedStyle(document.querySelector(".sidebar")).backdropFilter'),'none','Sidebar is stable matte');
- await until(()=>main.evaluate('Boolean(document.querySelector(".shelf-card"))'));await shot(main,'workbench');
+ await until(()=>main.evaluate('Boolean(document.querySelector(".shelf-card"))'));
  await main.evaluate('window.suira.workspace.open("markdown")');const md=await page('tool=markdown');await until(()=>md.evaluate('Boolean(window.WorkspaceUI && document.querySelector("#md-preview h1"))'));
  await md.send('Emulation.setDeviceMetricsOverride',{width:1440,height:960,deviceScaleFactor:1,mobile:false});
  const controller='window.WorkspaceUI.documentEditor';
  assert.equal(await md.evaluate('document.getElementById("md-split").dataset.view'),'edit');
  assert.equal(await md.evaluate('document.getElementById("md-list").hidden'),false,'Documents stay reachable while editing');
- assert.equal(await md.evaluate('document.querySelector("#md-list .is-active b").textContent'),'山间拍摄手记.md');
+ assert.equal(await md.evaluate('document.querySelector("#md-list .is-active b").textContent'),'山间拍摄手记');
  assert.equal(await md.evaluate('document.querySelector("#md-source-highlight .md-syntax-heading").textContent'),'山间拍摄手记');
  assert.equal(await md.evaluate('document.getElementById("md-source-highlight").textContent.slice(0,-1) === document.getElementById("md-editor").value'),true,'Source layer preserves every character');
+ const checkLayout = async (width, height, scale) => {
+   await md.send('Emulation.setDeviceMetricsOverride',{width,height,deviceScaleFactor:scale,mobile:false});
+   const geometry = await md.evaluate(`(() => {
+     const rect = selector => document.querySelector(selector).getBoundingClientRect();
+     const library = rect('.mia-library'), notes = rect('.mia-notes'), main = rect('.mia-main');
+     const title = rect('#md-title'), source = rect('#md-editor'), actions = rect('.mia-actions');
+     return {library:library.toJSON(), notes:notes.toJSON(), main:main.toJSON(), title:title.toJSON(), source:source.toJSON(), actions:actions.toJSON(), pad:parseFloat(getComputedStyle(document.getElementById('md-editor')).paddingLeft), scroll:document.documentElement.scrollWidth, window:innerWidth, collapsed:document.getElementById('md-format-bar').hidden};
+   })()`);
+   const {library,notes,main:paper,title,source,actions,pad,scroll,window:viewport,collapsed} = geometry;
+   assert.ok(library.width > 0 && Math.abs(library.right-notes.left)<1 && Math.abs(notes.right-paper.left)<1 && Math.abs(title.left-source.left-pad)<1 && title.right <= actions.left && actions.right <= paper.right && scroll <= viewport && collapsed, `Three panes, writing alignment and quiet toolbar at ${width}px / ${scale}×: ${JSON.stringify(geometry)}`);
+ };
+ await checkLayout(1300,820,1);
+ await md.evaluate(`Array.from(document.querySelectorAll('.mia-location')).find(button=>button.textContent==='摄影').click();true`);
+ assert.deepEqual(await md.evaluate(`Array.from(document.querySelectorAll('#md-list b'), title=>title.textContent).sort()`),['山间路线','日落备忘']);
+ await md.evaluate(`document.getElementById('md-search').value='溪流';document.getElementById('md-search').dispatchEvent(new Event('input'));true`);
+ assert.equal(await md.evaluate(`document.querySelector('#md-list b').textContent`),'山间路线');
+ await md.evaluate(`document.getElementById('md-search').value='';document.querySelector('.mia-location').click();true`);
+ assert.equal(await md.evaluate(`document.querySelector('.window-actions').getBoundingClientRect().right > innerWidth - 40`),true);
  await shot(md,'source');
+ await checkLayout(800,640,1.25);
+ await shot(md,'source-compact');
+ await checkLayout(1440,960,1);
  await md.evaluate('document.getElementById("md-outline-toggle").click();true');
  await md.evaluate('document.querySelector("[data-md-view=write]").click();true');
  await until(()=>md.evaluate('Boolean(window.WorkspaceUI.documentEditor && document.querySelector("#md-rich h1"))'));
@@ -41,7 +73,7 @@ const article='# 山间拍摄手记\n\n在山里把一个周末放慢。带上�
  assert.equal(await md.evaluate('document.getElementById("md-rich").clientHeight>400'),true,'Visual editing has a real scroll viewport');
  await md.evaluate('document.querySelector("#md-outline [data-fold]:not(:disabled)").click();true');assert.equal(await md.evaluate('document.querySelector(".md-toc-children").hidden'),true);await md.evaluate('document.querySelector("#md-outline [data-fold]:not(:disabled)").click();true');
  await md.evaluate('document.getElementById("md-sidebar-collapse").click();true');assert.equal(await md.evaluate('document.getElementById("md-list").hidden'),false,'Closing outline restores documents');await md.evaluate('document.getElementById("md-sidebar-collapse").click();true');
- await shot(md,'writing');
+
  const selectText=async needle=>md.evaluate(`(()=>{const find=(node,pos=0)=>{if(node.type==='text'){const i=node.text.indexOf(${JSON.stringify(needle)});if(i>=0)return {from:pos+i,to:pos+i+${needle.length}};}let at=pos+(node.type==='doc'?0:1);for(const child of node.content||[]){const hit=find(child,at);if(hit)return hit;const size=n=>n.type==='text'?n.text.length:(n.content?2+n.content.reduce((s,c)=>s+size(c),0):1);at+=size(child);}};const range=find(${controller}.getJSON());if(!range)throw Error('Selection not found');${controller}.focus();${controller}.setSelection(range.from,range.to);return range;})()`);
  await selectText('在山里把一个周末放慢');
  await until(()=>md.evaluate('Boolean(document.querySelector(".md-selection-tools:not([hidden])"))'));
@@ -55,7 +87,7 @@ const article='# 山间拍摄手记\n\n在山里把一个周末放慢。带上�
  await md.evaluate('document.querySelector("[data-md-view=split]").click();true');await until(()=>md.evaluate('Boolean(document.querySelector("#md-preview span[style]"))'));
  assert.equal(await md.evaluate('getComputedStyle(document.querySelector("#md-preview span[style]")).fontSize'),'18px');
  await md.evaluate('document.querySelector("[data-md-view=write]").click();true');assert.equal(await md.evaluate('getComputedStyle(document.querySelector("#md-rich span[style]")).fontSize'),'18px','Formatting survives source/visual switching');
- await selectText('在山里把一个周末放慢');await md.evaluate(`${controller}.openMenu('main',document.querySelector('[data-document-menu=style]'));true`);await shot(md,'context-menu');
+ await selectText('在山里把一个周末放慢');await md.evaluate(`${controller}.openMenu('main',document.querySelector('[data-document-menu=style]'));true`);
  await md.send('Input.dispatchKeyEvent',{type:'keyDown',key:'Escape',code:'Escape'});await md.send('Input.dispatchKeyEvent',{type:'keyUp',key:'Escape',code:'Escape'});
  const focusEnd=async()=>{await md.evaluate(`(()=>{const size=n=>n.type==='text'?n.text.length:(n.content?2+n.content.reduce((s,c)=>s+size(c),0):1);const end=${controller}.getJSON().content.reduce((s,n)=>s+size(n),0)-1;${controller}.focus();${controller}.setSelection(end);return end;})()`);await until(()=>md.evaluate('Boolean(document.activeElement?.closest("#md-rich"))'));};
  await focusEnd();await md.send('Input.dispatchKeyEvent',{type:'keyDown',key:'Enter',code:'Enter',windowsVirtualKeyCode:13});await md.send('Input.dispatchKeyEvent',{type:'keyUp',key:'Enter',code:'Enter',windowsVirtualKeyCode:13});await md.send('Input.insertText',{text:'/table'});

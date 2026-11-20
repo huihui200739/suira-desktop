@@ -11,7 +11,7 @@ function documentHarness(api,{dirty=true,external=false}={}){
   const initialDocs=[{id:'a',title:'Document A',text:'# Original A',meta:external?{externalPath:'A.md'}:{}},{id:'b',title:'Document B',text:'# Document B',meta:{}}];
   const context={api,$,initialDocs,initialRevision:dirty?1:0,clearTimeout,notify(){},document:{documentElement:{classList:{toggle(){}}}}};
   vm.runInNewContext(`
-    let current='a',revision=initialRevision,savedRevision=0,docs=initialDocs,richDocument=null,richText='',richKey='',timer,previewTimer,saveInFlight,viewRevision=0,renderedText,outlineItems,sourceHeadingPositions,requestedView='edit';
+    let current='a',revision=initialRevision,savedRevision=0,docs=initialDocs,richDocument=null,richText='',richKey='',timer,previewTimer,saveInFlight,viewRevision=0,renderedText,outlineItems,sourceHeadingPositions,documentLayout,requestedView='edit';
     const foldedHeadings=new Set(), editor=$('md-editor'), previewPane={replaceChildren(){}};
     async function checked(promise){const result=await promise;if(!result?.ok)throw Error(result?.error||'操作失败');return result;}
     function setWritingFocus(){} function documentIdentity(){} function closeDocumentFind(){} function setDocumentView(){} function preview(){} function docList(){} function syncDocumentNavigation(){}

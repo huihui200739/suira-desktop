@@ -17,6 +17,7 @@ for(const [file,digest] of Object.entries(portOrigin.files)) {
  const value=require('node:crypto').createHash('sha256').update(fs.readFileSync(path.join(portRoot,file))).digest('hex');
  if(value!==digest)throw new Error('MiaoYan Windows source does not match its recorded revision: '+file);
 }
+fs.copyFileSync(path.join(portRoot,'lib/layout.css'),path.join(out,'markdown-layout.css'));
 const sourceBundle = require('esbuild').buildSync({entryPoints:[path.join(root,'tools/document-source-editor.mjs')],outfile:path.join(out,'document-source-editor.js'),bundle:true,minify:true,format:'iife',platform:'browser',target:'chrome140',legalComments:'eof',metafile:true});
 const packages=new Set([...Object.keys(bundle.metafile.inputs),...Object.keys(sourceBundle.metafile.inputs)].map(file=>file.match(/node_modules\/((@[^/]+\/)?[^/]+)\//)?.[1]).filter(Boolean));
 const licenses=[];
