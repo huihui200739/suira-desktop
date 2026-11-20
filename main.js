@@ -1727,6 +1727,8 @@ function createClipboardBarWindow() {
   if (clipboardBarWindow && !clipboardBarWindow.isDestroyed()) return clipboardBarWindow;
   clipboardBarWindow = new BrowserWindow({
     ...clipboardBarBounds(),
+    thickFrame: SYSTEM_GLASS,
+    backgroundMaterial: SYSTEM_GLASS ? 'acrylic' : undefined,
     show: false,
     frame: false,
     transparent: true,
@@ -1750,7 +1752,7 @@ function createClipboardBarWindow() {
     }
   });
   clipboardBarWindow.setAlwaysOnTop(true, 'floating');
-  prepareFloatingSurface(clipboardBarWindow, 24);
+  prepareFloatingSurface(clipboardBarWindow, 24, true);
   clipboardBarWindow.on('will-resize',event=>event.preventDefault());
   clipboardBarWindow.__loaded = clipboardBarWindow.loadFile(path.join(__dirname, 'src', 'clipboardbar.html'));
   clipboardBarWindow.__loaded.catch(error => console.warn('剪贴板条加载失败:', error.message));
@@ -2984,8 +2986,12 @@ async function openImageEditor(options = {}) {
     const payload = filePath ? await imageEditor.loadImage(filePath, nativeImage) : options.dataUrl
       ? {dataUrl:options.dataUrl,size:imageEditor.validateImage(imageEditor.decodeOutput(options.dataUrl,nativeImage)),name:'粘贴图片.png'} : null;
     const area = screen.getDisplayNearestPoint(screen.getCursorScreenPoint()).workArea;
+    const compact = Boolean(sourceItem);
+    const width = Math.min(1120, area.width, compact ? Math.max(680, payload.size.width + 32) : 1120);
+    const previewHeight = compact ? Math.min(payload.size.height, (width - 32) * payload.size.height / payload.size.width) : 0;
+    const height = Math.min(800, area.height, compact ? Math.max(172, Math.ceil(previewHeight) + 112) : 800);
     const win = new BrowserWindow({
-      width:Math.min(1120,area.width),height:Math.min(800,area.height),minWidth:640,minHeight:480,
+      width, height, minWidth:Math.min(640, area.width), minHeight:Math.min(compact ? 172 : 480, area.height),
       show:false,frame:false,thickFrame:false,hasShadow:false,backgroundColor:nativeTheme.shouldUseDarkColors?'#18191b':'#f0f0f3',
       title:'随序 · 改图',icon:assetPath('icon.ico'),
       webPreferences:{preload:path.join(__dirname,'preload.js'),contextIsolation:true,nodeIntegration:false,sandbox:false,spellcheck:false}
@@ -2997,7 +3003,7 @@ async function openImageEditor(options = {}) {
     win.webContents.setWindowOpenHandler(()=>({action:'deny'}));
     win.webContents.on('will-navigate',event=>event.preventDefault());
     win.once('closed',()=>editorWindows.delete(editorId));
-    await win.loadFile(path.join(__dirname,'src','overlay.html'),{query:{mode:'image-editor'}}).catch(error=>{win.destroy();throw error;});
+    await win.loadFile(path.join(__dirname,'src','overlay.html'),{query:{mode:'image-editor', ...(compact ? {compact:'1'} : {})}}).catch(error=>{win.destroy();throw error;});
     win.show();win.focus();
     if(quickWindow&&!quickWindow.isDestroyed())hideQuickPanel();
     if(clipboardBarWindow&&!clipboardBarWindow.isDestroyed())hideClipboardBar();
@@ -3228,7 +3234,7 @@ function createPinWindow(dataUrl, size = {}, content = null) {
 
 /* ---------- 速记（Quick Note） ---------- */
 
-const NOTE_SIZE = { width: 380, height: 460 };
+const NOTE_SIZE = { width: 760, height: 550 };
 /** 速记写盘防抖：逐字落盘会让每次敲键都重写整个数据文件。 */
 const NOTE_SAVE_DEBOUNCE_MS = 700;
 /** noteId → BrowserWindow。多页 = 多窗口，与「每个窗口一条笔记」一一对应。 */
@@ -3932,7 +3938,7 @@ function registerIpc() {
   ipcMain.handle('notes:update', async (_event, payload) => {
     const id = String(payload?.id || '');
     if (!store || !id) return { ok: false, error: '参数不完整' };
-    const note = store.updateNoteText(id, payload?.text ?? '');
+    const note = store.updateNoteText(id, payload?.text ?? '', payload?.title);
     if (!note) return { ok: false, error: '这条速记已不存在' };
     scheduleNoteSave();
     // 同屏开着多个速记窗口时，列表与其它窗口也要看到最新正文

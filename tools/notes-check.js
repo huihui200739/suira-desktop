@@ -169,7 +169,7 @@ const PROBE = `
       errorHidden: document.getElementById('note-error').hidden,
       errorText: document.getElementById('note-error').textContent,
       indexHidden: document.getElementById('note-index').hidden,
-      indexCount: document.getElementById('note-index').querySelectorAll('button').length,
+      indexCount: document.getElementById('note-pages').querySelectorAll('button').length,
       docScrollW: document.documentElement.scrollWidth,
       docClientW: document.documentElement.clientWidth,
       docScrollH: document.documentElement.scrollHeight,
@@ -197,7 +197,7 @@ const PROBE = `
   document.getElementById('note-index-btn').click();
   await sleep(180);
   output.afterIndex = snapshot();
-  var first = document.querySelector('#note-index button');
+  var first = document.querySelector('#note-pages button');
   if (first) first.click();
   await sleep(120);
   output.openCalls = (window.__calls.open || []).slice();

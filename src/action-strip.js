@@ -22,7 +22,7 @@
     let actions=[],revision=0,busy=false,returnFocus=null,destroyed=false;
     function available(node){if(!node?.isConnected||!node.getClientRects().length||node.closest('[hidden],[inert],[aria-hidden="true"]'))return false;const style=getComputedStyle(node);return style.visibility!=='hidden'&&style.visibility!=='collapse';}
     function close(restore=true){if(more.open)more.open=false;if(menu.matches(':popover-open'))menu.hidePopover();search.value='';const origin=returnFocus;returnFocus=null;if(restore&&available(origin))origin.focus({preventScroll:true});}
-    const toggle=()=>{if(more.open){if(destroyed||document.hidden||!available(summary)){close(false);return;}if (!menu.matches(':popover-open')) menu.showPopover();const anchor=summary.getBoundingClientRect(),rect=menu.getBoundingClientRect();menu.style.left=Math.max(8,Math.min(innerWidth-rect.width-8,anchor.right-rect.width))+'px';menu.style.top=Math.max(8,anchor.top-rect.height-4)+'px';}else close(false);};
+    const toggle=()=>{if(more.open){if(destroyed||document.hidden||!available(summary)){close(false);return;}if (!menu.matches(':popover-open')) menu.showPopover();const anchor=summary.getBoundingClientRect(),rect=menu.getBoundingClientRect();menu.style.left=Math.max(8,Math.min(innerWidth-rect.width-8,anchor.right-rect.width))+'px';const top = anchor.top >= rect.height + 12 ? anchor.top - rect.height - 4 : anchor.bottom + 4;menu.style.top=Math.max(8,Math.min(innerHeight-rect.height-8,top))+'px';}else close(false);};
     more.addEventListener('toggle',toggle);
     summary.addEventListener('click', () => { if (!more.open) returnFocus = summary; });
     async function run(action){

@@ -231,7 +231,7 @@ function positionDock() {
     measureDock();
     const left = clamp((metrics.width-dockMetrics.width)/2, 12-metrics.left, innerWidth-metrics.left-dockMetrics.width-12);
     toolDock.style.left = `${left}px`;
-    toolDock.style.top = `${metrics.height+24}px`;
+    toolDock.style.top = `${metrics.height+(document.body.classList.contains('editor-compact') ? 8 : 16)}px`;
     return;
   }
   const s = state.selection;
@@ -263,12 +263,22 @@ function setSelection(selection, render = true) {
 }
 
 function clearSelection() {
+  if (editorMode || !hasSelection() || state.drawing) return;
+  dropPendingPointer();
+  closeOcrResult();
+  colorPopover.hidden = true;
+  state.intentAutoDone = false;
   state.selection = null;
   state.selecting = false;
   state.selectionReady = false;
   state.annotations = [];
   state.redoStack = [];
   state.steps = 0;
+  state.textAnchor = null;
+  textEditor.hidden = true;
+  textInput.value = '';
+  document.activeElement?.blur();
+  setTool('select');
   renderSelection();
   renderAnnotations();
   setMagnifierVisible(false);
@@ -1241,7 +1251,7 @@ function setupEvents() {
   root.addEventListener('lostpointercapture', () => { if (state.drawing) cancelPointer(); });
 
   $$('[data-shortcut]', toolDock).forEach(button => {
-    const shortcut = { escape: 'Esc', enter: 'Enter' }[button.dataset.shortcut] || button.dataset.shortcut.toUpperCase();
+    const shortcut = { escape: 'Esc', enter: 'Enter', delete: 'Delete' }[button.dataset.shortcut] || button.dataset.shortcut.toUpperCase();
     const label = button.getAttribute('title') || (button.dataset.action === 'copy' ? '完成' : button.textContent.trim());
     button.dataset.hint = `${label} (${shortcut})`;
     button.setAttribute('aria-label', `${label} (${shortcut})`);
@@ -1265,6 +1275,7 @@ function setupEvents() {
     button.addEventListener('click', () => {
       const action = button.dataset.action;
       if (action === 'undo') undo();
+      else if (action === 'reselect') clearSelection();
       else if (action === 'cancel') cancel();
       else if (action === 'save') finish('save');
       else if (action === 'pin') finish('pin');
@@ -1401,7 +1412,10 @@ function setupEvents() {
     }
     if ((event.ctrlKey || event.metaKey) && key === 'y') { event.preventDefault(); redo(); return; }
     if (event.key === 'Delete' || event.key === 'Backspace') {
-      undo();
+      event.preventDefault();
+      if (event.repeat) return;
+      if (editorMode || event.key === 'Backspace') undo();
+      else clearSelection();
       return;
     }
     if (event.ctrlKey || event.altKey || event.metaKey) return;

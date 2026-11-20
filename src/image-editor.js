@@ -4,6 +4,8 @@
   if (new URLSearchParams(location.search).get('mode') !== 'image-editor') return;
   const api = window.suira.imageEditor;
   document.body.classList.add('is-image-editor');
+  const compact = new URLSearchParams(location.search).get('compact') === '1';
+  document.body.classList.toggle('editor-compact', compact);
   document.querySelector('[data-tool="select"] span').textContent = '裁剪';
   document.querySelector('[data-tool="select"]').title = '裁剪区域';
   document.querySelector('[data-action="copy"]').title = '复制图片';
@@ -57,9 +59,12 @@
   window.SuiraEditorUI = {
     report,
     layout(image) {
-      const scale = Math.min(Math.max(1,160/Math.max(image.width,image.height)),(innerWidth-80)/image.width,(innerHeight-210)/image.height);
+      const top = compact ? 44 : 62;
+      const availableHeight = Math.max(1, innerHeight - top - (compact ? 68 : 112));
+      const availableWidth = Math.max(1, innerWidth - (compact ? 32 : 56));
+      const scale = Math.min(Math.max(1,160/Math.max(image.width,image.height)),availableWidth/image.width,availableHeight/image.height);
       const width = Math.max(1,Math.round(image.width*scale)),height = Math.max(1,Math.round(image.height*scale));
-      Object.assign(document.getElementById('capture-root').style,{left:`${(innerWidth-width)/2}px`,top:`${78+(innerHeight-210-height)/2}px`,width:`${width}px`,height:`${height}px`});
+      Object.assign(document.getElementById('capture-root').style,{left:`${(innerWidth-width)/2}px`,top:`${top+(availableHeight-height)/2}px`,width:`${width}px`,height:`${height}px`});
       document.getElementById('editor-size').textContent = `${image.width} × ${image.height} · 预览 ${Math.round(scale*100)}%`;
     },
     loaded(image,payload) {

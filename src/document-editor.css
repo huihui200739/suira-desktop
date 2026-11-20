@@ -1,6 +1,6 @@
 /* The three panes come from the Windows port. Adapt the surrounding Electron window here. */
 .tool-window[data-tool="markdown"] #page-markdown { padding:0; }
-.liquid-ui.tool-window[data-tool="markdown"] .app-shell { grid-template-rows:38px minmax(0,1fr); }
+.liquid-ui.tool-window[data-tool="markdown"] .app-shell { grid-template-rows:34px minmax(0,1fr); }
 .tool-window[data-tool="markdown"] .titlebar { background:var(--md-side); backdrop-filter:none; padding-inline:14px 8px; box-shadow:none; }
 .tool-window[data-tool="markdown"] .titlebar .window-actions { margin-inline-start:auto; }
 .tool-window[data-tool="markdown"] .titlebar .tool-kind { width:22px; height:22px; }
@@ -13,7 +13,7 @@
   --mia-line:var(--md-rule);
   --mia-hover:var(--md-hover);
   --mia-selected:var(--md-selected);
-  --mia-accent:var(--accent-deep);
+  --mia-accent:var(--jade-11);
   --ink:var(--md-text);
   --ink-muted:var(--md-muted);
   --tool-content:var(--md-page);
@@ -36,7 +36,7 @@
   padding:3px 0;
   color:var(--mia-ink);
   font-size:20px;
-  font-weight:650;
+  font-weight:600;
 }
 .tool-window[data-tool="markdown"] .mia-actions .view-switch { display:flex; gap:1px; padding:0; border:0; background:transparent; box-shadow:none; }
 .liquid-ui.tool-window[data-tool="markdown"] .mia-actions button.mia-icon { background:transparent; box-shadow:none; color:var(--mia-muted); }
@@ -166,7 +166,7 @@
   --md-syntax-title:var(--violet-11);
   --md-syntax-link:var(--jade-11);
   --md-syntax-code:var(--amber-11);
-  --md-source-font:16px/1.8 "Microsoft YaHei UI", "Microsoft YaHei", var(--font-ui);
+  --md-source-font:16px/1.75 var(--font-ui);
   background:var(--md-page);
   border-inline-end:1px solid var(--md-rule);
 }
@@ -211,3 +211,14 @@
 /* Render local attachments inside the reading column, including split view. */
 .markdown-preview img { max-inline-size:100%; block-size:auto; }
 .markdown-preview li input[type="checkbox"] { accent-color:var(--accent); margin-inline:0 var(--space-1); vertical-align:middle; }
+
+.tool-window[data-tool="markdown"] .mia-shell { --mia-copy-inset:clamp(16px,2.6vw,34px); }
+.tool-window[data-tool="markdown"] .mia-location { border-radius:8px; }
+.tool-window[data-tool="markdown"] .mia-list .mia-row { border-bottom-color:color-mix(in srgb,var(--md-rule) 58%,transparent); }
+.tool-window[data-tool="markdown"] .mia-list .mia-row[aria-current="true"] { border-bottom-color:transparent; }
+.tool-window[data-tool="markdown"] .mia-row time { font-variant-numeric:tabular-nums; }
+.tool-window[data-tool="markdown"] .document-foot { border-color:transparent; }
+
+.tool-window[data-tool="markdown"] .mia-row b { font-weight:600; }
+.tool-window[data-tool="markdown"] .mia-sections { padding-block-start:6px; }
+.tool-window[data-tool="markdown"] .mia-location[aria-current="true"] { font-weight:600; }

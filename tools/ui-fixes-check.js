@@ -92,6 +92,23 @@ async function until(fn){let last;for(let i=0;i<180;i++){try{const value=await f
  await until(()=>overlay.evaluate('document.getElementById("magnifier").hidden'));
  await overlay.send('Input.dispatchKeyEvent',{type:'keyDown',key:'C',code:'KeyC',modifiers:8});await wait(150);
  assert.equal((await rpc()).copied,copiedBefore,'Shift+C must not copy a stale sample while the magnifier is hidden');
+ const reviewDir=process.env.SUIRA_REVIEW_SHOTS;
+ if(reviewDir){
+  await move(overlay,toolBox.x,toolBox.y);
+  const frame=await overlay.send('Page.captureScreenshot',{format:'png',fromSurface:false});
+  fs.writeFileSync(path.join(reviewDir,'capture-reselect.png'),Buffer.from(frame.data,'base64'));
+ }
+ await click(overlay,'[data-action="reselect"]');
+ const cleared='Boolean(state.image && !state.selection && !state.annotations.length && toolDock.hidden)';
+ await until(()=>overlay.evaluate(cleared));
+ await move(overlay,100,120);
+ await overlay.send('Input.dispatchMouseEvent',{type:'mousePressed',button:'left',clickCount:1,x:100,y:120});
+ await move(overlay,500,400);
+ await overlay.send('Input.dispatchMouseEvent',{type:'mouseReleased',button:'left',clickCount:1,x:500,y:400});
+ await until(()=>overlay.evaluate('Boolean(state.selection && !toolDock.hidden)'));
+ await overlay.send('Input.dispatchKeyEvent',{type:'keyDown',key:'Delete',code:'Delete',windowsVirtualKeyCode:46});
+ await until(()=>overlay.evaluate(cleared));
+ console.log('PASS 清除选区按钮与 Delete 均保留截图会话，可以直接重画');
  await overlay.evaluate('resetOverlay();true');assert.equal(await overlay.evaluate('document.getElementById("magnifier").hidden'),true);assert.deepEqual(errors,[]);
- const proof={version,isolatedFixture:true,actualPointerHitTests:true,idleMagnifier:true,sourcePixelAndDpiMapping:true,sourceEdgeClamped:true,crosshairAndHexRgb:true,greenWeChatCrosshair:true,weChatTwoRowReadout:true,ctrlCHint:true,renderedCrosshairPixels:true,shiftCCopiesAndKeepsCapture:true,ctrlCCopiesColorAndKeepsCapture:true,penDragKeepsPoints:true,pointerUpPointIncluded:true,originalViewerProtectsSelection:true,staleShiftCIgnored:true,dynamicMagnifierBounds:true,toolbarHidesPreview:true,resetHidesPreview:true,allTaskButtons:true,multipleItemsAndDerivedButtons:true,removedItemRetained:true,compactCaptureButton:true,collapsedRecentEntry:true,recentDoesNotDisplaceKeyboard:true,popoverDismissal:true,ctrlKAndNestedEscape:true,noRendererErrors:true};fs.writeFileSync(path.join(root,'docs','ui-fixes-'+version+'.json'),JSON.stringify(proof,null,2)+'\n');console.log('PASS four UI fixes',JSON.stringify(proof));
+ const proof={version,isolatedFixture:true,actualPointerHitTests:true,idleMagnifier:true,sourcePixelAndDpiMapping:true,sourceEdgeClamped:true,crosshairAndHexRgb:true,greenWeChatCrosshair:true,weChatTwoRowReadout:true,ctrlCHint:true,renderedCrosshairPixels:true,shiftCCopiesAndKeepsCapture:true,ctrlCCopiesColorAndKeepsCapture:true,penDragKeepsPoints:true,pointerUpPointIncluded:true,originalViewerProtectsSelection:true,staleShiftCIgnored:true,dynamicMagnifierBounds:true,toolbarHidesPreview:true,resetHidesPreview:true,allTaskButtons:true,multipleItemsAndDerivedButtons:true,removedItemRetained:true,compactCaptureButton:true,collapsedRecentEntry:true,recentDoesNotDisplaceKeyboard:true,popoverDismissal:true,ctrlKAndNestedEscape:true,noRendererErrors:true};if(!reviewDir)fs.writeFileSync(path.join(root,'docs','ui-fixes-'+version+'.json'),JSON.stringify(proof,null,2)+'\n');console.log('PASS four UI fixes',JSON.stringify(proof));
 })().catch(error=>{console.error(error);if(fs.existsSync(path.join(tmp,'app.log')))console.error(fs.readFileSync(path.join(tmp,'app.log'),'utf8').slice(-1600));process.exitCode=1;}).finally(async()=>{sockets.forEach(socket=>socket.close());if(child&&child.exitCode===null){const done=new Promise(resolve=>child.once('exit',resolve));child.kill();await done;}await wait(250);assert.equal(path.dirname(path.resolve(tmp)),path.resolve(os.tmpdir()));fs.rmSync(tmp,{recursive:true,force:true,maxRetries:4,retryDelay:150});});

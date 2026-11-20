@@ -568,7 +568,7 @@ async function runChecks(send) {
   check('超长文本被截断到 180 字', initial.snippetLengths.includes(180), JSON.stringify(initial.snippetLengths));
   check('默认选中第 1 条', initial.selectedIndex === 0 && initial.selectedId === 'img-1',
     initial.selectedIndex + ' / ' + initial.selectedId);
-  check('底部显示选中位置和标题', initial.selectionText.includes('1 / 8') && initial.selectionText.includes('屏幕截图 1'), initial.selectionText);
+  check('顶部只显示一次选中位置', initial.selectionText.trim() === '1 / 8', initial.selectionText);
   check('卡片内容不横向溢出', initial.cardOverflow.every((value) => value === 0),
     JSON.stringify(initial.cardOverflow));
   check('页面无整体滚动条 / 溢出', noOverflow(initial),
@@ -651,17 +651,17 @@ async function runChecks(send) {
   check('窄屏轨道仍可横向滚动', narrowView.trackOverflowX === 'auto'
     && narrowView.trackScrollWidth > narrowView.trackClientWidth,
     narrowView.trackScrollWidth + ' > ' + narrowView.trackClientWidth);
-  check('窄屏底部信息不溢出', narrowView.selectionText.length > 0 && narrowView.cardOverflow.every((value) => value === 0));
+  check('窄屏顶部信息不溢出', narrowView.selectionText.length > 0 && narrowView.cardOverflow.every((value) => value === 0));
 
   console.log('\n== 搜索、分类、收藏与输入焦点 ==');
   const editHistory=await evaluate(send, `(async()=>{
     window.__fireShown();await new Promise(r=>setTimeout(r,150));
-    const button=document.getElementById('bar-edit');const shown=!button.hidden;button.click();await new Promise(r=>setTimeout(r,60));
+    const button=document.querySelector('[data-id="img-1"] [data-edit-image]');const shown=Boolean(button)&&getComputedStyle(button).opacity==='0';button.click();await new Promise(r=>setTimeout(r,60));
     const opened=window.__calls.edit?.itemId==='img-1';window.__editFail=true;button.click();await new Promise(r=>setTimeout(r,60));
     const error=document.getElementById('bar-notice').textContent.includes('原图已被移动');window.__editFail=false;
     const commits=window.__calls.commit.length;document.querySelector('.bar-card[data-id="img-2"] [data-edit-image]').click();await new Promise(r=>setTimeout(r,60));
     const direct=window.__calls.edit.itemId==='img-2'&&window.__calls.commit.length===commits;
-    document.querySelector('[data-filter="text"]').click();await new Promise(r=>setTimeout(r,60));const textHidden=button.hidden;
+    document.querySelector('[data-filter="text"]').click();await new Promise(r=>setTimeout(r,60));const textHidden=!document.querySelector('[data-edit-image]');
     document.querySelector('[data-filter="all"]').click();await new Promise(r=>setTimeout(r,60));
     return {shown,opened,error,textHidden,direct};
   })()`);

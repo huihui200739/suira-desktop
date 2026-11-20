@@ -57,13 +57,33 @@ async function until(fn){for(let n=0;n<150;n++){try{const value=await fn();if(va
   assert.equal((await main.evaluate(`window.suira.imageEditor.open({filePath:${JSON.stringify(path.join(tmp,'missing.png'))}})`)).ok,false);
   assert.deepEqual(fs.readFileSync(source),original);
   console.log('PASS 历史图片进入编辑、新窗口保留已有标注、不调用桌面截图、缺失图片报错、原图未修改');
+  const compact = await page(t=>t.url.includes('compact=1'));
+  await until(()=>compact.evaluate('Boolean(state.image)'));
+  assert.equal(await compact.evaluate('document.body.classList.contains("editor-compact")'),true);
+  const compactLayout=await compact.evaluate(`(()=>{const dock=toolDock.getBoundingClientRect(),image=root.getBoundingClientRect();return {gap:dock.top-image.bottom,bottom:dock.bottom,height:innerHeight,left:dock.left,right:dock.right,width:innerWidth};})()`);
+  assert.ok(compactLayout.gap>=0&&compactLayout.gap<=12&&compactLayout.bottom<=compactLayout.height&&compactLayout.left>=0&&compactLayout.right<=compactLayout.width,JSON.stringify(compactLayout));
+  const reviewDir=process.env.SUIRA_REVIEW_SHOTS;
+  if(reviewDir){
+    const wide=await main.evaluate(`(()=>{const c=document.createElement('canvas');c.width=1800;c.height=320;const ctx=c.getContext('2d');ctx.fillStyle='#f4f1e9';ctx.fillRect(0,0,c.width,c.height);ctx.fillStyle='#203b49';ctx.font='48px sans-serif';ctx.fillText('随序  /  截图编辑示例',88,168);return c.toDataURL()})()`);
+    const result=await compact.evaluate(`window.suira.imageEditor.finish({dataUrl:${JSON.stringify(wide)},action:'copy'})`);
+    assert.equal(result.ok,true);
+    const image=result.item;
+    const known=new Set((await (await fetch(`http://127.0.0.1:${port}/json/list`)).json()).map(t=>t.id));
+    assert.equal((await main.evaluate(`window.suira.imageEditor.open({itemId:${JSON.stringify(image.id)}})`)).ok,true);
+    const wideEditor=await page(t=>t.url.includes('compact=1')&&!known.has(t.id));
+    await until(()=>wideEditor.evaluate('Boolean(state.image)'));
+    assert.ok(await wideEditor.evaluate('innerHeight < 400 && state.image.height === 320'));
+    const shot=await wideEditor.send('Page.captureScreenshot',{format:'png',fromSurface:true});
+    fs.writeFileSync(path.join(reviewDir,'image-editor-compact.png'),Buffer.from(shot.data,'base64'));
+    await wideEditor.evaluate('window.suira.imageEditor.window("close")').catch(()=>{});
+  }
   // 示例图片与窗口截图只含本脚本生成的数据。
   await editor.send('Emulation.setDeviceMetricsOverride',{width:1120,height:800,deviceScaleFactor:1,mobile:false});await wait(150);
   for(const scheme of ['light','dark']) {
     await editor.send('Emulation.setEmulatedMedia',{features:[{name:'prefers-color-scheme',value:scheme}]});await wait(300);
     const color=await editor.evaluate(`(()=>{const b=document.querySelector('[data-tool="pen"]'),s=getComputedStyle(b);return {ink:s.getPropertyValue('--ink'),color:s.color,slate:s.getPropertyValue('--slate-12')}})()`);
     const values=color.color.match(/\d+/g).slice(0,3).map(Number);assert.ok(scheme==='dark'?values.reduce((a,b)=>a+b)>600:values.reduce((a,b)=>a+b)<150,JSON.stringify(color));
-    const shot=await editor.send('Page.captureScreenshot',{format:'png',fromSurface:true});fs.writeFileSync(path.join(root,'docs','screenshots','28-image-editor-'+scheme+'.png'),Buffer.from(shot.data,'base64'));
+    const shot=await editor.send('Page.captureScreenshot',{format:'png',fromSurface:true});if (!reviewDir) fs.writeFileSync(path.join(root,'docs','screenshots','28-image-editor-'+scheme+'.png'),Buffer.from(shot.data,'base64'));
   }
   console.log('PASS 裁剪与恢复全图保留标注，明暗主题工具栏图标均清晰可辨');
   const known=new Set((await(await fetch(`http://127.0.0.1:${port}/json/list`)).json()).map(t=>t.id));

@@ -223,7 +223,7 @@ button { color: inherit; }
   backdrop-filter: blur(16px) saturate(1.25);
 }
 .tool-dock[hidden] { display: none; }
-#capture-root[data-intent="record"] .tool-dock > :not(.tool-tooltip):not([data-tool="select"]):not([data-action="cancel"]):not(.complete-button) { display: none; }
+#capture-root[data-intent="record"] .tool-dock > :not(.tool-tooltip):not([data-tool="select"]):not([data-action="cancel"]):not([data-action="reselect"]):not(.complete-button) { display: none; }
 #capture-root[data-intent="record"] .complete-button svg { display: none; }
 
 .tool-button {

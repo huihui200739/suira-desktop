@@ -27,8 +27,19 @@
         <button type="button" data-filter="files" aria-pressed="false">文件</button>
         <button type="button" data-filter="favorite" aria-pressed="false">收藏</button>
       </nav>
-      <span class="bar-count" id="bar-count">0 条</span>
       <div class="bar-tools"><button id="bar-library" type="button" title="打开完整内容库" aria-label="打开完整内容库">内容库 <span aria-hidden="true">↗</span></button><button id="bar-close" type="button" title="Esc 关闭" aria-label="关闭剪贴板">×</button></div>
+      <div class="bar-controls">
+        <button class="bar-retry" id="bar-refresh-retry" type="button" hidden>刷新失败，重试</button>
+        <span class="bar-selection" id="bar-selection" aria-label="选中位置"></span>
+        <span class="bar-notice" id="bar-notice" role="status" aria-live="polite" hidden></span>
+        <div class="bar-actions">
+          <button id="bar-preview-toggle" type="button" disabled title="空格预览，Esc 返回" aria-controls="bar-preview" aria-expanded="false">预览</button>
+          <button id="bar-copy" type="button" disabled title="复制到剪贴板（Ctrl+C）">复制</button>
+          <button id="bar-pin" type="button" disabled>收藏</button>
+          <div id="bar-action-strip" hidden></div>
+          <button id="bar-submit" type="button" aria-label="粘贴到当前窗口" disabled><span>粘贴</span><kbd>Enter</kbd></button>
+        </div>
+      </div>
     </header>
 
     <div class="bar-body">
@@ -41,24 +52,12 @@
       </div>
     </div>
 
-    <footer class="bar-foot">
-      <button class="bar-retry" id="bar-refresh-retry" type="button" hidden>刷新失败，重试</button>
-      <span class="bar-selection" id="bar-selection">← → 选择</span>
-      <span class="bar-notice" id="bar-notice" role="status" aria-live="polite" hidden></span>
-      <div class="bar-actions">
-        <button id="bar-preview-toggle" type="button" disabled title="空格预览，Esc 返回" aria-controls="bar-preview" aria-expanded="false">预览</button>
-        <button id="bar-copy" type="button" disabled title="复制到剪贴板（Ctrl+C）">复制</button>
-        <button id="bar-edit" type="button" hidden>编辑图片</button>
-        <button id="bar-pin" type="button" disabled>收藏</button>
-        <div id="bar-action-strip" hidden></div>
-        <button id="bar-submit" type="button" aria-label="粘贴到当前窗口" disabled><span>粘贴<span class="paste-target">到当前窗口</span></span><kbd>Enter</kbd></button>
-      </div>
-    </footer>
     <section class="bar-preview" id="bar-preview" role="dialog" aria-modal="false" aria-labelledby="bar-preview-title" hidden>
       <header><span>内容预览</span><b id="bar-preview-title"></b><button id="bar-preview-close" aria-label="关闭内容预览" type="button" title="Esc 返回">返回</button></header>
       <div id="bar-preview-content" tabindex="0"></div>
     </section>
   </main>
+  <script src="liquid-glass.js"></script>
   <script src="ui-motion.js"></script>
   <script src="tool-art.js"></script>
   <script src="clipboardbar.js"></script>

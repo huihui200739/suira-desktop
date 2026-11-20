@@ -199,7 +199,7 @@
     }
 
     const edit = item.kind === 'image' && window.suira?.imageEditor
-      ? '<button class="card-edit" type="button" tabindex="-1" data-edit-image aria-label="编辑这张图片">编辑</button>' : '';
+      ? '<button class="card-edit" type="button" tabindex="-1" data-edit-image aria-label="编辑这张图片" title="编辑图片"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 16-1 4 4-1L20 7l-3-3zM15 6l3 3"/></svg></button>' : '';
     const source = item.appName ? `<span class="card-source-icon" data-source-app="${escapeHtml(item.appName)}" role="img" aria-label="来源：${escapeHtml(item.appName)}"><span>${escapeHtml(item.appName.slice(0, 1).toUpperCase())}</span></span>` : '';
     const tooltip = [label, selectionTitle(item), item.appName, time].filter(Boolean).join('，');
     return `<article class="bar-card" id="bar-card-${index}" role="option" aria-selected="false" tabindex="-1" data-index="${index}" data-id="${escapeHtml(item.id)}" data-kind="${escapeHtml(item.kind)}" title="${escapeHtml(tooltip)}">
@@ -282,12 +282,12 @@
     const item = state.items[state.selected];
     if (!item) {
       line.classList.add('is-empty');
-      line.textContent = state.loading ? '正在读取剪贴板历史…' : '← → 选择';
+      line.textContent = '';
       return;
     }
     line.classList.remove('is-empty');
-    line.innerHTML = `<span class="sel-position" title="← → 选择">${state.selected + 1} / ${state.items.length}</span>
-      <span class="sel-title">${escapeHtml(selectionTitle(item))}</span>`;
+    line.textContent = `${state.selected + 1} / ${state.items.length}`;
+    line.title = '← → 选择';
   }
 
   function syncSelection() {
@@ -298,6 +298,11 @@
       card.classList.toggle('is-selected', active);
       card.setAttribute('aria-selected', active ? 'true' : 'false');
       card.setAttribute('tabindex', active ? '0' : '-1');
+      const edit = card.querySelector('[data-edit-image]');
+      if (edit) {
+        edit.tabIndex = active ? 0 : -1;
+        edit.disabled = state.loading || state.committing || state.editing;
+      }
     });
     if (focusedCard && cards[state.selected] && focusedCard !== cards[state.selected]) {
       cards[state.selected].focus({ preventScroll: true });
@@ -320,14 +325,11 @@
     if (submit) submit.disabled = !item || state.loading || state.committing || !state.returnApi;
     if($('#bar-preview-toggle'))$('#bar-preview-toggle').disabled=!item||state.loading;
     if($('#bar-copy'))$('#bar-copy').disabled=!item||state.loading||state.committing||!state.returnApi;
-    const edit = $('#bar-edit');
-    if(edit) {edit.hidden=item?.kind!=='image'||!window.suira?.imageEditor;edit.disabled=state.loading||state.committing||state.editing;}
   }
 
   function render() {
     const track = $('#bar-track');
     const empty = $('#bar-empty');
-    const count = $('#bar-count');
     if (!track) return;
 
     const showItems = !state.offline && !state.loading && !state.error && state.items.length > 0;
@@ -371,10 +373,6 @@
       refresh.hidden = !state.refreshError;
       refresh.disabled = state.refreshing;
       refresh.title = state.refreshError;
-    }
-    if (count) {
-      count.textContent = state.offline ? '—' : (state.loading ? '…' : state.query || state.filter !== 'all' ? `${state.items.length} / ${state.allItems.length} 条` : `最近 ${state.items.length} 条`);
-      count.title = '显示最近 120 条记录，打开内容库可搜索更多内容';
     }
     $$('[data-filter]').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.filter === state.filter)));
     configureEmpty();
@@ -798,7 +796,6 @@
     $('#bar-close')?.addEventListener('click', hideBar);
     $('#bar-submit')?.addEventListener('click', submitSelected);
     $('#bar-pin')?.addEventListener('click', toggleSelectedPin);
-    $('#bar-edit')?.addEventListener('click', editSelectedImage);
     $('#bar-preview-toggle')?.addEventListener('click', () => state.previewItem ? closePreview() : previewSelected());
     $('#bar-preview-close')?.addEventListener('click',()=>closePreview());
     $('#bar-copy')?.addEventListener('click',()=>copySelected('selection'));

@@ -5,16 +5,14 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>随序 速记</title>
   <link rel="stylesheet" href="theme.css">
-  <link rel="stylesheet" href="notes.css">
-  <link rel="stylesheet" href="liquid-glass.css">
   <link rel="stylesheet" href="utility-surface.css">
 <link rel="stylesheet" href="ui-motion.css"><link rel="stylesheet" href="glass-select.css">
 <link rel="stylesheet" href="action-strip.css">
+  <link rel="stylesheet" href="notes.css">
 </head>
 <body>
   <!--
-    速记：一条笔记一个窗口，纯文本。
-    只做纯文本 —— 富文本与 Markdown 属于另一个量级，不做半成品。
+    速记用轻量的纯文本页面，并保留独立置顶的能力。
   -->
   <main class="note" id="note" data-state="loading">
     <header class="note-head">
@@ -24,7 +22,7 @@
       <h1 class="note-title" id="note-title">速记</h1>
       <div class="note-tools">
         <button id="note-index-btn" type="button" title="全部速记" aria-label="全部速记" aria-expanded="false"><svg viewBox="0 0 24 24"><path d="M4 5h16M4 12h16M4 19h16"/></svg></button>
-        <button id="note-new" type="button" title="新建一条速记" aria-label="新建一条速记"><svg viewBox="0 0 24 24"><path d="M12 4v16M4 12h16"/></svg></button>
+        <button id="note-new" type="button" title="新建页面" aria-label="新建页面"><svg viewBox="0 0 24 24"><path d="M12 4v16M4 12h16"/></svg></button>
         <button id="note-pin" type="button" title="钉在桌面上" aria-label="钉在桌面上" aria-pressed="false"><svg viewBox="0 0 24 24"><path d="m8 3 8 0-1 7 3 4H6l3-4zM12 14v7"/></svg></button>
         <span class="note-tools-sep" aria-hidden="true"></span>
         <button id="note-min" type="button" title="最小化" aria-label="最小化"><svg viewBox="0 0 24 24"><path d="M5 12h14"/></svg></button>
@@ -33,20 +31,27 @@
     </header>
 
     <!-- 全部速记：不另开管理窗口，就地切换到另一条 -->
-    <div class="note-index" id="note-index" hidden role="listbox" aria-label="全部速记"></div>
+    <aside class="note-index" id="note-index" hidden aria-label="全部速记">
+      <input id="note-search" type="search" placeholder="搜索速记" aria-label="搜索速记" autocomplete="off">
+      <div class="note-pages" id="note-pages"></div>
+      <button type="button" class="note-new-page" id="note-new-page"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M8 12h8m-4-4v8"/></svg>新建页面</button>
+    </aside>
 
-    <textarea class="note-body" id="note-body" placeholder="想到什么就写下来…" aria-label="速记正文"
-      spellcheck="false" autocomplete="off"></textarea>
+    <section class="note-writing" aria-label="当前页面">
+      <input class="note-page-title" id="note-page-title" placeholder="添加标题" aria-label="页面标题" maxlength="120" autocomplete="off">
+      <textarea class="note-body" id="note-body" placeholder="写下此刻想到的内容…" aria-label="速记正文"
+        spellcheck="false" autocomplete="off"></textarea>
+    </section>
 
     <footer class="note-foot">
       <span class="note-count" id="note-count">0 字</span>
       <span class="note-saved" id="note-saved" role="status" aria-live="polite">已保存</span>
+      <button id="note-checklist" type="button" title="插入清单项（纯文本）" aria-label="插入清单项"><svg viewBox="0 0 24 24"><path d="m3 7 2 2 4-4m2 2h10M3 15h5v5H3zM11 17h10"/></svg></button>
       <button id="note-delete" type="button" title="删除这条速记">删除</button>
     </footer>
 
     <p class="note-error" id="note-error" role="alert" hidden></p>
   </main>
   <script src="notes.js"></script>
-  <script src="liquid-glass.js"></script>
 <script src="ui-motion.js"></script><script src="icons.js"></script><script src="glass-select.js"></script><script src="action-strip.js"></script><script src="relay-surfaces.js"></script></body>
 </html>

@@ -325,13 +325,13 @@ body { font-weight:400; font-variant-numeric:tabular-nums; }
   --companion-companion-settings-error-ink: var(--danger,#b42318);
 }
 .liquid-ui.tool-window[data-tool="markdown"]:not(.md-home) {
-  --md-page: var(--slate-2);
-  --md-side: var(--slate-3);
-  --md-rule: var(--line);
-  --md-hover: var(--slate-4);
-  --md-text: var(--slate-12);
-  --md-muted: var(--slate-11);
-  --md-selected:var(--accent-3);
+  --md-page: #fdfbf8;
+  --md-side: #f8f6f1;
+  --md-rule: #e8e4db;
+  --md-hover: #f0ede4;
+  --md-text: #302e28;
+  --md-muted: #6c6960;
+  --md-selected: #e9e9df;
   --ink-soft: var(--slate-11);
   --ink-faint: var(--slate-11);
 }
@@ -1801,3 +1801,14 @@ html,body {
 }
 }
 /* END GENERATED THEME SCALES */
+
+/* Writing surfaces: warm paper for documents and a quiet blue notebook. */
+.note {
+  --note-paper: #203b49;
+  --note-ink: #f9f3e5;
+  --note-muted: #a9bdc5;
+  --note-accent: #8bc1d3;
+}
+@media (prefers-color-scheme: dark) {
+  .note { --note-paper: #172d3b; }
+}

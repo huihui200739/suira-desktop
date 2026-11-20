@@ -36,7 +36,7 @@ async function run({ screenshots = false } = {}) {
 const {app,BrowserWindow,ipcMain,clipboard,globalShortcut}=require('electron');
 app.setPath('userData',${JSON.stringify(path.join(tmp, 'profile'))});
 app.getVersion=()=>${JSON.stringify(require('../package.json').version)};
-clipboard.read=async()=>[];clipboard.readText=async()=>'';
+clipboard.read=async()=>[];clipboard.readText=async()=>'';clipboard.write=async()=>{};
 globalShortcut.register=()=>true;globalShortcut.unregister=()=>{};globalShortcut.unregisterAll=()=>{};
 const handle=ipcMain.handle.bind(ipcMain);
 ipcMain.handle=(name,fn)=>handle(name,name==='app:info'?async(...args)=>{
@@ -127,12 +127,13 @@ class RegionCheck {
       console.log('PASS taskbar-safe position and native focus style:',suffix);
     };
     const shot = async (client, name, theme = 'light') => {
-      if (!screenshots) return;
+      const reviewDir = process.env.SUIRA_REVIEW_SHOTS;
+      if (!screenshots || (reviewDir && !['clipboard','clipboard-dark','clipboard-hover','notes'].includes(name))) return;
       console.log('SHOT '+name);
       await client.evaluate('window.suira.settings.update('+JSON.stringify({theme})+')');
       await client.evaluate('document.fonts.ready'); await wait(350);
       const png = await client.send('Page.captureScreenshot', { format: 'png' });
-      const dir = path.join(root, 'docs/product'); fs.mkdirSync(dir, { recursive: true });
+      const dir = reviewDir || path.join(root, 'docs/product'); fs.mkdirSync(dir, { recursive: true });
       const destination=path.join(dir,name+'.png'),temporary=destination+'.tmp';
       try {
         fs.writeFileSync(temporary,Buffer.from(png.data,'base64'));
@@ -214,9 +215,38 @@ class RegionCheck {
     await shot(panel,'app-search-fullscreen');
     await panel.evaluate(`window.suira.quick.setPresentation('window')`);
     await main.evaluate('window.suira.quick.hide()');
+    if (screenshots) {
+      const demoImage = await main.evaluate(`(() => {
+        const canvas = document.createElement('canvas'); canvas.width = 640; canvas.height = 420;
+        const ctx = canvas.getContext('2d');
+        ctx.fillStyle = '#e9e6dc'; ctx.fillRect(0,0,640,420);
+        ctx.fillStyle = '#fdfbf8'; ctx.roundRect(54,46,532,328,12); ctx.fill();
+        ctx.fillStyle = '#e5e9e2'; ctx.fillRect(54,92,140,250);
+        ctx.fillStyle = '#284c46'; ctx.font = 'bold 26px sans-serif'; ctx.fillText('周末行程',224,138);
+        ctx.font = '18px sans-serif'; ['09:00  沿湖散步','11:30  午餐','14:00  整理照片'].forEach((line,index)=>ctx.fillText(line,224,186+index*45));
+        return canvas.toDataURL();
+      })()`);
+      assert.equal((await main.evaluate(`window.suira.imageEditor.open({dataUrl:${JSON.stringify(demoImage)}})`)).ok,true);
+      const fixtureEditor=await page(t=>t.url.includes('mode=image-editor'));
+      await until(()=>fixtureEditor.evaluate('Boolean(state.image)'));
+      assert.equal((await fixtureEditor.evaluate(`window.suira.imageEditor.finish({dataUrl:${JSON.stringify(demoImage)},action:'copy'})`)).ok,true);
+      await fixtureEditor.evaluate('window.suira.imageEditor.window("close")').catch(()=>{});
+      await until(async()=>!(await info()).surfaces.some(surface=>surface.url.includes('mode=image-editor')));
+    }
     await main.evaluate('window.suira.clipboardBar.show()');
     const clipboard=await page(t => t.url.endsWith('/clipboardbar.html')); await check('/clipboardbar.html');
-    await until(()=>clipboard.evaluate('document.querySelectorAll(".bar-card").length>=6'));await shot(clipboard,'clipboard');
+    await until(()=>clipboard.evaluate('document.querySelectorAll(".bar-card").length>=6'));
+    const moveClipboardPointer = (x,y) => clipboard.send('Input.dispatchMouseEvent',{type:'mouseMoved',x,y});
+    await moveClipboardPointer(4,48);
+    await shot(clipboard,'clipboard');
+    await shot(clipboard,'clipboard-dark','dark');
+    if (screenshots && process.env.SUIRA_REVIEW_SHOTS) {
+      const imageCard = await clipboard.evaluate(`(()=>{const r=document.querySelector('.bar-card[data-kind="image"]').getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2};})()`);
+      await moveClipboardPointer(imageCard.x,imageCard.y);
+      await until(()=>clipboard.evaluate(`getComputedStyle(document.querySelector('.card-edit')).opacity==='1'`));
+      await shot(clipboard,'clipboard-hover');
+    }
+    await main.evaluate('window.suira.settings.update({theme:"light"})');
     await main.evaluate('window.suira.clipboardBar.hide()');
     const date = new Date().toLocaleDateString('en-CA');
     for (const event of [{ title: '产品体验评审', time: '10:00', location: '设计工作室', category: 'work' }, { title: '阅读与灵感整理', time: '16:30', category: 'study' }]) {
@@ -253,7 +283,15 @@ class RegionCheck {
     assert.equal(await markdown.evaluate('document.querySelector(".tool-kind").getAttribute("aria-label")'),'Markdown 文档');
     await until(()=>calendar.evaluate('document.documentElement.dataset.windowActive==="false"'));
     await main.evaluate('window.suira.notes.create()');
-    const note=await page(t => t.url.endsWith('/notes.html')); await check('/notes.html');await until(()=>note.evaluate('document.getElementById("note").dataset.state==="ready"'));await note.evaluate('(()=>{const e=document.getElementById("note-body");e.value="随手记下，接着做\\n\\n把想法先放在这里，稍后再整理。";e.dispatchEvent(new Event("input",{bubbles:true}));return true})()');await shot(note,'notes');
+    const note=await page(t => t.url.endsWith('/notes.html')); await check('/notes.html');await until(()=>note.evaluate('document.getElementById("note").dataset.state==="ready"'));await note.evaluate('(()=>{const e=document.getElementById("note-body");e.value="随手记下，接着做\\n\\n把想法先放在这里，稍后再整理。";e.dispatchEvent(new Event("input",{bubbles:true}));return true})()');
+    await note.evaluate('window.NoteUI.flush()');
+    await shot(note,'notes');
+    const noteId = await note.evaluate('state.id');
+    await note.evaluate(`(()=>{const title=document.getElementById('note-page-title');title.value='周末速记';title.dispatchEvent(new Event('input',{bubbles:true}));})()`);
+    await note.evaluate('window.NoteUI.flush()');
+    const savedNote = await main.evaluate(`window.suira.notes.get(${JSON.stringify(noteId)})`);
+    assert.equal(savedNote.customTitle,'周末速记');
+    assert.ok(savedNote.text.startsWith('随手记下，接着做'));
     const demo = await main.evaluate(`(()=>{const c=document.createElement('canvas');c.width=400;c.height=240;const x=c.getContext('2d');x.fillStyle='#dce8ff';x.fillRect(0,0,400,240);return c.toDataURL()})()`);
     assert.equal((await main.evaluate(`window.suira.imageEditor.open({dataUrl:${JSON.stringify(demo)}})`)).ok,true);
     const imageEditor = await page(t => t.url.includes('mode=image-editor'));
@@ -261,7 +299,7 @@ class RegionCheck {
     assert.equal((await imageEditor.evaluate(`window.suira.imageEditor.finish({dataUrl:${JSON.stringify(demo)},action:'pin'})`)).ok,true);
     await check('/pin.html');
     console.log('PASS independent windows, real native corners, resize and maximize/restore');
-    if(screenshots)fs.writeFileSync(path.join(root,'docs/theme-foundation-'+require('../package.json').version+'.json'),JSON.stringify({version:require('../package.json').version,fontPolicy:'MiSans on main workbench only; system font on utility windows',checks:foundationResults},null,2)+'\n');
+    if(screenshots && !process.env.SUIRA_REVIEW_SHOTS)fs.writeFileSync(path.join(root,'docs/theme-foundation-'+require('../package.json').version+'.json'),JSON.stringify({version:require('../package.json').version,fontPolicy:'MiSans on main workbench only; system font on utility windows',checks:foundationResults},null,2)+'\n');
     if (process.argv.includes('--preview')) await wait(45000);
   } catch (error) {
     if (fs.existsSync(path.join(tmp, 'app.log'))) console.error(fs.readFileSync(path.join(tmp, 'app.log'), 'utf8').slice(-1800));

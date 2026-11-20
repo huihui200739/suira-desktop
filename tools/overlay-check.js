@@ -671,8 +671,8 @@ const check = (name, cond, detail) => {
     })()`);
     const bd = JSON.parse(bindings);
     // undo / cancel / pin / save / ocr（.token-button）/ copy（.complete-button）
-    check('工具栏带 data-action 的按钮数量完整', bd.total === 8, bindings);
-    const buttonsWithAction = ['undo', 'cancel', 'pin', 'save', 'ocr', 'translate', 'copy','long'];
+    check('工具栏带 data-action 的按钮数量完整', bd.total === 9, bindings);
+    const buttonsWithAction = ['undo', 'reselect', 'cancel', 'pin', 'save', 'ocr', 'translate', 'copy', 'long'];
     const wired = bd.classes.map((c) => String(c).split('|')[1]);
     for (const action of buttonsWithAction) {
       check('按钮 ' + action + ' 已绑定', wired.includes(action), JSON.stringify(wired));
@@ -776,6 +776,20 @@ const check = (name, cond, detail) => {
     check('第二次 shown 后仍是空白状态（无选区 / 无工具栏）',
       asl.selectionHidden === true && asl.dockHidden === true, afterSecondLoad);
     check('第二次 shown 的埋点已刷新', asl.shownAt > 0 && asl.imageReadyAt > 0, afterSecondLoad);
+
+    const reselection = await evaluate(send, `(() => {
+      selectWholeScreen();
+      addAnnotation({type:'rect',x:50,y:50,w:40,h:40,color:state.color,width:4});
+      window.__canceled = false;
+      document.querySelector('[data-action="reselect"]').click();
+      const cleared = !state.selection && state.annotations.length === 0 && toolDock.hidden && !window.__canceled;
+      root.dispatchEvent(new PointerEvent('pointerdown',{button:0,clientX:70,clientY:90,bubbles:true}));
+      root.dispatchEvent(new PointerEvent('pointerup',{button:0,clientX:240,clientY:220,bubbles:true}));
+      const ready = state.selectionReady && state.selection.w === 170 && !toolDock.hidden;
+      document.dispatchEvent(new KeyboardEvent('keydown',{key:'Delete',bubbles:true,cancelable:true}));
+      return {cleared,ready,deleteCleared:!state.selection && !window.__canceled};
+    })()`);
+    check('重选清除旧选区和标注，可以在同一截图中重新画框', reselection.cleared && reselection.ready && reselection.deleteCleared, reselection);
 
     console.log('\n== 原始像素与分数 DPI 裁剪 ==');
     const fidelity=await evaluate(send, `(async()=>{

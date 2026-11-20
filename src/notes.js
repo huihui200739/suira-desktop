@@ -2,11 +2,8 @@
 /*
  * 速记窗口。
  *
- * 边界与取舍：
- * - 只做纯文本。富文本/Markdown 是另一个量级，不做半成品（见 BATCH3-GAP-ANALYSIS 速记一节）。
- * - 标题由正文第一行推导，不另设输入框：速记的价值是「少一次决定」。
- * - 逐字落盘会重写整个数据文件，所以输入是防抖的；关窗与 Esc 前补一次同步。
- * - 窗口位置由主进程记住（store.setNoteBounds），这里不重复实现，也不自己算屏幕。
+ * 正文保存有防抖，关窗时补保存。标题可留空，由正文首行派生。
+ * 已开的速记按各自 ID 保存，列表可进入另一条速记。
  */
 
 const $ = (selector) => document.querySelector(selector);
@@ -40,7 +37,8 @@ function renderNote(note) {
   state.id = note.id;
   state.pinned = Boolean(note.pinned);
   document.title = `随序 ${note.title || '速记'}`;
-  $('#note-title').textContent = note.title || '速记';
+  $('#note-title').textContent = note.text || note.customTitle ? (note.title || '速记') : '随序速记';
+  $('#note-page-title').value = note.customTitle || '';
   // 只在内容真的不同时覆盖：否则每次广播都会把光标弹到末尾
   const body = $('#note-body');
   if (body.value !== (note.text || '')) body.value = note.text || '';
@@ -54,21 +52,40 @@ function renderNote(note) {
 /* ---------- 写入 ---------- */
 
 let saveTimer = null;
+let saveInFlight = null;
+let titleDirty = false;
+let indexNotes = [];
+let indexRevision = 0;
+
+function noteDraft() {
+  return {id:state.id, text:$('#note-body').value, ...(titleDirty ? {title:$('#note-page-title').value} : {})};
+}
 
 async function pushText() {
-  if (!state.id || !state.dirty) return;
+  if (saveInFlight) await saveInFlight;
+  if (!state.id || !state.dirty) return true;
+  const draft = noteDraft();
   state.dirty = false;
+  titleDirty = false;
   setSaved('正在保存…', 'saving');
-  try {
-    const result = await window.suira.notes.update({ id: state.id, text: $('#note-body').value });
-    if (!result || result.ok === false) throw new Error((result && result.error) || '保存失败');
-    setSaved('已保存');
-    showError('');
-  } catch (error) {
-    state.dirty = true;
-    setSaved('未保存', 'error');
-    showError(error.message || '保存失败');
-  }
+  const save = (async () => {
+    try {
+      const result = await window.suira.notes.update(draft);
+      if (!result?.ok) throw new Error(result?.error || '保存失败');
+      if (!state.dirty) setSaved('已保存');
+      showError('');
+      return true;
+    } catch (error) {
+      state.dirty = true;
+      titleDirty ||= Object.hasOwn(draft, 'title');
+      setSaved('未保存', 'error');
+      showError(error.message || '保存失败');
+      return false;
+    }
+  })();
+  saveInFlight = save;
+  try { return await save; }
+  finally { if (saveInFlight === save) saveInFlight = null; }
 }
 
 function scheduleSave() {
@@ -82,13 +99,35 @@ function scheduleSave() {
 async function boot() {
   const body = $('#note-body');
 
-  body.addEventListener('input', () => {
+  const title = $('#note-page-title');
+  const update = () => {
     state.dirty = true;
     renderCount(body.value);
-    // 标题随正文一起长出来，不等保存回来
-    const first = body.value.split(/\r?\n/).map((line) => line.trim()).find(Boolean) || '';
-    $('#note-title').textContent = first ? first.slice(0, 120) : '速记';
+    const first = body.value.split(/\r?\n/).find(line => line.trim())?.trim();
+    $('#note-title').textContent = (title.value.trim() || first || '随序速记').slice(0, 120);
     scheduleSave();
+  };
+  body.addEventListener('input', update);
+  title.addEventListener('input', () => { titleDirty = true; update(); });
+  title.addEventListener('keydown', event => {
+    if (event.key === 'Enter' && !event.isComposing) { event.preventDefault(); body.focus(); }
+  });
+  $('#note-checklist').addEventListener('click', () => {
+    const start = body.selectionStart;
+    const prefix = start && body.value[start-1] !== '\n' ? '\n- [ ] ' : '- [ ] ';
+    body.setRangeText(prefix, start, start, 'end');
+    body.focus();
+    update();
+  });
+  $('#note-search').addEventListener('input', renderIndex);
+  $('#note-pages').addEventListener('click', async event => {
+    const button = event.target.closest('[data-id]');
+    if (!button || !(await pushText())) return;
+    if (innerWidth < 581) closeIndex();
+    try {
+      const result = await window.suira.notes.open(button.dataset.id);
+      if (!result?.ok) throw new Error(result?.error || '打开失败');
+    } catch (error) { showError(error.message || '打开失败'); }
   });
 
   // Esc 逐级返回：先收「全部速记」浮层，再收窗口。
@@ -120,14 +159,17 @@ async function boot() {
     }
   });
 
-  $('#note-new').addEventListener('click', async () => {
-    await pushText();
+  const createPage = async () => {
+    if (!(await pushText())) return;
     try {
-      await window.suira.notes.create();
+      const result = await window.suira.notes.create();
+      if (result?.ok === false) throw new Error(result.error || '新建失败');
     } catch (error) {
       showError(error.message || '新建失败');
     }
-  });
+  };
+  $('#note-new').addEventListener('click', createPage);
+  $('#note-new-page').addEventListener('click', createPage);
 
   $('#note-delete').addEventListener('click', async () => {
     // 删除不可撤销：先确认，再删除（速记没有回收站）
@@ -149,6 +191,7 @@ async function boot() {
     try {
       const note = await window.suira.notes.get(id);
       renderNote(note);
+      if (innerWidth >= 620) await openIndex();
       body.focus();
       // 光标放到末尾：接着上次的写，而不是从开头插入
       body.setSelectionRange(body.value.length, body.value.length);
@@ -166,44 +209,56 @@ async function boot() {
     $('#note').dataset.pinned = String(state.pinned);
     $('#note-pin').setAttribute('aria-pressed', String(state.pinned));
     $('#note-pin').setAttribute('title',state.pinned?'取消置顶':'钉在桌面上');
-    if (!state.dirty && document.activeElement !== body) renderNote(mine);
+    if (!state.dirty && !saveInFlight && ![body,title].includes(document.activeElement)) renderNote(mine);
+    if (!$('#note-index').hidden) { indexNotes = notes || []; renderIndex(); }
   });
 }
 
 /* ---------- 全部速记 ---------- */
 
 function closeIndex() {
+  indexRevision++;
   $('#note-index').hidden = true;
+  $('#note').classList.remove('with-index');
   $('#note-index-btn').setAttribute('aria-expanded', 'false');
 }
 
-async function toggleIndex() {
-  const panel = $('#note-index');
-  if (!panel.hidden) { closeIndex(); return; }
-  await pushText();
-  let notes = [];
+function renderIndex() {
+  const query = $('#note-search').value.trim().toLocaleLowerCase();
+  const notes = indexNotes.map((note,index) => ({note,page:index+1}))
+    .filter(({note}) => !query || `${note.title} ${note.text}`.toLocaleLowerCase().includes(query));
+  const list = $('#note-pages');
+  const scroll = list.scrollTop;
+  const focusedId = list.contains(document.activeElement) ? document.activeElement.dataset.id : '';
+  list.innerHTML = notes.length ? notes.map(({note,page}) => {
+    const text = (note.text || '').trim();
+    const preview = (note.customTitle ? text : text.split(/\r?\n/).slice(1).join(' ')).trim();
+    return `<button type="button" data-id="${escapeHtml(note.id)}" aria-current="${note.id === state.id}">
+      <small>第 ${page} 页${note.pinned ? ' · 已置顶' : ''}</small>
+      <b>${escapeHtml(text || note.customTitle ? note.title : '新页面')}</b>
+      <span>${escapeHtml((preview || (text ? '无摘要' : '空白页面')).slice(0, 100))}</span>
+    </button>`;
+  }).join('') : `<p class="note-index-empty">${query ? '没有匹配的速记' : '还没有速记'}</p>`;
+  list.scrollTop = scroll;
+  if (focusedId) [...list.querySelectorAll('[data-id]')].find(button => button.dataset.id === focusedId)?.focus({preventScroll:true});
+}
+
+async function openIndex() {
+  const revision = ++indexRevision;
   try {
-    notes = await window.suira.notes.list();
-  } catch (error) {
-    showError(error.message || '读取速记列表失败');
-    return;
-  }
-  panel.innerHTML = notes.length
-    ? notes.map((note) => `
-        <button type="button" data-id="${escapeHtml(note.id)}" aria-current="${note.id === state.id}">
-          ${escapeHtml(note.title || '未命名速记')}<small>${(note.text || '').length} 字${note.pinned ? '，已钉' : ''}</small>
-        </button>`).join('')
-    : '<p class="note-index-empty">还没有其它速记</p>';
-  panel.hidden = false;
-  $('#note-index-btn').setAttribute('aria-expanded', 'true');
-  panel.querySelectorAll('button').forEach((button) => {
-    button.addEventListener('click', async () => {
-      closeIndex();
-      // 切到已开着的窗口由主进程置前；没开就新开一个
-      const result = await window.suira.notes.open(button.dataset.id);
-      if (!result || result.ok === false) showError((result && result.error) || '打开失败');
-    });
-  });
+    const notes = await window.suira.notes.list();
+    if (revision !== indexRevision) return;
+    indexNotes = notes;
+    renderIndex();
+    $('#note-index').hidden = false;
+    $('#note').classList.add('with-index');
+    $('#note-index-btn').setAttribute('aria-expanded', 'true');
+  } catch (error) { showError(error.message || '读取速记列表失败'); }
+}
+
+async function toggleIndex() {
+  if (!$('#note-index').hidden) { closeIndex(); return; }
+  if (await pushText()) await openIndex();
 }
 
 function escapeHtml(value) {
@@ -215,14 +270,13 @@ function escapeHtml(value) {
 async function closeWindow() {
   // 关窗前补一次保存：防抖窗口里的最后一次输入不能丢
   clearTimeout(saveTimer);
-  try { await pushText(); } catch { /* 保存失败也要关得了窗；错误已显示在窗口里 */ }
-  window.suira.notes.hideWindow();
+  if (await pushText()) window.suira.notes.hideWindow();
 }
 
 window.addEventListener('beforeunload', () => {
   clearTimeout(saveTimer);
-  if (state.id && state.dirty) window.suira.notes.update({ id: state.id, text: $('#note-body').value });
+  if (state.id && state.dirty) window.suira.notes.update(noteDraft());
 });
 
-window.NoteUI={flush:async()=>{clearTimeout(saveTimer);if(!state.id||!state.dirty)return;const result=await window.suira.notes.update({id:state.id,text:$('#note-body').value});if(!result?.ok)throw Error(result?.error||'速记保存失败');state.dirty=false;}};
+window.NoteUI={flush:async()=>{ clearTimeout(saveTimer); if (!(await pushText())) throw Error('速记保存失败'); }};
 boot();
