@@ -1,0 +1,29 @@
+{
+  "version": "0.2.49",
+  "artifact": "Suira-0.2.49-x64.exe",
+  "bytes": 171633858,
+  "sha256": "B03895D05A04428AFDA781A813AB7E3BBAAFB70BEC618D6947D928B835D722E3",
+  "sha512": "JuDFBBmlxpeJAV5kROrCvl8AQHcGKP3icLiCniuHu6i+14J6ZjpqF+uaeo5QIHA2X6SDe02/If9g3ha/xgit2w==",
+  "platform": "win32",
+  "arch": "x64",
+  "electron": "45.0.0",
+  "checkedSourceFiles": 162,
+  "checks": [
+    "source-payload-byte-match",
+    "no-test-profile-or-obsolete-key-hook",
+    "installer-archive-crc",
+    "updater-feed-and-sha512-match",
+    "original-font-and-license-sha256-in-nsis-payload",
+    "anonymous-latest-yml-and-four-remote-asset-digests",
+    "anonymous-0.2.48-to-0.2.49-download-sha512",
+    "same-version-reports-latest"
+  ],
+  "fontSha256": "0ddef90648998900175cfdca9a6f087a2544c182f130b0ad4f7e94a03a115e79",
+  "signature": "unsigned",
+  "published": true,
+  "payloadSha256": "BE59FDA7818DE3416DB64ED2FAEA52DC8D446DE0447B075E17B2EE055C7186F1",
+  "executableSha256": "27939B045805A25FEB25D6A7938660DA03B21C59C1A10D1BA3A4B1C6AD45B0D2",
+  "releaseUrl": "https://github.com/huihui200739/suira-updates/releases/tag/v0.2.49",
+  "publishedAt": "2026-11-20T01:21:04Z",
+  "buildNote": "On this build host electron-builder could not run its temporary NSIS uninstaller generator. Its bundled UninstallerReader extracted the embedded uninstaller during the build; the production installer script was unchanged."
+}

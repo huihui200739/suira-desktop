@@ -25,6 +25,12 @@ const article='# 山间拍摄手记\n\n在山里把一个周末放慢。带上�
  await md.send('Emulation.setDeviceMetricsOverride',{width:1440,height:960,deviceScaleFactor:1,mobile:false});
  const controller='window.WorkspaceUI.documentEditor';
  assert.equal(await md.evaluate('document.getElementById("md-split").dataset.view'),'edit');
+ assert.equal(await md.evaluate('document.getElementById("md-list").hidden'),false,'Documents stay reachable while editing');
+ assert.equal(await md.evaluate('document.querySelector("#md-list .is-active b").textContent'),'山间拍摄手记.md');
+ assert.equal(await md.evaluate('document.querySelector("#md-source-highlight .md-syntax-heading").textContent'),'山间拍摄手记');
+ assert.equal(await md.evaluate('document.getElementById("md-source-highlight").textContent.slice(0,-1) === document.getElementById("md-editor").value'),true,'Source layer preserves every character');
+ await shot(md,'source');
+ await md.evaluate('document.getElementById("md-outline-toggle").click();true');
  await md.evaluate('document.querySelector("[data-md-view=write]").click();true');
  await until(()=>md.evaluate('Boolean(window.WorkspaceUI.documentEditor && document.querySelector("#md-rich h1"))'));
  assert.equal(await md.evaluate(`window.suira.workspace.list('markdown').then(a=>a.find(d=>d.id===${JSON.stringify(doc.id)}).text)`),article,'Opening visual mode must not rewrite Markdown');
@@ -34,7 +40,7 @@ const article='# 山间拍摄手记\n\n在山里把一个周末放慢。带上�
  assert.equal(await md.evaluate('(()=>{const r=document.querySelector(".document-main").getBoundingClientRect(),h=document.querySelector(".titlebar").getBoundingClientRect();return Math.abs(r.right-(innerWidth-1))<=1&&Math.abs(r.bottom-(innerHeight-1))<=1&&Math.abs(r.top-h.bottom)<=1;})()'),true,'White document reaches the titlebar, bottom and right edge');
  assert.equal(await md.evaluate('document.getElementById("md-rich").clientHeight>400'),true,'Visual editing has a real scroll viewport');
  await md.evaluate('document.querySelector("#md-outline [data-fold]:not(:disabled)").click();true');assert.equal(await md.evaluate('document.querySelector(".md-toc-children").hidden'),true);await md.evaluate('document.querySelector("#md-outline [data-fold]:not(:disabled)").click();true');
- await md.evaluate('document.getElementById("md-sidebar-collapse").click();true');assert.equal(await md.evaluate('document.querySelector(".document-main").getBoundingClientRect().left<50'),true,'Whole outline collapses');await md.evaluate('document.getElementById("md-sidebar-collapse").click();true');
+ await md.evaluate('document.getElementById("md-sidebar-collapse").click();true');assert.equal(await md.evaluate('document.getElementById("md-list").hidden'),false,'Closing outline restores documents');await md.evaluate('document.getElementById("md-sidebar-collapse").click();true');
  await shot(md,'writing');
  const selectText=async needle=>md.evaluate(`(()=>{const find=(node,pos=0)=>{if(node.type==='text'){const i=node.text.indexOf(${JSON.stringify(needle)});if(i>=0)return {from:pos+i,to:pos+i+${needle.length}};}let at=pos+(node.type==='doc'?0:1);for(const child of node.content||[]){const hit=find(child,at);if(hit)return hit;const size=n=>n.type==='text'?n.text.length:(n.content?2+n.content.reduce((s,c)=>s+size(c),0):1);at+=size(child);}};const range=find(${controller}.getJSON());if(!range)throw Error('Selection not found');${controller}.focus();${controller}.setSelection(range.from,range.to);return range;})()`);
  await selectText('在山里把一个周末放慢');

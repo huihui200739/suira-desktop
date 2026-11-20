@@ -29,7 +29,7 @@ async function until(fn){let last;for(let i=0;i<120;i++){try{const value=await f
  await md.evaluate(`(()=>{const e=document.getElementById('md-editor'),i=e.value.indexOf('原文保持');e.focus();e.setSelectionRange(i,i+4);document.querySelector('[data-document-menu=color]').click();document.querySelector('[data-command=color][data-value="#b93836"]').click();return true;})()`);assert.equal(await md.evaluate('document.getElementById("md-editor").value.includes('+JSON.stringify('<span style="color:#b93836">原文保持</span>')+')'),true,'Source palette preserves the selected content');
  await until(()=>md.evaluate('Boolean(document.querySelector("#md-preview span[style]"))'));
  await view('preview');await md.evaluate('document.activeElement.blur();true');const before=await md.evaluate('document.getElementById("md-editor").value');await key('/');await until(()=>md.evaluate('Boolean(document.querySelector(".md-command-query"))'));assert.equal(await md.evaluate('document.getElementById("md-editor").value'),before,'Opening preview slash never changes the source');await type('table');await key('Enter');assert.equal(await md.evaluate('document.getElementById("md-split").dataset.view'),'edit');assert.equal(await md.evaluate('(document.getElementById("md-editor").value.match(/列一/g)||[]).length'),2,'Preview insert returns to editable source');
- await end();await type('\n/h');await key('ArrowDown');await key('ArrowDown');await key('Enter');assert.equal(await md.evaluate('document.getElementById("md-editor").value.endsWith("## ")'),true,'Arrow keys choose the focused command, not always the first');
+ await end();await type('\n/h');await until(()=>md.evaluate('Boolean(document.querySelector(".md-context-menu [data-command=heading]"))'));await key('ArrowDown');await key('ArrowDown');await key('Enter');assert.equal(await md.evaluate('document.getElementById("md-editor").value.endsWith("## ")'),true,'Arrow keys choose the focused command, not always the first');
  await end();await type('\n\n> 9) [x] 中文事项');await key('Enter');
  const source=()=>md.evaluate('document.getElementById("md-editor").value');
  assert.ok((await source()).endsWith('> 9) [x] 中文事项\n> 10) [ ] '));
@@ -51,6 +51,7 @@ async function until(fn){let last;for(let i=0;i<120;i++){try{const value=await f
    document.querySelector('[data-md-view=split]').click();
  })()`);
  await until(()=>md.evaluate('document.querySelectorAll("#md-outline [data-heading]").length === 2'));
+ await md.evaluate('document.getElementById("md-outline-toggle").click();true');
  const alignment = `(() => {
    const preview = document.getElementById('md-preview');
    const heading = preview.querySelector('[data-md-heading="1"]');

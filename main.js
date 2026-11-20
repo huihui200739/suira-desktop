@@ -378,10 +378,17 @@ function queuePanelConfiguration(task) {
   return next;
 }
 
+const PINNED_TOGGLE_VOICE_ALTERNATE = 'Alt+F8';
+function voicePinConflict(voice, pinnedToggle) {
+  return normalizeAccelerator(voice) === 'alt+h' && normalizeAccelerator(pinnedToggle) === 'alt+h';
+}
+
 async function commitPanelConfiguration(bindings, requested = {}, options = {}) {
   const before = store.getPanelBindings();
   const snapshot = shortcutManager.snapshot();
   const dedicated = { ...snapshot.bindings, ...shortcutPatchForPanel(before, bindings, snapshot.bindings), ...requested };
+  const movedPinnedToggle = dedicated.voice !== snapshot.bindings.voice && voicePinConflict(dedicated.voice, dedicated.pinnedToggle);
+  if (movedPinnedToggle) dedicated.pinnedToggle = PINNED_TOGGLE_VOICE_ALTERNATE;
   const desired = panelGlobalBindings(bindings, dedicated);
   const patch=Object.fromEntries(Object.entries(desired).filter(([name,value])=>value!==(snapshot.bindings[name]||'')));
   const momentary = options.momentary ?? momentaryAccelerator();
@@ -400,7 +407,8 @@ async function commitPanelConfiguration(bindings, requested = {}, options = {}) 
   }
   broadcast('panel:changed');
   publishShortcutStatus();
-  return { ok: true, status: shortcutManager.snapshot().status };
+  return { ok: true, status: shortcutManager.snapshot().status,
+    ...(movedPinnedToggle ? { message: 'Alt+H 已绑定语音输入，钉图显隐移至 Alt+F8' } : {}) };
 }
 
 function panelState() {
@@ -1338,7 +1346,10 @@ async function openVoiceInput() {
     return { ok: true };
   }
   const panelTarget = quickWindow?.isFocused() ? quickInvocationTarget : null;
-  const foreground = panelTarget ? null : await queryForeground();
+  const foreground = panelTarget ? null : await Promise.race([
+    queryForeground().catch(() => null),
+    new Promise(resolve => setTimeout(() => resolve(null), 150))
+  ]);
   if (voiceWindow && !voiceWindow.isDestroyed()) return { ok: true };
   voiceSessionTarget = panelTarget || captureTarget(Number(foreground?.pid) === process.pid ? null : foreground, { selectionMethod: 'voice' });
   hideQuickPanel();
@@ -1368,11 +1379,14 @@ async function openVoiceInput() {
       voiceWindow = null;
     }
   });
-  win.loadFile(path.join(__dirname, 'src', 'voice-input.html')).catch(error => {
+  try {
+    await win.loadFile(path.join(__dirname, 'src', 'voice-input.html'));
+    return { ok: true };
+  } catch (error) {
     console.warn('语音窗口加载失败:', error.message);
     if (!win.isDestroyed()) win.close();
-  });
-  return { ok: true };
+    return { ok: false, error: '语音窗口加载失败，请重试' };
+  }
 }
 
 function toggleQuickPanel() {
@@ -3384,10 +3398,7 @@ function registerIpc() {
     if (BrowserWindow.fromWebContents(event.sender) !== voiceWindow) return { ok: false, error: '语音窗口无效' };
     const win = voiceWindow;
     win?.close();
-    showMain('settings');
-    const send = () => mainWindow?.webContents.send('settings:translation');
-    if (mainWindow?.webContents.isLoadingMainFrame()) mainWindow.webContents.once('did-finish-load', send);
-    else send();
+    showMain('settings:voice');
     return { ok: true };
   });
   ipcMain.handle('voice:transcribe', async (event, payload) => {
@@ -4000,7 +4011,7 @@ function registerIpc() {
     if (!outcome.ok) return { ok: false, error: outcome.error };
     if (outcome.changed) {
       const saved = await commitPanelConfiguration(outcome.bindings);
-      if (!saved.ok) return saved;
+      if (!saved.ok || saved.message) return saved;
     }
     return { ok: true, message: outcome.message };
   }));
@@ -4009,7 +4020,7 @@ function registerIpc() {
     if (!outcome.ok) return { ok: false, error: outcome.error };
     if (outcome.changed) {
       const saved = await commitPanelConfiguration(outcome.bindings);
-      if (!saved.ok) return saved;
+      if (!saved.ok || saved.message) return saved;
     }
     return { ok: true, message: outcome.message };
   }));
@@ -4589,7 +4600,14 @@ function registerShortcuts() {
       panelCycle: cyclePanelMode,
       pinnedToggle: togglePinnedVisibility,
       clipboardBar: toggleClipboardBar,
-      voice: openVoiceInput,
+      voice: async () => {
+        const result = await openVoiceInput();
+        if (!result.ok) {
+          await showQuickPanel();
+          await quickWindow?.__loaded;
+          quickWindow?.webContents.send('panel:result', result);
+        }
+      },
       legacy: toggleQuickPanel
     },
     bindings: panelGlobalBindings(store.getPanelBindings(),shortcutBindings()),
@@ -4676,6 +4694,15 @@ async function initialize() {
   await themeController.refresh();
   // 旧版三键默认键位迁移到两键组合；改过键的用户不受影响
   await migrateShortcutDefaults();
+  const shortcutSettings = store.getSettings();
+  const voiceChord = shortcutSettings.shortcutVoice
+    ?? (actionKey(store.getPanelBindings(), 'voice') === 'H' ? 'Alt+H' : '');
+  const pinnedChord = shortcutSettings.shortcutPinnedToggle ?? DEFAULT_BINDINGS.pinnedToggle;
+  if (voicePinConflict(voiceChord, pinnedChord) && !Object.values(shortcutBindings()).some(value =>
+    normalizeAccelerator(value) === normalizeAccelerator(PINNED_TOGGLE_VOICE_ALTERNATE))
+    && normalizeAccelerator(momentaryAccelerator()) !== normalizeAccelerator(PINNED_TOGGLE_VOICE_ALTERNATE)) {
+    await store.updateSettings({ shortcutVoice: voiceChord, shortcutPinnedToggle: PINNED_TOGGLE_VOICE_ALTERNATE });
+  }
   // 老版本覆盖表基于 Z/X/V。先还原旧有效绑定，再按实际保存的组合键对齐。
   const currentPanel = migrateLegacyPanelBindings(store.getPanelBindings(), store.data.panelShortcutVersion);
   const alignedPanel = alignPanelShortcuts(currentPanel, shortcutBindings());

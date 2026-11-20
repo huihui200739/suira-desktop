@@ -15,8 +15,9 @@
   let renderedText = null, focusedWriting = false, saveInFlight, visualBundle;
   let viewRevision = 0;
   const editor = $('md-editor'), previewPane = $('md-preview');
+  const sourceHighlight = window.SuiraSourceHighlight?.attach(editor, $('md-source-highlight'));
   let sourceHeadingPositions, ignoreEditorScroll, ignorePreviewScroll;
-  let allDocuments=false, outlineCollapsed=false, outlineItems=[], activeHeading=-1;
+  let allDocuments=false, outlineCollapsed=true, outlineItems=[], activeHeading=-1;
   const foldedHeadings=new Set();
   function setWritingFocus(enabled) {
     focusedWriting = Boolean(enabled && current);
@@ -144,7 +145,7 @@
     const url = link.getAttribute('href');
     if (/^(?:https?:\/\/|suira-image:\/\/[-\w]+$)/i.test(url)) safe(() => checked(api.openLink(url)))();
   });
-  function docList(){const query=$('md-search').value.trim().toLowerCase();$('md-list').innerHTML=docs.filter(d=>allDocuments||!d.meta?.recentHidden).filter(d=>(d.title+' '+d.text).toLowerCase().includes(query)).map(d=>`<button class="document-row ${d.id===current?'is-active':''}" data-document="${d.id}"><span class="recent-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M6 3h8l4 4v14H6z M14 3v5h4 M9 12h6 M9 16h6"/></svg></span><div><b>${esc(d.title)}.md</b><small class="recent-path" title="${esc(d.meta?.externalPath||'随序文档')}">${esc(d.meta?.externalPath||'随序文档')}</small><small>${new Date(d.updatedAt).toLocaleDateString('zh-CN')}</small></div><em>›</em></button>`).join('')||'<div class="workspace-empty">没有匹配的文档</div>';$('md-list').querySelectorAll('[data-document]').forEach(b=>b.onclick=safe(()=>selectDoc(b.dataset.document)));}
+  function docList(){const query=$('md-search').value.trim().toLowerCase();$('md-list').innerHTML=docs.filter(d=>allDocuments||!d.meta?.recentHidden).filter(d=>(d.title+' '+d.text).toLowerCase().includes(query)).map(d=>`<button class="document-row ${d.id===current?'is-active':''}" data-document="${esc(d.id)}" aria-current="${d.id===current?'true':'false'}"><span class="recent-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M6 3h8l4 4v14H6z M14 3v5h4 M9 12h6 M9 16h6"/></svg></span><div><b>${esc(d.title)}.md</b><small class="recent-path" title="${esc(d.meta?.externalPath||'随序文档')}">${esc(d.meta?.externalPath||'随序文档')}</small><small>${new Date(d.updatedAt).toLocaleDateString('zh-CN')}</small></div><em>›</em></button>`).join('')||'<div class="workspace-empty">没有匹配的文档</div>';$('md-list').querySelector('.is-active')?.scrollIntoView({block:'nearest'});$('md-list').querySelectorAll('[data-document]').forEach(b=>b.onclick=safe(()=>selectDoc(b.dataset.document)));}
   function flush() {
     if (!saveInFlight) saveInFlight = saveDocument().finally(() => { saveInFlight = null; });
     return saveInFlight;
@@ -224,6 +225,7 @@
   }
   function dirty(updatePreview = true) {
     revision++;
+    if (updatePreview) sourceHighlight?.schedule();
     $('md-status').textContent = '未保存';
     if (updatePreview) {
       clearTimeout(previewTimer);
@@ -299,6 +301,7 @@
     document.querySelectorAll('[data-md-view]').forEach(b=>{b.classList.toggle('is-active',b.dataset.mdView===view);b.setAttribute('aria-pressed',String(b.dataset.mdView===view));});
     $('md-sync-scroll').closest('label').hidden=view!=='split';
     if (!current) return;
+    sourceHighlight?.refresh();
     if (view === 'write') syncRichDocument();
     else if (richDocument) {
       richDocument.destroy();
@@ -311,10 +314,13 @@
     updateActiveHeading();
   }
   function syncDocumentNavigation(){
-    const isOpen=Boolean(current);if ($('md-focus-toggle')) $('md-focus-toggle').disabled = !isOpen;$('md-search').hidden=isOpen;$('md-list').hidden=isOpen;
-    if($('md-sidebar-label'))$('md-sidebar-label').textContent=isOpen?'目录':allDocuments?'全部文档':'最近打开';
-    $('md-outline').hidden=!isOpen||outlineCollapsed;if($('md-clear-recent'))$('md-clear-recent').hidden=isOpen||allDocuments;if($('md-all-documents'))$('md-all-documents').hidden=isOpen;
-    document.documentElement.classList.toggle('md-outline-collapsed',isOpen&&outlineCollapsed);
+    const isOpen=Boolean(current);
+    const showOutline = isOpen && !outlineCollapsed;
+    if ($('md-focus-toggle')) $('md-focus-toggle').disabled = !isOpen;
+    $('md-search').hidden = showOutline;
+    $('md-list').hidden = showOutline;
+    if($('md-sidebar-label'))$('md-sidebar-label').textContent=showOutline?'文档目录':allDocuments?'全部文档':'最近打开';
+    $('md-outline').hidden=!showOutline;if($('md-clear-recent'))$('md-clear-recent').hidden=isOpen||allDocuments;if($('md-all-documents'))$('md-all-documents').hidden=showOutline;
     for(const button of document.querySelectorAll('[aria-controls="md-outline"]')){button.disabled=!isOpen;button.setAttribute('aria-expanded',String(isOpen&&!outlineCollapsed));button.setAttribute('aria-label',outlineCollapsed?'展开目录':'收起目录');}
   }
   function toggleOutline(){outlineCollapsed=!outlineCollapsed;syncDocumentNavigation();}
@@ -483,8 +489,8 @@
   api.onClosing?.(safe(async()=>{await flush();const result=await api.confirmClose?.(current);if(result?.canceled)return;if(result && !result.ok)throw Error(result.error||'无法保存');await api.closeReady();}));
   window.addEventListener('blur',()=>flush().catch(()=>{}));
   // Preserve every original settings control and listener while changing the layout.
-  document.querySelectorAll('.settings-grid > .setting-card').forEach(card=>{card.dataset.category=card.querySelector('#recipe-name,#setting-currency,#color-history')?'tools':card.querySelector('#setting-translate-provider')?'translation':card.querySelector('#setting-key-longCapture')?'shortcuts':card.classList.contains('about-card')?'about':card.querySelector('#setting-record,#setting-days')?'storage':'general';});
-  function settingTab(value){document.querySelectorAll('[data-setting-tab]').forEach(b=>{b.classList.toggle('is-active',b.dataset.settingTab===value);b.setAttribute('aria-pressed',String(b.dataset.settingTab===value));});document.querySelectorAll('[data-category]').forEach(card=>card.hidden=card.dataset.category!==value);}
+  document.querySelectorAll('.settings-grid > .setting-card').forEach(card=>{card.dataset.category ||= card.querySelector('#recipe-name,#setting-currency,#color-history')?'tools':card.querySelector('#setting-translate-provider')?'translation':card.querySelector('#setting-key-longCapture')?'shortcuts':card.classList.contains('about-card')?'about':card.querySelector('#setting-record,#setting-days')?'storage':'general';});
+  function settingTab(value){window.SuiraGlassSelect?.close();document.querySelectorAll('[data-setting-tab]').forEach(b=>{b.classList.toggle('is-active',b.dataset.settingTab===value);b.setAttribute('aria-pressed',String(b.dataset.settingTab===value));});document.querySelectorAll('[data-category]').forEach(card=>card.hidden=card.dataset.category!==value);document.querySelector('.main-scroll')?.scrollTo(0,0);}
   document.querySelectorAll('[data-setting-tab]').forEach(button=>button.onclick=()=>settingTab(button.dataset.settingTab));settingTab('general');
   const tool=document.documentElement.dataset.tool;
   if(tool){
@@ -504,7 +510,7 @@
       for(const [id,path] of Object.entries(icons)){const button=$(id);button.title=button.textContent;button.setAttribute('aria-label',button.textContent);button.classList.remove('primary-btn');button.classList.add('quiet-btn','tool-icon');button.innerHTML=`<svg viewBox="0 0 24 24" aria-hidden="true"><path d="${path}"/></svg>`;}
       const viewIcons={write:'M4 20l4-1L20 7l-3-3L5 16z',edit:'m8 6-6 6 6 6 M16 6l6 6-6 6 M14 3l-4 18',split:'M3 4h18v16H3z M12 4v16',preview:'M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z M12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6'};
       document.querySelectorAll('[data-md-view]').forEach(b=>{b.title=b.textContent;b.setAttribute('aria-label',b.textContent);b.innerHTML=`<svg viewBox="0 0 24 24"><path d="${viewIcons[b.dataset.mdView]}"/></svg>`;});
-      const search=document.createElement('button');search.className='quiet-btn tool-icon';search.title='搜索文档';search.setAttribute('aria-label',search.title);search.innerHTML='<svg viewBox="0 0 24 24"><circle cx="10" cy="10" r="6"/><path d="m15 15 6 6"/></svg>';search.onclick=safe(async()=>{await flush();docs=await api.list('markdown');await selectDoc('');$('md-search').focus();});top.prepend(search);
+      const search=document.createElement('button');search.className='quiet-btn tool-icon';search.title='搜索文档';search.setAttribute('aria-label',search.title);search.innerHTML='<svg viewBox="0 0 24 24"><circle cx="10" cy="10" r="6"/><path d="m15 15 6 6"/></svg>';search.onclick=safe(async()=>{await flush();docs=await api.list('markdown');outlineCollapsed=true;docList();syncDocumentNavigation();$('md-search').focus();});top.prepend(search);
       const empty=$('md-empty');empty.innerHTML='<span class="welcome-document tool-emblem" data-tool-object="markdown" aria-hidden="true"></span><b>未打开 Markdown</b><p>打开 Markdown 文件，或新建空白文档</p><div class="welcome-actions"><button class="primary-btn" id="welcome-open">打开 Markdown</button><button class="quiet-btn" id="welcome-new">新建空白 Markdown</button></div>';
       $('welcome-open').onclick=()=>$('md-import').click();$('welcome-new').onclick=()=>$('md-new').click();
       const paste=document.createElement('button');paste.className='quiet-btn';paste.id='md-paste';paste.title='从剪贴板新建';paste.textContent='从剪贴板新建';paste.onclick=safe(async()=>{await flush();const clip=await checked(api.clipboard());if(!clip.text.trim())return notify('剪贴板没有文本');const r=await checked(api.save('markdown',{title:'剪贴板文档',text:clip.text}));docs.unshift(r.item);await selectDoc(r.item.id);});empty.querySelector('.welcome-actions').after(paste);
@@ -526,7 +532,7 @@
       focus.title = '专注模式 · Ctrl+Shift+F';
       focus.setAttribute('aria-pressed', 'false');
       focus.onclick = () => setWritingFocus(!focusedWriting);
-      top.replaceChildren(search, home, view, $('md-save'), focus, more);
+      top.replaceChildren(search, home, outline, view, $('md-save'), focus, more);
       const closeMenu=(focus=false)=>{menu.hidden=true;more.setAttribute('aria-expanded','false');window.SuiraGlassSelect?.close();if(focus)more.focus();};
       more.onclick=()=>{if(!menu.hidden){closeMenu();return;}menu.hidden=false;more.setAttribute('aria-expanded','true');const r=more.getBoundingClientRect();menu.style.right=Math.max(8,innerWidth-r.right)+'px';menu.style.top=r.bottom+8+'px';menu.querySelector('button:not(:disabled)')?.focus();};
       menu.addEventListener('click',event=>{if(event.target.closest('button')&&!event.target.closest('.glass-select'))closeMenu();});

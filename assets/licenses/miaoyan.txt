@@ -1,6 +1,9 @@
 MiaoYanCore MarkdownEditing.swift, JavaScript adaptation for Suira.
 Upstream: https://github.com/tw93/MiaoYan/blob/83ddc004353a794856379bb85460b8f2a249ce01/Packages/MiaoYanCore/Sources/MiaoYanCore/MarkdownEditing.swift
 
+Source highlighting roles adapted from:
+https://github.com/tw93/MiaoYan/blob/83ddc004353a794856379bb85460b8f2a249ce01/Helpers/MarkdownRuleHighlighter.swift
+
 MIT License
 
 Copyright (c) 2022 Tw93

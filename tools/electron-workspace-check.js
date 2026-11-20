@@ -73,13 +73,16 @@ async function until(fn){let error;for(let n=0;n<140;n++){try{const value=await 
   const markdownClient=main;
   assert.equal(await main.evaluate('document.getElementById("md-title").closest(".titlebar")!==null'),true);
   assert.equal(await main.evaluate('document.getElementById("md-status").closest(".document-foot")!==null'),true);
-  assert.equal(await main.evaluate('document.querySelector(".tool-top-actions").children.length'),6,"Markdown titlebar exposes search, recent, mode, save, focus and more");
+  assert.equal(await main.evaluate('document.querySelector(".tool-top-actions").children.length'),7,"Markdown titlebar includes the outline toggle");
   await main.evaluate('document.getElementById("md-more").click();true');assert.equal(await main.evaluate('document.getElementById("md-file-menu").hidden'),false);
   await main.evaluate('window.__confirm35=window.confirm;window.confirm=()=>false;document.getElementById("md-delete").click();true');await wait(80);assert.equal(await main.evaluate('document.getElementById("md-title").value'),"工作台计划","Canceling deletion preserves the current document");await main.evaluate('window.confirm=window.__confirm35;true');
   await main.send('Emulation.setDeviceMetricsOverride',{width:900,height:700,deviceScaleFactor:1,mobile:false});
   assert.ok(await main.evaluate('document.documentElement.scrollWidth<=innerWidth'), 'Compact document window must not overflow');
   assert.ok(await main.evaluate('document.querySelector(".window-actions").getBoundingClientRect().right<=innerWidth'), 'Window controls remain reachable');
   await main.send('Emulation.clearDeviceMetricsOverride');
+  assert.equal(await main.evaluate('document.getElementById("md-list").hidden'),false);
+  assert.equal(await main.evaluate('document.getElementById("md-outline").hidden'),true);
+  await main.evaluate('document.querySelector("[aria-controls=md-outline]").click();true');
   assert.equal(await main.evaluate('document.getElementById("md-outline").hidden'),false);
   await main.evaluate('document.querySelector("[aria-controls=md-outline]").click();true');
   assert.equal(await main.evaluate('document.getElementById("md-outline").hidden'),true);
@@ -136,6 +139,37 @@ async function until(fn){let error;for(let n=0;n<140;n++){try{const value=await 
   const imported=await main.evaluate('window.suira.workspace.import()');assert.ok(imported.ok);assert.equal(imported.item.text,'# Imported\n\nThis is a local file.');
   assert.equal((await main.evaluate(`window.suira.workspace.remove('markdown',${JSON.stringify(imported.item.id)})`)).ok,true);
   await go('settings');await main.evaluate(`document.querySelector('[data-setting-tab="translation"]').click();true`);await main.evaluate(`document.getElementById('setting-translate-provider').value='openai';document.getElementById('setting-translate-provider').dispatchEvent(new Event('change'));true`);await wait(150);await shot('33-workspace-settings.png');
+  const settingTabs = ['general','translation','voice','tools','shortcuts','storage','about'];
+  await main.evaluate('window.suira.settings.update({translateProvider:"openai",voiceProvider:"openai"})');
+  for (const [width, height, scale] of [[1440,900,1],[1024,760,1.25],[800,600,1.5]]) {
+    await main.send('Emulation.setDeviceMetricsOverride',{width,height,deviceScaleFactor:scale,mobile:false});
+    for (const tab of settingTabs) {
+      const failures = await main.evaluate(`(()=>{
+        document.querySelector('[data-setting-tab="${tab}"]').click();
+        const cards=[...document.querySelectorAll('.settings-grid > .setting-card:not([hidden])')];
+        const errors=cards.length?[]:['missing settings card'];
+        for(const card of cards){
+          const bounds=card.getBoundingClientRect();
+          if(bounds.left<0 || bounds.right>innerWidth+1)errors.push('card exceeds viewport');
+          for(const row of card.querySelectorAll('.setting-row:not([hidden])')){
+            const children=[...row.children].filter(node=>!node.matches(".glass-select-native") && node.checkVisibility()).map(node=>node.getBoundingClientRect());
+            for(let i=0;i<children.length;i++){
+              const a=children[i];
+              if(a.left<bounds.left-1||a.right>bounds.right+1)errors.push('row outside card');
+              if(children.slice(i+1).some(b=>Math.min(a.right,b.right)-Math.max(a.left,b.left)>1&&Math.min(a.bottom,b.bottom)-Math.max(a.top,b.top)>1))errors.push('row controls overlap: '+row.textContent.trim().slice(0,45));
+            }
+          }
+        }
+        return errors;
+      })()`);
+      assert.deepEqual(failures,[],tab+' at '+width+' / '+scale+'x: '+failures.join(', '));
+    }
+  }
+  await main.send('Emulation.setDeviceMetricsOverride',{width:1360,height:900,deviceScaleFactor:1,mobile:false});
+  await main.evaluate('document.querySelector("[data-setting-tab=voice]").click();true');
+  assert.equal(await main.evaluate('document.getElementById("setting-translate-test").checkVisibility()'),false);
+  assert.equal(await main.evaluate('document.getElementById("setting-voice-open").checkVisibility()'),true);
+  console.log('PASS all seven settings categories at three window sizes and device scales, with separate voice actions');
   await main.evaluate(`document.querySelector('[data-setting-tab="shortcuts"]').click();true`);await until(()=>main.evaluate(`document.getElementById('setting-key-longCapture').value.includes('G')`));
   assert.equal(await main.evaluate(`document.getElementById('status-longCapture').textContent`),'已生效');
   // Trigger the actual registered global callback without competing for the user's OS keys.

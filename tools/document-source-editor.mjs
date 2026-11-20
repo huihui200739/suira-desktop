@@ -69,7 +69,7 @@ window.SuiraSourceDocument={create({element,preview,enabled,readOnly,activate,on
   // the real wrapped-line position without changing focus, selection or scroll.
   const style=getComputedStyle(element),mirror=document.createElement('div');mirror.style.cssText=style.cssText;
   for(const key of ['font','lineHeight','padding','border','boxSizing','letterSpacing','tabSize'])mirror.style[key]=style[key];
-  const r=element.getBoundingClientRect();Object.assign(mirror.style,{position:'fixed',left:r.left+'px',top:r.top+'px',width:r.width+'px',height:'auto',visibility:'hidden',whiteSpace:'pre-wrap',overflowWrap:'break-word'});
+  const r=element.getBoundingClientRect();Object.assign(mirror.style,{position:'fixed',left:r.left+'px',top:r.top+'px',width:element.clientWidth+'px',height:'auto',visibility:'hidden',whiteSpace:'pre-wrap',overflowWrap:'break-word'});
   mirror.textContent=element.value.slice(0,end);const caret=document.createElement('span');caret.textContent='\u200b';mirror.append(caret);document.body.append(mirror);const c=caret.getBoundingClientRect();mirror.remove();
   openMenu('insert',null,{x:c.left,y:c.bottom-element.scrollTop+4},match[1]);slash={from:end-match[1].length-1,to:end};saved=selection();
  }
@@ -107,6 +107,6 @@ window.SuiraSourceDocument={create({element,preview,enabled,readOnly,activate,on
  };
  const outside=e=>{if(!menu?.contains(e.target)&&!e.target.closest('[data-document-menu],[data-rich-format]'))close();};
  element.addEventListener('input',input);element.addEventListener('compositionstart',()=>{composing=true;close();});element.addEventListener('compositionend',()=>{composing=false;updateSlash();});element.addEventListener('contextmenu',context);preview.addEventListener('contextmenu',context);
- document.addEventListener('keydown',key);document.addEventListener('pointerdown',outside);window.addEventListener('resize',()=>close());element.addEventListener('scroll',()=>close());
+ document.addEventListener('keydown',key);document.addEventListener('pointerdown',outside);window.addEventListener('resize',()=>close());element.addEventListener('scroll',()=>{if(slash&&document.activeElement===element)updateSlash();else if(!slash)close();});
  return {apply,openMenu,close};
 }};

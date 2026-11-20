@@ -199,7 +199,7 @@ function keyMarkup(key) {
       ? `<span class="key-letter">${escapeHtml(key.key)}</span>`
       : `<span class="key-letter">${escapeHtml(key.key)}</span>`;
   const shortcutHint = !key.accelerator ? '' : key.shortcutStatus?.recording ? '（全局键录入中）'
-    : key.shortcutStatus?.localOnly ? '（仅面板内）'
+    : key.shortcutStatus?.localOnly ? `（面板内按 ${key.key}，全局快捷键未开启）`
       : `（${key.accelerator.replace(/\+/g, ' + ')}）${key.shortcutStatus?.ok === false ? ' 全局键不可用：' + key.shortcutStatus.error : ''}`;
   const title = bound ? `${key.label}${key.hint ? `：${key.hint}` : ''}${shortcutHint}`
     : custom ? `${key.label}：${key.hint}${shortcutHint}（右键可改绑）`
@@ -488,7 +488,7 @@ async function finishKeyDrag(event) {
     const result = await window.suira.panel.moveBinding({ fromKey, toKey });
     if (!result?.ok) { toast(result?.error || '键位移动失败', 'error'); return; }
     await loadState();
-    $$('.key').find(button => button.dataset.key === toKey)?.focus({ preventScroll: true });
+    $('.key', $('#key-grid')).find(button => button.dataset.key === toKey)?.focus({ preventScroll: true });
     toast(result.message || `已移到 ${toKey} 键`);
   } catch (error) {
     toast(error?.message || '键位移动失败', 'error');
@@ -1198,6 +1198,17 @@ function installEvents() {
       return;
     }
     if (!inInput && event.key === 'F3') { event.preventDefault(); focusSearch(); return; }
+    // An explicit Alt+voice chord can open the recorder while search is focused.
+    // Bare letters and IME keystrokes still belong to the text field.
+    if (event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey) {
+      const voice = keyByChar(event.key);
+      if (voice?.actionId === 'voice' && voice.accelerator?.toLowerCase() === 'alt+' + voice.key.toLowerCase()
+        && (voice.shortcutStatus?.localOnly || voice.shortcutStatus?.ok === false)) {
+        event.preventDefault();
+        pressKey(voice.key);
+        return;
+      }
+    }
     if (inInput) return; // 输入框自行处理，避免把字母解释成动作
     // 聚焦控件时保留浏览器的原生激活行为，空格不再误切换面板。
     if (event.target.closest?.('button') && (event.key === ' ' || event.key === 'Enter')) return;

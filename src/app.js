@@ -732,6 +732,20 @@ function applyTranslateSettings(settings) {
 }
 
 function bindTranslateSettings() {
+  $('#setting-voice-open').addEventListener('click', async () => {
+    try {
+      const result = await window.suira.voice.open();
+      if (!result?.ok) throw Error(result?.error || '无法打开录音窗口');
+    } catch (error) {
+      const status = $('#setting-voice-status');
+      status.className = 'setting-hint is-error';
+      status.textContent = error.message;
+    }
+  });
+  $('#setting-voice-shortcuts').addEventListener('click', () => {
+    $('[data-setting-tab=shortcuts]').click();
+    ($('#setting-global-shortcuts').checked ? $('#setting-key-voice').closest('label') : $('#setting-global-shortcuts').closest('label')).scrollIntoView({block:'nearest'});
+  });
   $('#setting-voice-provider').addEventListener('change', async event => {
     await window.suira.settings.update({ voiceProvider: event.target.value });
     applyTranslateSettings(await window.suira.settings.get());
@@ -933,7 +947,8 @@ function bindShortcutEditors() {
       if (result?.ok) {
         captureSaved = true;
         input.value = prettyAccelerator(accelerator);
-        editor.status.textContent = '已更新';
+        editor.status.textContent = result.message || '已更新';
+        if (result.message) showGlobalToast(result.message);
         editor.status.className = 'shortcut-status is-ok';
         input.blur();
       } else {
@@ -1069,6 +1084,12 @@ async function refreshShortcuts() {
     render('panelCycle', '#setting-key-panelCycle', '#status-panelCycle');
     render('pinnedToggle', '#setting-key-pinnedToggle', '#status-pinnedToggle');
     render('voice', '#setting-key-voice', '#status-voice');
+    const voiceChord = prettyAccelerator(snapshot.bindings?.voice || '');
+    const voiceEntry = snapshot.status?.voice;
+    if ($('#voice-shortcut-summary')) $('#voice-shortcut-summary').textContent = !voiceChord ? '语音输入未绑定组合键。'
+      : !snapshot.globalEnabled ? voiceChord + ' 仅在悬浮板内使用。开启全局快捷键后才能从其他窗口唤起。'
+        : voiceEntry?.ok ? voiceChord + ' 已注册为全局快捷键。'
+          : voiceChord + ' 无法全局使用。' + (voiceEntry?.error || '请检查快捷键设置。');
     render('clipboardBar', '#setting-key-clipboardBar', '#status-clipboardBar');
 
     // 按住型：状态来自 snapshot.status.momentary，除了注册结果还多一个 watching
@@ -1377,7 +1398,7 @@ function installEvents() {
     if (state.page === 'shelf') refreshShelf();
   });
   window.suira.app.onToast((payload) => showGlobalToast(payload.message || '', payload.type || ''));
-  window.suira.app.onNavigate((page) => {if(['settings:shortcuts','settings:tools'].includes(page)){navigate('settings');document.querySelector('[data-setting-tab="'+page.split(':')[1]+'"]')?.click();}else navigate(page);});
+  window.suira.app.onNavigate((page) => {if(['settings:shortcuts','settings:tools','settings:voice'].includes(page)){navigate('settings');document.querySelector('[data-setting-tab="'+page.split(':')[1]+'"]')?.click();}else navigate(page);});
   // 外部改键同步到设置页。
   window.suira.shortcuts.onChanged(() => { refreshShortcuts(); });
   window.suira.ocr.onProgress((payload) => {

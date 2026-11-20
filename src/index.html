@@ -109,7 +109,7 @@
         </section>
         <section class="page" id="page-markdown" aria-label="Markdown">
           <div class="page-head"><div><p class="page-eyebrow">文档 / MARKDOWN</p><h1><span class="tool-emblem page-emblem" data-tool-object="markdown" aria-hidden="true"></span>Markdown</h1><p class="page-description">写下想法，整理成文。</p></div><div class="page-actions"><button id="md-import" class="quiet-btn">打开文件</button><button id="md-new" class="primary-btn">＋ 新建文档</button></div></div>
-          <div class="markdown-layout"><aside class="document-sidebar"><input id="md-search" class="text-input" type="search" placeholder="搜索文档"><div id="md-list"></div></aside><div class="document-main"><div id="md-empty" class="detail-empty"><span class="tool-emblem" data-tool-object="markdown" aria-hidden="true"></span><b>从一个标题开始</b><p>支持标题、表格、任务清单和代码块。文档自动保存在本地。</p></div><div id="md-body" hidden><div class="document-heading"><input id="md-title" aria-label="文档标题" maxlength="120" placeholder="未命名文档"><span id="md-status" role="status"></span><button id="md-save" class="quiet-btn">保存</button><select id="md-export-format" aria-label="导出格式"><option value="md">Markdown (.md)</option><option value="html">网页 (.html)</option><option value="pdf">PDF 文档</option></select><button id="md-export" class="quiet-btn">下载 / 导出</button><button id="md-delete" class="quiet-btn">删除</button></div><div class="markdown-toolbar"><div class="view-switch" aria-label="文档视图"><button data-md-view="edit">源码</button><button data-md-view="split">分栏</button><button data-md-view="preview">预览</button></div></div><nav id="md-outline" class="md-outline" aria-label="文档目录"></nav><div class="markdown-split" id="md-split" data-view="split"><textarea id="md-editor" spellcheck="false" aria-label="Markdown 正文" placeholder="从这里开始写…" maxlength="200000"></textarea><article id="md-preview" class="markdown-preview"></article></div><div class="document-foot"><span id="md-words"></span><label><input id="md-sync-scroll" type="checkbox" checked>同步滚动</label><span>Ctrl + S 保存 / Markdown</span></div></div></div></div>
+          <div class="markdown-layout"><aside class="document-sidebar"><input id="md-search" class="text-input" type="search" placeholder="搜索文档"><div id="md-list"></div></aside><div class="document-main"><div id="md-empty" class="detail-empty"><span class="tool-emblem" data-tool-object="markdown" aria-hidden="true"></span><b>从一个标题开始</b><p>支持标题、表格、任务清单和代码块。文档自动保存在本地。</p></div><div id="md-body" hidden><div class="document-heading"><input id="md-title" aria-label="文档标题" maxlength="120" placeholder="未命名文档"><span id="md-status" role="status"></span><button id="md-save" class="quiet-btn">保存</button><select id="md-export-format" aria-label="导出格式"><option value="md">Markdown (.md)</option><option value="html">网页 (.html)</option><option value="pdf">PDF 文档</option></select><button id="md-export" class="quiet-btn">下载 / 导出</button><button id="md-delete" class="quiet-btn">删除</button></div><div class="markdown-toolbar"><div class="view-switch" aria-label="文档视图"><button data-md-view="edit">源码</button><button data-md-view="split">分栏</button><button data-md-view="preview">预览</button></div></div><nav id="md-outline" class="md-outline" aria-label="文档目录"></nav><div class="markdown-split" id="md-split" data-view="split"><div class="md-source-pane"><pre id="md-source-highlight" aria-hidden="true"></pre><textarea id="md-editor" spellcheck="false" aria-label="Markdown 正文" placeholder="从这里开始写…" maxlength="200000"></textarea></div><article id="md-preview" class="markdown-preview"></article></div><div class="document-foot"><span id="md-words"></span><label><input id="md-sync-scroll" type="checkbox" checked>同步滚动</label><span>Ctrl + S 保存 / Markdown</span></div></div></div></div>
         </section>
         <section class="page" id="page-settings" aria-label="设置">
           <div class="page-head">
@@ -117,7 +117,7 @@
               <h1>设置</h1>
             </div>
           </div>
-          <div class="settings-layout"><nav class="settings-nav" aria-label="设置分类"><button data-setting-tab="general" class="is-active">通用与外观</button><button data-setting-tab="translation">翻译服务</button><button data-setting-tab="tools">工具与动作</button><button data-setting-tab="shortcuts">快捷键</button><button data-setting-tab="storage">数据与隐私</button><button data-setting-tab="about">关于随序</button></nav><div class="settings-grid">
+          <div class="settings-layout"><nav class="settings-nav" aria-label="设置分类"><button data-setting-tab="general" class="is-active">通用与外观</button><button data-setting-tab="translation">翻译与 AI</button><button data-setting-tab="voice">语音输入</button><button data-setting-tab="tools">工具与动作</button><button data-setting-tab="shortcuts">快捷键</button><button data-setting-tab="storage">数据与隐私</button><button data-setting-tab="about">关于随序</button></nav><div class="settings-grid">
             <section class="setting-card">
               <div class="setting-title"><b>剪贴板记录</b></div>
               <label class="setting-row"><span><b>记录剪贴板历史</b><small>复制文字或图片后自动接住</small></span><input type="checkbox" id="setting-record"></label>
@@ -169,7 +169,7 @@
               </div>
               <div class="setting-row" data-translate-row="openai">
                 <span><b>模型</b><small>获取列表后选择模型，名称须与服务商一致</small></span>
-                <div><input class="text-input" type="text" id="setting-translate-model" list="translate-models" placeholder="gpt-4o-mini" spellcheck="false"><datalist id="translate-models"></datalist><button class="quiet-btn" id="setting-translate-models" type="button">获取可用模型</button></div>
+                <div class="setting-field-group"><input class="text-input" type="text" id="setting-translate-model" list="translate-models" placeholder="gpt-4o-mini" spellcheck="false"><datalist id="translate-models"></datalist><button class="quiet-btn" id="setting-translate-models" type="button">获取可用模型</button></div>
               </div>
               <div class="setting-row" data-translate-row="microsoft">
                 <span><b>资源区域</b><small>Azure 翻译资源的 region，例如 eastasia</small></span>
@@ -192,14 +192,21 @@
                   <option value="ru">俄文</option>
                 </select>
               </div>
-              <div class="setting-title"><b>语音输入</b></div>
+              <div class="setting-actions">
+                <button class="quiet-btn" id="setting-translate-test" type="button" title="用一句固定短句验证密钥与网络">测试连接</button>
+                <button class="quiet-btn" id="setting-translate-clear" type="button" title="删除已保存的密钥">清除密钥</button>
+                <span class="setting-hint" id="setting-translate-status">—</span>
+              </div>
+            </section>
+            <section class="setting-card" data-category="voice" aria-labelledby="voice-settings-title">
+              <div class="setting-title"><b id="voice-settings-title">语音输入</b></div>
               <p class="selection-settings-copy">录音仅保留在内存里，最长 120 秒；停止后上传给你配置的 ASR 服务，可能产生服务商费用。识别结果可编辑，再粘贴回唤起面板前的窗口。</p>
               <div class="setting-row">
                 <span><b>识别接口</b><small>聊天模型和语音转写是两种能力；中转站需单独提供对应路由</small></span>
                 <select id="setting-voice-provider"><option value="deepseek">DeepSeek ASR</option><option value="openai">OpenAI 兼容转写</option></select>
               </div>
               <label class="setting-row">
-                <span><b>ASR Base URL</b><small>留空时使用翻译服务地址；否则 DeepSeek 请求 /v1/tools/asr</small></span>
+                <span><b>ASR Base URL</b><small>留空时沿用翻译服务地址。也可填写语音服务的完整接口。</small></span>
                 <input class="text-input" type="text" id="setting-voice-base" placeholder="留空以使用翻译服务地址" spellcheck="false" autocomplete="off">
               </label>
               <label class="setting-row" data-voice-row="openai" hidden>
@@ -211,13 +218,11 @@
                 <input class="text-input" type="password" id="setting-voice-key" placeholder="可留空以复用同源翻译密钥" spellcheck="false" autocomplete="off">
               </label>
               <div class="setting-actions">
+                <button class="quiet-btn" id="setting-voice-open" type="button">打开录音窗口</button>
+                <button class="quiet-btn" id="setting-voice-shortcuts" type="button">设置快捷键</button>
+                <span class="setting-hint" id="voice-shortcut-summary" role="status"></span>
                 <button class="quiet-btn" id="setting-voice-clear" type="button" title="删除单独保存的 ASR 密钥">清除 ASR 密钥</button>
                 <span class="setting-hint" id="setting-voice-status">—</span>
-              </div>
-              <div class="setting-actions">
-                <button class="quiet-btn" id="setting-translate-test" type="button" title="用一句固定短句验证密钥与网络">测试连接</button>
-                <button class="quiet-btn" id="setting-translate-clear" type="button" title="删除已保存的密钥">清除密钥</button>
-                <span class="setting-hint" id="setting-translate-status">—</span>
               </div>
             </section>
             <section class="setting-card">
@@ -227,6 +232,12 @@
               <div class="setting-row"><span><b>OCR 语言</b><small>离线语言包已随应用提供</small></span><select id="setting-langs"><option value="chi_sim+eng">简体中文 + 英文</option><option value="chi_sim">简体中文</option><option value="eng">英文</option></select></div>
             </section>
             <section class="setting-card">
+              <div class="setting-title"><b>快捷键响应范围</b><span>面板内输入框与输入法优先；Ctrl+A/C/V 等编辑按键不注册为全局快捷键。</span></div>
+              <label class="setting-row"><span><b>启用全局快捷键</b><small>默认关闭。关闭时，从托盘或工作台打开面板，再按字母或点击工具；不占用其他应用的按键。开启后，Alt+字母可能覆盖其他应用的菜单快捷键。</small></span><input type="checkbox" id="setting-global-shortcuts"></label>
+              <p id="shortcut-policy-status" class="setting-hint"></p>
+              <button class="quiet-btn" id="shortcut-check" type="button">检查本软件的快捷键</button>
+              <div id="shortcut-check-result" class="shortcut-matrix" aria-live="polite"></div>
+              <p class="setting-hint">面板内：输入框与输入法优先，其次是面板按键。全局：面板唤起等专用组合键优先，派生的 Alt+字母遇到重复就停用，不会偷偷更换唤起键。仅能检查运行中全局热键的注册占用，不能扫描所有软件的内部快捷键；没有统一的“最高优先级”。冲突时不会强制抢占，请换键或在另一软件中手动取消绑定。</p>
               <div class="setting-title"><b>快捷键</b><span>点击输入框录制组合键；冲突时保留原绑定。</span></div><label class="setting-row shortcut-edit"><span><b>长截图</b><small>选区后滚动拼接，回车完成并复制</small></span><input class="shortcut-input" id="setting-key-longCapture" readonly placeholder="点击后按下组合键"></label><p class="shortcut-status" id="status-longCapture"></p><div class="shortcut-actions"><button class="quiet-btn" data-shortcut-clear="longCapture">清除绑定</button></div>
               <label class="setting-row shortcut-edit">
                 <span><b>随手面板</b><small>打开搜索与当前内容动作</small></span>
@@ -257,28 +268,22 @@
                 <input class="shortcut-input" type="text" id="setting-key-pinnedToggle" readonly placeholder="点击后按下组合键">
               </label>
               <p class="shortcut-status" id="status-pinnedToggle"></p>
+              <div class="shortcut-actions"><button class="quiet-btn" data-shortcut-clear="pinnedToggle" type="button" title="解除绑定后不再响应该快捷键">清除绑定</button></div>
               <label class="setting-row shortcut-edit">
                 <span><b>剪贴板历史条</b><small>屏幕底部横向浏览历史内容</small></span>
                 <input class="shortcut-input" type="text" id="setting-key-clipboardBar" readonly placeholder="点击后按下组合键">
               </label>
               <p class="shortcut-status" id="status-clipboardBar"></p>
+              <div class="shortcut-actions"><button class="quiet-btn" data-shortcut-clear="clipboardBar" type="button" title="解除绑定后不再响应该快捷键">清除绑定</button></div>
               <label class="setting-row shortcut-edit">
-                <span><b>语音输入</b><small>默认 Alt + U。全局关闭时可在悬浮板按 U。</small></span>
+                <span><b>语音输入</b><small>启用全局快捷键后，才能在其他应用里用组合键唤起。</small></span>
                 <input class="shortcut-input" type="text" id="setting-key-voice" readonly placeholder="点击后按下组合键">
               </label>
               <p class="shortcut-status" id="status-voice"></p>
               <div class="shortcut-actions">
                 <button class="quiet-btn" data-shortcut-clear="voice" type="button">清除语音快捷键</button>
-                <button class="quiet-btn" data-shortcut-clear="pinnedToggle" type="button" title="解除绑定后不再响应该快捷键">清除绑定</button>
-                <button class="quiet-btn" data-shortcut-clear="clipboardBar" type="button" title="解除绑定后不再响应该快捷键">清除绑定</button>
-                <button class="quiet-btn" id="shortcut-restore" type="button" title="把全部快捷键改回出厂默认">恢复默认</button>
               </div>
-              <div class="setting-title"><b>快捷键响应范围</b><span>面板内输入框与输入法优先；Ctrl+A/C/V 等编辑按键不注册为全局快捷键。</span></div>
-              <label class="setting-row"><span><b>启用全局快捷键</b><small>默认关闭。关闭时，从托盘或工作台打开面板，再按字母或点击工具；不占用其他应用的按键。开启后，Alt+字母可能覆盖其他应用的菜单快捷键。</small></span><input type="checkbox" id="setting-global-shortcuts"></label>
-              <p id="shortcut-policy-status" class="setting-hint"></p>
-              <button class="quiet-btn" id="shortcut-check" type="button">检查本软件的快捷键</button>
-              <div id="shortcut-check-result" class="shortcut-matrix" aria-live="polite"></div>
-              <p class="setting-hint">面板内：输入框与输入法优先，其次是面板按键。全局：面板唤起等专用组合键优先，派生的 Alt+字母遇到重复就停用，不会偷偷更换唤起键。仅能检查运行中全局热键的注册占用，不能扫描所有软件的内部快捷键；没有统一的“最高优先级”。冲突时不会强制抢占，请换键或在另一软件中手动取消绑定。</p>
+              <div class="setting-actions"><button class="quiet-btn" id="shortcut-restore" type="button" title="把全部快捷键改回出厂默认">恢复全部默认快捷键</button></div>
               <div class="setting-title"><b>Markdown 文件打开方式</b><span>安装版支持 .md 与 .markdown。右键文件 → 打开方式 → 选择随序，并按需设为默认应用。便携版可通过“选择电脑上的应用”选择随序.exe。</span></div>
               <div class="setting-title"><b>面板全局直达</b><span>按面板上的键位同步。未生效时可右键键帽更换键位。</span></div><div id="all-shortcut-status" class="shortcut-matrix"></div>
             </section>
@@ -324,7 +329,7 @@
     </div>
   </div>
   <script src="icons.js"></script><script src="ui-motion.js"></script>
-  <script src="vendor/marked.js"></script><script src="vendor/purify.js"></script><script src="markdown-format.js"></script><script src="vendor/document-source-editor.js"></script><script src="calendar-data.js"></script><script src="tool-art.js"></script><script src="workspace.js"></script><script src="text-spacing.js"></script><script src="trail-model.js"></script><script src="trail-view.js"></script><script src="app.js"></script>
+  <script src="vendor/marked.js"></script><script src="vendor/purify.js"></script><script src="markdown-format.js"></script><script src="markdown-source-highlight.js"></script><script src="vendor/document-source-editor.js"></script><script src="calendar-data.js"></script><script src="tool-art.js"></script><script src="workspace.js"></script><script src="text-spacing.js"></script><script src="trail-model.js"></script><script src="trail-view.js"></script><script src="app.js"></script>
   <script src="liquid-glass.js"></script>
   <script src="theme-settings.js"></script><script src="stage-tools.js"></script>
 <script src="glass-select.js"></script></body>
