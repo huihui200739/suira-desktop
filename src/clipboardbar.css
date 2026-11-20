@@ -66,22 +66,26 @@ html[data-glass-backend="native"]:not([data-glass-mode="solid"]) .bar { backgrou
 .bar-card:hover { border-color: var(--accent-7); }
 .bar-card.is-selected { border-color: var(--accent-8); background: var(--bar-active); }
 .card-head, .card-foot { display: flex; align-items: center; gap: 8px; min-width: 0; flex: 0 0 20px; font-size: var(--text-1); color: var(--slate-11); }
-.card-head { flex-basis: 26px; }
-.card-position { position:absolute; inset:24px auto auto 12px; color:var(--slate-11); font-size:var(--text-1); line-height:18px; font-variant-numeric:tabular-nums; }
-.bar-card:not(.is-selected) .card-position { visibility:hidden; }
-.card-actions { display:flex; justify-content:flex-end; align-items:center; width:100%; gap:2px; opacity:0; pointer-events:none; }
-.bar-card:is(:hover,:focus-visible,:has(.card-actions :focus-visible),:has(.card-actions details[open])) .card-actions { opacity:1; pointer-events:auto; }
-.bar-card:is(:hover,:focus-visible,:has(.card-actions :focus-visible),:has(.card-actions details[open])) .card-position { visibility:hidden; }
-.card-actions > button, .card-actions .action-strip summary {
-  display:grid; place-items:center; width:25px; height:25px; padding:0; border:0;
-  border-radius:6px; color:var(--slate-11); background:transparent;
+.card-head { flex-basis: 24px; justify-content: space-between; gap: 4px; }
+.card-select, .card-actions > button, .card-actions .action-strip summary {
+  display: grid; flex: none; place-items: center; width: 23px; height: 24px; padding: 0; border: 0;
+  border-radius: 6px; color: var(--slate-11); background: transparent;
 }
-.card-actions > button:not([aria-disabled="true"]):hover, .card-actions .action-strip summary:hover { color:var(--slate-12); background:var(--slate-4); }
-.card-actions > button[aria-disabled="true"] { opacity:.45; cursor:default; }
-.card-actions > button[aria-pressed="true"] { color:var(--accent-11); }
-.card-actions :is(button, summary) > svg { width:15px; height:15px; }
-.card-actions:has(.action-strip:not([hidden])) > [data-card-action="more"], .card-more-slot:empty { display:none; }
-.card-actions :focus-visible { outline:2px solid var(--focus-ring); outline-offset:-2px; }
+.card-select:hover, .card-actions > button:not([aria-disabled="true"]):hover, .card-actions .action-strip summary:hover {
+  color: var(--slate-12); background: var(--slate-4);
+}
+.card-select svg, .card-actions :is(button, summary) > svg { width: 15px; height: 15px; }
+.card-select .card-select-check { visibility: hidden; }
+.card-select[aria-pressed="true"] { color: var(--accent-11); }
+.card-select[aria-pressed="true"] .card-select-check { visibility: visible; }
+.card-actions { display: flex; justify-content: flex-end; align-items: center; gap: 1px; opacity: 0; pointer-events: none; }
+.bar-card:is(:hover,:focus-visible,:has(:focus-visible),:has(.card-actions details[open], [aria-expanded="true"])) .card-actions {
+  opacity: 1; pointer-events: auto;
+}
+.card-actions > button[aria-disabled="true"] { opacity: .45; cursor: default; }
+.card-actions > button:is([aria-pressed="true"], [data-card-action="share"]) { color: var(--accent-11); }
+.card-actions:has(.action-strip:not([hidden])) > [data-card-action="more"], .card-more-slot:empty { display: none; }
+.card-head :focus-visible { outline: 2px solid var(--focus-ring); outline-offset: -2px; }
 .bar-filters button[data-filter]:not(:first-child)::before { content:""; width:6px; height:6px; border-radius:50%; background:var(--filter-dot,var(--slate-9)); }
 .bar-filters [data-filter="text"] { --filter-dot:var(--violet-9); }
 .bar-filters [data-filter="image"] { --filter-dot:var(--jade-9); }
@@ -96,7 +100,7 @@ html[data-glass-backend="native"]:not([data-glass-mode="solid"]) .bar { backgrou
 .bar-card[data-kind="link"] .card-type { color: var(--blue-11); background: var(--blue-3); }
 .bar-card[data-kind="files"] .card-type { color: var(--amber-11); background: var(--amber-3); }
 .card-favorite { color: inherit; }
-.card-time { margin-left: 0; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.card-metadata { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-variant-numeric: tabular-nums; }
 .card-source-icon { flex: none; display: grid; place-items: center; width: 16px; height: 16px; overflow: hidden; border-radius: 4px; background: var(--slate-4); font-size: var(--text-1); }
 .card-source-icon img { width: 100%; height: 100%; object-fit: contain; }
 .card-visual { min-height: 0; min-width: 0; flex: 1; overflow: hidden; }
@@ -135,7 +139,20 @@ html[data-glass-backend="native"]:not([data-glass-mode="solid"]) .bar { backgrou
 .bar-preview > header { display: flex; align-items: center; gap: 12px; padding: 4px 12px; min-height: 40px; border-bottom: 1px solid var(--slate-5); }
 .bar-preview > header span { flex: none; color: var(--slate-11); font-size: var(--text-1); }
 .bar-preview > header b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
-.bar-preview > header button { margin-left: auto; padding: 4px 8px; flex: none; border-radius: 8px; color: var(--accent-11); }
+.bar-preview > header button { padding: 4px 8px; flex: none; border-radius: 8px; color: var(--accent-11); }
+.bar-preview > header b { margin-inline-end: auto; }
+.bar-text-editor {
+  display: block; width: 100%; height: 100%; resize: none; padding: 8px 10px;
+  border: 1px solid var(--slate-7); border-radius: 8px; color: var(--slate-12);
+  background: var(--slate-2); font: var(--text-2)/1.6 var(--font-ui);
+}
+#bar-share {
+  position: fixed; inset: auto; margin: 0; min-width: 144px; max-width: calc(100vw - 16px);
+  padding: 4px; border: 1px solid var(--slate-6); border-radius: 8px;
+  color: var(--slate-12); background: var(--slate-1); font: var(--text-2)/1.5 var(--font-ui);
+}
+#bar-share button { display: block; width: 100%; padding: 6px 8px; border-radius: 4px; text-align: start; }
+#bar-share button:is(:hover, :focus-visible) { background: var(--bar-active); }
 .bar-preview > header button:hover { background: var(--bar-active); }
 #bar-preview-content { flex: 1; min-height: 0; padding: 12px; overflow: auto; overscroll-behavior: contain; }
 #bar-preview-content pre { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; font: var(--text-2)/1.6 var(--font-ui); user-select: text; }
@@ -172,5 +189,4 @@ html[data-glass-backend="native"]:not([data-glass-mode="solid"]) .bar { backgrou
 
 @media (hover: none) {
   .bar-card.is-selected .card-actions { opacity:1; pointer-events:auto; }
-  .bar-card.is-selected .card-position { visibility:hidden; }
 }

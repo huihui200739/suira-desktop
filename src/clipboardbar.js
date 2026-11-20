@@ -34,15 +34,22 @@
   };
 
   const CARD_ACTIONS = {
-    preview: ['预览（空格）', '<path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z"/><circle cx="12" cy="12" r="2.5"/>'],
+    select: ['选中这条记录', '<circle cx="12" cy="12" r="8"/><path class="card-select-check" d="m8.5 12 2.4 2.4 4.6-4.8"/>'],
+    share: ['分享', '<path d="M12 15V3m-4 4 4-4 4 4M8 10H6a2 2 0 0 0-2 2v7a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-7a2 2 0 0 0-2-2h-2"/>'],
+    crop: ['改图 · 裁剪', '<path d="M7 3v12a2 2 0 0 0 2 2h12M3 7h12a2 2 0 0 1 2 2v12"/>'],
+    open: ['在浏览器打开链接', '<path d="M10.5 13.5a3.5 3.5 0 0 0 5 0l2.5-2.5a3.5 3.5 0 0 0-5-5l-1 1M13.5 10.5a3.5 3.5 0 0 0-5 0L6 13a3.5 3.5 0 0 0 5 5l1-1"/>'],
     copy: ['复制（Ctrl+C）', '<rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 4H6a2 2 0 0 0-2 2v10"/>'],
-    edit: ['改图', '<path d="m5 16-1 4 4-1L20 7l-3-3zM15 6l3 3"/>'],
+    edit: ['编辑', '<path d="m5 16-1 4 4-1L20 7l-3-3zM15 6l3 3"/>'],
     pin: ['钉在桌面', '<path d="m8 3 8 0-1 7 3 4H6l3-4zM12 14v7"/>'],
-    save: ['另存图片', '<path d="M12 3v12m-4-4 4 4 4-4M4 16v4h16v-4"/>'],
+    save: ['下载原图', '<path d="M12 3v12m-4-4 4 4 4-4M4 16v4h16v-4"/>'],
     favorite: ['收藏', '<path d="m12 3 2.75 5.6 6.2.9-4.48 4.36 1.06 6.17L12 17.1l-5.53 2.92 1.06-6.17L3.05 9.5l6.2-.9z"/>'],
     more: ['更多操作（Ctrl+K）', '<circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/>']
   };
 
+  const IMAGE_ACTIONS = ['crop', 'edit', 'pin', 'save'];
+  const SOURCE_LABELS = { screenshot: '随序截图', clipboard: '剪贴板', derived: '随序', user: '手动添加' };
+  const sizeFormat = new Intl.NumberFormat('zh-CN', { maximumFractionDigits: 1 });
+  const encoder = new TextEncoder();
   const state = {
     barApi: null,
     contentApi: null,
@@ -112,6 +119,8 @@
       filePath: typeof raw.filePath === 'string' ? raw.filePath : '',
       thumbnail: typeof raw.thumbnail === 'string' ? raw.thumbnail : '',
       appName: source && typeof source.appName === 'string' ? source.appName : '',
+      sourceType: source?.type || '',
+      textDetails: ['text', 'link'].includes(kind) && raw.text ? textDetails(raw.text) : '',
       createdAt: Number(raw.createdAt) || 0,
       pinned: Boolean(raw.pinned),
       meta: raw.meta && typeof raw.meta === 'object' ? raw.meta : {}
@@ -154,6 +163,27 @@
     return match ? match[0] : '';
   }
 
+  function formatSize(bytes) {
+    if (!Number.isFinite(bytes) || bytes < 0) return '';
+    if (bytes >= 1024 ** 2) return `${sizeFormat.format(bytes / 1024 ** 2)} MB`;
+    if (bytes >= 1024) return `${sizeFormat.format(bytes / 1024)} KB`;
+    return `${sizeFormat.format(bytes)} B`;
+  }
+
+  function textDetails(text) {
+    let characters = 0;
+    for (const character of text) characters++;
+    return `${characters} 字符 · ${formatSize(encoder.encode(text).length)}`;
+  }
+
+  function cardDetails(item) {
+    if (item.kind === 'image') {
+      const { width, height, byteSize } = item.meta;
+      return [width > 0 && height > 0 ? `${width}×${height}` : '', formatSize(byteSize)].filter(Boolean).join(' · ');
+    }
+    return item.kind === 'files' ? `${fileCount(item)} 个文件` : item.textDetails;
+  }
+
   function linkDomain(item) {
     const candidate = firstUrl(item.text) || firstUrl(item.title);
     if (candidate) {
@@ -189,9 +219,19 @@
     return `<span class="card-glyph">${GLYPHS.image}</span><em class="card-placeholder-text">图片</em>`;
   }
 
+  function cardButton(action, item) {
+    const [label, icon] = CARD_ACTIONS[action];
+    const name = action === 'favorite' && item.pinned ? '取消收藏'
+      : action === 'edit' && item.kind === 'image' ? '编辑 · 标注' : label;
+    const extra = action === 'favorite' ? ` aria-pressed="${item.pinned}"`
+      : action === 'select' ? ' class="card-select" aria-pressed="false"'
+      : action === 'share' ? ' aria-haspopup="dialog" aria-controls="bar-share" aria-expanded="false"' : '';
+    return `<button type="button" tabindex="-1" data-card-action="${action}"${extra} aria-label="${name}" title="${name}"><svg viewBox="0 0 24 24" aria-hidden="true">${icon}</svg></button>`;
+  }
+
   function cardMarkup(item, index) {
     const label = KIND_LABELS[item.kind] || '内容';
-    const time = relativeTime(item.createdAt);
+    const time = relativeTime(item.createdAt).replace(/前$/, '');
     let visual;
     let visualClass = 'card-visual';
     if (item.kind === 'image') {
@@ -210,37 +250,40 @@
       visual = `<p class="card-snippet">${escapeHtml(textSummary(item))}</p>`;
     }
 
-    const actions = ['preview'];
-    if (state.returnApi) actions.push('copy');
+    const actions = [];
     if (item.kind === 'image') {
-      if (window.suira?.imageEditor?.open) actions.push('edit');
-      if (window.suira?.actions?.run) actions.push('pin');
       if (state.barApi?.saveImage) actions.push('save');
+      if (state.returnApi) actions.push('share');
+      if (window.suira?.imageEditor?.open) actions.push('crop', 'edit');
+      if (window.suira?.actions?.run) actions.push('pin');
+    } else if (item.kind === 'text' || item.kind === 'link') {
+      if (item.kind === 'link' && window.suira?.actions?.run) actions.push('open');
+      if (state.returnApi) actions.push('share', 'copy');
+      if (state.contentApi?.addText) actions.push('edit');
+    } else if (state.returnApi) {
+      actions.push('copy');
     }
     if (state.contentApi?.togglePin) actions.push('favorite');
     if (window.suira?.actions) actions.push('more');
-    const controls = actions.map(action => {
-      const [label, icon] = CARD_ACTIONS[action];
-      const name = action === 'favorite' && item.pinned ? '取消收藏' : label;
-      const extra = action === 'favorite' ? ` aria-pressed="${item.pinned}"` : action === 'preview' ? ' aria-controls="bar-preview" aria-expanded="false"' : '';
-      return `<button type="button" tabindex="-1" data-card-action="${action}"${extra} aria-label="${name}" title="${name}"><svg viewBox="0 0 24 24" aria-hidden="true">${icon}</svg></button>`;
-    }).join('');
-    const source = item.appName ? `<span class="card-source-icon" data-source-app="${escapeHtml(item.appName)}" role="img" aria-label="来源：${escapeHtml(item.appName)}"><span>${escapeHtml(item.appName.slice(0, 1).toUpperCase())}</span></span>` : '';
-    const name = [label, selectionTitle(item), item.appName, time].filter(Boolean).join('，');
+    const appName = item.appName || SOURCE_LABELS[item.sourceType] || '本机';
+    const source = `<span class="card-source-icon"${item.appName ? ` data-source-app="${escapeHtml(item.appName)}"` : ''} role="img" aria-label="来源：${escapeHtml(appName)}" title="${escapeHtml(appName)}"><span>${escapeHtml(appName.slice(0, 1).toUpperCase())}</span></span>`;
+    const details = cardDetails(item);
+    const metadata = [time, details].filter(Boolean).join(' · ');
+    const name = [label, selectionTitle(item), appName, metadata].filter(Boolean).join('，');
     return `<article class="bar-card" id="bar-card-${index}" role="listitem" tabindex="-1" data-index="${index}" data-id="${escapeHtml(item.id)}" data-kind="${escapeHtml(item.kind)}" aria-label="${escapeHtml(name)}">
-      <div class="card-position" aria-hidden="true">${index + 1} / ${state.items.length}</div>
       <div class="card-head">
+        ${cardButton('select', item)}
         <span class="card-type">${label}${item.pinned ? ' <span class="card-favorite" aria-label="已收藏">★</span>' : ''}</span>
-        <div class="card-actions" role="group" aria-label="卡片操作">${controls}<span class="card-more-slot"></span></div>
+        <div class="card-actions" role="group" aria-label="卡片操作">${actions.map(action => cardButton(action, item)).join('')}<span class="card-more-slot"></span></div>
       </div>
       <div class="${visualClass}">${visual}</div>
-      <div class="card-foot">${source}<span class="card-time">${escapeHtml(time)}</span></div>
+      <div class="card-foot">${source}<span class="card-metadata" title="${escapeHtml(metadata)}">${escapeHtml(metadata)}</span></div>
     </article>`;
   }
 
   const sourceIcons=new Map();let iconsPending=null;
   function loadSourceIcons(){
-    const nodes=$$('.card-source-icon'),names=[...new Set(nodes.map(node=>node.dataset.sourceApp))];
+    const nodes=$$('.card-source-icon[data-source-app]'),names=[...new Set(nodes.map(node=>node.dataset.sourceApp))];
     const paint=()=>nodes.forEach(node=>{const icon=sourceIcons.get(node.dataset.sourceApp);if(!icon||!node.isConnected||node.querySelector('img'))return;const img=document.createElement('img');img.alt='';img.src=icon;img.draggable=false;node.replaceChildren(img);});
     paint();const missing=names.filter(name=>!sourceIcons.has(name));
     if(!missing.length||!state.barApi?.sourceIcons)return;
@@ -319,10 +362,12 @@
         const action = button.dataset.cardAction;
         button.tabIndex = active ? 0 : -1;
         const busy = state.loading || (action === 'copy' && state.committing) ||
-          (action === 'favorite' && state.pinning) || (['edit', 'pin', 'save'].includes(action) && state.imageActionBusy);
+          (action === 'favorite' && state.pinning) ||
+          (card.dataset.kind === 'image' && IMAGE_ACTIONS.includes(action) && state.imageActionBusy);
         if (busy) button.setAttribute('aria-disabled', 'true');
         else button.removeAttribute('aria-disabled');
-        if (action === 'preview') button.setAttribute('aria-expanded', String(active && Boolean(state.previewItem)));
+        if (action === 'select') button.setAttribute('aria-pressed', String(active));
+        if (action === 'share') button.setAttribute('aria-expanded', String(button === shareAnchor));
       }
     }
     const actionId = state.visible && !state.previewItem ? currentSelectedId() : '';
@@ -364,10 +409,14 @@
           if (!unchanged) {
             const active = document.activeElement;
             const action = card.contains(active) ? active.dataset.cardAction : '';
+            if (card.contains(shareAnchor)) closeShare();
             card.innerHTML = next.innerHTML;
             if (action) card.querySelector(`[data-card-action="${action}"]`)?.focus({ preventScroll: true });
           } else {
-            card.querySelector('.card-position').textContent = next.querySelector('.card-position').textContent;
+            const footer = card.querySelector('.card-metadata');
+            const nextFooter = next.querySelector('.card-metadata');
+            footer.textContent = nextFooter.textContent;
+            footer.title = nextFooter.title;
           }
           card.id = next.id;
           card.dataset.index = String(index);
@@ -378,10 +427,14 @@
         existing.delete(item.id);
         if (track.children[index] !== card) track.insertBefore(card,track.children[index] || null);
       });
-      existing.forEach(card => card.remove());
+      existing.forEach(card => {
+        if (card.contains(shareAnchor)) closeShare();
+        card.remove();
+      });
       bindImageFallbacks();
       loadSourceIcons();
     } else {
+      closeShare();
       track.innerHTML = '';
     }
     track.setAttribute('aria-busy', String(state.refreshing || state.loading));
@@ -507,7 +560,7 @@
     }
 
     try {
-      const payload = await api.list({ limit: 120 });
+      const payload = await api.list({ limit: 120, cardDetails: true });
       if (token !== loadToken) return;
       const interacted = state.interactionRevision !== interactionAtStart;
       const keepId = interacted ? currentSelectedId() : options.keepItemId || '';
@@ -617,17 +670,67 @@
 
   /* ---------- 用户操作 ---------- */
 
+  let shareAnchor = null;
+  const sharePanel = $('#bar-share');
+
+  function closeShare() {
+    if (!shareAnchor) return;
+    shareAnchor.setAttribute('aria-expanded', 'false');
+    shareAnchor = null;
+    if (sharePanel.matches(':popover-open')) sharePanel.hidePopover();
+    sharePanel.replaceChildren();
+  }
+
+  function openShare(item, button) {
+    const wasOpen = shareAnchor === button && sharePanel.matches(':popover-open');
+    closeShare();
+    if (wasOpen) return;
+    shareAnchor = button;
+    button.setAttribute('aria-expanded', 'true');
+    const choices = [
+      [item.kind === 'image' ? '复制图片以分享' : item.kind === 'link' ? '复制链接以分享' : '复制文字以分享', () => copySelected('share', item)]
+    ];
+    if (item.kind === 'image' && state.barApi?.saveImage) choices.push(['下载原图以分享', () => runImageAction(item, 'save')]);
+    for (const [label, run] of choices) {
+      const choice = document.createElement('button');
+      choice.type = 'button';
+      choice.textContent = label;
+      choice.addEventListener('click', () => {
+        closeShare();
+        button.focus({ preventScroll: true });
+        run();
+      });
+      sharePanel.append(choice);
+    }
+    const rect = button.getBoundingClientRect();
+    sharePanel.style.top = `${rect.bottom + 4}px`;
+    sharePanel.style.right = `${Math.max(8, innerWidth - rect.right)}px`;
+    sharePanel.showPopover();
+    sharePanel.firstElementChild.focus({ preventScroll: true });
+  }
+
+  async function openLink(item) {
+    try {
+      const result = await window.suira.actions.run(item.id, 'output.open');
+      if (!result?.ok) throw new Error(result?.error || '链接无法打开');
+    } catch (error) {
+      showNotice(errorText(error, '打开链接失败'), true);
+    }
+  }
+
   let previewRevision=0;
   function closePreview(focus = true) {
     previewRevision++;
     if (!state.previewItem) return;
     state.previewItem = null;
     $('#bar-preview').hidden = true;
+    $('#bar-preview-label').textContent = '内容预览';
+    $('#bar-edit-save').hidden = true;
     $('#bar-preview-content').replaceChildren();
     syncSelection();
     if (focus) $$('.bar-card')[state.selected]?.focus({ preventScroll: true });
   }
-  async function previewSelected(){
+  async function previewSelected(edit = false){
     const selected=state.items[state.selected];if(!selected)return;
     const revision=++previewRevision;
     try{
@@ -636,20 +739,55 @@
       const item=normalizeItem(raw,0);if(!item)throw Error('这条记录已不存在');
       state.previewItem=item;$('#bar-preview-title').textContent=selectionTitle(item);
       const body=$('#bar-preview-content');body.replaceChildren();
-      if(item.kind==='image'&&item.thumbnail){const image=document.createElement('img');image.src=item.thumbnail;image.alt=item.title||'图片预览';body.append(image);}
+      if (edit && ['text', 'link'].includes(item.kind)) {
+        const textarea = document.createElement('textarea');
+        textarea.className = 'bar-text-editor';
+        textarea.setAttribute('aria-label', '编辑剪贴板文字');
+        textarea.maxLength = 200000;
+        textarea.value = item.text;
+        body.append(textarea);
+        $('#bar-preview-label').textContent = '编辑内容';
+        $('#bar-edit-save').hidden = false;
+      } else if(item.kind==='image'&&item.thumbnail){const image=document.createElement('img');image.src=item.thumbnail;image.alt=item.title||'图片预览';body.append(image);}
       else{const text=document.createElement('pre');text.textContent=item.text||item.filePath||item.title;body.append(text);}
       $('#bar-preview').hidden = false;
       syncSelection();
-      body.focus({ preventScroll: true });
+      (body.querySelector('textarea') || body).focus({ preventScroll: true });
     } catch (error) {
       if (revision === previewRevision) showNotice(errorText(error, '预览失败'), true);
     }
   }
-  async function copySelected(source='selection'){
+  async function saveEditedText() {
+    const button = $('#bar-edit-save');
+    const field = $('.bar-text-editor');
+    const text = field?.value;
+    if (!text?.trim()) {
+      showNotice('请输入要保存的文字', true);
+      field?.focus();
+      return;
+    }
+    if (text === state.previewItem?.text) { closePreview(); return; }
+    const revision = previewRevision;
+    button.disabled = true;
+    try {
+      const result = await state.contentApi.addText({ text, source: 'clipboard' });
+      if (!result?.ok) throw new Error(result?.error || '无法保存');
+      if (revision !== previewRevision) return;
+      closePreview();
+      showNotice('已保存为新的历史记录', false);
+      await load({ keepItemId: result.item?.id });
+    } catch (error) {
+      if (revision === previewRevision) showNotice(errorText(error, '保存失败'), true);
+    } finally {
+      button.disabled = false;
+    }
+  }
+
+  async function copySelected(source='selection', target = null){
     // 预览内的 Ctrl+C 优先复制正在预览的记录。
-    const item=source==='preview'?state.previewItem:state.items[state.selected];if(!item||state.committing||!state.returnApi)return;
+    const item=target || (source==='preview'?state.previewItem:state.items[state.selected]);if(!item||state.committing||!state.returnApi)return;
     state.committing=true;syncSelection();
-    try{const result=await state.returnApi.commit({itemId:item.id,intent:'copy-only'});if(!result?.ok||!result.copied)throw Error(result?.error||'复制失败');showNotice('已复制，可继续浏览或按 Ctrl+V 粘贴',false);}
+    try{const result=await state.returnApi.commit({itemId:item.id,intent:'copy-only'});if(!result?.ok||!result.copied)throw Error(result?.error||'复制失败');showNotice(source === 'share' ? '已复制，可粘贴到要分享的应用' : '已复制，可继续浏览或按 Ctrl+V 粘贴',false);}
     catch(error){showNotice(errorText(error,'复制失败'),true);}finally{state.committing=false;syncSelection();}
   }
 
@@ -657,8 +795,18 @@
     if (event.defaultPrevented) return;
     if (event.isComposing || event.keyCode === 229) return;
     const key = event.key;
+    if (shareAnchor) {
+      if (key === 'Escape') {
+        event.preventDefault();
+        const button = shareAnchor;
+        closeShare();
+        button.focus({ preventScroll: true });
+      }
+      if (event.defaultPrevented || sharePanel.contains(event.target)) return;
+    }
     if(state.previewItem){
       if(key==='Escape'){event.preventDefault();closePreview();return;}
+      if ($('#bar-preview-content textarea')) return;
       if((event.ctrlKey||event.metaKey)&&key.toLowerCase()==='a'){event.preventDefault();const range=document.createRange();range.selectNodeContents($('#bar-preview-content'));const selection=window.getSelection();selection.removeAllRanges();selection.addRange(range);return;}
       if((event.ctrlKey||event.metaKey)&&key.toLowerCase()==='c'&&!window.getSelection()?.toString()){event.preventDefault();copySelected('preview');return;}
       // 预览态刻意只响应上面三个键：其余按键若继续作用于列表，
@@ -743,14 +891,17 @@
       return;
     }
     const action = button.dataset.cardAction;
-    if (action === 'preview') previewSelected();
+    if (action === 'select') card.focus({ preventScroll: true });
+    else if (action === 'share') openShare(state.items[index], button);
+    else if (action === 'open') openLink(state.items[index]);
+    else if (action === 'edit' && state.items[index].kind !== 'image') previewSelected(true);
     else if (action === 'copy') copySelected('selection');
     else if (action === 'favorite') toggleSelectedPin();
     else if (action === 'more') {
       const summary = $('#bar-action-strip summary');
       summary?.focus({ preventScroll: true });
       summary?.click();
-    } else if (['edit', 'pin', 'save'].includes(action)) {
+    } else if (IMAGE_ACTIONS.includes(action)) {
       runImageAction(state.items[index], action);
     }
   }
@@ -760,7 +911,8 @@
     state.imageActionBusy = true;
     syncSelection();
     try {
-      const result = action === 'edit' ? await window.suira.imageEditor.open({ itemId: item.id })
+      const result = ['crop', 'edit'].includes(action)
+        ? await window.suira.imageEditor.open({ itemId: item.id, ...(action === 'crop' ? { tool: 'select' } : {}) })
         : action === 'pin' ? await window.suira.actions.run(item.id, 'image.pin')
         : await state.barApi.saveImage(item.id);
       if (result?.canceled) return;
@@ -782,6 +934,7 @@
     if (barApi && typeof barApi.onShown === 'function') {
       try {
         const off = barApi.onShown(() => {
+          closeShare();
           closePreview(false);
           state.hasOnShown = true;
           state.visible = true;
@@ -839,6 +992,7 @@
       } catch (error) { showNotice(errorText(error, '无法打开内容库'), true); }
     });
     if (track) {
+      track.addEventListener('scroll', closeShare, { passive: true });
       track.addEventListener('click', onTrackClick);
       track.addEventListener('dblclick', event => {
         const card = closestFrom(event.target, '.bar-card');
@@ -854,10 +1008,15 @@
       });
     }
 
+    $('#bar-edit-save').addEventListener('click', saveEditedText);
+    sharePanel.addEventListener('toggle', () => {
+      if (!sharePanel.matches(':popover-open')) closeShare();
+    });
     document.addEventListener('visibilitychange', () => {
       const wasVisible = state.visible;
       state.visible = document.visibilityState === 'visible';
       if (!state.visible) {
+        closeShare();
         closePreview(false);
         document.getElementById('relay-result')?.close();
         syncSelection();

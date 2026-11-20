@@ -1684,7 +1684,7 @@ async function loadCapture(seq) {
     state.selection={x:0,y:0,w:metrics.width,h:metrics.height};state.selectionReady=true;
   }
   resizeCanvases(true); // 新画面已就位，即使视口尺寸没变也要重绘一次
-  if(editorMode){setTool('pen');renderSelection();}
+  if (editorMode) { setTool(payload.tool === 'select' ? 'select' : 'pen'); renderSelection(); }
   setHidden(loadingState, true);
   applyIntent(payload.intent);
   if (perf) perf.imageReadyAt = performance.now();

@@ -49,10 +49,11 @@
     </div>
 
     <section class="bar-preview" id="bar-preview" role="dialog" aria-modal="false" aria-labelledby="bar-preview-title" hidden>
-      <header><span>内容预览</span><b id="bar-preview-title"></b><button id="bar-preview-close" aria-label="关闭内容预览" type="button" title="Esc 返回">返回</button></header>
+      <header><span id="bar-preview-label">内容预览</span><b id="bar-preview-title"></b><button id="bar-edit-save" type="button" hidden>保存副本</button><button id="bar-preview-close" aria-label="关闭内容预览" type="button" title="Esc 返回">返回</button></header>
       <div id="bar-preview-content" tabindex="0"></div>
     </section>
   </main>
+  <div id="bar-share" role="dialog" aria-label="分享剪贴板内容" popover></div>
   <script src="liquid-glass.js"></script>
   <script src="ui-motion.js"></script>
   <script src="tool-art.js"></script>

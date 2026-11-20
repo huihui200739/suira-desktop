@@ -33,7 +33,9 @@ async function run({ screenshots = false } = {}) {
     fs.writeFileSync(control, '{}');
     const entry = path.join(tmp, 'app.js');
     fs.writeFileSync(entry, `const fs=require('node:fs');
-const {app,BrowserWindow,ipcMain,clipboard,globalShortcut}=require('electron');
+const {app,BrowserWindow,ipcMain,clipboard,globalShortcut,shell}=require('electron');
+let openedUrl='';
+shell.openExternal=async url=>{openedUrl=url;};
 app.setPath('userData',${JSON.stringify(path.join(tmp, 'profile'))});
 app.getVersion=()=>${JSON.stringify(require('../package.json').version)};
 clipboard.read=async()=>[];clipboard.readText=async()=>'';clipboard.write=async()=>{};
@@ -44,7 +46,7 @@ ipcMain.handle=(name,fn)=>handle(name,name==='app:info'?async(...args)=>{
  fs.writeFileSync(${JSON.stringify(control)},'{}');
  const target=command.id ? BrowserWindow.fromId(command.id) : null;
  if(target){if(command.size)target.setSize(...command.size);if(command.bounds)target.setBounds(command.bounds);if(command.focus){target.show();target.focus();}if(command.maximize)target.maximize();if(command.restore)target.unmaximize();}
- const {screen}=require('electron');return {...await fn(...args),surfaces:BrowserWindow.getAllWindows().filter(w=>w.__surfaceRadius).map(w=>({id:w.id,url:w.webContents.getURL(),bounds:w.getBounds(),displayBounds:screen.getDisplayMatching(w.getBounds()).bounds,area:screen.getDisplayMatching(w.getBounds()).workArea,physicalArea:screen.dipToScreenRect(w,screen.getDisplayMatching(w.getBounds()).workArea),focused:w.isFocused(),material:w.__surfaceMaterial,maximized:w.isMaximized(),handle:w.getNativeWindowHandle().readBigUInt64LE().toString()}))};
+ const {screen}=require('electron');return {...await fn(...args),openedUrl,surfaces:BrowserWindow.getAllWindows().filter(w=>w.__surfaceRadius).map(w=>({id:w.id,url:w.webContents.getURL(),bounds:w.getBounds(),displayBounds:screen.getDisplayMatching(w.getBounds()).bounds,area:screen.getDisplayMatching(w.getBounds()).workArea,physicalArea:screen.dipToScreenRect(w,screen.getDisplayMatching(w.getBounds()).workArea),focused:w.isFocused(),material:w.__surfaceMaterial,maximized:w.isMaximized(),handle:w.getNativeWindowHandle().readBigUInt64LE().toString()}))};
 }:fn);
 require(${JSON.stringify(path.join(root, 'main.js'))});`);
     const exe = [process.env.SUIRA_ELECTRON, 'C:\\suira-electron\\electron.exe',
@@ -128,7 +130,7 @@ class RegionCheck {
     };
     const shot = async (client, name, theme = 'light') => {
       const reviewDir = process.env.SUIRA_REVIEW_SHOTS;
-      if (!screenshots || (reviewDir && !['clipboard','clipboard-dark','clipboard-hover','notes'].includes(name))) return;
+      if (!screenshots || (reviewDir && !['clipboard','clipboard-dark','clipboard-hover','clipboard-text-hover','clipboard-link-hover','notes'].includes(name))) return;
       console.log('SHOT '+name);
       await client.evaluate('window.suira.settings.update('+JSON.stringify({theme})+')');
       await client.evaluate('document.fonts.ready'); await wait(350);
@@ -241,10 +243,27 @@ class RegionCheck {
     await shot(clipboard,'clipboard');
     await shot(clipboard,'clipboard-dark','dark');
     if (screenshots && process.env.SUIRA_REVIEW_SHOTS) {
-      const imageCard = await clipboard.evaluate(`(()=>{const r=document.querySelector('.bar-card[data-kind="image"]').getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2};})()`);
-      await moveClipboardPointer(imageCard.x,imageCard.y);
-      await until(()=>clipboard.evaluate(`getComputedStyle(document.querySelector('[data-kind=image] .card-actions')).opacity==='1'`));
-      await shot(clipboard,'clipboard-hover');
+      for (const [kind, name] of [['image','clipboard-hover'], ['text','clipboard-text-hover'], ['link','clipboard-link-hover']]) {
+        await moveClipboardPointer(4,48);
+        const card = await clipboard.evaluate(`(() => {
+          const card = document.querySelector('.bar-card[data-kind="${kind}"]');
+          card.scrollIntoView({block:'nearest',inline:'start',behavior:'instant'});
+          const r = card.getBoundingClientRect();
+          return {x:r.x+r.width/2,y:r.y+r.height/2};
+        })()`);
+        await moveClipboardPointer(card.x,card.y);
+        await until(()=>clipboard.evaluate(`getComputedStyle(document.querySelector('[data-kind="${kind}"] .card-actions')).opacity==='1'`));
+        await shot(clipboard,name);
+      }
+      await clipboard.evaluate(`document.querySelector('[data-kind=link] [data-card-action=open]').click();true`);
+      await until(async () => (await info()).openedUrl === 'https://example.com/project');
+      const imageMetadata = await clipboard.evaluate(`document.querySelector('[data-kind=image] .card-metadata').textContent`);
+      assert.match(imageMetadata, /640×420 · (?:[\d.,]+ KB|[\d,]+ B)/);
+      await clipboard.evaluate(`document.querySelector('[data-kind=image] [data-card-action=crop]').click();true`);
+      const cropEditor = await page(t => t.url.includes('mode=image-editor'));
+      await until(() => cropEditor.evaluate(`Boolean(state.image) && document.getElementById('capture-root').dataset.tool === 'select'`));
+      await cropEditor.evaluate('window.suira.imageEditor.window("close")').catch(()=>{});
+      console.log('PASS clipboard link, original size, and crop entry through real IPC');
     }
     await main.evaluate('window.suira.settings.update({theme:"light"})');
     await main.evaluate('window.suira.clipboardBar.hide()');

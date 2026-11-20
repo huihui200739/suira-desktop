@@ -632,7 +632,7 @@ async function addImageToStore(image, source = {}, title = '', existingFilePath 
     filePath,
     thumbnail,
     source,
-    meta: { hash, width: size.width, height: size.height }
+    meta: { hash, width: size.width, height: size.height, ...(!existingFilePath ? { byteSize: png.length } : {}) }
   });
   await store.save();
   return item;
@@ -2960,7 +2960,7 @@ async function finishLongCapture() {
     const png=image.toPNG();if(png.length>imageEditor.MAX_BYTES)throw Error('长图超过 64 MB，请减小选区后重试');
     await writeClipboardImage(image);
     await ensureDirs();const filePath=path.join(capturesDir(),makeId('long')+'.png');await fsp.writeFile(filePath,png);
-    const item=store.addItem({kind:'image',title:'滚动长截图',filePath,thumbnail:thumbnailDataUrl(image),source:{type:'screenshot',acquisitionMethod:'long-capture'},meta:{width:model.width,height:model.height,hash:hashBuffer(png),captureKind:'long',frames:model.frames}});
+    const item=store.addItem({kind:'image',title:'滚动长截图',filePath,thumbnail:thumbnailDataUrl(image),source:{type:'screenshot',acquisitionMethod:'long-capture'},meta:{width:model.width,height:model.height,hash:hashBuffer(png),byteSize:png.length,captureKind:'long',frames:model.frames}});
     await store.save();broadcast('content:changed',{itemId:item.id});
     longCapture=null;
     for(const target of [session.outline,session.preview,session.win])if(target&&!target.isDestroyed())target.destroy();
@@ -2987,6 +2987,7 @@ async function openImageEditor(options = {}) {
     // 打开入口先呈现工作台，用户可以点打开、拖入或粘贴图片。
     const payload = filePath ? await imageEditor.loadImage(filePath, nativeImage) : options.dataUrl
       ? {dataUrl:options.dataUrl,size:imageEditor.validateImage(imageEditor.decodeOutput(options.dataUrl,nativeImage)),name:'粘贴图片.png'} : null;
+    if (payload && options.tool === 'select') payload.tool = 'select';
     const area = screen.getDisplayNearestPoint(screen.getCursorScreenPoint()).workArea;
     const compact = Boolean(sourceItem);
     const width = Math.min(1120, area.width, compact ? Math.max(680, payload.size.width + 32) : 1120);
@@ -3038,7 +3039,7 @@ async function finishImageEdit(session, payload) {
     catch(error){await fsp.rm(filePath,{force:true}).catch(()=>{});throw error;}
     const item=store.addItem({kind:'image',title:path.parse(session.payload.name).name+' · 已编辑',filePath,thumbnail:thumbnailDataUrl(image),
       source:{type:'derived',acquisitionMethod:'image-edit'},parentIds:session.sourceId?[session.sourceId]:[],
-      meta:{hash:hashBuffer(png),width:size.width,height:size.height,derivedBy:'image.edit',originItemId:session.sourceId}});
+      meta:{hash:hashBuffer(png),width:size.width,height:size.height,byteSize:png.length,derivedBy:'image.edit',originItemId:session.sourceId}});
     await store.save();broadcast('content:changed',{itemId:item.id});
     if(action==='copy')await writeClipboardImage(image);
     if(action==='pin')createPinWindow(pathToFileURL(filePath).href,size);
@@ -3760,7 +3761,7 @@ function registerIpc() {
           current.win.webContents.send('image-editor:changed');return {ok:true};
         }
       }
-      return openImageEditor({filePath,itemId:options.itemId,dataUrl:options.dataUrl});
+      return openImageEditor({filePath,itemId:options.itemId,dataUrl:options.dataUrl,tool:options.tool});
     } catch(error){return {ok:false,error:error.message||'打开图片失败'};}
   });
   ipcMain.handle('image-editor:data',event=>editorWindows.get(event.sender.id)?.payload||null);
@@ -3800,7 +3801,7 @@ function registerIpc() {
     }
   });
 
-  ipcMain.handle('content:list', (_event, options) => {
+  ipcMain.handle('content:list', async (_event, options) => {
     const items = store.listItems(options || {});
     // 图片条目若缺缩略图（旧数据或生成失败），按需补齐，避免列表出现空白卡
     for (const item of items) {
@@ -3808,6 +3809,19 @@ function registerIpc() {
         const thumbnail = thumbnailFor(item.filePath);
         if (thumbnail) item.thumbnail = thumbnail;
       }
+    }
+    if (options?.cardDetails === true) {
+      // 补齐旧条目的原图信息，进程内缓存成功结果，无需迁移或写盘。
+      await Promise.all(items.filter(item => item.kind === 'image' && item.filePath &&
+        (!Number.isFinite(item.meta?.byteSize) || !item.meta?.width || !item.meta?.height)).map(async item => {
+        const original = await fsp.stat(item.filePath).catch(() => null);
+        if (!original?.isFile()) return;
+        item.meta.byteSize = original.size;
+        if (!item.meta.width || !item.meta.height) {
+          const image = nativeImage.createFromPath(item.filePath);
+          if (!image.isEmpty()) Object.assign(item.meta, image.getSize());
+        }
+      }));
     }
     return items;
   });

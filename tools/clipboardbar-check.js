@@ -7,7 +7,7 @@
  *    JS 引用的 DOM ID 都存在、中文文案、quickpanel 同源设计令牌、
  *    大预览卡片、轨道横向滚动且隐藏滚动条、根元素裁掉溢出。
  * 2. 无头 Chrome 真实加载 src/clipboardbar.html，注入 mock 的 window.suira，
- *    在与主进程共用的宽幅视口里断言：空态、8 条数据渲染、图片缩略图、
+ *    在与主进程共用的宽幅视口里断言：空态、9 条数据渲染、图片缩略图、
  *    默认选中第一条、←/→/End 浏览、滚动位置、滚轮横向滚动、
  *    Enter 提交 payload 与成功后 hide、复制兜底与失败提示、Esc 关闭、
  *    onShown 重置、页面无整体滚动条 / 卡片不溢出。
@@ -139,9 +139,11 @@ const MOCK = `
     mk('text-2', 'text', '', LONG_TEXT, '', '', '记事本', 26 * 3600000),
     mk('text-3', 'text', '', '复制一段普通文字，用来验证文字卡片的摘要显示。', '', '', '', 8 * 60000),
     mk('files-1', 'files', '季度报告.pdf', 'C:/demo/report.pdf\\nC:/demo/summary.pdf', 'C:/demo/report.pdf', '', '资源管理器', 40 * 60000),
+    mk('link-1', 'link', '示例网页', 'https://example.com/project', '', '', '', 2 * 3600000),
     mk('files-2', 'files', '素材包.zip', 'C:/demo/assets.zip', 'C:/demo/assets.zip', '', '', 2 * 86400000)
   ];
 
+  ALL[0].meta = { width: 3158, height: 1974, byteSize: 695296 };
   var calls = window.__calls = { list: 0, commit: [], hide: 0 };
   window.__commitResult = { ok: true, copied: true, pasted: true };
   var shownCallbacks = [];
@@ -151,6 +153,7 @@ const MOCK = `
   window.suira = window.suira || {};
   window.suira.imageEditor = { open: function(options){ calls.edit=options;return Promise.resolve(window.__editFail?{ok:false,error:'原图已被移动'}:{ok:true}); } };
   window.suira.content = {
+    addText: async function(payload) { calls.editedText = payload.text; return {ok:true}; },
     get: function(id){return Promise.resolve(clone(ALL.find(function(record){ return record.id===id; })||null));},
     togglePin: function(id){
       if(window.__pinThrow) return Promise.reject(new Error('写入失败'));
@@ -231,7 +234,7 @@ const PROBE = `
     }
     var imgs = Array.prototype.slice.call(document.querySelectorAll('.card-thumb'));
     var snippets = Array.prototype.slice.call(document.querySelectorAll('.card-snippet')).map(function(el){ return el.textContent; });
-    var selection = selected?.querySelector('.card-position');
+    var selection = selected?.querySelector('.card-select');
     var notice = document.getElementById('bar-notice');
     var empty = document.getElementById('bar-empty');
     return {
@@ -264,7 +267,7 @@ const PROBE = `
       imageCount: imgs.length,
       imageSrcs: imgs.map(function(img){ return img.getAttribute('src'); }),
       snippetLengths: snippets.map(function(text){ return text.length; }),
-      duplicateCaptions: document.querySelectorAll(".card-caption").length,
+      duplicateCaptions: document.querySelectorAll("[data-kind=image] .card-caption, [data-kind=text] .card-caption").length,
       sourceIcons: document.querySelectorAll(".card-source-icon img").length,
       fileCountTexts: Array.prototype.slice.call(document.querySelectorAll('.card-count')).map(function(el){ return el.textContent; }),
       emptyHidden: empty ? empty.hidden : null,
@@ -274,7 +277,8 @@ const PROBE = `
       retryHidden: document.getElementById('bar-retry') ? document.getElementById('bar-retry').hidden : null,
       countText: document.getElementById('bar-count') ? document.getElementById('bar-count').textContent : '',
       selectionHidden: selection ? selection.hidden : null,
-      selectionText: selection ? selection.textContent : '',
+      selectionPressed: selection?.getAttribute('aria-pressed'),
+      imageMetadata: cards[0]?.querySelector('.card-metadata')?.textContent || '',
       noticeHidden: notice ? notice.hidden : null,
       noticeText: notice ? notice.textContent : '',
       noticeError: notice ? notice.classList.contains('is-error') : null,
@@ -548,10 +552,10 @@ async function runChecks(send) {
   check('不可用时不渲染假卡片', offlineView.cardCount === 0);
   check('不可用态无脚本错误', offlineView.errors.length === 0, JSON.stringify(offlineView.errors));
 
-  console.log('\n== 8 条记录：渲染 / 选中 / 浏览 / 提交 ==');
+  console.log('\n== 9 条记录：渲染 / 选中 / 浏览 / 提交 ==');
   const main = await runScenario(send, 'main');
   const initial = main.initial;
-  check('渲染出 8 张卡片', initial.cardCount === 8, 'cards=' + initial.cardCount);
+  check('渲染出 9 张卡片', initial.cardCount === 9, 'cards=' + initial.cardCount);
   check('有内容时隐藏空态、显示轨道', initial.emptyHidden === true && initial.trackHidden === false,
     'emptyHidden=' + initial.emptyHidden + ' trackHidden=' + initial.trackHidden);
   check('卡片宽 220 且有充足预览高度', initial.cardRects.every((rect) => rect.w === 220 && rect.h >= 170),
@@ -569,7 +573,7 @@ async function runChecks(send) {
   check('超长文本被截断到 180 字', initial.snippetLengths.includes(180), JSON.stringify(initial.snippetLengths));
   check('默认选中第 1 条', initial.selectedIndex === 0 && initial.selectedId === 'img-1',
     initial.selectedIndex + ' / ' + initial.selectedId);
-  check('选中位置移到当前卡片', initial.selectionText.trim() === '1 / 8', initial.selectionText);
+  check('选中卡片圆点标记和原图信息正确', initial.selectionPressed === 'true' && initial.imageMetadata.includes('3158×1974 · 679 KB'), initial.imageMetadata);
   check('卡片内容不横向溢出', initial.cardOverflow.every((value) => value === 0),
     JSON.stringify(initial.cardOverflow));
   check('页面无整体滚动条 / 溢出', noOverflow(initial),
@@ -588,7 +592,7 @@ async function runChecks(send) {
     'visible=' + afterRight.selectedVisible + ' left=' + afterRight.trackScrollLeft);
 
   const afterEnd = main.afterEnd;
-  check('按 End 选中最后一条', afterEnd.selectedIndex === 7 && afterEnd.selectedId === 'files-2',
+  check('按 End 选中最后一条', afterEnd.selectedIndex === 8 && afterEnd.selectedId === 'files-2',
     afterEnd.selectedIndex + ' / ' + afterEnd.selectedId);
   check('按 End 后轨道滚动到末尾方向', afterEnd.trackScrollLeft > 0, 'left=' + afterEnd.trackScrollLeft);
 
@@ -633,7 +637,7 @@ async function runChecks(send) {
 
   const changed = main.afterChanged;
   check('content.onChanged 后刷新（选中项保留）', changed.calls.list >= afterEnter.calls.list
-    && changed.cardCount === 8, 'list=' + changed.calls.list + ' cards=' + changed.cardCount);
+    && changed.cardCount === 9, 'list=' + changed.calls.list + ' cards=' + changed.cardCount);
 
   const afterEsc = main.afterEsc;
   check('Esc 调用 hide', afterEsc.calls.hide === 3, 'hide=' + afterEsc.calls.hide);
@@ -644,7 +648,7 @@ async function runChecks(send) {
   console.log('\n== 720×310 窄屏布局 ==');
   const narrow = await runScenario(send, 'layout', 720, 310);
   const narrowView = narrow.initial;
-  check('窄屏仍渲染 8 张卡片', narrowView.cardCount === 8, 'cards=' + narrowView.cardCount);
+  check('窄屏仍渲染 9 张卡片', narrowView.cardCount === 9, 'cards=' + narrowView.cardCount);
   check('窄屏保留卡片宽度与可读高度', narrowView.cardRects.every((rect) => rect.w === 220 && rect.h >= 144),
     JSON.stringify(narrowView.cardRects));
   check('窄屏无页面级滚动条 / 溢出', noOverflow(narrowView),
@@ -652,7 +656,7 @@ async function runChecks(send) {
   check('窄屏轨道仍可横向滚动', narrowView.trackOverflowX === 'auto'
     && narrowView.trackScrollWidth > narrowView.trackClientWidth,
     narrowView.trackScrollWidth + ' > ' + narrowView.trackClientWidth);
-  check('窄屏顶部信息不溢出', narrowView.selectionText.length > 0 && narrowView.cardOverflow.every((value) => value === 0));
+  check('窄屏顶部信息不溢出', narrowView.selectionPressed === 'true' && narrowView.cardOverflow.every((value) => value === 0));
 
   console.log('\n== 搜索、分类、收藏与输入焦点 ==');
   const editHistory=await evaluate(send, `(async()=>{
@@ -666,11 +670,22 @@ async function runChecks(send) {
     const saved=window.__calls.saveImage==='img-1';
     document.querySelector('[data-id="img-2"] [data-card-action=pin]').click();await new Promise(r=>setTimeout(r,60));
     const pinned=window.__calls.action?.id==='img-2' && window.__calls.action?.actionId==='image.pin';
-    document.querySelector('[data-filter="text"]').click();await new Promise(r=>setTimeout(r,60));const textHidden=!document.querySelector('[data-card-action="edit"]');
+    document.querySelector('[data-filter="text"]').click();await new Promise(r=>setTimeout(r,60));const textHidden=!document.querySelector('[data-card-action=crop], [data-card-action=pin], [data-card-action=save]');
+    document.querySelector('[data-id="text-1"] [data-card-action=edit]').click();await new Promise(r=>setTimeout(r,60));
+    const field=document.querySelector('.bar-text-editor');field.value='改好的文字';document.getElementById('bar-edit-save').click();await new Promise(r=>setTimeout(r,60));
+    const textEdited=window.__calls.editedText==='改好的文字';
+    document.querySelector('[data-filter="link"]').click();await new Promise(r=>setTimeout(r,60));
+    document.querySelector('[data-id="link-1"] [data-card-action=open]').click();
+    const linkOpened=window.__calls.action?.id==='link-1'&&window.__calls.action?.actionId==='output.open';
     document.querySelector('[data-filter="all"]').click();await new Promise(r=>setTimeout(r,60));
-    return {shown,opened,error,textHidden,direct,saved,pinned};
+    document.querySelector('[data-id="img-2"] .card-select').click();
+    const selectOnly=document.querySelector('[data-id="img-2"] .card-select').getAttribute('aria-pressed')==='true'&&window.__calls.commit.length===commits;
+    document.querySelector('[data-id="img-1"] [data-card-action=share]').click();
+    document.querySelector('#bar-share button').click();await new Promise(r=>setTimeout(r,60));
+    const shared=window.__calls.commit.at(-1)?.itemId==='img-1'&&window.__calls.commit.at(-1)?.intent==='copy-only';
+    return {shown,opened,error,textHidden,direct,saved,pinned,textEdited,linkOpened,selectOnly,shared};
   })()`);
-  check('历史图片编辑入口传递选中图片，文字隐藏入口，原图失败显示原因',Object.values(editHistory).every(Boolean),JSON.stringify(editHistory));
+  check('按卡片类型操作、圆点选中和分享目标正确',Object.values(editHistory).every(Boolean),JSON.stringify(editHistory));
   const inspectClipboard=await evaluate(send,`(async()=>{
     const wait=()=>new Promise(r=>setTimeout(r,80)),result={};window.__fireShown();await wait();
     document.querySelector('[data-filter="text"]').click();await wait();
@@ -686,10 +701,10 @@ async function runChecks(send) {
     document.activeElement.blur();document.dispatchEvent(new KeyboardEvent('keydown',{key:' ',bubbles:true,cancelable:true}));await wait();result.spacePreview=!document.getElementById('bar-preview').hidden;
     document.getElementById('bar-preview-close').click();
     const original=window.suira.content.get,payload='<img src=x onerror="window.__injected=true">';
-    window.suira.content.get=async()=>({id:'test-preview',kind:'text',text:payload});document.querySelector('.bar-card.is-selected [data-card-action=preview]').click();await wait();
+    window.suira.content.get=async()=>({id:'test-preview',kind:'text',text:payload});document.activeElement.blur();document.dispatchEvent(new KeyboardEvent('keydown',{key:' ',bubbles:true,cancelable:true}));await wait();
     result.safeText=document.getElementById('bar-preview-content').textContent===payload&&!document.querySelector('#bar-preview-content img')&&!window.__injected;
     document.getElementById('bar-preview-close').click();window.suira.content.get=()=>new Promise(r=>setTimeout(()=>r({id:'stale',kind:'text',text:'late'}),150));
-    document.querySelector('.bar-card.is-selected [data-card-action=preview]').click();window.__fireShown();await new Promise(r=>setTimeout(r,240));result.noLatePopup=document.getElementById('bar-preview').hidden;
+    document.activeElement.blur();document.dispatchEvent(new KeyboardEvent('keydown',{key:' ',bubbles:true,cancelable:true}));window.__fireShown();await new Promise(r=>setTimeout(r,240));result.noLatePopup=document.getElementById('bar-preview').hidden;
     window.suira.content.get=original;window.__commitResult={ok:true,copied:true,pasted:true};return result;
   })()`);
   for(const [name,ok] of Object.entries(inspectClipboard))check('内容预览与独立复制：'+name,ok,JSON.stringify(inspectClipboard));
@@ -733,7 +748,7 @@ async function runChecks(send) {
     window.__pinThrow=false;pin().click();await wait();
     result.unpinRemovesFavorite=!ids().length && document.getElementById('bar-empty-title').textContent==='还没有收藏内容';
     await query('未命中');window.__fireShown();await wait();
-    result.reopenResets=ids().length===8 && search.value==='' && document.querySelector('[data-filter="all"]').getAttribute('aria-pressed')==='true';
+    result.reopenResets=ids().length===9 && search.value==='' && document.querySelector('[data-filter="all"]').getAttribute('aria-pressed')==='true';
     document.dispatchEvent(new KeyboardEvent('keydown',{key:'f',ctrlKey:true,bubbles:true,cancelable:true}));
     result.searchShortcut=document.activeElement===search;
     return result;
@@ -827,7 +842,7 @@ async function runChecks(send) {
   await send('Emulation.setEmulatedMedia',{features:[{name:'prefers-color-scheme',value:'light'}]});
   for (const [width,height] of [[320,310],[464,310],[720,210]]) {
     const compact = await runScenario(send, 'layout', width, height);
-    check('小屏 '+width+'×'+height+' 不溢出且可浏览', noOverflow(compact.initial) && compact.initial.cardCount===8 && compact.initial.errors.length===0);
+    check('小屏 '+width+'×'+height+' 不溢出且可浏览', noOverflow(compact.initial) && compact.initial.cardCount===9 && compact.initial.errors.length===0);
   }
 
   console.log('\n== 截图（临时目录，不污染仓库）==');
