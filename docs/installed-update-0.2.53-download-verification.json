@@ -1,0 +1,11 @@
+{
+  "version": "0.2.53",
+  "installedVersion": "0.2.52",
+  "menuOpensDialog": true,
+  "phase": "ready",
+  "anonymous": true,
+  "previousInstallerSeeded": true,
+  "downloadAndChecksumVerified": true,
+  "installationTriggered": false,
+  "isolatedDataAndCache": true
+}

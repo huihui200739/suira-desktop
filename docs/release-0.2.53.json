@@ -1,0 +1,28 @@
+{
+  "version": "0.2.53",
+  "artifact": "Suira-0.2.53-x64.exe",
+  "bytes": 171644505,
+  "sha256": "444EAF919DAF79C37429ABA4ECE591C5D0E1F85512E874B14B7A7DB84D29958E",
+  "sha512": "PhiBsC/0HXNLRpZUKR4tOwu4zliOR28SwGbsRdwW40quzR4NihAOkt8oX05a2KVBcr9bhTlY54p3wCF1eg6gyQ==",
+  "platform": "win32",
+  "arch": "x64",
+  "electron": "45.0.0",
+  "checkedSourceFiles": 163,
+  "checks": [
+    "source-payload-byte-match",
+    "no-test-profile-or-obsolete-key-hook",
+    "installer-archive-crc",
+    "updater-feed-and-sha512-match",
+    "original-font-and-license-sha256-in-nsis-payload",
+    "0.2.52-discovers-and-downloads-0.2.53-through-production-updater",
+    "installed-0.2.52-menu-downloads-and-verifies-0.2.53-with-previous-installer-cached"
+  ],
+  "fontSha256": "0ddef90648998900175cfdca9a6f087a2544c182f130b0ad4f7e94a03a115e79",
+  "signature": "unsigned",
+  "published": true,
+  "payloadSha256": "061ED118D94F81B28D08D031C104D095371984823523B6701D9A7525AF077D60",
+  "executableSha256": "C29EC1B3701F5704FCB939C11312281B61403CE38B7986CE1465ACE140FA7DA2",
+  "releaseUrl": "https://github.com/huihui200739/suira-updates/releases/tag/v0.2.53",
+  "publishedAt": "2026-11-20T14:37:13Z",
+  "buildNote": "Built from the cached Electron archive with electron-builder’s bundled NSIS UninstallerReader."
+}
