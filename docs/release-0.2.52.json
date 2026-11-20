@@ -1,0 +1,28 @@
+{
+  "version": "0.2.52",
+  "artifact": "Suira-0.2.52-x64.exe",
+  "bytes": 171638681,
+  "sha256": "A0EBFE8C7D0771DD61E549EE48B4F9905542A364D2E13EA6A84A65B626DEFDC1",
+  "sha512": "uAdAOb1Vrn8D4tOR+NczzYcW2HjtBUg5lu5od29QNrdBrRkK0viWYwwVD4M25n/3NWDFmGVq4btCaJZoWI/CqQ==",
+  "platform": "win32",
+  "arch": "x64",
+  "electron": "45.0.0",
+  "checkedSourceFiles": 162,
+  "checks": [
+    "source-payload-byte-match",
+    "no-test-profile-or-obsolete-key-hook",
+    "installer-archive-crc",
+    "updater-feed-and-sha512-match",
+    "original-font-and-license-sha256-in-nsis-payload",
+    "0.2.51-discovers-and-downloads-0.2.52-through-production-updater",
+    "installed-0.2.51-menu-downloads-and-verifies-0.2.52"
+  ],
+  "fontSha256": "0ddef90648998900175cfdca9a6f087a2544c182f130b0ad4f7e94a03a115e79",
+  "signature": "unsigned",
+  "published": true,
+  "payloadSha256": "B3567F1A0AEE216FB9332D38510893107AD01C3B262C947825A4F144B42C2E7F",
+  "executableSha256": "D01F96666360789C09A333BBFF9B9E34AC39A3573482BF3447EE797A8887F186",
+  "releaseUrl": "https://github.com/huihui200739/suira-updates/releases/tag/v0.2.52",
+  "publishedAt": "2026-11-20T08:02:31Z",
+  "buildNote": "The bundled NSIS UninstallerReader extracted the temporary uninstaller because this build host could not run the uninstaller generator."
+}
