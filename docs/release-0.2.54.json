@@ -13,11 +13,15 @@
     "no-test-profile-or-obsolete-key-hook",
     "installer-archive-crc",
     "updater-feed-and-sha512-match",
-    "original-font-and-license-sha256-in-nsis-payload"
+    "original-font-and-license-sha256-in-nsis-payload",
+    "0.2.53-discovers-and-downloads-0.2.54-through-production-updater"
   ],
   "fontSha256": "0ddef90648998900175cfdca9a6f087a2544c182f130b0ad4f7e94a03a115e79",
   "signature": "unsigned",
-  "published": false,
+  "published": true,
   "payloadSha256": "C8BF3631F4BD248FCADC1C6224F57D35096C4E8D6DBA33F425B6B414108B87D3",
-  "executableSha256": "48846DDA6B55BD7CF985EC29E611E3ECFA04B412F32E6D34D537BFBE9A41D568"
+  "executableSha256": "48846DDA6B55BD7CF985EC29E611E3ECFA04B412F32E6D34D537BFBE9A41D568",
+  "releaseUrl": "https://github.com/huihui200739/suira-updates/releases/tag/v0.2.54",
+  "publishedAt": "2026-11-20T16:55:30Z",
+  "buildNote": "Built from the cached Electron archive with electron-builder’s bundled NSIS UninstallerReader."
 }
