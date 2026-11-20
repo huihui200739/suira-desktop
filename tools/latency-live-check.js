@@ -80,8 +80,21 @@ let editor, probe;
     fs.writeFileSync(path.join(TMP,'result.json'),JSON.stringify(report,null,2));
     console.log(JSON.stringify(report));console.log('PASS real panel font readiness, first paint and idle window reuse');return;
   }
+  const dictation = process.argv.includes('--voice');
   const wrapper = path.join(TMP, 'app.js'), editorMain = path.join(TMP, 'editor.js'), html = path.join(TMP, 'editor.html');
+  const fixture = dictation ? `const {globalShortcut,net}=require('electron');
+    app.commandLine.appendSwitch('use-fake-device-for-media-stream');
+    const shortcuts = new Map();
+    globalShortcut.register = (key, callback) => { shortcuts.set(key, callback); return true; };
+    globalShortcut.isRegistered = key => shortcuts.has(key);
+    globalShortcut.unregister = key => shortcuts.delete(key);
+    globalShortcut.unregisterAll = () => shortcuts.clear();
+    net.fetch = async () => ({ok:true,json:async()=>({text:'这是直接语音输入'})});
+    const fs=require('node:fs'),trigger=${JSON.stringify(path.join(TMP,'voice-hotkey'))};
+    let last='';setInterval(()=>{try{const next=fs.readFileSync(trigger,'utf8');if(next!==last){last=next;const action=shortcuts.get('Alt+H');console.log('Voice fixture:',next,Boolean(action));Promise.resolve(action?.()).catch(console.error);}}catch(error){if(error.code!=='ENOENT')console.error(error);}},30).unref();
+  ` : '';
   fs.writeFileSync(wrapper, `const {app,ipcMain}=require('electron');app.setPath('userData',${JSON.stringify(path.join(TMP, 'app-data'))});
+    ${fixture}
     const handle=ipcMain.handle.bind(ipcMain);ipcMain.handle=(channel,callback)=>handle(channel,channel==='return:commit'?async(...args)=>{const result=await callback(...args);require('fs').writeFileSync(${JSON.stringify(path.join(TMP, 'commit.json'))},JSON.stringify(result));return result;}:callback);
     require(${JSON.stringify(path.join(ROOT, 'main.js'))});`);
   fs.writeFileSync(html, '<!doctype html><title>Suira local paste test</title><textarea id="input" autofocus style="width:90vw;height:40vh"></textarea><div id="image-input" contenteditable="true" style="height:30vh;border:1px solid gray"></div><script>window.imagePastes=0;document.getElementById("image-input").addEventListener("paste",event=>{if(Array.from(event.clipboardData.items).some(item=>item.type.startsWith("image/")))window.imagePastes++;});</script>');
@@ -108,9 +121,6 @@ let editor, probe;
     });`);
   launch(exe, wrapper, appPort);
   const appPage = await page(appPort, '/index.html');
-  const bar = await page(appPort, '/clipboardbar.html');
-  const overlay = await page(appPort, '/overlay.html');
-  const quick = await page(appPort, '/quickpanel.html');
   launch(exe, editorMain, editorPort);
   editor = await page(editorPort, '/editor.html');
   const host = await ensureNativeHost({ sourcePath: path.join(ROOT, 'assets/foreground-host.cs'), targetPath: path.join(TMP, 'foreground.exe'), references: ['System.Web.Extensions.dll'] });
@@ -123,6 +133,30 @@ let editor, probe;
     catch (error) { const current = await probe.query(); throw Error(`测试窗口未获得焦点：expected=${children[1].pid}, actual=${current?.pid}, hwnd=${current?.hwnd}`); }
     await editor.evaluate(`document.getElementById('input').focus()`);
   };
+  if (dictation) {
+    const settings = await appPage.evaluate("window.suira.settings.update({voiceProvider:'openai',voiceBaseUrl:'https://example.com/v1',voiceModel:'fixture-asr',voiceApiKey:'fixture-key'})");
+    assert.ok(settings.ok, settings.error);
+    const enabled = await appPage.evaluate('window.suira.settings.update({globalShortcutsEnabled:true})');
+    assert.ok(enabled.ok, enabled.error);
+    const binding = await appPage.evaluate("window.suira.shortcuts.set({name:'voice',accelerator:'Alt+H'})");
+    assert.ok(binding.ok, binding.error);
+    await appPage.evaluate('window.suira.window.close()');
+    await focusEditor();
+    const trigger = path.join(TMP, 'voice-hotkey');
+    fs.writeFileSync(trigger,'start');
+    const voice = await page(appPort,'/voice-input.html');
+    await until(() => voice.evaluate('typeof state !== "undefined" && state.phase === "recording" && state.sampleCount > 0'));
+    assert.equal((await probe.query()).pid,children[1].pid,'Voice overlay must keep the editor foreground');
+    assert.equal(await editor.evaluate('document.activeElement.id'),'input');
+    await wait(480);
+    fs.writeFileSync(trigger,'stop');
+    await until(() => editor.evaluate('document.querySelector("#input").value === "这是直接语音输入"'));
+    console.log('PASS Windows direct dictation into a separate Electron editor with microphone and ASR fixtures');
+    return;
+  }
+  const bar = await page(appPort, '/clipboardbar.html');
+  const overlay = await page(appPort, '/overlay.html');
+  const quick = await page(appPort, '/quickpanel.html');
   const text = 'SUIRA_LATENCY_TEST_历史内容';
   await appPage.evaluate(`window.suira.content.addText({text:${JSON.stringify(text)},source:'user'})`);
   // Global copy preference is deliberately off: a history-card click is an explicit paste.
@@ -210,6 +244,8 @@ let editor, probe;
   console.log('PASS 真实 Electron 截图、剪贴板、单击粘贴、Ctrl+V 和画布释放');
 })().catch(async error => {
   console.error(error.stack);
+  const appLog = path.join(TMP, 'app.js.log');
+  if (process.argv.includes('--voice') && fs.existsSync(appLog)) console.error(fs.readFileSync(appLog, 'utf8').trim());
   const log = path.join(TMP, 'commit.json'); if (fs.existsSync(log)) console.error('提交结果：' + fs.readFileSync(log, 'utf8'));
   if (editor) { try { console.error('测试输入框：' + JSON.stringify(await editor.evaluate(`({text:document.getElementById('input').value,active:document.activeElement.id,images:window.imagePastes})`))); } catch {} }
   process.exitCode = 1;

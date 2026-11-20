@@ -2,11 +2,13 @@
 const assert=require('node:assert/strict'),{createPanelNative}=require('../lib/panel-native');
 let closed=0,attribute,allowed;
 const native={AllowSetForegroundWindow:pid=>{allowed=pid;return 1;},GetForegroundWindow:()=>321n,GetWindowThreadProcessId:(_h,out)=>{assert.ok(Buffer.isBuffer(out));out.writeUInt32LE(47);return 1;},OpenProcess:(access,inherit,pid)=>{assert.equal(access,0x1000);assert.equal(pid,47);return 99n;},GetProcessTimes:(_h,created)=>{assert.ok(Buffer.isBuffer(created));created.writeBigUInt64LE(116444736000000000n+123450000n);return 1;},CloseHandle:()=>{closed++;return 1;},DwmSetWindowAttribute:(...args)=>{attribute=args;return 0;}};
-const ffi={load:()=>({func:(_calling,name)=>native[name]})},panel=createPanelNative({platform:'win32',load:()=>ffi});
+native.GetGUIThreadInfo=(thread,out)=>{assert.equal(thread,1);assert.equal(out.size,72);out.focus=456n;return 1;};
+const ffi={struct:()=>'gui',pointer:v=>v,inout:v=>v,sizeof:()=>72,load:()=>({func:(_calling,name)=>native[name]})},panel=createPanelNative({platform:'win32',load:()=>ffi});
 assert.equal(panel.allowForeground(47),true);assert.equal(allowed,47);
 for(const pid of [undefined,0,-1,0xffffffff,1.2])assert.equal(panel.allowForeground(pid),false);
 assert.deepEqual(panel.foreground(),{hwnd:'321',pid:47,processStartedAt:12345,processName:'',title:''});assert.equal(closed,1);
+assert.equal(panel.foreground({withFocus:true}).focusHwnd,'456');
 const handle=Buffer.alloc(8);handle.writeBigUInt64LE(321n);assert.equal(panel.disableTransitions({getNativeWindowHandle:()=>handle}),true);assert.deepEqual(attribute,[321n,3,[1],4]);
-native.GetProcessTimes=()=>0;const failed=createPanelNative({platform:'win32',load:()=>ffi});assert.equal(failed.foreground(),null);assert.equal(closed,2,'Process handles close on failed snapshots');
+native.GetProcessTimes=()=>0;const failed=createPanelNative({platform:'win32',load:()=>ffi});assert.equal(failed.foreground(),null);assert.equal(closed,3,'Process handles close on failed snapshots');
 assert.equal(createPanelNative({platform:'linux'}).foreground(),null);assert.equal(createPanelNative({platform:'win32',load:()=>{throw Error('missing');}}).foreground(),null);
 console.log('PASS fast foreground identity, native output buffers, handle lifetime and DWM transition control');

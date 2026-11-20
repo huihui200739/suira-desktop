@@ -4,6 +4,9 @@ Upstream: https://github.com/tw93/MiaoYan/blob/83ddc004353a794856379bb85460b8f2a
 Source highlighting roles adapted from:
 https://github.com/tw93/MiaoYan/blob/83ddc004353a794856379bb85460b8f2a249ce01/Helpers/MarkdownRuleHighlighter.swift
 
+Windows port used by the Suira editor:
+https://github.com/huihui200739/miaoyan-windows/tree/e2030d67ce38ecda38ec9186f8e0614bfa23c204
+
 MIT License
 
 Copyright (c) 2022 Tw93

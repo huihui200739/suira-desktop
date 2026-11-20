@@ -1,0 +1,10 @@
+{
+  "repository": "https://github.com/huihui200739/miaoyan-windows",
+  "commit": "e2030d67ce38ecda38ec9186f8e0614bfa23c204",
+  "files": {
+    "lib/index.mjs": "a1e5442efa38af834fc9d36a76843bc95f0f865fc2b657c6312313f0481c80d0",
+    "lib/editing.mjs": "6e1a7ce37734330f4d46a98416bd4eff46ebd04c500ae2cf2923cfd3a62d4267",
+    "lib/highlight.mjs": "e195197123420bae6fe36790c8d3c6d7507ddae6996777cb04bff07eb526d60b",
+    "LICENSE": "a8cfae3105018e6018e5a046977a9919c0e975d8d5eab79fd19339182211f058"
+  }
+}

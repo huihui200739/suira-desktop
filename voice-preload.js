@@ -33,10 +33,8 @@ if (typeof document !== 'undefined' && typeof window !== 'undefined') {
 
 contextBridge.exposeInMainWorld('suiraVoice', {
   status: () => ipcRenderer.invoke('voice:status'),
-  onStatus: callback => ipcRenderer.on('voice:status', (_event, status) => callback(status)),
+  onStop: callback => ipcRenderer.on('voice:stop', () => callback()),
   transcribe: pcm => ipcRenderer.invoke('voice:transcribe', { pcm }),
-  commit: (text, mode) => ipcRenderer.invoke('voice:commit', { text, mode }),
-  cancel: () => ipcRenderer.invoke('voice:cancel'),
   close: () => ipcRenderer.invoke('voice:close'),
   openSettings: () => ipcRenderer.invoke('voice:open-settings')
 });

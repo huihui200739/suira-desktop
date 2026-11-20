@@ -1,5 +1,5 @@
 // Ported from MiaoYanCore/MarkdownEditing.swift (Tw93, MIT).
-// Provenance and license: assets/licenses/miaoyan.txt.
+// See LICENSE and the upstream snapshot in this repository.
 const item = /^([ \t]*(?:>[ \t]*)*)([-*+]|\d{1,9}[.)])[ \t]+(\[[ xX]\](?:[ \t]+|$))?([\s\S]*)$/;
 const quote = /^([ \t]*(?:>[ \t]*)*>[ \t]+)([\s\S]*)$/;
 const rule = /^[ \t]*([-*_])(?:[ \t]*\1){2,}[ \t]*$/;
@@ -98,4 +98,27 @@ export function editLines(text, start, end, command) {
   const newEnd = from + replacement.length;
   const caret = Math.max(from, newEnd - (to - start));
   return {from, to, replacement, start: start === end ? caret : from, end: start === end ? caret : newEnd};
+}
+
+// SourceLines and TaskMarker use UTF-16 offsets, just like textarea selections.
+// Only CRLF, CR and LF are Markdown line endings.
+export function sourceLineRange(text, index) {
+  if (!Number.isInteger(index) || index < 0) return null;
+  let from = 0;
+  for (let line = 0; line < index; line++) {
+    const end = lineEnd(text, from);
+    if (end === text.length) return null;
+    from = end + (text.slice(end, end + 2) === '\r\n' ? 2 : 1);
+    if (from >= text.length) return null;
+  }
+  return { from, to: lineEnd(text, from) };
+}
+
+export function toggleTaskAtSourceLine(text, index) {
+  const range = sourceLineRange(text, index);
+  if (!range || inFencedCode(text, range.from)) return null;
+  const task = /^([ \t>]*(?:[-*+]|\d+[.)])[ \t]+\[)([ xX])\]/.exec(text.slice(range.from, range.to));
+  if (!task) return null;
+  const from = range.from + task[1].length;
+  return { from, to: from + 1, replacement: task[2] === ' ' ? 'x' : ' ' };
 }

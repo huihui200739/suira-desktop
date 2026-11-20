@@ -92,10 +92,10 @@ t('语音输入界面、受限预加载与主进程通道齐备', () => {
   const referencedIds = new Set([...voiceJs.matchAll(/\$\('#([A-Za-z0-9_-]+)'\)/g)].map(match => match[1]));
   const missingIds = [...referencedIds].filter(id => !voiceIds.has(id));
   if (missingIds.length) throw new Error('语音页缺少元素: ' + missingIds.join(', '));
-  for (const method of ['status', 'transcribe', 'commit', 'cancel', 'close', 'openSettings']) {
+  for (const method of ['status', 'transcribe', 'onStop', 'close', 'openSettings']) {
     if (!voicePreload.includes(`${method}:`)) throw new Error('预加载缺少语音能力 ' + method);
   }
-  for (const channel of ['voice:open', 'voice:status', 'voice:transcribe', 'voice:commit', 'voice:cancel', 'voice:close', 'voice:open-settings']) {
+  for (const channel of ['voice:open', 'voice:status', 'voice:transcribe', 'voice:stop', 'voice:close', 'voice:open-settings']) {
     if (!mainJs.includes(`'${channel}'`)) throw new Error('主进程缺少语音通道 ' + channel);
   }
   if (!voiceHtml.includes("connect-src 'none'")) throw new Error('语音页面不应直接建立网络连接');

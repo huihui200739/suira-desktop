@@ -1,5 +1,7 @@
 import {renderMenu,validURL,escape} from './document-menu.mjs';
-import {continueList, editLines, inFencedCode} from './miaoyan-markdown-editing.mjs';
+import {continueList, editLines, inFencedCode, sourceHighlight} from '../vendor/miaoyan-windows/lib/index.mjs';
+
+window.SuiraSourceHighlight = sourceHighlight;
 
 // The source, split and preview views share the visual editor's command model.
 // Source mutations stay in the native textarea undo history and never parse or

@@ -1287,9 +1287,9 @@ async function showQuickPanel() {
   try {
     cancelIdleTeardown(win);
     // Capture the exact pre-focus process identity without waiting on helper IO.
-    let snapshot=panelNative.foreground();
+    let snapshot=panelNative.foreground({ withFocus: true });
     if(!snapshot)snapshot=await Promise.race([queryForeground(),new Promise(resolve=>setTimeout(()=>resolve(null),100))]);
-    await rememberReturnTarget('panel',snapshot);quickInvocationTarget=clipboardTarget(snapshot,process.pid);returnTarget=quickInvocationTarget;panelSelection=null;
+    await rememberReturnTarget('panel',snapshot);quickInvocationTarget=clipboardTarget(snapshot,process.pid);if(quickInvocationTarget&&snapshot?.focusHwnd)quickInvocationTarget.focusHwnd=snapshot.focusHwnd;returnTarget=quickInvocationTarget;panelSelection=null;
     if(store?.getSettings().selectionEnabled&&snapshot&&Number(snapshot.pid)!==process.pid&&foregroundProbe.isReady()){
       const identified=await foregroundProbe.query(snapshot.hwnd);
       if(identified&&revision===quickShowRevision){
@@ -1336,41 +1336,40 @@ function installVoicePermissionHandlers() {
   voicePermissionSession = voiceSession;
 }
 
-/** 语音工具按需创建，关闭即销毁窗口与临时媒体会话。 */
-async function openVoiceInput() {
+/** Keep dictation beside the active input without activating its overlay. */
+async function openVoiceInput({ preview = false } = {}) {
   if (!store) return { ok: false, error: '数据未就绪' };
   if (voiceWindow && !voiceWindow.isDestroyed()) {
-    if (voiceWindow.isMinimized()) voiceWindow.restore();
-    voiceWindow.show();
-    voiceWindow.focus();
+    if (!voiceWindow.__stopping && Date.now() - voiceWindow.__openedAt > 450) {
+      voiceWindow.__stopping = true;
+      voiceWindow.webContents.send('voice:stop');
+    }
     return { ok: true };
   }
-  const panelTarget = quickWindow?.isFocused() ? quickInvocationTarget : null;
-  const foreground = panelTarget ? null : await Promise.race([
-    queryForeground().catch(() => null),
-    new Promise(resolve => setTimeout(() => resolve(null), 150))
-  ]);
-  if (voiceWindow && !voiceWindow.isDestroyed()) return { ok: true };
-  voiceSessionTarget = panelTarget || captureTarget(Number(foreground?.pid) === process.pid ? null : foreground, { selectionMethod: 'voice' });
-  hideQuickPanel();
+  const fromPanel = quickWindow?.isFocused();
+  const foreground = fromPanel ? quickInvocationTarget : panelNative.foreground({ withFocus: true });
+  voiceSessionTarget = preview ? null : captureTarget(foreground, { selectionMethod: 'voice' });
+  voiceSessionTarget = voiceSessionTarget && { ...voiceSessionTarget, focusHwnd: foreground?.focusHwnd };
+  if (quickWindow?.isVisible()) hideQuickPanel();
   installVoicePermissionHandlers();
   const win = voiceWindow = new BrowserWindow({
-    width: 540, height: 460, minWidth: 460, minHeight: 400,
-    show: false, frame: false, thickFrame: SYSTEM_GLASS, transparent: true,
+    width: 208, height: 48, show: false, frame: false, thickFrame: false, transparent: true,
+    focusable: false, alwaysOnTop: true, skipTaskbar: true,
+    resizable: false, movable: false, hasShadow: false,
     backgroundColor: '#00000000', title: '随序 · 语音输入',
-    icon: assetPath('suira-icon.png'), skipTaskbar: false,
     webPreferences: {
       preload: path.join(__dirname, 'voice-preload.js'),
       contextIsolation: true, nodeIntegration: false, sandbox: true,
-      spellcheck: false, partition: 'suira-voice'
+      autoplayPolicy: 'no-user-gesture-required', spellcheck: false, partition: 'suira-voice'
     }
   });
-  prepareFloatingSurface(win, 24, true);
+  win.__openedAt = Date.now();
+  const area = screen.getDisplayNearestPoint(screen.getCursorScreenPoint()).workArea;
+  win.setPosition(Math.round(area.x + (area.width - 208) / 2), area.y + area.height - 72);
   win.setMenuBarVisibility(false);
   win.webContents.on('will-navigate', event => event.preventDefault());
   win.webContents.on('will-attach-webview', event => event.preventDefault());
   win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
-  win.once('ready-to-show', () => { if (!win.isDestroyed()) { win.center(); win.show(); win.focus(); } });
   win.on('closed', () => {
     if (voiceWindow === win) {
       voiceRequestController?.abort();
@@ -1381,10 +1380,12 @@ async function openVoiceInput() {
   });
   try {
     await win.loadFile(path.join(__dirname, 'src', 'voice-input.html'));
+    if (!win.isDestroyed()) win.showInactive();
     return { ok: true };
   } catch (error) {
+    if (win.isDestroyed()) return { ok: true };
     console.warn('语音窗口加载失败:', error.message);
-    if (!win.isDestroyed()) win.close();
+    win.close();
     return { ok: false, error: '语音窗口加载失败，请重试' };
   }
 }
@@ -3388,7 +3389,7 @@ function registerIpc() {
   ipcMain.handle('voice:open', event => {
     const caller = BrowserWindow.fromWebContents(event.sender);
     if (caller !== quickWindow && caller !== mainWindow) return { ok: false, error: '语音输入入口无效' };
-    return openVoiceInput();
+    return openVoiceInput({ preview: caller === mainWindow });
   });
   ipcMain.handle('voice:status', event => {
     if (BrowserWindow.fromWebContents(event.sender) !== voiceWindow) return { ok: false, error: '语音窗口无效' };
@@ -3402,33 +3403,27 @@ function registerIpc() {
     return { ok: true };
   });
   ipcMain.handle('voice:transcribe', async (event, payload) => {
-    if (BrowserWindow.fromWebContents(event.sender) !== voiceWindow) return { ok: false, error: '语音窗口无效' };
+    const win = BrowserWindow.fromWebContents(event.sender);
+    if (win !== voiceWindow || !win) return { ok: false, error: '语音窗口无效' };
     if (voiceRequestController) return { ok: false, error: '正在识别上一段录音' };
     const config = voiceConfig();
+    const target = voiceSessionTarget;
     const controller = voiceRequestController = new AbortController();
     try {
-      return await voiceInput.transcribe({ pcm: payload?.pcm, format: config.format, baseUrl: config.baseUrl,
+      const result = await voiceInput.transcribe({ pcm: payload?.pcm, format: config.format, baseUrl: config.baseUrl,
         model: config.model, apiKey: config.apiKey, fetchImpl: electron.net.fetch, signal: controller.signal });
+      if (controller.signal.aborted || voiceWindow !== win) return { ok: false, cancelled: true };
+      if (!result.ok) return result;
+      if (!result.text?.trim()) return { ok: false, error: '没有识别到语音' };
+      await writeClipboardText(result.text);
+      // Check the same foreground window and native focused control immediately
+      // before sending Ctrl+V. Dictation never activates a window behind the user.
+      if (!target?.focusHwnd || controller.signal.aborted || voiceWindow !== win) return { ok: true, pasted: false };
+      const pasted = await foregroundProbe.pasteTo(target, { stayInForeground: true });
+      return { ok: true, pasted: pasted.ok };
     } finally {
       if (voiceRequestController === controller) voiceRequestController = null;
     }
-  });
-  ipcMain.handle('voice:cancel', event => {
-    if (BrowserWindow.fromWebContents(event.sender) !== voiceWindow) return { ok: false };
-    voiceRequestController?.abort();
-    return { ok: true };
-  });
-  ipcMain.handle('voice:commit', async (event, payload) => {
-    if (BrowserWindow.fromWebContents(event.sender) !== voiceWindow) return { ok: false, error: '语音窗口无效' };
-    const text = String(payload?.text || '').slice(0, 100000);
-    if (!text.trim()) return { ok: false, error: '没有可复制的识别结果' };
-    const copyOnly = payload?.mode === 'copy';
-    const result = await tryReturnToTarget({ kind: 'text', text }, copyOnly ? 'copy-only' : 'return-and-paste', {
-      explicitPaste: !copyOnly, targetOverride: voiceSessionTarget
-    });
-    if (result.copyFailed) return { ok: false, error: result.message || '复制失败' };
-    if ((copyOnly || result.pasted) && voiceWindow?.webContents === event.sender) voiceWindow.close();
-    return { ok: true, ...result };
   });
   ipcMain.handle('voice:close', event => {
     if (BrowserWindow.fromWebContents(event.sender) !== voiceWindow) return { ok: false };
@@ -4485,7 +4480,6 @@ function registerIpc() {
     if (keyTouched) broadcast('translate:status', translateStatus());
     if (keyTouched || voiceKeyTouched || incoming.voiceProvider !== undefined || incoming.voiceBaseUrl !== undefined
       || incoming.voiceModel !== undefined || incoming.translateBaseUrl !== undefined || incoming.translateProvider !== undefined) {
-      voiceWindow?.webContents.send('voice:status', voiceStatus());
     }
     return { ok: true, settings: safe };
   });

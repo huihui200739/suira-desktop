@@ -10,6 +10,13 @@ for(const [source,target] of [
   ['dompurify/dist/purify.min.js','purify.js'],['dompurify/LICENSE','dompurify-LICENSE.txt']
 ])fs.copyFileSync(path.join(root,'node_modules',source),path.join(out,target));
 const bundle=require('esbuild').buildSync({entryPoints:[path.join(root,'tools/document-editor-entry.mjs')],outfile:path.join(out,'document-editor.js'),bundle:true,minify:true,format:'iife',platform:'browser',target:'chrome140',legalComments:'eof',metafile:true});
+// Use the exact files from the Windows port revision, even for an offline build.
+const portRoot=path.join(root,'vendor/miaoyan-windows');
+const portOrigin=require(path.join(portRoot,'origin.json'));
+for(const [file,digest] of Object.entries(portOrigin.files)) {
+ const value=require('node:crypto').createHash('sha256').update(fs.readFileSync(path.join(portRoot,file))).digest('hex');
+ if(value!==digest)throw new Error('MiaoYan Windows source does not match its recorded revision: '+file);
+}
 const sourceBundle = require('esbuild').buildSync({entryPoints:[path.join(root,'tools/document-source-editor.mjs')],outfile:path.join(out,'document-source-editor.js'),bundle:true,minify:true,format:'iife',platform:'browser',target:'chrome140',legalComments:'eof',metafile:true});
 const packages=new Set([...Object.keys(bundle.metafile.inputs),...Object.keys(sourceBundle.metafile.inputs)].map(file=>file.match(/node_modules\/((@[^/]+\/)?[^/]+)\//)?.[1]).filter(Boolean));
 const licenses=[];

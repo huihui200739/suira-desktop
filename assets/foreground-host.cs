@@ -88,10 +88,25 @@ public static class ForegroundHost {
         for(int n=0;n<50&&GetForegroundWindow()!=target;n++)Thread.Sleep(4);
         return new{ok=GetForegroundWindow()==target};
     }
+    [StructLayout(LayoutKind.Sequential)] struct GuiThreadInfo {
+        public uint size, flags;
+        public IntPtr active, focus, capture, menu, moveSize, caret;
+        public Rect caretRect;
+    }
+    [DllImport("user32.dll")] static extern bool GetGUIThreadInfo(uint thread, ref GuiThreadInfo info);
+    static bool HasFocus(IntPtr target, IntPtr focus) {
+        uint pid;
+        uint thread=GetWindowThreadProcessId(target,out pid);
+        GuiThreadInfo info=new GuiThreadInfo();
+        info.size=(uint)Marshal.SizeOf(typeof(GuiThreadInfo));
+        return thread!=0 && GetGUIThreadInfo(thread,ref info) && info.focus==focus;
+    }
     static object Paste(string[] args) {
         IntPtr target=new IntPtr(long.Parse(args[1])); int pid=int.Parse(args[2]); long started=long.Parse(args[3]); int owner=int.Parse(args[4]);
         if (!Matches(target,pid,started)) return new {ok=false,error="target-changed"};
         IntPtr foreground=GetForegroundWindow(); uint foregroundPid; GetWindowThreadProcessId(foreground,out foregroundPid);
+        IntPtr expectedFocus=args.Length>5?new IntPtr(long.Parse(args[5])):IntPtr.Zero;
+        if (expectedFocus!=IntPtr.Zero && (foreground!=target || !HasFocus(target,expectedFocus))) return new {ok=false,error="input-changed"};
         if (foreground!=target && foregroundPid!=owner) return new {ok=false,error="foreground-changed"};
         if (IsIconic(target)) ShowWindow(target,9);
         if (foreground!=target) SetForegroundWindow(target);
@@ -109,6 +124,7 @@ public static class ForegroundHost {
             Thread.Sleep(4);
         }
         if (GetForegroundWindow()!=target || !Matches(target,pid,started)) return new {ok=false,error="target-changed"};
+        if (expectedFocus!=IntPtr.Zero && !HasFocus(target,expectedFocus)) return new {ok=false,error="input-changed"};
         Input[] keys={Key(0x11,false),Key(0x56,false),Key(0x56,true),Key(0x11,true)};
         return new {ok=SendInput(4,keys,Marshal.SizeOf(typeof(Input)))==4};
     }

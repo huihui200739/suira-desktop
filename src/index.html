@@ -200,7 +200,7 @@
             </section>
             <section class="setting-card" data-category="voice" aria-labelledby="voice-settings-title">
               <div class="setting-title"><b id="voice-settings-title">语音输入</b></div>
-              <p class="selection-settings-copy">录音仅保留在内存里，最长 120 秒；停止后上传给你配置的 ASR 服务，可能产生服务商费用。识别结果可编辑，再粘贴回唤起面板前的窗口。</p>
+              <p class="selection-settings-copy">录音仅保留在内存里，最长 120 秒；停止后上传给你配置的 ASR 服务，可能产生服务商费用。按语音快捷键开始说话，停顿约两秒或再按一次会结束录音。文字会输入原窗口。</p>
               <div class="setting-row">
                 <span><b>识别接口</b><small>聊天模型和语音转写是两种能力；中转站需单独提供对应路由</small></span>
                 <select id="setting-voice-provider"><option value="deepseek">DeepSeek ASR</option><option value="openai">OpenAI 兼容转写</option></select>
@@ -218,7 +218,7 @@
                 <input class="text-input" type="password" id="setting-voice-key" placeholder="可留空以复用同源翻译密钥" spellcheck="false" autocomplete="off">
               </label>
               <div class="setting-actions">
-                <button class="quiet-btn" id="setting-voice-open" type="button">打开录音窗口</button>
+                <button class="quiet-btn" id="setting-voice-open" type="button">试录（结果复制到剪贴板）</button>
                 <button class="quiet-btn" id="setting-voice-shortcuts" type="button">设置快捷键</button>
                 <span class="setting-hint" id="voice-shortcut-summary" role="status"></span>
                 <button class="quiet-btn" id="setting-voice-clear" type="button" title="删除单独保存的 ASR 密钥">清除 ASR 密钥</button>
@@ -329,7 +329,7 @@
     </div>
   </div>
   <script src="icons.js"></script><script src="ui-motion.js"></script>
-  <script src="vendor/marked.js"></script><script src="vendor/purify.js"></script><script src="markdown-format.js"></script><script src="markdown-source-highlight.js"></script><script src="vendor/document-source-editor.js"></script><script src="calendar-data.js"></script><script src="tool-art.js"></script><script src="workspace.js"></script><script src="text-spacing.js"></script><script src="trail-model.js"></script><script src="trail-view.js"></script><script src="app.js"></script>
+  <script src="vendor/marked.js"></script><script src="vendor/purify.js"></script><script src="markdown-format.js"></script><script src="vendor/document-source-editor.js"></script><script src="calendar-data.js"></script><script src="tool-art.js"></script><script src="workspace.js"></script><script src="text-spacing.js"></script><script src="trail-model.js"></script><script src="trail-view.js"></script><script src="app.js"></script>
   <script src="liquid-glass.js"></script>
   <script src="theme-settings.js"></script><script src="stage-tools.js"></script>
 <script src="glass-select.js"></script></body>
