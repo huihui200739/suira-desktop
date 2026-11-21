@@ -1,5 +1,5 @@
 /* Notebook layout and editor controls. */
-html,body { height:100%; margin:0; overflow:hidden; }
+html,body { height:100%; margin:0; overflow:hidden; background:transparent; }
 html.notes-window {
   color-scheme:light;
   --ink:var(--writing-ink);
@@ -25,7 +25,7 @@ html.notes-window {
   --note-accent: var(--writing-focus);
   display:grid; position:relative; isolation:isolate; height:100%; overflow:hidden;
   grid-template: "head" 52px "writing" minmax(0,1fr) "foot" auto / minmax(0,1fr);
-  border:1px solid var(--note-line);
+  border:1px solid var(--note-line); border-radius:22px;
   background:var(--note-paper); color:var(--note-ink);
 }
 .note :where(button,input,textarea) { font-family:inherit; }

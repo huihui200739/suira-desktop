@@ -1729,10 +1729,11 @@ function createClipboardBarWindow() {
     ...clipboardBarBounds(),
     show: false,
     frame: false,
-    thickFrame: false,
-    roundedCorners: false,
+    thickFrame: SYSTEM_GLASS,
+    roundedCorners: true,
     hasShadow: false,
-    backgroundColor: '#f7f7f7',
+    transparent: true,
+    backgroundColor: '#00000000',
     resizable: false,
     movable: false,
     maximizable: false,
@@ -1750,6 +1751,7 @@ function createClipboardBarWindow() {
       spellcheck: false
     }
   });
+  prepareFloatingSurface(clipboardBarWindow, 24, true);
   clipboardBarWindow.setAlwaysOnTop(true, 'floating');
   clipboardBarWindow.on('will-resize',event=>event.preventDefault());
   clipboardBarWindow.__loaded = clipboardBarWindow.loadFile(path.join(__dirname, 'src', 'clipboardbar.html'));
@@ -3291,10 +3293,11 @@ function createNoteWindow(noteId) {
     hasShadow: false,
     // 钉住的速记浮在其它窗口之上；未钉住就是普通窗口，不抢屏幕
     alwaysOnTop: Boolean(note.pinned),
-    backgroundColor: '#ffffff',
+    transparent: true,
+    backgroundColor: '#00000000',
     title: '随序 · 速记',
     icon: assetPath('suira-icon.png'),
-    roundedCorners: false,
+    roundedCorners: true,
     skipTaskbar: false,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
@@ -3304,6 +3307,7 @@ function createNoteWindow(noteId) {
       spellcheck: false
     }
   });
+  prepareFloatingSurface(win, 22);
   noteWindows.set(noteId, win);
   win.loadFile(path.join(__dirname, 'src', 'notes.html'));
   win.setMenuBarVisibility(false);

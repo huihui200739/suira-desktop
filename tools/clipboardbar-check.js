@@ -86,6 +86,7 @@ check('渲染层过滤不可见时的内容刷新', barJs.includes('state.visibl
 
 const themeCss = fs.readFileSync(path.join(ROOT, 'src', 'theme.css'), 'utf8');
 check('HTML 引用共享主题层 theme.css', barHtml.includes('href="theme.css"'));
+check('剪贴板复用悬浮板玻璃样式并显示玻璃层', barHtml.includes('href="liquid-glass.css"') && barHtml.includes('src="liquid-glass.js"') && !/\.bar\s*>\s*\.glass-scene\s*\{[^}]*display\s*:\s*none/i.test(barCss));
 
 const tokens = [
   /--slate-12:\s*#1c2024/i,
@@ -377,6 +378,8 @@ function buildFixtures() {
   fs.writeFileSync(path.join(TMP, '__bar_mock.js'), MOCK, 'utf8');
   fs.writeFileSync(path.join(TMP, '__bar_probe.js'), PROBE, 'utf8');
   fs.copyFileSync(path.join(ROOT, 'src', 'theme.css'), path.join(TMP, 'theme.css'));
+  fs.copyFileSync(path.join(ROOT, 'src', 'liquid-glass.css'), path.join(TMP, 'liquid-glass.css'));
+  fs.copyFileSync(path.join(ROOT, 'src', 'liquid-glass.js'), path.join(TMP, 'liquid-glass.js'));
   fs.copyFileSync(path.join(ROOT, 'src', 'clipboardbar.css'), path.join(TMP, 'clipboardbar.css'));
   fs.copyFileSync(path.join(ROOT, 'src', 'clipboardbar.js'), path.join(TMP, 'clipboardbar.js'));
   const page = barHtml

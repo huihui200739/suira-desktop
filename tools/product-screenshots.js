@@ -101,10 +101,10 @@ class RegionCheck {
   SetProcessDpiAwarenessContext(new IntPtr(-4));var region=CreateRectRgn(0,0,0,0);
   try{Rect rect;var hwnd=new IntPtr(long.Parse(args[0]));if(!GetWindowRect(hwnd,out rect))throw new Exception("Missing HWND");
    bool system=GetWindowRgn(hwnd,region)==0;int w=rect.r-rect.l,h=rect.b-rect.t;bool ok;
-   if(args.Length==3 && args[2]=="square"){
+   if(args.Length==3 && args[2]=="native-rounded"){
     int corner;int cornerResult=DwmGetWindowAttribute(hwnd,33,out corner,4);
     bool fullRegion=system||(PtInRegion(region,0,0)&&PtInRegion(region,w-1,0)&&PtInRegion(region,0,h-1)&&PtInRegion(region,w-1,h-1));
-    ok=fullRegion&&(GetWindowLong(hwnd,-16)&0x40000)==0&&(cornerResult!=0||corner==1);
+    ok=fullRegion&&(cornerResult!=0||corner==2);
     File.WriteAllText(args[1]+".debug","style="+GetWindowLong(hwnd,-16).ToString("x")+", ex="+GetWindowLong(hwnd,-20).ToString("x")+", corner="+corner+", cornerResult="+cornerResult+", fullRegion="+fullRegion);
    }else if(system){
     int corner;DwmGetWindowAttribute(hwnd,33,out corner,4);
@@ -122,13 +122,13 @@ class RegionCheck {
     const check = async suffix => {
       const surface = await until(async () => (await info()).surfaces.find(s => s.url.includes(suffix)));
       assert.ok(surface, 'Missing clipped surface: ' + suffix);
-      const square = ['/clipboardbar.html','/notes.html'].includes(suffix);
-      if (square) assert.equal(surface.shadow,false,'Square windows must not have a native shadow');
-      else assert.ok(['transparent','native-glass'].includes(surface.material));
+      const nativeRounded = suffix === '/clipboardbar.html' && surface.material === 'native-glass';
+      if (['/clipboardbar.html','/notes.html'].includes(suffix)) assert.equal(surface.shadow,false,'Utility windows keep their shadow-free frame');
+      assert.ok(['transparent','native-glass'].includes(surface.material),'Rounded Windows surfaces use an initialized material: '+suffix);
       const result = path.join(tmp, 'region.json');
-      // A newly created HWND can be exposed before Windows applies its HRGN.
-      await until(()=>{execFileSync(checker, [surface.handle, result, ...(square ? ['square'] : [])], { windowsHide: true, timeout: 5000, stdio:'pipe' });return true;});
-      assert.equal(JSON.parse(fs.readFileSync(result, 'utf8')), true, 'Native shape must match the surface: ' + suffix + (square ? ' ' + fs.readFileSync(result+'.debug','utf8') : ''));
+      // A newly created HWND can be exposed before Windows applies its rounded shape.
+      await until(()=>{execFileSync(checker, [surface.handle, result, ...(nativeRounded ? ['native-rounded'] : [])], { windowsHide: true, timeout: 5000, stdio:'pipe' });return true;});
+      assert.equal(JSON.parse(fs.readFileSync(result, 'utf8')), true, 'Native rounded shape must match the surface: ' + suffix + (nativeRounded ? ' ' + fs.readFileSync(result+'.debug','utf8') : ''));
       console.log('PASS native region: ' + suffix);
       return surface;
     };
@@ -143,7 +143,7 @@ class RegionCheck {
     };
     const shot = async (client, name, theme = 'light') => {
       const reviewDir = process.env.SUIRA_REVIEW_SHOTS;
-      if (!screenshots || (reviewDir && !['clipboard','clipboard-dark','clipboard-hover','clipboard-text-hover','clipboard-link-hover','clipboard-batch-share','notes','notes-narrow','markdown-dark'].includes(name))) return;
+      if (!screenshots || (reviewDir && !['clipboard','clipboard-dark','clipboard-hover','clipboard-text-hover','clipboard-link-hover','clipboard-batch-share','clipboard-narrow','notes','notes-narrow','markdown-dark'].includes(name))) return;
       console.log('SHOT '+name);
       await client.evaluate('window.suira.settings.update('+JSON.stringify({theme})+')');
       await client.evaluate('document.fonts.ready'); await wait(350);
@@ -161,7 +161,11 @@ class RegionCheck {
     };
     async function captureNote() {
       await main.evaluate('window.suira.notes.create()');
-      const note=await page(t => t.url.endsWith('/notes.html')); await check('/notes.html');await until(()=>note.evaluate('document.getElementById("note").dataset.state==="ready"'));await note.evaluate('(()=>{document.querySelector("#note-body .tiptap").focus();document.execCommand("selectAll");document.execCommand("insertText",false,"随手记下，接着做\\n\\n把想法先放在这里，稍后再整理。");return true})()');
+      const note=await page(t => t.url.endsWith('/notes.html')); await check('/notes.html');await until(()=>note.evaluate('document.getElementById("note").dataset.state==="ready"'));
+      const noteFrame=await note.evaluate('(()=>({radius:getComputedStyle(document.getElementById("note")).borderTopLeftRadius,body:getComputedStyle(document.body).backgroundColor}))()');
+      assert.equal(noteFrame.radius,'22px','Notes keep their rounded surface');
+      assert.equal(noteFrame.body,'rgba(0, 0, 0, 0)','Rounded note corners reveal the transparent window outside the paper');
+      await note.evaluate('(()=>{document.querySelector("#note-body .tiptap").focus();document.execCommand("selectAll");document.execCommand("insertText",false,"随手记下，接着做\\n\\n把想法先放在这里，稍后再整理。");return true})()');
       await note.evaluate('window.NoteUI.flush()');
       await shot(note,'notes','dark');
       return note;
@@ -172,6 +176,32 @@ class RegionCheck {
       fs.writeFileSync(control, JSON.stringify({id:surface.id, size:[320, 320]}));
       await info();
       await shot(note, 'notes-narrow');
+      return;
+    }
+    if (process.argv.includes('--surfaces-only')) {
+      await captureNote();
+      for (const sample of [
+        {title:"产品体验评审",text:"收集这周的反馈，整理下一版体验。"},
+        {title:"下一步",text:"检查窗口圆角与玻璃背景。"},
+        {title:"参考资料",text:"https://example.com/design"},
+        {title:"会议速记",text:"留下关键决定与待办。"},
+        {title:"计划",text:"先完成验证，再准备更新。"},
+        {title:"灵感",text:"让界面更柔和，也保持清晰。"}
+      ]) await main.evaluate(`window.suira.content.addText(${JSON.stringify(sample)})`);
+      await main.evaluate('window.suira.clipboardBar.show()');
+      const clipboard = await page(t => t.url.endsWith('/clipboardbar.html'));
+      await check('/clipboardbar.html');
+      await until(()=>clipboard.evaluate('document.querySelectorAll(".bar-card").length>=6'));
+      await until(()=>clipboard.evaluate('document.documentElement.classList.contains("liquid-ui")'));
+      const glass=await clipboard.evaluate('(()=>{const scene=document.querySelector(".bar>.glass-scene"),bar=document.getElementById("bar"),style=getComputedStyle(scene);return {root:document.documentElement.className,backend:document.documentElement.dataset.glassBackend,mode:document.documentElement.dataset.glassMode,sceneVisible:Boolean(scene)&&style.display!=="none",radius:parseFloat(getComputedStyle(bar).borderTopLeftRadius),sceneColor:style.backgroundColor}})()');
+      assert.equal(glass.sceneVisible,true,'Clipboard shows the shared compositor glass layer');
+      assert.ok(glass.radius>=8,'Clipboard keeps rounded glass corners: '+JSON.stringify(glass));
+      assert.notEqual(glass.sceneColor,'rgba(0, 0, 0, 0)','Clipboard glass layer has a visible material tint: '+JSON.stringify(glass));
+      await shot(clipboard,'clipboard');
+      const surface=(await info()).surfaces.find(entry=>entry.url.endsWith('/clipboardbar.html'));
+      fs.writeFileSync(control,JSON.stringify({id:surface.id,size:[720,310]}));
+      await info();
+      await shot(clipboard,'clipboard-narrow');
       return;
     }
     await check('/index.html');
@@ -270,6 +300,12 @@ class RegionCheck {
     await main.evaluate('window.suira.clipboardBar.show()');
     const clipboard=await page(t => t.url.endsWith('/clipboardbar.html')); await check('/clipboardbar.html');
     await until(()=>clipboard.evaluate('document.querySelectorAll(".bar-card").length>=6'));
+    await until(()=>clipboard.evaluate('document.documentElement.classList.contains("liquid-ui")'));
+    const glass=await clipboard.evaluate('(()=>{const scene=document.querySelector(".bar>.glass-scene"),bar=document.getElementById("bar"),style=getComputedStyle(scene);return {mounted:document.documentElement.classList.contains("liquid-ui"),backend:document.documentElement.dataset.glassBackend,mode:document.documentElement.dataset.glassMode,sceneVisible:Boolean(scene)&&style.display!=="none",radius:parseFloat(getComputedStyle(bar).borderTopLeftRadius),sceneColor:style.backgroundColor}})()');
+    assert.equal(glass.mounted,true,'Clipboard loads the shared glass surface');
+    assert.equal(glass.sceneVisible,true,'Clipboard shows the shared compositor glass layer');
+    assert.ok(glass.radius>=8,'Clipboard keeps rounded glass corners: '+JSON.stringify(glass));
+    assert.notEqual(glass.sceneColor,'rgba(0, 0, 0, 0)','Clipboard glass layer has a visible material tint: '+JSON.stringify(glass));
     const moveClipboardPointer = (x,y) => clipboard.send('Input.dispatchMouseEvent',{type:'mouseMoved',x,y});
     await moveClipboardPointer(4,48);
     await shot(clipboard,'clipboard');

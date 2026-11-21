@@ -53,6 +53,7 @@ const js = fs.readFileSync(path.join(ROOT, 'src', 'notes.js'), 'utf8');
 check('HTML 引用 notes.css', html.includes('href="notes.css"'));
 check('HTML 引用 notes.js', html.includes('src="notes.js"'));
 check('HTML 引用共享主题层 theme.css', html.includes('href="theme.css"'));
+check('速记恢复圆角白色画布与透明窗口底', /\.note\s*\{[^}]*border-radius:\s*22px/.test(css) && /html,body\s*\{[^}]*background:\s*transparent/.test(css));
 check('页面不引用任何网络资源', !/https?:\/\//i.test(html + css + js));
 check('渲染层不使用网络 API', !/\bfetch\s*\(|XMLHttpRequest|WebSocket|sendBeacon/.test(js));
 check('渲染层不用 eval / new Function', !/\beval\s*\(|new\s+Function\s*\(/.test(js));
