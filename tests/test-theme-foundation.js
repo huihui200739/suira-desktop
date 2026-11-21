@@ -9,6 +9,10 @@ assert.ok(violations('<svg><path fill="#fff"/></svg>','fixture.html').length);
 assert.equal(lint().length,0);
 const root=path.resolve(__dirname,'..'),source=require('../src/vendor/foundation-sources.json');
 for(const [name,hash] of [['MiSansVF.ttf',source.misans.sha256],['MiSans-LICENSE.pdf',source.misans.licenseSha256]])assert.equal(crypto.createHash('sha256').update(fs.readFileSync(path.join(root,'assets/fonts',name))).digest('hex'),hash);
+const themeTool=require('../tools/theme-css'),themeSource=fs.readFileSync(path.join(root,'src/theme.css'),'utf8');
+assert.ok(themeTool.isCurrent(themeSource),'Generated theme scales match the checked-in stylesheet');
+const crlfThemeSource=themeSource.replace(/\r\n?/g,'\n').replace(/\n/g,'\r\n');
+assert.ok(themeTool.isCurrent(crlfThemeSource),'Generated theme scales remain valid after Windows CRLF checkout');
 const requested=new Set();for(const file of ['index.html','pin.html','workspace.js']){
  const text=fs.readFileSync(path.join(root,'src',file),'utf8');for(const match of text.matchAll(/data-icon="([^"]+)"|suiraIcons\.svg\('([^']+)'\)/g))requested.add(match[1]||match[2]);
 }

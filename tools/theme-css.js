@@ -14,11 +14,22 @@ function render(){
   }
   return start+'\n'+blocks.join('\n')+'\n'+end;
 }
-const file=path.resolve(__dirname,'../src/theme.css'),source=fs.readFileSync(file,'utf8'),generated=render();
-if(process.argv.includes('--check')){
-  if(!source.includes(generated))throw Error('Theme scales are stale: run node tools/theme-css.js');
-  console.log('PASS preset CSS matches palette foundations');
-}else{
-  const from=source.indexOf(start),to=source.indexOf(end);
-  fs.writeFileSync(file,from<0?source+'\n'+generated+'\n':source.slice(0,from)+generated+source.slice(to+end.length));
+function normalizeLineEndings(value){
+  return value.replace(/\r\n?/g,'\n');
 }
+function isCurrent(source,generated=render()){
+  return normalizeLineEndings(source).includes(normalizeLineEndings(generated));
+}
+if(require.main===module){
+  const file=path.resolve(__dirname,'../src/theme.css'),source=fs.readFileSync(file,'utf8'),generated=render();
+  if(process.argv.includes('--check')){
+    if(!isCurrent(source,generated))throw Error('Theme scales are stale: run node tools/theme-css.js');
+    console.log('PASS preset CSS matches palette foundations');
+  }else{
+    const from=source.indexOf(start),to=source.indexOf(end),eol=source.includes('\r\n')?'\r\n':'\n';
+    const formatted=generated.replace(/\n/g,eol);
+    const separator=source.length===0||source.endsWith('\n')||source.endsWith('\r')?'':eol;
+    fs.writeFileSync(file,from<0?source+separator+formatted+eol:source.slice(0,from)+formatted+source.slice(to+end.length));
+  }
+}
+module.exports={render,isCurrent};
