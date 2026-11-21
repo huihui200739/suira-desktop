@@ -196,6 +196,7 @@ let panelModeIndex = 0;
 let returnTarget = null;
 let quickInvocationTarget = null;
 let clipboardSessionTarget = null;
+let clipboardClickTarget = null;
 const clipboardLedger = new ClipboardWriteLedger();
 const appIndex = new AppIndex();
 const foregroundProbe = new ForegroundProbe({ onWarn: (...args) => console.warn(...args) });
@@ -898,6 +899,16 @@ async function writeClipboardImage(image) {
   lastClipboardFilesKey = '';
   clipboardLedger.record(lastClipboardText);
   clipboardWriteGuard = '';
+}
+
+function writeClipboardFileList(win, paths) {
+  require('./lib/clipboard-file-list').copyFileList(win.getNativeWindowHandle(), paths);
+  // Suppress recapture of our own file list.
+  ++captureGeneration;
+  lastClipboardSequence = inputInjector.clipboardSequence();
+  lastClipboardFilesKey = paths.join('\n').toLowerCase();
+  lastClipboardText = lastClipboardImageHash = lastClipboardImageKey = lastClipboardImageType = '';
+  lastClipboardImageRaw = null;
 }
 
 let clipboardPollBusy = false;
@@ -1757,11 +1768,26 @@ function createClipboardBarWindow() {
   clipboardBarWindow.__loaded = clipboardBarWindow.loadFile(path.join(__dirname, 'src', 'clipboardbar.html'));
   clipboardBarWindow.__loaded.catch(error => console.warn('剪贴板条加载失败:', error.message));
   clipboardBarWindow.setMenuBarVisibility(false);
-  // 失焦即收起：底部条不该长期挡在屏幕上
-  clipboardBarWindow.on('blur', () => {
-    if (!clipboardBarWindow.__savingImage) hideClipboardBar();
+  const win = clipboardBarWindow;
+  win.__shelfPinned = false;
+  if (process.platform === 'win32') {
+    // WM_ACTIVATE carries the previous HWND even when Windows has already changed focus.
+    win.hookWindowMessage(0x0006, (wParam, lParam) => {
+      if (!win.__shelfPinned || !win.isVisible() || wParam.readUInt16LE() !== 2) return;
+      const previous = lParam.length === 8 ? lParam.readBigUInt64LE() : BigInt(lParam.readUInt32LE());
+      clipboardClickTarget = previous
+        ? foregroundProbe.query(String(previous)).then(snapshot => clipboardTarget(snapshot, process.pid), () => null)
+        : Promise.resolve(null);
+    });
+  }
+  win.on('blur', () => {
+    if (!win.__shelfPinned && !win.__savingImage && !win.__pastingHistory) hideClipboardBar();
   });
-  clipboardBarWindow.on('closed', () => { clipboardBarWindow = null; });
+  win.on('closed', () => {
+    clipboardBarWindow = null;
+    clipboardSessionTarget = null;
+    clipboardClickTarget = null;
+  });
   clipboardBarWindow.webContents.setWindowOpenHandler(({ url }) => {
     if (isSafeHttpUrl(url)) shell.openExternal(url);
     return { action: 'deny' };
@@ -1779,12 +1805,13 @@ async function showClipboardBar() {
   const [current] = await Promise.all([queryForeground(), win.__loaded]);
   if (revision !== clipboardShowRevision || win.isDestroyed()) return { ok: true, visible: false };
   clipboardSessionTarget=clipboardTarget(current,process.pid,quickWindow&&!quickWindow.isDestroyed()&&quickWindow.isVisible()?quickInvocationTarget:null);
+  clipboardClickTarget = null;
   clipboardShowPending = false;
   hideQuickPanel();
   win.setBounds(clipboardBarBounds());
   win.show();
   win.focus();
-  win.webContents.send('clipboard-bar:shown');
+  win.webContents.send('clipboard-bar:shown', { pinned: win.__shelfPinned });
   return { ok: true, visible: true };
 }
 
@@ -1792,7 +1819,9 @@ function hideClipboardBar() {
   clipboardShowRevision++;
   clipboardShowPending = false;
   clipboardSessionTarget = null;
+  clipboardClickTarget = null;
   if (clipboardBarWindow && !clipboardBarWindow.isDestroyed()) {
+    clipboardBarWindow.__shelfPinned = false;
     clipboardBarWindow.hide();
     scheduleIdleTeardown(clipboardBarWindow, '剪贴板', HOT_WINDOW_IDLE_MS);
   }
@@ -1962,6 +1991,8 @@ async function endShortcutCapture() {
  */
 async function tryReturnToTarget(item, intent = 'return-and-paste', options = {}) {
   const settings = store.getSettings();
+  const bar = options.clipboardBar;
+  const barIsCurrent = () => !bar || (!bar.isDestroyed() && bar.isVisible() && options.revision === clipboardShowRevision);
   const target = Object.prototype.hasOwnProperty.call(options, 'targetOverride')
     ? options.targetOverride
     : options.clipboardBar ? options.target : returnTarget;
@@ -1975,6 +2006,10 @@ async function tryReturnToTarget(item, intent = 'return-and-paste', options = {}
       const image = nativeImage.createFromPath(item.filePath);
       if (image.isEmpty()) throw new Error('图片读取失败');
       await writeClipboardImage(image);
+    } else if (bar && item?.kind === 'files') {
+      const files = [...new Set(String(item.text || item.filePath || '').split(/\r?\n/).filter(Boolean))];
+      if (!files.length || files.some(file => !islandModel.isShelfablePath(file))) throw Error('文件路径无效');
+      writeClipboardFileList(bar, files);
     } else {
       await writeClipboardText(item?.text || item?.filePath || '');
     }
@@ -1984,11 +2019,8 @@ async function tryReturnToTarget(item, intent = 'return-and-paste', options = {}
     return { copied: false, copyFailed: true, canPaste: false, message: `复制失败：${error.message}` };
   }
 
-  // 写入成功立即收起；保留系统剪贴板，后续 Ctrl+V 仍是所选历史内容。
-  if (options.clipboardBar) {
-    if(options.revision!==clipboardShowRevision)return {copied:true,canPaste:false,message:'已复制，请按 Ctrl+V 粘贴'};
-    hideClipboardBar();
-  }
+  if (bar && intent === 'copy-only') return { copied: true, canPaste: false, message: '已复制' };
+  if (!barIsCurrent()) return { copied: true, canPaste: false, message: '已复制，请按 Ctrl+V 粘贴' };
   let current = await queryForeground();
   // 提交时前台通常是自己的浮层，校验原目标实例，而不是拿浮层与目标比较。
   if (current && Number(current.pid) === process.pid && target) current = await foregroundProbe.query(target.hwnd);
@@ -2007,6 +2039,7 @@ async function tryReturnToTarget(item, intent = 'return-and-paste', options = {}
   // 其他窗口变成前台，被正确的焦点保护拒绝。成功后才收起截图层。
   // 只有当前前台进程能把置前权限交给助手，权限限定到这一助手 PID。
   await foregroundProbe.start();
+  if (!barIsCurrent()) return { copied: true, canPaste: false, message: '已复制，请按 Ctrl+V 粘贴' };
   panelNative.allowForeground(foregroundProbe.child?.pid);
   const nativePaste = await foregroundProbe.pasteTo(target);
   if (!nativePaste.unsupported) {
@@ -2015,6 +2048,7 @@ async function tryReturnToTarget(item, intent = 'return-and-paste', options = {}
       message: nativePaste.ok ? (options.clipboardBar?'已粘贴到当前窗口':'已粘贴到原窗口') : '已复制，请按 Ctrl+V 粘贴' };
   }
 
+  if (bar) return { ...decision, canPaste: false, pasted: false, message: '已复制，请按 Ctrl+V 粘贴' };
   const focused = await focusWindowForReturn(target);
   if (!focused) {
     return { ...decision, canPaste: false, pasteUnsupported: true, message: '已复制，切回目标后粘贴' };
@@ -3665,6 +3699,14 @@ function registerIpc() {
   ipcMain.handle('clipboard-bar:show', () => showClipboardBar());
   ipcMain.handle('clipboard-bar:hide', () => hideClipboardBar());
   ipcMain.handle('clipboard-bar:toggle', () => toggleClipboardBar());
+  ipcMain.handle('clipboard-bar:set-pinned', (event, pinned) => {
+    const win = clipboardBarWindow;
+    if (!win || win.isDestroyed() || !win.isVisible() || event.sender !== win.webContents || typeof pinned !== 'boolean') {
+      return { ok: false, error: '请从剪贴板历史操作' };
+    }
+    win.__shelfPinned = pinned;
+    return { ok: true, pinned };
+  });
   ipcMain.handle('clipboard-bar:copy-images', async (event, ids) => {
     const win = clipboardBarWindow;
     if (!win || win.isDestroyed() || !win.isVisible() || event.sender !== win.webContents) {
@@ -3682,13 +3724,7 @@ function registerIpc() {
     if (originals.some(file => !file?.isFile())) return { ok: false, error: '部分原图已被移动或删除' };
     if (win.isDestroyed() || !win.isVisible()) return { ok: false, error: '剪贴板面板已关闭' };
     try {
-      require('./lib/clipboard-file-list').copyFileList(win.getNativeWindowHandle(), paths);
-      // Do not record our own file list as another clipboard history item.
-      ++captureGeneration;
-      lastClipboardSequence = inputInjector.clipboardSequence();
-      lastClipboardFilesKey = paths.join('\n').toLowerCase();
-      lastClipboardText = lastClipboardImageHash = lastClipboardImageKey = lastClipboardImageType = '';
-      lastClipboardImageRaw = null;
+      writeClipboardFileList(win, paths);
       return { ok: true, count: paths.length };
     } catch (error) {
       return { ok: false, error: error.message || '无法复制图片文件' };
@@ -4296,12 +4332,33 @@ function registerIpc() {
     const intent = payload?.intent === 'copy-only' ? 'copy-only' : 'return-and-paste';
     // tryReturnToTarget 内部已负责复制；这里不再重复调用 output.copy，
     // 否则会写两次剪贴板并污染回环账本。
-    const fromClipboardBar = clipboardBarWindow && !clipboardBarWindow.isDestroyed() && event.sender === clipboardBarWindow.webContents;
-    const revision=clipboardShowRevision;
-    const target=fromClipboardBar?currentPasteTarget(await queryForeground(),process.pid,clipboardSessionTarget,clipboardBarWindow.isVisible()):null;
+    const bar = clipboardBarWindow && !clipboardBarWindow.isDestroyed() && event.sender === clipboardBarWindow.webContents
+      ? clipboardBarWindow : null;
+    const revision = clipboardShowRevision;
     const fromOverlay = overlayWindow && event.sender === overlayWindow.webContents;
     const fromTextTool = [...textToolWindows.values()].some(win => !win.isDestroyed() && event.sender === win.webContents);
-    const decision = await tryReturnToTarget(item, intent, { clipboardBar: fromClipboardBar, target, revision, captureOverlay: fromOverlay, explicitPaste: fromOverlay || fromTextTool });
+    let decision;
+    if (bar) {
+      if (!bar.isVisible() || bar.__pastingHistory) return { ok: false, error: '剪贴板当前无法粘贴' };
+      bar.__pastingHistory = true;
+      try {
+        const sessionTarget = clipboardSessionTarget;
+        const clickTarget = clipboardClickTarget;
+        const current = intent === 'copy-only' ? null : await queryForeground();
+        const fallback = current?.pid === process.pid && clickTarget ? await clickTarget : sessionTarget;
+        if (bar.isDestroyed() || !bar.isVisible() || revision !== clipboardShowRevision) return { ok: false, error: '剪贴板已关闭' };
+        const target = currentPasteTarget(current, process.pid, fallback, true);
+        decision = await tryReturnToTarget(item, intent, { clipboardBar: bar, target, revision });
+        if (!decision.copyFailed && intent !== 'copy-only' && !bar.isDestroyed() && revision === clipboardShowRevision) {
+          decision.keptOpen = bar.__shelfPinned;
+          if (!decision.keptOpen) hideClipboardBar();
+        }
+      } finally {
+        bar.__pastingHistory = false;
+      }
+    } else {
+      decision = await tryReturnToTarget(item, intent, { captureOverlay: fromOverlay, explicitPaste: fromOverlay || fromTextTool });
+    }
     if (decision.copyFailed) {
       // 复制失败是真正的失败：给渲染层 ok:false，才能显示错误而不是成功提示
       return { ok: false, error: decision.message || '复制失败', ...decision };

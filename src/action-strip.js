@@ -1,7 +1,7 @@
 'use strict';
 (() => {
   const editing=target=>target?.closest?.('input,textarea,select,[contenteditable="true"]');
-  function mount(host,{getItem,onResult=()=>{},onError=()=>{},reveal=()=>{},label='下一步',menuOnly=false,onStatus=null}={}){
+  function mount(host,{getItem,onResult=()=>{},onError=()=>{},reveal=()=>{},label='下一步',menuOnly=false,onStatus=null,includeAction=()=>true}={}){
     const api=(window.suira||window.pinApi)?.actions;if(!host||!api)return {refresh(){},destroy(){}};
     host.classList.add('action-strip');host.setAttribute('aria-label',label);
     const title=document.createElement('span');title.className='action-strip-label';title.textContent=label;
@@ -10,9 +10,17 @@
     const summary=document.createElement('summary');summary.textContent='…';summary.title='全部动作 · Ctrl+K';summary.setAttribute('aria-label','全部下一步动作');
     const menu=document.createElement('div');menu.className='action-strip-menu';menu.setAttribute('role','group');menu.setAttribute('aria-label','全部下一步动作');
     const search=document.createElement('input');search.type='search';search.placeholder='搜索下一步动作';search.setAttribute('aria-label','搜索下一步动作');
-    const list=document.createElement('div'),status=document.createElement('span');status.className='action-strip-status';status.setAttribute('role','status');
+    const list=document.createElement('div');list.className='action-strip-menu-list';
+    const status=document.createElement('span');status.className='action-strip-status';status.setAttribute('role','status');
     menu.setAttribute('popover','manual');
-    menu.append(search,list);more.append(summary,menu);
+    if (menuOnly) {
+      const field=document.createElement('label');
+      field.className='action-strip-menu-search';
+      field.innerHTML='<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m15.5 15.5 4 4"/></svg>';
+      field.append(search);
+      menu.append(field,list);
+    } else menu.append(search,list);
+    more.append(summary,menu);
     if (menuOnly) {
       summary.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></svg>';
       summary.title = '更多操作（Ctrl+K）';
@@ -40,7 +48,7 @@
     async function refresh({ reset = false } = {}){
       const token=++revision;
       if (reset) { close(false); actions = []; render(); }
-      try{const item=await getItem();const values=item?await api.list(item.id||item):[];if(token!==revision||destroyed)return;actions=values||[];if(item?.kind==='image')actions.sort((a,b)=>(a.id==='ocr.local'?-1:0)-(b.id==='ocr.local'?-1:0));else if(/[A-Za-z]/.test(item?.text||'')&&!/[\u4e00-\u9fff]/.test(item.text))actions.sort((a,b)=>(a.id==='text.translate'?-1:0)-(b.id==='text.translate'?-1:0));render();}catch(error){if(token===revision){actions=[];render();report(error.message,true);}}}
+      try{const item=await getItem();const values=item?await api.list(item.id||item):[];if(token!==revision||destroyed)return;actions=(values||[]).filter(action=>includeAction(action,item));if(item?.kind==='image')actions.sort((a,b)=>(a.id==='ocr.local'?-1:0)-(b.id==='ocr.local'?-1:0));else if(/[A-Za-z]/.test(item?.text||'')&&!/[\u4e00-\u9fff]/.test(item.text))actions.sort((a,b)=>(a.id==='text.translate'?-1:0)-(b.id==='text.translate'?-1:0));render();}catch(error){if(token===revision){actions=[];render();report(error.message,true);}}}
     search.addEventListener('input',render);
     menu.addEventListener('focusout', event => { if (event.relatedTarget && !more.contains(event.relatedTarget)) close(false); });
     function keydown(event){

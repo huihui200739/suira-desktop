@@ -27,6 +27,7 @@
       getItem: () => window.ClipboardBarSelection?.item(),
       onResult: result => { if (result.output) showResult(result.output); },
       onStatus: (message, error) => window.ClipboardBarSelection?.notice(message, error),
+      includeAction: action => action.id !== 'image.pin',
       menuOnly: true
     });
     function updateClipboardActions() {

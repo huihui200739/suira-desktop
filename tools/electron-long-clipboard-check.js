@@ -11,10 +11,22 @@ async function until(fn){for(let n=0;n<200;n++){try{const v=await fn();if(v)retu
   const control=path.join(tmp,'control.json'),trace=path.join(tmp,'trace.jsonl'),entry=path.join(tmp,'app.js');let config={current:'A',offset:0};const update=patch=>{Object.assign(config,patch);fs.writeFileSync(control,JSON.stringify(config));};update({});
   const browserFixture=`<!doctype html><style>*{box-sizing:border-box}body{margin:0;font:14px/1.5 Arial;background:#fff;color:#18202b}header{position:fixed;inset:0 0 auto;height:28px;background:#daeafb;border-bottom:1px solid #aab8c7;padding:3px 12px}footer{position:fixed;inset:auto 0 0;height:20px;background:#e8ecf2;padding:0 12px;font-size:12px}main{position:fixed;inset:28px 0 20px;overflow:auto}.row{height:94px;padding:8px 14px;border-bottom:1px solid #d8dce4}.row b{color:#086dbe}p{margin:4px 0}</style><header>固定页眉 · SUIRA 滚动测试</header><main id="content">${Array.from({length:60},(_,i)=>`<section class="row"><b>第 ${i+1} 段 · ${(i*7919).toString(16)}</b><p>${['这是一段本地生成的测试文字，检查页面滚动后的拼接。','记录进度与图片，保留准确的上下文和完整内容。','Fixed headers and repeated areas should appear only once.'][i%3]}</p></section>`).join('')}</main><footer>固定页脚 · 仅使用测试内容</footer>`;
   fs.writeFileSync(entry,`
-const fs=require('node:fs');const {app,clipboard,globalShortcut,nativeImage,screen}=require('electron');app.setPath('userData',${JSON.stringify(path.join(tmp,'profile'))});
+const fs=require('node:fs');const {app,BrowserWindow,clipboard,globalShortcut,nativeImage,screen}=require('electron');app.setPath('userData',${JSON.stringify(path.join(tmp,'profile'))});
 const config=()=>JSON.parse(fs.readFileSync(${JSON.stringify(control)},'utf8'));const log=(type,data)=>fs.appendFileSync(${JSON.stringify(trace)},JSON.stringify({type,...data})+'\\n');
 clipboard.read=async()=>[];clipboard.readText=async()=>'';clipboard.writeText=async text=>{if(config().failCopy)throw Error('模拟复制失败');log('clipboard',{kind:'text',text})};clipboard.write=async items=>log('clipboard',{kind:'image',types:items[0].types});
 app.on('browser-window-created',(_,win)=>{win.on('show',()=>log('show',{title:win.getTitle(),bounds:win.getBounds()}));});
+const hook=BrowserWindow.prototype.hookWindowMessage;
+BrowserWindow.prototype.hookWindowMessage=function(message,callback){
+  if(message===6){
+    this.webContents.on('console-message', event=>{
+      if(event.message==='fixture:activate-from-B'){
+        const previous=Buffer.alloc(8);previous.writeBigUInt64LE(200n);
+        callback(Buffer.from([2,0]),previous);
+      }
+    });
+  }
+  return hook.call(this,message,callback);
+};
 const keys=new Set();globalShortcut.register=k=>{keys.add(k);return true};globalShortcut.unregister=k=>keys.delete(k);globalShortcut.unregisterAll=()=>keys.clear();
 const snapshot=name=>name==='self'?{hwnd:'300',pid:process.pid,processStartedAt:123,title:'随序'}:{hwnd:name==='A'?'100':'200',pid:name==='A'?777:888,processStartedAt:123,title:name==='A'?'ChatGPT 当前聊天':'另一个聊天',bounds:{x:0,y:0,width:900,height:700}};
 const f=require(${JSON.stringify(path.join(root,'lib/foreground-probe.js'))});f.ForegroundProbe=class {constructor(){this.ready=true;}isAvailable(){return true}isReady(){return true}async start(){return true}stop(){}dispose(){}async query(hwnd){return hwnd?snapshot(hwnd==='100'?'A':'B'):snapshot(config().current)}async queryAt(){return snapshot(config().hit||config().current)}async focusTo(){throw Error('测试禁止强制激活')}async pasteTo(target){log('paste',{target});return{ok:true}}};
@@ -38,7 +50,9 @@ require(${JSON.stringify(path.join(root,'main.js'))});`);
   const main=await page(t=>t.url.endsWith('/index.html'));await until(()=>main.evaluate('Boolean(window.suira?.longCapture)'));
   const text=await main.evaluate(`window.suira.content.addText({text:'selected history fixture',title:'历史内容'})`);assert.equal(text.ok,true);
   const records=()=>fs.readFileSync(trace,'utf8').trim().split('\n').filter(Boolean).map(x=>JSON.parse(x));
+  assert.equal((await main.evaluate('window.suira.clipboardBar.show()')).visible,true);
   const bar=await page(t=>t.url.endsWith('/clipboardbar.html'));
+  await main.evaluate('window.suira.clipboardBar.hide()');
   async function commit(itemId=text.item.id){return bar.evaluate(`window.suira.returnTo.commit({itemId:${JSON.stringify(itemId)},intent:'paste-current'})`);}
   async function openBar(name){update({current:name});assert.equal((await main.evaluate('window.suira.clipboardBar.show()')).ok,true);update({current:'self'});}
   await openBar('A');assert.equal((await commit()).pasted,true);assert.equal(records().filter(x=>x.type==='paste').at(-1).target.hwnd,'100');
@@ -48,9 +62,23 @@ require(${JSON.stringify(path.join(root,'main.js'))});`);
   update({current:'B'});await main.evaluate('window.suira.quick.show()');update({current:'self'});await main.evaluate('window.suira.clipboardBar.show()');await commit();assert.equal(records().filter(x=>x.type==='paste').at(-1).target.hwnd,'200');
   await openBar('A');update({failCopy:true});assert.equal((await commit()).ok,false);update({failCopy:false});
   await main.evaluate('window.suira.clipboardBar.hide()');
+  await openBar('A');
+  assert.equal((await main.evaluate('window.suira.clipboardBar.setPinned(true)')).ok, false, '只有剪贴板窗口可以控制置顶');
+  assert.deepEqual(await bar.evaluate('window.suira.clipboardBar.setPinned(true)'), {ok:true,pinned:true});
+  await bar.evaluate("console.info('fixture:activate-from-B')");
+  const pinned = await commit();
+  assert.equal(pinned.pasted && pinned.keptOpen, true);
+  assert.equal(records().filter(x=>x.type==='paste').at(-1).target.hwnd,'200');
+  assert.equal(await bar.evaluate('document.visibilityState'), 'visible');
+  assert.equal((await bar.evaluate('window.suira.clipboardBar.setPinned(false)')).pinned, false);
+  update({current:'B'});
+  assert.equal((await commit()).keptOpen, false);
+  console.log('PASS 剪贴板置顶时将内容贴到当前窗口，取消置顶后粘贴自动收起');
   console.log('PASS 真实 IPC：每次唤起使用当前聊天、提交时切窗、面板交接、查询自身不复用旧目标、复制失败不误报成功');
   const png=await main.evaluate(`(()=>{const c=document.createElement('canvas');c.width=100;c.height=80;c.getContext('2d').fillRect(0,0,100,80);return c.toDataURL()})()`);
-  const image=await main.evaluate(`window.suira.capture.finish({action:'copy',dataUrl:${JSON.stringify(png)}})`);assert.equal(image.ok,true);
+  assert.equal((await main.evaluate('window.suira.capture.start()')).ok,true);
+  const image=await main.evaluate(`window.suira.capture.finish({action:'copy',dataUrl:${JSON.stringify(png)}})`);assert.equal(image.ok,true,JSON.stringify(image));
+  await main.evaluate('window.suira.capture.cancel()');
   await openBar('B');await commit(image.item.id);assert.equal(records().filter(x=>x.type==='clipboard').at(-1).kind,'image');assert.equal(records().filter(x=>x.type==='paste').at(-1).target.hwnd,'200');await wait(100);assert.equal(records().filter(x=>x.type==='clipboard').at(-1).kind,'image');
   console.log('PASS 历史图片复制位图并发往当前聊天，完成后剪贴板仍保留选中图片');
   assert.ok(image.item.filePath.startsWith(tmp+path.sep));fs.unlinkSync(image.item.filePath);

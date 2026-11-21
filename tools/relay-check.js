@@ -56,13 +56,11 @@ async function until(fn){let last;for(let i=0;i<180;i++){try{const v=await fn();
  console.log('CHECK '+"clipboard");
  assert.equal((await main.evaluate('window.suira.clipboardBar.show()')).visible, true);
  const bar=await page('/clipboardbar.html');
- const firstInMore = async id => {
-   await until(()=>bar.evaluate(`document.querySelector('#bar-action-strip [popover] button')?.dataset.actionId===${JSON.stringify(id)}`));
-   await bar.evaluate('document.querySelector("#bar-action-strip summary").click();true');
-   await until(()=>bar.evaluate(`document.querySelector('#bar-action-strip [popover] button')?.dataset.actionId===${JSON.stringify(id)} && document.querySelector('#bar-action-strip [popover]').matches(':popover-open')`));
+ const openEnglishActions = async () => {
+   await bar.evaluate(`document.querySelector('[data-id="${english.id}"] [data-card-action=more]').click();true`);
+   await until(()=>bar.evaluate(`document.querySelector('[data-id="${english.id}"] #bar-action-strip [popover]')?.matches(':popover-open') && document.querySelector('#bar-action-strip [popover] button')?.dataset.actionId==='text.translate'`));
  };
- await bar.evaluate(`document.querySelector('[data-id="${english.id}"]').click();true`);
- await firstInMore('text.translate');
+ await openEnglishActions();
  // Open the floating actions directly on a card other than the current selection.
  await bar.evaluate(`document.querySelector('[data-id="${sourceImage.id}"] [data-card-action=more]').click();true`);
  await until(()=>bar.evaluate(`document.querySelector('[data-id="${sourceImage.id}"] #bar-action-strip [popover]')?.matches(':popover-open') && document.querySelector('#bar-action-strip [popover] button')?.dataset.actionId==='ocr.local'`));
@@ -96,14 +94,15 @@ async function until(fn){let last;for(let i=0;i<180;i++){try{const v=await fn();
      const appearance = await bar.evaluate(`(()=>{
        const track = document.getElementById('bar-track');
        const card = track.querySelector('.bar-card[data-kind=link]');
-       card.click();
+       card.querySelector('.card-select').click();
        track.scrollTo({left:0,behavior:'instant'});
        const x=card.getBoundingClientRect(), region=track.getBoundingClientRect();
-       const background=getComputedStyle(document.getElementById('bar')).backgroundColor;
-       return {selected:card.classList.contains('is-selected') && x.left>=region.left && x.right<=region.right,background};
+       const chrome=getComputedStyle(document.querySelector('.bar-head'));
+       return {selected:card.classList.contains('is-selected') && x.left>=region.left && x.right<=region.right,background:chrome.backgroundColor,filter:chrome.backdropFilter};
      })()`);
      assert.ok(appearance.selected, 'The selected link must appear in the captured viewport');
-     assert.match(appearance.background, /^rgb\(/, 'The reading surface must be opaque');
+     assert.equal(appearance.background, 'rgba(0, 0, 0, 0)', 'The header must use the window glass');
+     assert.equal(appearance.filter, 'none');
      await wait(150);
      const png=await bar.send('Page.captureScreenshot',{format:'png',omitBackground:true});
      fs.writeFileSync(path.join(root,'docs','product',filename),Buffer.from(png.data,'base64'));
@@ -120,8 +119,7 @@ async function until(fn){let last;for(let i=0;i<180;i++){try{const v=await fn();
  console.log('CHECK '+"nested result");
  await main.evaluate('window.suira.clipboardBar.show()');
  await until(()=>bar.evaluate(`document.visibilityState==='visible' && Boolean(document.querySelector('[data-id="${english.id}"]'))`));
- await bar.evaluate(`document.querySelector('[data-id="${english.id}"]').click();true`);
- await firstInMore('text.translate');
+ await openEnglishActions();
  await bar.evaluate('document.querySelector("#bar-action-strip [popover] button").click();true');await until(()=>bar.evaluate('Boolean(document.querySelector("#relay-result[open] textarea"))'));await bar.evaluate('document.querySelector("#relay-result textarea").focus();true');await bar.send('Input.dispatchKeyEvent',{type:'keyDown',key:'k',code:'KeyK',modifiers:2});await until(()=>bar.evaluate('document.querySelector("#relay-result details").open'));assert.equal(await bar.evaluate('document.querySelector("#bar-action-strip details").open'),false,'Shortcuts belong to the visible result');await bar.send('Input.dispatchKeyEvent',{type:'keyDown',key:'Escape',code:'Escape'});await bar.send('Input.dispatchKeyEvent',{type:'keyUp',key:'Escape',code:'Escape'});await wait(80);if(await bar.evaluate('Boolean(document.querySelector("#relay-result[open]"))')){await bar.send('Input.dispatchKeyEvent',{type:'keyDown',key:'Escape',code:'Escape'});await bar.send('Input.dispatchKeyEvent',{type:'keyUp',key:'Escape',code:'Escape'});}await until(()=>bar.evaluate('!document.querySelector("#relay-result[open]")')).catch(async error=>{console.error('EXIT_STATE',await bar.evaluate('({visible:document.visibilityState,dialog:document.getElementById("relay-result")?.outerHTML.slice(0,500),details:document.querySelector("#relay-result details")?.open,focus:document.activeElement?.outerHTML.slice(0,300)})'));throw error;});
  const attachments=(await main.evaluate('window.suira.content.list({limit:200})')).filter(item=>item.meta?.documentAttachment);assert.ok(attachments.length>0&&attachments.every(item=>item.pinned),'Inserted image attachments survive retention cleanup');
  const proof={version,lateRelayResultProtected:true,documentImageRetained:true,fixtureDesktop:true,fixtureOcrAndTranslator:true,todayDocumentReused:true,currentDocumentPreservesUnsavedText:true,recentNotePreservesUnsavedText:true,calendarDraftNeedsConfirmation:true,calendarCancelWritesNothing:true,calendarExplicitSave:true,textPinLiteralAndCopy:true,pinMenuRelay:true,sourceCursorTextCapture:true,sourceCursorImageCapture:true,captureImageReferenceReadable:true,captureCancelPreservesSource:true,visualCursorTextCapture:true,ocrResultRelay:true,translationRelay:true,ctrlKFullList:true,numberShortcut:true,englishClipboardTranslation:true,imageClipboardOcr:true};if (process.argv.includes('--shots')) fs.writeFileSync(path.join(root,'docs',`relay-${version}.json`),JSON.stringify(proof,null,2)+'\n');console.log('PASS relay workflows',JSON.stringify(proof));

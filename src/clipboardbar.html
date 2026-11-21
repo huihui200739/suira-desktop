@@ -28,13 +28,13 @@
         <button type="button" data-filter="files" aria-pressed="false">文件</button>
         <button type="button" data-filter="favorite" aria-pressed="false">收藏</button>
       </nav>
-      <div class="bar-tools"><button id="bar-share-images" type="button" aria-haspopup="dialog" aria-controls="bar-share" aria-expanded="false" hidden></button><button id="bar-library" type="button" title="打开完整内容库" aria-label="打开完整内容库">内容库 <span aria-hidden="true">↗</span></button><button id="bar-close" type="button" title="Esc 关闭" aria-label="关闭剪贴板">×</button></div>
-      <div class="bar-controls">
-        <button class="bar-retry" id="bar-refresh-retry" type="button" hidden>刷新失败，重试</button>
+      <div class="bar-tools">
+        <button class="bar-retry" id="bar-refresh-retry" type="button" title="刷新失败，重试" aria-label="刷新失败，重试" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8 8 0 1 0-2 6m2-11v5h-5"/></svg></button>
+        <button id="bar-share-images" type="button" aria-haspopup="dialog" aria-controls="bar-share" aria-expanded="false" hidden></button>
+        <button id="bar-shelf-pin" class="bar-icon-button" type="button" title="置顶剪贴板" aria-label="置顶剪贴板" aria-pressed="false" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 3h8l-1 7 3 4H6l3-4zM12 14v7"/></svg></button>
+        <button id="bar-library" type="button" title="打开完整内容库" aria-label="打开完整内容库"><span>内容库</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 17 17 7M8 7h9v9"/></svg></button>
+        <button id="bar-close" class="bar-icon-button" type="button" title="Esc 关闭" aria-label="关闭剪贴板"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg></button>
         <span class="bar-notice" id="bar-notice" role="status" aria-live="polite" hidden></span>
-        <div class="bar-actions">
-          <button id="bar-submit" type="button" aria-label="粘贴到当前窗口" disabled><span>粘贴</span><kbd>Enter</kbd></button>
-        </div>
       </div>
     </header>
 
@@ -47,12 +47,12 @@
         <p id="bar-empty-hint">马上就好</p>
         <button class="bar-retry" id="bar-retry" type="button" hidden>重试</button>
       </div>
-    </div>
 
-    <section class="bar-preview" id="bar-preview" role="dialog" aria-modal="false" aria-labelledby="bar-preview-title" hidden>
-      <header><span id="bar-preview-label">内容预览</span><b id="bar-preview-title"></b><button id="bar-edit-save" type="button" hidden>保存副本</button><button id="bar-preview-close" aria-label="关闭内容预览" type="button" title="Esc 返回">返回</button></header>
-      <div id="bar-preview-content" tabindex="0"></div>
-    </section>
+      <section class="bar-preview" id="bar-preview" role="dialog" aria-modal="false" aria-labelledby="bar-preview-title" hidden>
+        <header><span id="bar-preview-label">内容预览</span><b id="bar-preview-title"></b><button id="bar-edit-save" type="button" hidden>保存副本</button><button id="bar-preview-close" aria-label="关闭内容预览" type="button" title="Esc 返回">返回</button></header>
+        <div id="bar-preview-content" tabindex="0"></div>
+      </section>
+    </div>
   </main>
   <div id="bar-share" role="dialog" aria-label="分享剪贴板内容" popover></div>
   <script src="liquid-glass.js"></script>

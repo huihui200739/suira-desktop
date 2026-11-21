@@ -77,7 +77,7 @@ const missingIds = [...jsIds].filter((id) => !htmlIds.has(id));
 check('clipboardbar.js 引用的 ID 都存在于 HTML', missingIds.length === 0, '缺失: ' + missingIds.join(', '));
 
 check('界面文案为中文（标题 / 快捷键提示）',
-  ['剪贴板历史', '更多操作（Ctrl+K）', '粘贴到当前窗口'].every((text) => (barHtml + barJs).includes(text)));
+  ['剪贴板历史', '更多操作（Ctrl+K）', '置顶剪贴板'].every((text) => (barHtml + barJs).includes(text)));
 check('空态文案符合规格', (barHtml + barJs).includes('还没有剪贴板记录，复制一段文字或一张图再试'));
 check('渲染层带 API 不可用提示', barJs.includes('剪贴板历史暂不可用'));
 check('渲染层明确提交当前窗口粘贴意图', barJs.includes("intent: 'paste-current'"));
@@ -181,7 +181,8 @@ const MOCK = `
     list: function(id){
       calls.actionLists = (calls.actionLists || []).concat(id);
       var image = id.startsWith('img');
-      return Promise.resolve([{id: 'output.copy', label: '复制', hint: ''}, image ? {id: 'ocr.local', label: '识别文字', hint: ''} : {id: 'text.translate', label: '翻译', hint: ''}]);
+      const copy = {id: 'output.copy', label: '复制', hint: ''};
+      return Promise.resolve(image ? [copy, {id: 'image.pin', label: '钉在桌面'}, {id: 'ocr.local', label: '提取文字'}] : [copy, {id: 'text.translate', label: '翻译'}, {id: 'text.pin', label: '钉在桌面'}]);
     },
     run: function(id, actionId){ calls.action = {id, actionId};return Promise.resolve({ok:true,message:'已完成'}); }
   };
@@ -189,10 +190,16 @@ const MOCK = `
     commit: function(payload){
       calls.commit.push(clone(payload));
       if (window.__commitThrow) return Promise.reject(new Error('主进程没有响应'));
-      return Promise.resolve(clone(window.__commitResult));
+      const result = clone(window.__commitResult);
+      if (result.ok && result.copied && payload.intent === 'paste-current') {
+        result.keptOpen = Boolean(calls.shelfPinned);
+        if (!result.keptOpen) calls.hide += 1;
+      }
+      return Promise.resolve(result);
     }
   };
   window.suira.clipboardBar = {
+    setPinned: function(pinned){ calls.shelfPinned=pinned; return Promise.resolve({ok:true,pinned}); },
     copyImages: function(ids){ calls.copyImages=clone(ids); return Promise.resolve({ok:true,count:ids.length}); },
     saveImage: function(id){ calls.saveImage=id; return Promise.resolve({ok:true}); },
     sourceIcons: function(names){ return Promise.resolve(Object.fromEntries(names.map(name=>[name,THUMB]))); },
@@ -203,7 +210,7 @@ const MOCK = `
     }
   };
   window.__fireShown = function(){
-    shownCallbacks.forEach(function(callback){ try { callback(); } catch (error) {} });
+    shownCallbacks.forEach(function(callback){ try { callback({pinned: Boolean(calls.shelfPinned)}); } catch (error) {} });
   };
   window.__addFirst = function(){ ALL.unshift(mk('added','text','新记录','新增内容','','','',0)); };
   window.__fireChanged = function(){
@@ -356,6 +363,7 @@ const PROBE = `
 
     window.__barResult = output;
     var pre = document.createElement('pre');
+    pre.hidden = true;
     pre.textContent = 'B:' + JSON.stringify(output);
     document.body.appendChild(pre);
   }
@@ -366,6 +374,7 @@ const PROBE = `
       errors: (window.__errs || []).slice()
     };
     var pre = document.createElement('pre');
+    pre.hidden = true;
     pre.textContent = 'B:' + JSON.stringify(window.__barResult);
     document.body.appendChild(pre);
   });
@@ -785,6 +794,9 @@ async function runChecks(send) {
     key(pinnedCard,'k',true);await wait();
     const open=menu.matches(':popover-open') && document.activeElement===menu.querySelector('input');
     const bounds=menu.getBoundingClientRect();const onScreen=bounds.left>=0 && bounds.right<=innerWidth && bounds.top>=0 && bounds.bottom<=innerHeight;
+    const pinIsOnlyOnCard=!menu.querySelector('[data-action-id="image.pin"]') && !!pinnedCard.querySelector('[data-card-action="pin"]');
+    const flatRows=[...menu.querySelectorAll('button')].every(row=>getComputedStyle(row).borderTopWidth==='0px');
+    const headerIsClear=getComputedStyle(document.querySelector('.bar-head')).backgroundColor==='rgba(0, 0, 0, 0)';
     const before=window.__calls.commit.length;key(summary,'Enter');
     const noPaste=window.__calls.commit.length===before;
     key(document.activeElement,'Escape');await wait();
@@ -798,9 +810,20 @@ async function runChecks(send) {
     const backgroundKeepsMenu=menu.matches(':popover-open') && window.__calls.actionLists.length===beforeCount;
     document.querySelector('[data-filter="image"]').click();await wait();
     const filterClosesMenu=!menu.matches(':popover-open');
-    return {open,onScreen,noPaste,returnsFocus,selectedAction,backgroundKeepsMenu,filterClosesMenu};
+    return {open,onScreen,noPaste,returnsFocus,selectedAction,backgroundKeepsMenu,filterClosesMenu,pinIsOnlyOnCard,flatRows,headerIsClear};
   })()`);
   for (const [name, ok] of Object.entries(moreMenu)) check('剪贴板更多动作：'+name, ok);
+  if (process.env.SUIRA_QA_SHOTS) {
+    await runScenario(send, 'layout');
+    await evaluate(send, `(() => { document.querySelector('[data-id="img-1"]').focus(); document.activeElement.dispatchEvent(new KeyboardEvent('keydown',{key:'k',ctrlKey:true,bubbles:true,cancelable:true})); return true; })()`);
+    const menuShot = await capture(send, 'clipboardbar-menu.png');
+    fs.copyFileSync(menuShot, path.join(process.env.SUIRA_QA_SHOTS, 'clipboardbar-menu.png'));
+    await send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: 'dark' }] });
+    const darkShot = await capture(send, 'clipboardbar-menu-dark.png');
+    fs.copyFileSync(darkShot, path.join(process.env.SUIRA_QA_SHOTS, 'clipboardbar-menu-dark.png'));
+    await send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: 'light' }] });
+    await evaluate(send, 'window.__fireShown();true');
+  }
   console.log('\n== 后台刷新保持卡片、焦点与浏览位置 ==');
   const stable = await evaluate(send, `(async function(){
     const wait=ms=>new Promise(r=>setTimeout(r,ms)), track=document.getElementById('bar-track');
@@ -829,17 +852,26 @@ async function runChecks(send) {
     const wait=ms=>new Promise(r=>setTimeout(r,ms));
     window.__listDelay=220;window.__fireChanged();await wait(30);
     const before=window.__calls.commit.length, hides=window.__calls.hide;
-    document.querySelector('[data-id="text-1"]').click();await wait(280);
+    const text=document.querySelector('[data-id="text-1"]');
+    text.click();await wait(280);
     const selection=document.querySelector('.bar-card.is-selected')?.dataset.id==='text-1';
-    const clickOnlySelects=window.__calls.commit.length===before && window.__calls.hide===hides;
-    document.querySelector('[data-id="text-1"]').dispatchEvent(new MouseEvent('dblclick',{bubbles:true}));await wait(80);
-    const doubleClickPastes=window.__calls.commit.length===before+1 && window.__calls.commit.at(-1)?.itemId==='text-1' && window.__calls.hide===hides+1;
+    const singleClickPastes=window.__calls.commit.length===before+1 && window.__calls.commit.at(-1)?.itemId==='text-1' && window.__calls.hide===hides+1;
+    text.dispatchEvent(new MouseEvent('click',{bubbles:true,detail:2}));
+    text.dispatchEvent(new MouseEvent('dblclick',{bubbles:true,detail:2}));await wait(80);
+    const noDuplicate=window.__calls.commit.length===before+1;
+    const pin=document.getElementById('bar-shelf-pin');pin.click();await wait(60);
+    const image=document.querySelector('[data-id="img-1"]');
+    image.querySelector('.card-select').click();await wait(60);
+    const multiSelectDoesNotPaste=window.__calls.commit.length===before+1;
+    image.click();await wait(60);
+    const pinKeepsOpen=pin.getAttribute('aria-pressed')==='true' && window.__calls.commit.at(-1)?.itemId==='img-1' && window.__calls.hide===hides+1;
+    pin.click();await wait(60);
     window.__fireShown();await wait(30);
     const search=document.getElementById('bar-search');search.value='微信';search.dispatchEvent(new Event('input',{bubbles:true}));
     await wait(280);
     const query=search.value==='微信' && document.querySelectorAll('.bar-card').length===1 && document.querySelector('.bar-card').dataset.id==='img-1';
     search.value='';search.dispatchEvent(new Event('input',{bubbles:true}));window.__listDelay=0;
-    return {selectionDuringRefresh:selection,clickOnlySelects,doubleClickPastes,queryDuringReopen:query};
+    return {selectionDuringRefresh:selection,singleClickPastes,noDuplicate,multiSelectDoesNotPaste,pinKeepsOpen,queryDuringReopen:query};
   })()`);
   for (const [name, passed] of Object.entries(lateRefresh)) check(name, passed);
   const shared = await evaluate(send, `(async function(){

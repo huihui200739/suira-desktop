@@ -162,6 +162,7 @@ contextBridge.exposeInMainWorld('suira', {
     show: () => ipcRenderer.invoke('clipboard-bar:show'),
     hide: () => ipcRenderer.invoke('clipboard-bar:hide'),
     toggle: () => ipcRenderer.invoke('clipboard-bar:toggle'),
+    setPinned: pinned => ipcRenderer.invoke('clipboard-bar:set-pinned', pinned),
     copyImages: ids => ipcRenderer.invoke('clipboard-bar:copy-images', ids),
     saveImage: id => ipcRenderer.invoke('clipboard-bar:save-image', id),
     onShown: (callback) => subscribe('clipboard-bar:shown', callback)

@@ -26,7 +26,7 @@ html { background:transparent!important; color-scheme:normal!important; }
 .liquid-ui[data-glass-mode="solid"] .glass-window>.glass-scene { background:var(--glass-solid-glass-window-glass-scene-surface); }
 .liquid-ui .launchpad-backdrop,.liquid-ui .panel[data-presentation="fullscreen"]::before { display:none!important; }
 .liquid-ui .panel[data-presentation="fullscreen"] {     }
-.liquid-ui .titlebar,.liquid-ui .sidebar,.liquid-ui .bar-head,.liquid-ui .note-head,.liquid-ui .note-foot { background:var(--glass-chrome); border-color:var(--tool-edge); backdrop-filter:blur(14px) saturate(1.2); }
+.liquid-ui .titlebar,.liquid-ui .sidebar,.liquid-ui .note-head,.liquid-ui .note-foot { background:var(--glass-chrome); border-color:var(--tool-edge); backdrop-filter:blur(14px) saturate(1.2); }
 .liquid-ui .titlebar { padding:0 var(--space-3) 0 calc(var(--space-1) * 5); gap:var(--space-3); }
 .liquid-ui .brand::after { display:none; }
 .liquid-ui .brand>div>span { letter-spacing:.04em; font-weight:400; }

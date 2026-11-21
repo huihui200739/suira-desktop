@@ -9,9 +9,8 @@
  * 职责：
  * - 从 window.suira.content 拉取内容库列表，按类型渲染卡片：
  *   图片用 thumbnail 缩略图，文字用前 180 字摘要，files 用文件名 + 文件数，link 用域名；
- * - 键盘（← → Home End Enter Esc）与滚轮横向浏览，单击选择，双击粘贴；
- * - Enter 调 window.suira.returnTo.commit({ itemId, intent: 'paste-current' })：
- *   直接粘回成功就关闭，只是复制兜底就在底部提示行显示原因并保留窗口；
+ * - 单击卡片或按 Enter 粘贴到输入窗口，左上角圆圈用于多选；
+ * - 置顶时粘贴后保留窗口，主进程负责窗口状态和安全的焦点交接；
  * - clipboardBar.onShown 时重新拉取并重置选中项，content.onChanged 仅在可见时刷新。
  *
  * 所有接口先 feature-detect：缺接口时给出可读提示，不允许点了没反应。
@@ -59,6 +58,7 @@
     query: '',
     filter: 'all',
     pinning: false,
+    shelfPinBusy: false,
     imageActionBusy: false,
     sharingImages: false,
     checkedImages: new Set(),
@@ -398,7 +398,7 @@
       actionHost.dispatchEvent(new Event('bar-selection-change'));
     }
     if (focusedCard && selected && focusedCard !== selected) selected.focus({ preventScroll: true });
-    $('#bar-submit').disabled = !selected || state.loading || state.committing || state.imageActionBusy || !state.returnApi;
+    $('#bar').setAttribute('aria-busy', String(state.committing));
   }
 
   function render() {
@@ -650,26 +650,37 @@
     syncSelection();
     try {
       const result = await api.commit({ itemId: item.id, intent: 'paste-current' });
-      if (result && result.ok) {
-        if (result.copied) {
-          if (result.pasted === true) {
-            // 已粘贴到当前窗口，直接收起，不再显示提示
-            await hideBar();
-            return;
-          }
-          // 系统剪贴板已经更新；收起条，后续 Ctrl+V 使用同一条内容。
-          await hideBar();
-          return;
-        }
-        showNotice(result.error || result.message || '复制失败', true);
-        return;
+      if (!result?.ok || !result.copied) {
+        showNotice(result?.error || result?.message || '复制失败', true);
+      } else if (result.keptOpen && !result.pasted) {
+        showNotice(result.message || '已复制，请按 Ctrl+V 粘贴', false);
       }
-      showNotice((result && (result.error || result.message)) || '复制失败', true);
     } catch (error) {
       showNotice(errorText(error, '复制失败'), true);
     } finally {
       state.committing = false;
       syncSelection();
+    }
+  }
+
+  function syncShelfPin(pinned) {
+    const button = $('#bar-shelf-pin');
+    button.setAttribute('aria-pressed', String(pinned));
+    button.title = pinned ? '取消置顶' : '置顶剪贴板';
+  }
+
+  async function toggleShelfPin() {
+    if (state.shelfPinBusy || typeof state.barApi?.setPinned !== 'function') return;
+    const pinned = $('#bar-shelf-pin').getAttribute('aria-pressed') === 'true';
+    state.shelfPinBusy = true;
+    try {
+      const result = await state.barApi.setPinned(!pinned);
+      if (!result?.ok) throw Error(result?.error || '无法切换剪贴板置顶');
+      syncShelfPin(result.pinned === true);
+    } catch (error) {
+      showNotice(errorText(error, '无法切换剪贴板置顶'), true);
+    } finally {
+      state.shelfPinBusy = false;
     }
   }
 
@@ -889,7 +900,7 @@
     }
     if (key === 'Enter') {
       event.preventDefault();
-      submitSelected();
+      if (!event.repeat) submitSelected();
       return;
     }
     if (key === 'Escape' || key === 'Esc') {
@@ -918,7 +929,7 @@
 
   function onTrackClick(event) {
     const card = closestFrom(event.target, '.bar-card');
-    if (!card || event.detail > 1 || closestFrom(event.target, '#bar-action-strip')) return;
+    if (!card || event.detail > 1 || closestFrom(event.target, '#bar-action-strip, [popover]')) return;
     const index = Number(card.dataset.index);
     if (state.items[index]?.id !== card.dataset.id) return;
     const button = closestFrom(event.target, '[data-card-action]');
@@ -931,6 +942,7 @@
     }
     if (!button) {
       card.focus({ preventScroll: true });
+      submitSelected();
       return;
     }
     const action = button.dataset.cardAction;
@@ -984,7 +996,8 @@
     const barApi = state.barApi;
     if (barApi && typeof barApi.onShown === 'function') {
       try {
-        const off = barApi.onShown(() => {
+        const off = barApi.onShown(({ pinned = false } = {}) => {
+          syncShelfPin(pinned);
           closeShare();
           state.checkedImages.clear();
           closePreview(false);
@@ -1031,7 +1044,9 @@
       state.filter = button.dataset.filter; clearNotice(); applyFilters();
     }));
     $('#bar-close')?.addEventListener('click', hideBar);
-    $('#bar-submit')?.addEventListener('click', submitSelected);
+    const shelfPin = $('#bar-shelf-pin');
+    shelfPin.hidden = typeof state.barApi?.setPinned !== 'function';
+    shelfPin.addEventListener('click', toggleShelfPin);
     $('#bar-preview-close')?.addEventListener('click',()=>closePreview());
     track?.addEventListener('contextmenu',event=>{const card=closestFrom(event.target,'.bar-card');if(!card)return;event.preventDefault();selectIndex(Number(card.dataset.index));previewSelected();});
     $('#bar-refresh-retry')?.addEventListener('click', () => load({ keepItemId: currentSelectedId() }));
@@ -1048,10 +1063,6 @@
         if (shareAnchor?.closest('.bar-card')) closeShare();
       }, { passive: true });
       track.addEventListener('click', onTrackClick);
-      track.addEventListener('dblclick', event => {
-        const card = closestFrom(event.target, '.bar-card');
-        if (card?.dataset.id === currentSelectedId() && !closestFrom(event.target, 'button, summary, [popover]')) submitSelected();
-      });
       track.addEventListener('wheel', onWheel, { passive: false });
     }
     const retry = $('#bar-retry');
