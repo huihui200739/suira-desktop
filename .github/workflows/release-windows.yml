@@ -20,6 +20,7 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      - run: node node_modules/electron/install.js
       - name: Verify version tag
         id: version
         shell: pwsh
