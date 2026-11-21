@@ -1,7 +1,7 @@
 'use strict';
 // Real Electron, native icons and production IPC; only the profile, indexed
 // shortcuts, clipboard and OS shortcut registrations are isolated test fixtures.
-const fs=require('node:fs'),path=require('node:path'),os=require('node:os'),net=require('node:net'),assert=require('node:assert/strict'),{spawn,execFileSync}=require('node:child_process');
+const fs=require('node:fs'),path=require('node:path'),os=require('node:os'),net=require('node:net'),assert=require('node:assert/strict'),{spawn}=require('node:child_process');
 const {connect}=require('./runtime-client');
 const root=path.resolve(__dirname,'..'),tmp=fs.mkdtempSync(path.join(os.tmpdir(),'suira-workspace-'));
 const electron=[process.env.SUIRA_ELECTRON,'C:\\suira-electron\\electron.exe',path.join(root,'node_modules','electron','dist','electron.exe')].filter(Boolean).find(fs.existsSync);
@@ -12,12 +12,13 @@ async function until(fn){let last;for(let n=0;n<200;n++){try{const result=await 
   const menu=path.join(tmp,'menu');fs.mkdirSync(menu);
   const names=['微信','微信开发者工具','记事本','终端'];
   const links=names.map(name=>path.join(menu,name+'.lnk'));
-  const script=path.join(tmp,'shortcuts.ps1');
-  fs.writeFileSync(script,'\ufeff$ErrorActionPreference="Stop";$shell=New-Object -ComObject WScript.Shell;'+links.map(file=>`$link=$shell.CreateShortcut('${file.replace(/'/g,"''")}');$link.TargetPath=$env:WINDIR+'\\System32\\notepad.exe';$link.Save();`).join(''),'utf16le');
-  execFileSync('powershell.exe',['-NoProfile','-ExecutionPolicy','Bypass','-File',script],{windowsHide:true});
   const server=net.createServer();await new Promise(r=>server.listen(0,'127.0.0.1',r));const port=server.address().port;await new Promise(r=>server.close(r));
   const entry=path.join(tmp,'app.js');
-  fs.writeFileSync(entry,`const {app,BrowserWindow,screen,clipboard,globalShortcut,ipcMain,dialog}=require('electron');
+  fs.writeFileSync(entry,`const {app,BrowserWindow,screen,clipboard,globalShortcut,ipcMain,dialog,shell}=require('electron');
+const target=require('node:path').join(process.env.WINDIR,'System32','notepad.exe');
+for (const shortcut of ${JSON.stringify(links)}) {
+  if (!shell.writeShortcutLink(shortcut,'create',{target})) throw Error('Cannot create test shortcut: '+shortcut);
+}
 app.setPath('userData',${JSON.stringify(path.join(tmp,'profile'))});
 clipboard.read=async()=>[];clipboard.readText=async()=>'';globalShortcut.register=()=>true;globalShortcut.unregister=()=>{};globalShortcut.unregisterAll=()=>{};
 dialog.showOpenDialog=async()=>({canceled:true,filePaths:[]});
