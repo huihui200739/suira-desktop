@@ -21,10 +21,12 @@ jobs:
           cache: npm
       - run: npm ci
       - name: Verify version tag
+        id: version
         shell: pwsh
         run: |
           $version = (Get-Content package.json -Raw | ConvertFrom-Json).version
           if ($env:GITHUB_REF_TYPE -eq 'tag' -and $env:GITHUB_REF_NAME -ne "v$version") { throw 'Tag and package version differ' }
+          "number=$version" >> $env:GITHUB_OUTPUT
       - run: npm test
       - run: npm run verify:launcher
       - name: Build update bundle
@@ -36,7 +38,10 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: windows-update
+          if-no-files-found: error
           path: |
             dist/*.exe
             dist/*.blockmap
             dist/latest.yml
+            dist/win-unpacked/resources/app-update.yml
+            docs/release-${{ steps.version.outputs.number }}.json

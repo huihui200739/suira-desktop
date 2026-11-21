@@ -6,6 +6,7 @@ const fs=require('node:fs'),path=require('node:path');
 // Called against the real quickpanel markup and renderer by panel-shot.js.
 async function checkKeycapMaterial({send,evaluate}) {
   const ev=source=>evaluate(send,source);
+  await send('Emulation.setEmulatedMedia',{features:[{name:'prefers-color-scheme',value:'light'},{name:'prefers-reduced-motion',value:'no-preference'}]});
   // Hover stability is measured after the separate 160ms panel reveal.
   await ev('Promise.all(document.querySelector(".panel").getAnimations().map(animation=>animation.finished.catch(()=>{}))).then(()=>true)');
   const facts=await ev(`(()=>{
@@ -41,6 +42,9 @@ async function checkKeycapMaterial({send,evaluate}) {
     },true);return true;
   })()`);
   const point=await ev(`(()=>{const key=document.querySelector('[data-key="T"]'),r=key.getBoundingClientRect(),label=key.querySelector('.key-name').getBoundingClientRect();return {x:r.x+r.width*.7,y:r.y+r.width*.3,labelY:label.y};})()`);
+  // Enter from outside the grid so prior probes cannot affect pointer state.
+  await send('Input.dispatchMouseEvent',{type:'mouseMoved',x:8,y:8});
+  assert.equal(await ev(`document.elementFromPoint(${point.x},${point.y})?.closest('.key')?.dataset.key`),'T','Pointer target must be the T key');
   await send('Input.dispatchMouseEvent',{type:'mouseMoved',x:point.x,y:point.y});
   assert.equal(await ev('document.querySelector("[data-key=T]").classList.contains("is-key-near")'),true,'Entry must respond without a dwell timer');
   await wait(320);
@@ -85,7 +89,9 @@ async function checkKeycapMaterial({send,evaluate}) {
     runs.push({speed,keys:count,maxFirstVisibleMs:Math.round(maxDelay*10)/10});
     console.log('  SWEEP '+JSON.stringify(runs.at(-1)));
   }
-  fs.writeFileSync(path.join(__dirname,'../.workbuddy/vivid-motion-verification.json'),JSON.stringify({version:require('../package.json').version,runs,oneShotReflection:true,reentryCooldown:true,perFrameLayoutReads:0},null,2)+'\n');
+  const outputDir=path.join(__dirname,'../.workbuddy');
+  fs.mkdirSync(outputDir,{recursive:true});
+  fs.writeFileSync(path.join(outputDir,'vivid-motion-verification.json'),JSON.stringify({version:require('../package.json').version,runs,oneShotReflection:true,reentryCooldown:true,perFrameLayoutReads:0},null,2)+'\n');
   await send('Emulation.setEmulatedMedia',{features:[{name:'prefers-color-scheme',value:'light'},{name:'prefers-reduced-motion',value:'reduce'}]});
   await send('Input.dispatchMouseEvent',{type:'mouseMoved',x:point.x,y:point.y});await wait(170);
   assert.equal(await ev('getComputedStyle(document.querySelector("[data-key=T] .key-card")).transform'),'none');
