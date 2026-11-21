@@ -18,7 +18,7 @@ const { markdownPaths, createMarkdownFiles } = require('../lib/markdown-files');
     await Promise.all([files.save(item.id), files.save(item.id)]);
     assert.equal(workspace.list('markdown').length, 1);
     const reloaded = new SuiraStore(path.join(root,'store.json')); await reloaded.load();
-    assert.equal(reloaded.getItem(item.id).meta.externalPath, file);
+    assert.equal(reloaded.getItem(item.id).meta.externalPath, await fs.realpath(file));
     await fs.writeFile(file, '# Other editor');
     await assert.rejects(files.save(item.id), /其他程序/); assert.equal(await fs.readFile(file,'utf8'), '# Other editor');
     await fs.writeFile(path.join(root,'large.md'),Buffer.alloc(800001)); await assert.rejects(files.open(path.join(root,'large.md')), /800/);
