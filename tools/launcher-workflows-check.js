@@ -89,8 +89,18 @@ require(${JSON.stringify(path.join(root,'main.js'))});`);
     return Math.abs(key.getBoundingClientRect().width-key.offsetWidth*expectedScale)<2;
   })()`));
   assert.equal(await panel.evaluate('document.getElementById("panel").dataset.mode'),'actions');
-  const keyboard=await panel.evaluate(`(()=>{const k=document.getElementById('key-grid').getBoundingClientRect(),b=document.getElementById('panel-body').getBoundingClientRect();return {count:document.querySelectorAll('.key').length,inside:k.left>=b.left&&k.right<=b.right&&k.top>=b.top&&k.bottom<=b.bottom,square:[...document.querySelectorAll('.key-card')].every(key=>{const r=key.getBoundingClientRect();return Math.abs(r.width-r.height)<1;})};})()`);
-  assert.deepEqual(keyboard,{count:38,inside:true,square:true});
+  async function checkFullscreenKeyboard() {
+    const keyboard=await panel.evaluate(`(()=>{const k=document.getElementById('key-grid').getBoundingClientRect(),b=document.getElementById('panel-body').getBoundingClientRect();return {count:document.querySelectorAll('.key').length,inside:k.left>=b.left&&k.right<=b.right&&k.top>=b.top&&k.bottom<=b.bottom,square:[...document.querySelectorAll('.key-card')].every(key=>{const r=key.getBoundingClientRect();return Math.abs(r.width-r.height)<1;})};})()`);
+    assert.deepEqual(keyboard,{count:38,inside:true,square:true});
+  }
+  await checkFullscreenKeyboard();
+  await panel.send('Emulation.setDeviceMetricsOverride',{width:800,height:480,deviceScaleFactor:1,mobile:false});
+  try {
+    await until(()=>panel.evaluate('innerWidth===800 && innerHeight===480'));
+    await checkFullscreenKeyboard();
+  } finally {
+    await panel.send('Emulation.clearDeviceMetricsOverride');
+  }
   await panel.evaluate(`window.suira.quick.setPresentation('window')`);await until(async()=>!(await info()).full);
   console.log('PASS entering fullscreen preserves actions and proportionally scales all 38 keys within the display');
   await panel.evaluate(`document.getElementById('panel-more').click();document.querySelector('[data-menu-section="layout"]').click();document.querySelector('[data-layout="apps"]').click();true`);

@@ -703,7 +703,17 @@ kbd { font-family: var(--font-ui); font-size: var(--text-1); font-weight:600; }
 .panel-more-submenu button:hover,.panel-more-submenu button:focus-visible{outline:none;background:var(--accent-soft)}
 .panel-more-menu,.panel-more-submenu{font-family:var(--font-ui)}
 .panel[data-presentation="fullscreen"][data-mode="actions"]{--key-size:72px;--key-gap:17px}
-.panel[data-presentation="fullscreen"] .keyboard{max-width:none;gap:var(--space-5);transform:scale(var(--keyboard-scale,1));transform-origin:center}
+/* Center the scaled keyboard even when its unscaled box is larger than the viewport. */
+.panel[data-presentation="fullscreen"] .keyboard {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  margin: 0;
+  max-width: none;
+  gap: var(--space-5);
+  transform: translate(-50%, -50%) scale(var(--keyboard-scale, 1));
+  transform-origin: center;
+}
 .panel[data-presentation="fullscreen"] .key-glyph{color:var(--panel-panel-fullscreen-key-glyph-ink);background:var(--panel-panel-fullscreen-key-glyph-surface)}
 .panel[data-presentation="fullscreen"] .key-badge{background:var(--panel-panel-fullscreen-key-badge-surface);color:var(--panel-panel-fullscreen-key-badge-ink)}
 .update-dialog{position:absolute;inset:0;z-index:80;display:grid;place-items:center;background:var(--panel-update-dialog-surface);backdrop-filter:blur(8px)}
