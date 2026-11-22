@@ -42,11 +42,34 @@ async function until(fn, label = 'state') {
   };
   const geometry = () => page.evaluate(`(()=>{const r=document.querySelector('.sidebar').getBoundingClientRect(),m=document.querySelector('.main-scroll').getBoundingClientRect(),b=document.querySelector('.brand').getBoundingClientRect(),n=document.querySelector('.nav-item').getBoundingClientRect(),i=document.querySelector('.nav .shared-selection').getBoundingClientRect();return {rail:r.width,main:m.x,brand:b.width,item:n.width,indicator:i.width,expanded:document.getElementById('sidebar-toggle').getAttribute('aria-expanded'),overflow:document.documentElement.scrollWidth>innerWidth};})()`);
   const shot = async name => { if (!process.argv.includes('--shots')) return; await page.evaluate('document.activeElement?.blur();true'); await page.send('Input.dispatchMouseEvent', { type:'mouseMoved', x:900, y:500 }); await wait(200); const image = await page.send('Page.captureScreenshot', { format: 'png' }); const directory = path.join(root, 'docs/product'); fs.mkdirSync(directory, { recursive: true }); fs.writeFileSync(path.join(directory, 'sidebar-' + name + '.png'), Buffer.from(image.data, 'base64')); };
-  await wait(250); const expanded = await geometry(); close(expanded.rail, 184); close(expanded.main, expanded.brand);
+  await until(async () => near((await geometry()).rail, 184), 'expanded sidebar'); const expanded = await geometry(); close(expanded.main, expanded.brand);
   await page.send('Input.dispatchKeyEvent', { type:'keyDown', key:'Tab', code:'Tab', windowsVirtualKeyCode:9 });
   await page.evaluate('document.getElementById("sidebar-toggle").focus();true');
   await until(() => page.evaluate('!document.getElementById("surface-hint").hidden'));
   assert.ok(await page.evaluate('document.getElementById("surface-hint").textContent.includes("收起侧边栏")'), 'Expanded sidebar also explains its shortcut');
+  const appearance = target => target.evaluate(`(() => {
+    const root = document.documentElement;
+    return { preset: root.dataset.theme, source: root.dataset.accentSource,
+      dark: matchMedia('(prefers-color-scheme: dark)').matches,
+      background: getComputedStyle(document.querySelector('.app-shell > .glass-scene')).backgroundColor };
+  })()`);
+  const t3Background = 'rgb(252, 252, 252)';
+  const changeAppearance = async (settings, expected) => {
+    await page.evaluate(`window.suira.settings.update(${JSON.stringify(settings)})`);
+    await until(async () => {
+      const current = await appearance(page);
+      return Object.entries(expected).every(([key, value]) => value === current[key]);
+    }, 'appearance');
+  };
+  await changeAppearance({ theme: 'light', themePreset: 'mist', accentSource: 'preset' }, { dark: false, preset: 'mist' });
+  assert.equal((await appearance(page)).background, t3Background);
+  await changeAppearance({ theme: 'dark' }, { dark: true });
+  assert.notEqual((await appearance(page)).background, t3Background, 'Dark mode restores the native palette');
+  await changeAppearance({ theme: 'light', themePreset: 'paper' }, { dark: false, preset: 'paper' });
+  assert.notEqual((await appearance(page)).background, t3Background, 'Other presets retain their palette');
+  await changeAppearance({ themePreset: 'mist', accentSource: 'windows' }, { preset: 'mist', source: 'windows' });
+  assert.notEqual((await appearance(page)).background, t3Background, 'External accent source restores the native palette');
+  await changeAppearance({ accentSource: 'preset' }, { source: 'preset', background: t3Background });
   await shot('expanded');
   await click('#sidebar-toggle'); await until(async () => near((await geometry()).rail, 64)); await wait(200);
   const collapsed = await geometry(); close(collapsed.main, 64); close(collapsed.brand, 64); assert.equal(collapsed.expanded, 'false'); close(collapsed.item, collapsed.indicator); assert.equal(collapsed.overflow, false);

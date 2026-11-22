@@ -1478,6 +1478,37 @@ html,body {
   }
 }
 
+/* T3 workspace colors. The view stylesheet controls where they apply. */
+:root {
+  --t3-canvas: #fcfcfc;
+  --t3-rail: #fafafa;
+  --t3-card: #ffffff;
+  --t3-wash: #f4f4f5;
+  --t3-ink: #27272a;
+  --t3-secondary: #52525b;
+  --t3-muted: #71717b;
+  --t3-line: #e4e4e7;
+  --t3-strong-line: #d4d4d8;
+  --t3-accent: #18181b;
+  --t3-press: #000000;
+  --t3-stone-wash: #eaf1f5;
+  --t3-stone: #2e5e7e;
+  --t3-pine-wash: #edf2ea;
+  --t3-pine: #5f7a5a;
+  --t3-pine-ink: #4d6749;
+  --t3-gold-wash: #fbf3df;
+  --t3-gold-ink: #8a6d1f;
+  --t3-gold: #c99a3c;
+  --t3-cinnabar-wash: #fbefea;
+  --t3-cinnabar: #c24a38;
+  --t3-cinnabar-ink: #a43e2f;
+  --t3-ochre: #9c5a3c;
+  --t3-inset: rgb(39 39 42 / 0.04);
+  --t3-control-shade: rgb(39 39 42 / 0.06);
+  --t3-shadow-near: rgb(0 0 0 / 0.04);
+  --t3-shadow-far: rgb(0 0 0 / 0.06);
+}
+
 /* BEGIN GENERATED THEME SCALES */
 :root[data-theme="mist"], .theme-swatch[data-theme="mist"] {
   --slate-1:#fcfcfd;
