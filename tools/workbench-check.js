@@ -35,6 +35,7 @@ async function until(fn, label = 'state') {
   const log = fs.openSync(path.join(tmp, 'app.log'), 'w');
   child = spawn(executable, [entry, '--remote-debugging-address=127.0.0.1', '--remote-debugging-port=' + port], { cwd: root, env, windowsHide: true, stdio: ['ignore', log, log] }); fs.closeSync(log);
   const page = await until(() => connect(port, target => target.url.endsWith('/index.html')), 'workbench window'); sockets.push(page.ws);
+  await page.send('Emulation.setFocusEmulationEnabled', { enabled: true });
   await page.send('Runtime.enable'); page.ws.addEventListener('message', event => { const data = JSON.parse(event.data); if (data.method === 'Runtime.exceptionThrown') errors.push(data.params.exceptionDetails.exception?.description || data.params.exceptionDetails.text); });
   await until(() => page.evaluate('Boolean(document.querySelector(".task-row") && window.suira && document.documentElement.classList.contains("liquid-ui"))'));
   await page.send('Emulation.setDeviceMetricsOverride', { width: 1360, height: 900, deviceScaleFactor: 1, mobile: false });
@@ -55,11 +56,11 @@ async function until(fn, label = 'state') {
   assert.ok(await page.evaluate('document.getElementById("surface-hint").textContent.includes("收起侧边栏")'), 'Expanded sidebar also explains its shortcut');
   const appearance = target => target.evaluate(`(() => {
     const root = document.documentElement;
-    return { preset: root.dataset.theme, source: root.dataset.accentSource,
+    return { url: location.search, preset: root.dataset.theme, source: root.dataset.accentSource,
       dark: matchMedia('(prefers-color-scheme: dark)').matches,
       background: getComputedStyle(document.querySelector('.app-shell > .glass-scene')).backgroundColor };
   })()`);
-  const t3Background = 'rgb(252, 252, 252)';
+  const t3Background = 'rgb(252, 252, 252)', darkBackground = 'rgb(19, 19, 21)';
   const changeAppearance = async (settings, expected) => {
     await page.evaluate(`window.suira.settings.update(${JSON.stringify(settings)})`);
     await until(async () => {
@@ -70,7 +71,7 @@ async function until(fn, label = 'state') {
   await changeAppearance({ theme: 'light', themePreset: 'mist', accentSource: 'preset' }, { dark: false, preset: 'mist' });
   assert.equal((await appearance(page)).background, t3Background);
   await changeAppearance({ theme: 'dark' }, { dark: true });
-  assert.notEqual((await appearance(page)).background, t3Background, 'Dark mode restores the native palette');
+  assert.equal((await appearance(page)).background, darkBackground, 'Dark Mist keeps the solid workspace surface');
   await changeAppearance({ theme: 'light', themePreset: 'paper' }, { dark: false, preset: 'paper' });
   assert.notEqual((await appearance(page)).background, t3Background, 'Other presets retain their palette');
   await changeAppearance({ themePreset: 'mist', accentSource: 'windows' }, { preset: 'mist', source: 'windows' });
@@ -95,7 +96,7 @@ async function until(fn, label = 'state') {
   assert.equal((await readStyle(page, '#task-search', ['border-top-width']))['border-top-width'], '0px');
   await polishShot(page, 'task');
   await click('[data-page="library"]');
-  const libraryStyle = filter => page.evaluate(`new Promise(resolve => {
+  const libraryStyle = (filter, background = neutral) => page.evaluate(`new Promise(resolve => {
     const group = document.getElementById('library-filters');
     const active = group.querySelector('.is-active');
     const samples = [];
@@ -112,7 +113,7 @@ async function until(fn, label = 'state') {
     for (const sample of samples) {
       assert.equal(sample.filter, filter);
       assert.equal(sample.pressed, 'true');
-      assert.equal(sample.background, neutral, 'Filter is already neutral on the first frame');
+      assert.equal(sample.background, background, 'Filter is already neutral on the first frame');
       assert.equal(sample.ink, white);
       assert.equal(sample.indicator, 'none');
       assert.equal(sample.animations, 0);
@@ -198,6 +199,7 @@ async function until(fn, label = 'state') {
   const calendar = await until(() => connect(port, target => target.url.includes('tool=calendar'))); sockets.push(calendar.ws);
   await until(() => calendar.evaluate('document.querySelectorAll(".calendar-day").length===42'));
   await calendar.send('Emulation.setDeviceMetricsOverride', { width: 1360, height: 900, deviceScaleFactor: 1, mobile: false });
+  await calendar.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: 0, y: 0 });
   assert.equal((await readStyle(calendar, '#calendar-new', ['background-color']))['background-color'], neutral);
   assert.equal((await readStyle(calendar, '.calendar-card', ['border-radius']))['border-radius'], '0px');
   const weekday = await readStyle(calendar, '.calendar-day:not(.weekend):not(.outside):not(.today):not(.selected)', ['border-radius', 'background-color']);
@@ -232,8 +234,63 @@ async function until(fn, label = 'state') {
   await calendar.evaluate('document.getElementById("calendar-new").click();document.getElementById("event-title").value="工作台打磨验收";document.getElementById("event-date").value="2026-11-08";document.getElementById("event-time").value="14:30";document.getElementById("event-form").requestSubmit();true');
   await until(async () => (await calendar.evaluate('window.suira.workspace.list("calendar")')).some(item => item.title === '工作台打磨验收' && item.meta.date === '2026-11-08'));
   await until(() => calendar.evaluate('document.getElementById("event-form").hidden'));
+  // Toggle from the actual calendar toolbar so all open windows follow the same setting.
+  const themeButton = 'button[aria-label="切换明暗主题"]';
+  const toggleCalendarTheme = async (dark, background) => {
+    await calendar.evaluate('document.querySelector(' + JSON.stringify(themeButton) + ').click();true');
+    for (const target of [page, calendar, tool]) {
+      await until(async () => {
+        const style = await appearance(target);
+        assert.equal(style.dark, dark, JSON.stringify(style));
+        assert.equal(style.background, target === tool && !dark ? white : background, JSON.stringify(style));
+        return true;
+      }, 'theme switch across open windows');
+    }
+  };
+  const darkFill = 'rgb(59, 59, 62)', darkInk = 'rgb(245, 245, 245)';
+  const darkButton = { 'background-color': darkFill, color: white };
+  await toggleCalendarTheme(true, darkBackground);
+  await click('[data-page="shelf"]');
+  await click(`.task-row[data-id="${task.id}"]`);
+  await until(() => page.evaluate('Boolean(document.querySelector(".derived-card"))'));
+  assert.equal((await readStyle(page, '.nav-item.is-active b', ['color'])).color, darkInk);
+  assert.equal((await readStyle(page, '.nav .shared-selection', ['background-color']))['background-color'], 'rgb(41, 41, 44)');
+  assert.equal((await readStyle(page, '.task-column', ['border-radius']))['border-radius'], '0px');
+  assert.deepEqual(await readStyle(page, '#shelf-import', ['background-color', 'color']), darkButton);
+  assert.deepEqual(await readStyle(page, '.trail-step:last-child b', ['background-color', 'color']), darkButton);
+  assert.equal((await readStyle(page, '.derived-card', ['border-left-color']))['border-left-color'], 'rgb(53, 53, 56)');
+  assert.equal((await readStyle(page, '.derived-tag', ['color'])).color, darkInk);
+  await polishShot(page, 'task-dark');
+
+  await click('[data-page="library"]');
+  for (const kind of ['text', 'link', 'all']) {
+    await click(`[data-filter="${kind}"]`);
+    await libraryStyle(kind, darkFill);
+  }
+  await page.evaluate('document.querySelector("[data-filter=link]").focus();true');
+  for (const type of ['keyDown', 'keyUp']) await page.send('Input.dispatchKeyEvent', { type, key: ' ', code: 'Space', windowsVirtualKeyCode: 32 });
+  await libraryStyle('link', darkFill);
+  await polishShot(page, 'library-dark');
+  await click('[data-page="settings"]');
+  assert.equal((await readStyle(page, '[data-preset=mist] .theme-swatch', ['background-color'], '::after'))['background-color'], darkFill);
+  await polishShot(page, 'settings-dark');
+  for (const pane of ['.mia-notes', '.mia-main']) assert.equal((await readStyle(tool, pane, ['border-radius']))['border-radius'], '0px');
+  await polishShot(tool, 'markdown-dark');
+
+  await calendar.evaluate('document.querySelector("[data-agenda=countdown]").click();document.querySelector("[data-countdown=term]").click();true');
+  assert.deepEqual(await readStyle(calendar, '#calendar-new', ['background-color', 'color']), darkButton);
+  assert.deepEqual(await readStyle(calendar, '.agenda-tabs .is-active', ['background-color', 'color']), darkButton);
+  assert.deepEqual(await readStyle(calendar, '.calendar-day.today > .day-number', ['background-color', 'color']), darkButton);
+  assert.equal((await readStyle(calendar, '[data-countdown=term]', ['color'])).color, darkInk);
+  assert.equal((await readStyle(calendar, '.calendar-day.selected', ['border-radius']))['border-radius'], '0px');
+  assert.equal((await readStyle(calendar, '.countdown-row[data-kind=term]', ['background-color'], '::before'))['background-color'], 'rgb(212, 172, 86)');
+  await polishShot(calendar, 'calendar-dark');
+  await calendar.send('Emulation.setDeviceMetricsOverride', { width: 800, height: 700, deviceScaleFactor: 1, mobile: false });
+  assert.ok(await calendar.evaluate('document.querySelector(".calendar-layout").getBoundingClientRect().right <= innerWidth && document.getElementById("countdown-filters").scrollWidth <= document.getElementById("countdown-filters").clientWidth'));
+  await toggleCalendarTheme(false, t3Background);
+  assert.deepEqual(await readStyle(calendar, '#calendar-new', ['background-color', 'color']), { 'background-color': neutral, color: white });
   assert.deepEqual(errors, []);
-  console.log('PASS real Electron: Mist surfaces and filter frames across all five pages, sidebar pointer/keyboard, compact navigation, ARIA, focus hints, persisted reload, 800–1600px layouts, reduced motion, async clipboard destination and standalone document/calendar create/save/switch flows');
+  console.log('PASS real Electron: light/dark Mist surfaces and filter frames across all five pages, sidebar pointer/keyboard, compact navigation, ARIA, focus hints, persisted reload, 800–1600px layouts, reduced motion, async clipboard destination and standalone document/calendar create/save/switch flows');
 })().catch(error => { console.error(error); if (fs.existsSync(path.join(tmp, 'app.log'))) console.error(fs.readFileSync(path.join(tmp, 'app.log'), 'utf8').slice(-2200)); process.exitCode = 1; }).finally(async () => {
   sockets.forEach(socket => socket.close());
   if (child && child.exitCode === null) { const done = new Promise(resolve => child.once('exit', resolve)); child.kill(); await done; }
