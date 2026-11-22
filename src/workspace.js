@@ -801,11 +801,44 @@
       const nav=document.querySelector('.calendar-month');nav.prepend($('calendar-prev'));nav.append($('calendar-next'),$('calendar-today'));
       const aside=document.querySelector('.agenda-card');aside.prepend($('calendar-new'));
       const tabs=document.createElement('div');tabs.className='agenda-tabs view-switch';tabs.innerHTML='<button data-agenda="countdown" class="is-active" aria-pressed="true"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 3h10 M7 21h10 M8 3v4l8 10v4 M16 3v4L8 17v4"/></svg>倒数日</button><button data-agenda="todo" aria-pressed="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m3 6 2 2 3-4 M11 6h10 M3 13h4 M11 13h10 M3 20h4 M11 20h10"/></svg>待办</button>';aside.prepend(tabs);
-      const filters=document.createElement('div');filters.id='countdown-filters';filters.innerHTML=[['all','全部'],['holiday','节假日'],['term','24 节气'],['custom','自定义']].map(([id,label])=>`<button data-countdown="${id}" class="${id==='all'?'is-active':''}">${label}</button>`).join('');tabs.after(filters);
-      filters.querySelectorAll('button').forEach(b=>b.onclick=()=>{countdownFilter=b.dataset.countdown;filters.querySelectorAll('button').forEach(x=>x.classList.toggle('is-active',x===b));calendar();});
+      const filters = document.createElement('div');
+      filters.id = 'countdown-filters';
+      filters.setAttribute('role', 'group');
+      filters.setAttribute('aria-label', '倒数日分类');
+      const kinds = [['all','全部'], ['holiday','节假日'], ['term','24 节气'], ['custom','自定义']];
+      for (const [kind, label] of kinds) {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.dataset.countdown = kind;
+        button.textContent = label;
+        button.classList.toggle('is-active', kind === countdownFilter);
+        button.setAttribute('aria-pressed', String(kind === countdownFilter));
+        button.onclick = () => {
+          countdownFilter = kind;
+          for (const filter of filters.children) {
+            filter.classList.toggle('is-active', filter === button);
+            filter.setAttribute('aria-pressed', String(filter === button));
+          }
+          calendar();
+        };
+        filters.append(button);
+      }
+      tabs.after(filters);
       const numbers=document.createElement('div');numbers.id='calendar-week-numbers';$('calendar-grid').before(numbers);const dates=document.createElement('div');dates.className='calendar-dates';numbers.before(dates);dates.append(numbers,$('calendar-grid'));
       const selectedLabel=document.createElement('span');selectedLabel.id='calendar-selected';nav.append(selectedLabel);
-      const filterToggle=document.createElement('button');filterToggle.className='quiet-btn';filterToggle.textContent='☰';filterToggle.title='搜索和视图';filterToggle.onclick=()=>document.querySelector('.calendar-controls').classList.toggle('is-open');top.prepend(filterToggle);
+      const filterToggle = document.createElement('button');
+      const calendarControls = document.querySelector('.calendar-controls');
+      calendarControls.id = 'calendar-controls';
+      filterToggle.className = 'quiet-btn';
+      filterToggle.textContent = '☰';
+      filterToggle.title = '搜索和视图';
+      filterToggle.setAttribute('aria-label', filterToggle.title);
+      filterToggle.setAttribute('aria-controls', calendarControls.id);
+      filterToggle.setAttribute('aria-expanded', 'false');
+      filterToggle.onclick = () => {
+        filterToggle.setAttribute('aria-expanded', String(calendarControls.classList.toggle('is-open')));
+      };
+      top.prepend(filterToggle);
       tabs.querySelectorAll('button').forEach(button=>button.onclick=()=>{agendaMode=button.dataset.agenda;tabs.querySelectorAll('button').forEach(b=>{b.classList.toggle('is-active',b===button);b.setAttribute('aria-pressed',String(b===button));});calendar();});
     }
   }

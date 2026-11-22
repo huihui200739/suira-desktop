@@ -94,11 +94,11 @@
           <div class="toolbar">
             <div class="searchbox"><svg viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6.2"/><path d="m15.2 15.2 4.1 4.1"/></svg><input id="library-search" type="search" placeholder="搜索文字、文件或来源" autocomplete="off"></div>
             <div class="filter-chips" id="library-filters" data-selection-group>
-              <button class="chip is-active" type="button" data-filter="all">全部</button>
-              <button class="chip" type="button" data-filter="text">文字</button>
-              <button class="chip" type="button" data-filter="image">图片</button>
-              <button class="chip" type="button" data-filter="files">文件</button>
-              <button class="chip" type="button" data-filter="link">链接</button>
+              <button class="chip is-active" type="button" data-filter="all" aria-pressed="true">全部</button>
+              <button class="chip" type="button" data-filter="text" aria-pressed="false">文字</button>
+              <button class="chip" type="button" data-filter="image" aria-pressed="false">图片</button>
+              <button class="chip" type="button" data-filter="files" aria-pressed="false">文件</button>
+              <button class="chip" type="button" data-filter="link" aria-pressed="false">链接</button>
             </div>
           </div>
           <div class="library-grid" id="library-grid"></div>

@@ -1332,7 +1332,10 @@ function installEvents() {
   $$('#library-filters .chip').forEach((chip) => {
     chip.addEventListener('click', () => {
       state.filter = chip.dataset.filter;
-      $$('#library-filters .chip').forEach((el) => el.classList.toggle('is-active', el === chip));
+      $$('#library-filters .chip').forEach((button) => {
+        button.classList.toggle('is-active', button === chip);
+        button.setAttribute('aria-pressed', String(button === chip));
+      });
       renderLibrary();
     });
   });

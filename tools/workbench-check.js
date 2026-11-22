@@ -21,7 +21,10 @@ async function until(fn, label = 'state') {
   const profile = path.join(tmp, 'profile'), store = new SuiraStore(path.join(profile, 'suira-data.json'));
   await store.updateSettings({ recordClipboard: false, globalShortcutsEnabled: false, panelGuideSeen: true });
   const task = store.createTask('产品体验打磨'), item = store.addItem({ kind: 'text', title: '让工作自然继续', text: '收起导航，专注当前内容。\n任务、截图和文字仍然触手可及。', source: { type: 'user' } });
-  store.addItemToTask(task.id, item.id); await store.save();
+  store.addItemToTask(task.id, item.id);
+  store.addItem({ kind: 'text', title: '整理结果', text: '保留一个干净的阅读界面。', parentIds: [item.id], source: { type: 'derived' } });
+  store.addItem({ kind: 'link', title: '链接示例', text: 'https://example.com', source: { type: 'user' } });
+  await store.save();
   const server = net.createServer(); await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
   const port = server.address().port; await new Promise(resolve => server.close(resolve));
   const entry = path.join(tmp, 'app.js');
@@ -42,9 +45,12 @@ async function until(fn, label = 'state') {
   };
   const geometry = () => page.evaluate(`(()=>{const r=document.querySelector('.sidebar').getBoundingClientRect(),m=document.querySelector('.main-scroll').getBoundingClientRect(),b=document.querySelector('.brand').getBoundingClientRect(),n=document.querySelector('.nav-item').getBoundingClientRect(),i=document.querySelector('.nav .shared-selection').getBoundingClientRect();return {rail:r.width,main:m.x,brand:b.width,item:n.width,indicator:i.width,expanded:document.getElementById('sidebar-toggle').getAttribute('aria-expanded'),overflow:document.documentElement.scrollWidth>innerWidth};})()`);
   const shot = async name => { if (!process.argv.includes('--shots')) return; await page.evaluate('document.activeElement?.blur();true'); await page.send('Input.dispatchMouseEvent', { type:'mouseMoved', x:900, y:500 }); await wait(200); const image = await page.send('Page.captureScreenshot', { format: 'png' }); const directory = path.join(root, 'docs/product'); fs.mkdirSync(directory, { recursive: true }); fs.writeFileSync(path.join(directory, 'sidebar-' + name + '.png'), Buffer.from(image.data, 'base64')); };
-  await until(async () => near((await geometry()).rail, 184), 'expanded sidebar'); const expanded = await geometry(); close(expanded.main, expanded.brand);
+  await until(async () => {
+    const expanded = await geometry();
+    return near(expanded.rail, 184) && near(expanded.main, expanded.brand);
+  }, 'expanded sidebar aligned with the titlebar');
   await page.send('Input.dispatchKeyEvent', { type:'keyDown', key:'Tab', code:'Tab', windowsVirtualKeyCode:9 });
-  await page.evaluate('document.getElementById("sidebar-toggle").focus();true');
+  await page.evaluate('document.activeElement?.blur();document.getElementById("sidebar-toggle").focus();true');
   await until(() => page.evaluate('!document.getElementById("surface-hint").hidden'));
   assert.ok(await page.evaluate('document.getElementById("surface-hint").textContent.includes("收起侧边栏")'), 'Expanded sidebar also explains its shortcut');
   const appearance = target => target.evaluate(`(() => {
@@ -70,6 +76,66 @@ async function until(fn, label = 'state') {
   await changeAppearance({ themePreset: 'mist', accentSource: 'windows' }, { preset: 'mist', source: 'windows' });
   assert.notEqual((await appearance(page)).background, t3Background, 'External accent source restores the native palette');
   await changeAppearance({ accentSource: 'preset' }, { source: 'preset', background: t3Background });
+  const readStyle = (target, selector, properties, pseudo = null) => target.evaluate(`(() => {
+      const style = getComputedStyle(document.querySelector(${JSON.stringify(selector)}), ${JSON.stringify(pseudo)});
+      return Object.fromEntries(${JSON.stringify(properties)}.map(property => [property, style.getPropertyValue(property).trim()]));
+    })()`);
+  const neutral = 'rgb(24, 24, 27)', white = 'rgb(255, 255, 255)';
+  const polishDirectory = process.env.SUIRA_WORKBENCH_POLISH_SHOTS;
+  const polishShot = async (target, name) => {
+    if (!polishDirectory) return;
+    await target.evaluate('document.activeElement?.blur();true');
+    const image = await target.send('Page.captureScreenshot', { format: 'png' });
+    fs.writeFileSync(path.join(polishDirectory, name + '.png'), Buffer.from(image.data, 'base64'));
+  };
+  assert.equal((await readStyle(page, '.task-column', ['border-radius']))['border-radius'], '0px', 'Docked task index has square corners');
+  await until(() => page.evaluate('Boolean(document.querySelector(".derived-card"))'));
+  assert.equal((await readStyle(page, '.derived-card', ['border-left-color']))['border-left-color'], 'rgb(228, 228, 231)');
+  assert.equal((await readStyle(page, '.trail-step:last-child b', ['background-color']))['background-color'], neutral);
+  assert.equal((await readStyle(page, '#task-search', ['border-top-width']))['border-top-width'], '0px');
+  await polishShot(page, 'task');
+  await click('[data-page="library"]');
+  const libraryStyle = filter => page.evaluate(`new Promise(resolve => {
+    const group = document.getElementById('library-filters');
+    const active = group.querySelector('.is-active');
+    const samples = [];
+    function sample() {
+      const style = getComputedStyle(active);
+      const indicator = group.querySelector('.shared-selection');
+      samples.push({filter:active.dataset.filter, pressed:active.getAttribute('aria-pressed'), background:style.backgroundColor,
+        ink:style.color, indicator:indicator && getComputedStyle(indicator).display, animations:group.getAnimations({subtree:true}).length});
+      if(samples.length===4) resolve(samples);
+      else requestAnimationFrame(sample);
+    }
+    sample();
+  })`).then(samples => {
+    for (const sample of samples) {
+      assert.equal(sample.filter, filter);
+      assert.equal(sample.pressed, 'true');
+      assert.equal(sample.background, neutral, 'Filter is already neutral on the first frame');
+      assert.equal(sample.ink, white);
+      assert.equal(sample.indicator, 'none');
+      assert.equal(sample.animations, 0);
+    }
+  });
+  for (const kind of ['text','image','files','link','all','link','text','all']) {
+    await click(`[data-filter="${kind}"]`);
+    await libraryStyle(kind);
+  }
+  assert.equal(await page.evaluate('document.querySelectorAll("#library-filters [aria-pressed=true]").length'), 1);
+  assert.equal(await page.evaluate('document.querySelectorAll(".library-card").length'), 3);
+  await page.evaluate('document.querySelector("[data-filter=link]").focus();true');
+  for (const type of ['keyDown', 'keyUp']) await page.send('Input.dispatchKeyEvent', { type, key: ' ', code: 'Space', windowsVirtualKeyCode: 32 });
+  await libraryStyle('link');
+  assert.equal(await page.evaluate('document.querySelectorAll(".library-card").length'), 1);
+  await click('[data-filter=all]');
+  await polishShot(page, 'library');
+  await click('[data-page="settings"]');
+  assert.equal((await readStyle(page, '[data-preset=mist]', ['border-top-color']))['border-top-color'], neutral);
+  assert.equal((await readStyle(page, '[data-preset=mist] .theme-swatch', ['background-color'], '::after'))['background-color'], neutral);
+  assert.equal((await readStyle(page, '[data-preset=paper] .theme-swatch', ['background-color'], '::after'))['background-color'], 'rgb(204, 78, 0)');
+  await polishShot(page, 'settings');
+  await click('[data-page="shelf"]');
   await shot('expanded');
   await click('#sidebar-toggle'); await until(async () => near((await geometry()).rail, 64)); await wait(200);
   const collapsed = await geometry(); close(collapsed.main, 64); close(collapsed.brand, 64); assert.equal(collapsed.expanded, 'false'); close(collapsed.item, collapsed.indicator); assert.equal(collapsed.overflow, false);
@@ -80,7 +146,7 @@ async function until(fn, label = 'state') {
   await click('[data-page="settings"]'); await until(() => page.evaluate('document.querySelector("#page-settings").classList.contains("is-active")'));
   await click('[data-page="shelf"]');
   await page.send('Input.dispatchKeyEvent', { type:'keyDown', key:'Tab', code:'Tab', windowsVirtualKeyCode:9 });
-  await page.evaluate('document.querySelector("[data-page=library]").focus();true');
+  await page.evaluate('document.activeElement?.blur();document.querySelector("[data-page=library]").focus();true');
   await until(() => page.evaluate('!document.getElementById("surface-hint").hidden'));
   assert.equal(await page.evaluate('document.getElementById("surface-hint").textContent'), '内容库');
   await page.send('Input.dispatchKeyEvent', { type: 'keyDown', key: '\\', code: 'Backslash', modifiers: 2 });
@@ -99,6 +165,7 @@ async function until(fn, label = 'state') {
   }
   await page.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: 'reduce' }, { name: 'prefers-color-scheme', value: 'dark' }] });
   assert.equal(await page.evaluate('getComputedStyle(document.querySelector(".app-body")).transitionDuration'), '0s');
+  await page.send('Emulation.setEmulatedMedia', { features: [] });
   await click('#sidebar-toggle'); assert.equal((await geometry()).expanded, 'true');
   // Read starts on task A; selection can change while clipboard access waits.
   await page.evaluate('navigator.clipboard.readText=()=>new Promise(resolve=>window.__resolveClipboard=resolve);true');
@@ -115,6 +182,9 @@ async function until(fn, label = 'state') {
   assert.equal(await tool.evaluate('getComputedStyle(document.getElementById("sidebar-toggle")).display'), 'none', 'Standalone document controls are unchanged');
   await tool.evaluate('document.getElementById("md-new").click();true');
   await until(() => tool.evaluate('!document.getElementById("md-body").hidden'));
+  await tool.send('Emulation.setDeviceMetricsOverride', { width: 1360, height: 900, deviceScaleFactor: 1, mobile: false });
+  for (const pane of ['.mia-notes', '.mia-main']) assert.equal((await readStyle(tool, pane, ['border-radius']))['border-radius'], '0px');
+  await polishShot(tool, 'markdown');
   await tool.evaluate('document.querySelector("[data-md-view=edit]").click();document.getElementById("md-title").value="保存与切换验收";document.getElementById("md-editor").value="# 普通编辑验收\\n\\n第一稿";document.getElementById("md-editor").dispatchEvent(new Event("input"));window.WorkspaceUI.flush()');
   const originalDocs = await tool.evaluate('window.suira.workspace.list("markdown")');
   const original = originalDocs.find(item => item.title === '保存与切换验收'); assert.ok(original);
@@ -127,11 +197,43 @@ async function until(fn, label = 'state') {
   const calendarResult = await page.evaluate('window.suira.workspace.open("calendar")'); assert.notEqual(calendarResult?.ok, false);
   const calendar = await until(() => connect(port, target => target.url.includes('tool=calendar'))); sockets.push(calendar.ws);
   await until(() => calendar.evaluate('document.querySelectorAll(".calendar-day").length===42'));
+  await calendar.send('Emulation.setDeviceMetricsOverride', { width: 1360, height: 900, deviceScaleFactor: 1, mobile: false });
+  assert.equal((await readStyle(calendar, '#calendar-new', ['background-color']))['background-color'], neutral);
+  assert.equal((await readStyle(calendar, '.calendar-card', ['border-radius']))['border-radius'], '0px');
+  const weekday = await readStyle(calendar, '.calendar-day:not(.weekend):not(.outside):not(.today):not(.selected)', ['border-radius', 'background-color']);
+  assert.deepEqual(weekday, { 'border-radius': '0px', 'background-color': white });
+  const selectedDay = await readStyle(calendar, '.calendar-day.selected', ['border-radius', 'box-shadow']);
+  assert.equal(selectedDay['border-radius'], '0px');
+  assert.ok(selectedDay['box-shadow'].includes(neutral));
+  assert.equal((await readStyle(calendar, '.countdown-row[data-kind=term]', ['background-color'], '::before'))['background-color'], 'rgb(201, 154, 60)');
+  assert.equal((await readStyle(calendar, '.countdown-row[data-kind=holiday]', ['background-color'], '::before'))['background-color'], 'rgb(194, 74, 56)');
+  assert.equal((await readStyle(calendar, '.countdown-row', ['border-left-width']))['border-left-width'], '0px');
+  await calendar.evaluate('document.querySelector("[data-countdown=term]").click();true');
+  assert.ok(await calendar.evaluate('document.querySelector("[data-countdown=term]").getAttribute("aria-pressed")==="true" && [...document.querySelectorAll(".countdown-row")].every(row=>row.dataset.kind==="term")'));
+  await calendar.evaluate('document.querySelector("[data-countdown=all]").click();document.querySelector("button[aria-label=窗口置顶]").click();true');
+  await until(() => calendar.evaluate('document.querySelector("button[aria-label=窗口置顶]").getAttribute("aria-pressed")==="true"'));
+  assert.equal((await readStyle(calendar, 'button[aria-label=窗口置顶]', ['color']))['color'], neutral);
+  const controlsToggle = 'button[aria-label="搜索和视图"]';
+  await calendar.evaluate('document.querySelector(' + JSON.stringify(controlsToggle) + ').click();true');
+  assert.equal((await readStyle(calendar, controlsToggle, ['color'])).color, neutral);
+  assert.equal(await calendar.evaluate('document.getElementById("calendar-controls").checkVisibility()'), true);
+  for (const view of ['week', 'agenda', 'month']) {
+    await calendar.evaluate('document.querySelector("[data-calendar-view=' + view + ']").click();true');
+    assert.equal(await calendar.evaluate('document.querySelector(".calendar-layout").dataset.view'), view);
+  }
+  await calendar.evaluate('document.querySelector(' + JSON.stringify(controlsToggle) + ').click();true');
+  await calendar.send('Emulation.setDeviceMetricsOverride', { width: 800, height: 700, deviceScaleFactor: 1, mobile: false });
+  assert.ok(await calendar.evaluate('document.querySelector(".calendar-layout").getBoundingClientRect().right <= innerWidth && document.getElementById("countdown-filters").scrollWidth <= document.getElementById("countdown-filters").clientWidth'));
+  await calendar.send('Emulation.setDeviceMetricsOverride', { width: 1360, height: 900, deviceScaleFactor: 1, mobile: false });
+  await polishShot(calendar, 'calendar');
+  await calendar.evaluate('document.querySelector("[data-agenda=todo]").click();true');
+  assert.equal((await readStyle(calendar, '#countdown-filters', ['display'])).display, 'none');
+  assert.equal((await readStyle(calendar, '#calendar-new', ['background-color']))['background-color'], neutral);
   await calendar.evaluate('document.getElementById("calendar-new").click();document.getElementById("event-title").value="工作台打磨验收";document.getElementById("event-date").value="2026-11-08";document.getElementById("event-time").value="14:30";document.getElementById("event-form").requestSubmit();true');
   await until(async () => (await calendar.evaluate('window.suira.workspace.list("calendar")')).some(item => item.title === '工作台打磨验收' && item.meta.date === '2026-11-08'));
   await until(() => calendar.evaluate('document.getElementById("event-form").hidden'));
   assert.deepEqual(errors, []);
-  console.log('PASS real Electron: sidebar pointer/keyboard, compact navigation, ARIA, focus hints, persisted reload, 800–1600px layouts, reduced motion, async clipboard destination and standalone document/calendar create/save/switch flows');
+  console.log('PASS real Electron: Mist surfaces and filter frames across all five pages, sidebar pointer/keyboard, compact navigation, ARIA, focus hints, persisted reload, 800–1600px layouts, reduced motion, async clipboard destination and standalone document/calendar create/save/switch flows');
 })().catch(error => { console.error(error); if (fs.existsSync(path.join(tmp, 'app.log'))) console.error(fs.readFileSync(path.join(tmp, 'app.log'), 'utf8').slice(-2200)); process.exitCode = 1; }).finally(async () => {
   sockets.forEach(socket => socket.close());
   if (child && child.exitCode === null) { const done = new Promise(resolve => child.once('exit', resolve)); child.kill(); await done; }

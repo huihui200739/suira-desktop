@@ -22,7 +22,21 @@
     --line-glass: var(--t3-line);
     --graphite: var(--t3-ink);
 
-    /* Accent, without overriding the shared preload scales. */
+    /* The preload sets the foundation scale inline. In this workspace preset,
+       legacy components that consume the scale directly need the same neutral accent. */
+    --accent-1: var(--t3-card) !important;
+    --accent-2: var(--t3-rail) !important;
+    --accent-3: var(--t3-wash) !important;
+    --accent-4: var(--t3-line) !important;
+    --accent-5: var(--t3-strong-line) !important;
+    --accent-6: var(--t3-strong-line) !important;
+    --accent-7: var(--t3-muted) !important;
+    --accent-8: var(--t3-secondary) !important;
+    --accent-9: var(--t3-accent) !important;
+    --accent-10: var(--t3-press) !important;
+    --accent-11: var(--t3-secondary) !important;
+    --accent-12: var(--t3-ink) !important;
+    accent-color: var(--t3-accent);
     --accent: var(--t3-accent);
     --accent-deep: var(--t3-accent);
     --accent-soft: var(--t3-wash);
@@ -30,6 +44,8 @@
     --on-accent: var(--t3-card);
     --focus-ring: var(--t3-accent);
     --action-blue: var(--t3-accent);
+    --wb-liquid-ui-workbench-selection-surface: var(--t3-line);
+    --tool-edge: var(--t3-line);
 
     /* Formerly colourful kind tints -> traditional-colour tints (see §4). */
     --blue-3: var(--t3-stone-wash); --blue-11: var(--t3-stone);   /* 石青 */
@@ -158,24 +174,13 @@
     backdrop-filter: none;
   }
 
-  /* Page switch: short fade without moving interactive targets. */
-  @keyframes t3-page-in {
-    from { opacity: 0.65; }
-    to { opacity: 1; }
-  }
-  html:is(.workbench, .tool-window)[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) #main-scroll .page.is-active {
-    animation: t3-page-in var(--dur-base) var(--ease-out) both;
-  }
-
   /* Headings: tight tracking, as in the T3 light screenshot. */
   html:is(.workbench, .tool-window)[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) .page-head h1 { letter-spacing: -0.03em; }
 
   /* Cards shared by the five pages: white, 1px border, one soft shadow. */
-  html.workbench[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) :is(.task-column, .detail-card, .setting-card, .calendar-card,
+  html.workbench[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) :is(.detail-card, .setting-card, .calendar-card,
       .agenda-card, .document-sidebar, .document-main, .calendar-stats > div,
-      .library-card, .shelf-card, .modal-card),
-  html.tool-window[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) :is(.calendar-card, .agenda-card, .document-sidebar,
-      .document-main, .calendar-stats > div) {
+      .library-card, .shelf-card, .modal-card) {
     background: var(--t3-card);
     border: 1px solid var(--t3-line);
     border-radius: 12px;
@@ -202,19 +207,19 @@
   }
   html:is(.workbench, .tool-window)[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) .quiet-btn:hover { border-color: var(--t3-strong-line); color: var(--t3-accent); }
 
-  html.workbench[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) :is(.chip, .view-switch button, .agenda-tabs button, #countdown-filters button),
-  html.tool-window[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) :is(.view-switch button, .agenda-tabs button, #countdown-filters button) {
+  html.workbench[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) :is(.chip, .view-switch button, .agenda-tabs button),
+  html.tool-window[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) :is(.view-switch button, .agenda-tabs button) {
     border-radius: 8px;
-    transition: background 0.18s ease, color 0.18s ease, border-color 0.18s ease;
+    transition: none;
   }
-  html.workbench[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) :is(.chip.is-active, .view-switch button.is-active, .agenda-tabs button.is-active, #countdown-filters button.is-active),
-  html.tool-window[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) :is(.view-switch button.is-active, .agenda-tabs button.is-active, #countdown-filters button.is-active) {
+  html.workbench[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) :is(.chip.is-active, .view-switch button.is-active, .agenda-tabs button.is-active),
+  html.tool-window[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) :is(.view-switch button.is-active, .agenda-tabs button.is-active) {
     background: var(--t3-accent);
     border-color: var(--t3-accent);
     color: var(--t3-card);
   }
 
-  html:is(.workbench, .tool-window)[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) :is(.text-input, select.text-input, textarea.text-input, input[type="search"], input[type="date"], input[type="time"]) {
+  html:is(.workbench, .tool-window)[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) :is(.text-input, select.text-input, textarea.text-input, input[type="date"], input[type="time"]) {
     background: var(--t3-card);
     border: 1px solid var(--t3-line);
     border-radius: 8px;
@@ -226,6 +231,52 @@
     outline-offset: 1px;
   }
   html:is(.workbench, .tool-window)[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) :focus-visible { outline: 2px solid var(--t3-accent); outline-offset: 2px; }
+
+  /* Docked panes share an edge. The rail and detail sheet are not floating cards. */
+  html.workbench[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]).liquid-ui .task-column {
+    background: var(--t3-card);
+    border: 0;
+    border-right: 1px solid var(--t3-line);
+    border-radius: 0;
+    box-shadow: none;
+  }
+  html.workbench[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]).liquid-ui .task-detail { box-shadow: none; }
+  html.workbench[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]).liquid-ui .task-list { padding-inline-end: var(--space-3); }
+  html.workbench[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]).liquid-ui .task-row { border: 1px solid transparent; border-radius: var(--radius-inner); }
+  html.workbench[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]).liquid-ui .task-row.is-active { box-shadow: none; }
+  html.workbench[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]).liquid-ui .trail-step:last-child b {
+    background: var(--t3-accent);
+    border-color: var(--t3-accent);
+    color: var(--t3-card);
+  }
+  html.workbench[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]).liquid-ui .derived-card {
+    background: var(--t3-wash);
+    border: 1px solid var(--t3-line);
+    border-radius: var(--radius-inner);
+  }
+
+  /* One field outline around each composite search control. */
+  html.workbench[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) :is(.task-search, .searchbox):focus-within { outline: 2px solid var(--t3-accent); outline-offset: 1px; }
+  html.workbench[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) :is(#task-search, #library-search):focus-visible { outline: none; }
+
+  /* Filtering is frequent: selected state updates directly on the button. */
+  html.workbench[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) #library-filters { gap: var(--space-1); }
+  html.workbench[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) #library-filters > .shared-selection { display: none; }
+  html.workbench[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) #library-filters > .chip {
+    min-width: 52px;
+    background: transparent;
+    border-color: transparent;
+    box-shadow: none;
+    color: var(--t3-secondary);
+    transition: none;
+  }
+  html.workbench[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) #library-filters > .chip:hover { background: var(--t3-wash); color: var(--t3-ink); }
+  html.workbench[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) #library-filters > .chip[aria-pressed="true"] {
+    background: var(--t3-accent);
+    border-color: var(--t3-accent);
+    color: var(--t3-card);
+  }
+  html.workbench[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) .theme-swatch[data-theme="mist"]::after { background: var(--t3-accent); }
 
   /* Shelf / library rows: selected = black text on light grey. */
   html.workbench[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) .task-row:hover { background: var(--t3-wash); }
@@ -247,7 +298,61 @@
   html:is(.workbench, .tool-window)[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) #page-calendar .calendar-stats > div:nth-child(3) { border-top-color: var(--t3-pine-ink); }
   html:is(.workbench, .tool-window)[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) #page-calendar .calendar-stats b { color: var(--t3-accent); }
 
-  /* Month / week grid cells. */
+  /* Adjacent calendar panes and day cells meet at fine, straight rules. */
+  html.tool-window[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) #page-calendar .calendar-layout { gap: var(--space-4); }
+  html.tool-window[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) #page-calendar .calendar-card { padding: 0; border-radius: 0; }
+  html.tool-window[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) #page-calendar .agenda-card { border-left-color: var(--t3-line); padding: 0 8px 12px 16px; }
+  html.tool-window[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) #page-calendar .calendar-month { padding-bottom: 12px; }
+  html.tool-window[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) #page-calendar .calendar-week { border-bottom: 0; }
+  html:is(.workbench, .tool-window)[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) #page-calendar .calendar-grid {
+    gap: 1px;
+    border: 1px solid var(--t3-line);
+    background: var(--t3-line);
+  }
+  html:is(.workbench, .tool-window)[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) #page-calendar .calendar-day {
+    border: 0;
+    border-radius: 0;
+    background: var(--t3-card);
+    transition: none;
+  }
+  html:is(.workbench, .tool-window)[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) #page-calendar .calendar-day:focus-visible { outline-offset: -3px; }
+  html:is(.workbench, .tool-window)[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) #page-calendar .calendar-day.outside { opacity: 1; }
+  html:is(.workbench, .tool-window)[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) #page-calendar .calendar-day.outside :is(.day-number, .lunar-day) { color: var(--t3-muted); }
+  html:is(.workbench, .tool-window)[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) #page-calendar .calendar-day.outside.weekend:not(.selected):not(:hover) { background: color-mix(in srgb, var(--t3-pine-wash) 44%, var(--t3-card)); }
+  html.tool-window[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) #page-calendar .calendar-day .day-number { font-variant-numeric: tabular-nums; }
+
+  html.tool-window[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) .tool-top-actions button { transition: none; }
+  html.tool-window[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) .tool-top-actions button[aria-expanded="true"],
+  html.tool-window[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]).liquid-ui .tool-top-actions .tool-icon[aria-pressed="true"] {
+    background: var(--t3-wash);
+    border-color: var(--t3-strong-line);
+    color: var(--t3-accent);
+  }
+  html.tool-window[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) #page-calendar #calendar-new {
+    border-color: var(--t3-accent);
+    justify-content: center;
+    text-align: center;
+    transition: none;
+  }
+  html.tool-window[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) #page-calendar #calendar-new:hover { background: var(--t3-press); filter: none; }
+  html.tool-window[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) #page-calendar .agenda-tabs { width: 100%; margin-bottom: 12px; }
+  html.tool-window[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) #page-calendar .agenda-tabs button { flex: 1; }
+  html.tool-window[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) #page-calendar #countdown-filters { justify-content: stretch; gap: 4px; margin-bottom: 12px; }
+  html.tool-window[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) #page-calendar #countdown-filters button {
+    flex: 1;
+    min-height: 32px;
+    padding: 4px 0;
+    white-space: nowrap;
+    border-radius: 0;
+    transition: none;
+  }
+  html.tool-window[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) #page-calendar #countdown-filters button:hover { color: var(--t3-ink); border-bottom-color: var(--t3-strong-line); }
+  html.tool-window[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) #page-calendar #countdown-filters button[aria-pressed="true"] {
+    border-bottom-color: var(--t3-accent);
+    color: var(--t3-accent);
+    font-weight: 600;
+  }
+
   html:is(.workbench, .tool-window)[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) #page-calendar .calendar-day { background: var(--t3-card); border-color: var(--t3-line); }
   html:is(.workbench, .tool-window)[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) #page-calendar .calendar-day:hover { background: var(--t3-wash); }
   html:is(.workbench, .tool-window)[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) #page-calendar .calendar-day.outside { background: var(--t3-rail); color: var(--t3-muted); }
@@ -256,12 +361,12 @@
     box-shadow: inset 0 0 0 1px var(--t3-accent);
   }
   /* 班 / 休: the badge carries the colour; the cell gets a pale tint. */
-  html:is(.workbench, .tool-window)[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) #page-calendar .calendar-day:has(.work-badge.work) { background: var(--t3-stone-wash); }
-  html:is(.workbench, .tool-window)[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) #page-calendar .calendar-day:has(.work-badge.rest) { background: var(--t3-pine-wash); }
+  html:is(.workbench, .tool-window)[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) #page-calendar .calendar-day:has(.work-badge.work):not(.selected):not(:hover) { background: var(--t3-stone-wash); }
+  html:is(.workbench, .tool-window)[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) #page-calendar .calendar-day:has(.work-badge.rest):not(.selected):not(:hover) { background: var(--t3-pine-wash); }
   html:is(.workbench, .tool-window)[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) #page-calendar .work-badge.work { background: var(--t3-stone); color: var(--t3-card); }
   html:is(.workbench, .tool-window)[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) #page-calendar .work-badge.rest { background: var(--t3-pine); color: var(--t3-card); }
   /* Weekend cells fall back to the pale pine tint. */
-  html:is(.workbench, .tool-window)[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) #page-calendar .calendar-day.weekend:not(.selected):not(:hover) { background: var(--t3-pine-wash); }
+  html:is(.workbench, .tool-window)[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) #page-calendar .calendar-day.weekend:not(.outside):not(.selected):not(:hover):not(:has(.work-badge)) { background: var(--t3-pine-wash); }
 
   /* 节气 = 藤黄, 节假日 = 朱砂 (badge text is the term / holiday name). */
   html:is(.workbench, .tool-window)[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) #page-calendar .date-badge.term {
@@ -318,17 +423,26 @@
   html:is(.workbench, .tool-window)[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) #page-calendar .agenda-check { color: var(--t3-accent); }
   html:is(.workbench, .tool-window)[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) #page-calendar .agenda-content small { color: var(--t3-muted); }
 
-  /* Countdown rows: 3px bar by kind — 节气藤黄 / 节假日朱砂 / 自定义赭石.
-     The kind comes from data-kind in workspace.js. */
-  html:is(.workbench, .tool-window)[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) #page-calendar .countdown-row { border-left: 3px solid var(--t3-line); }
-  html:is(.workbench, .tool-window)[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) #page-calendar .countdown-row[data-kind="term"] { border-left-color: var(--t3-gold); }
-  html:is(.workbench, .tool-window)[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) #page-calendar .countdown-row[data-kind="holiday"] { border-left-color: var(--t3-cinnabar); }
-  html:is(.workbench, .tool-window)[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) #page-calendar .countdown-row[data-kind="custom"] { border-left-color: var(--t3-ochre); }
+  /* Short markers leave a clear gutter between category colour and text. */
+  html:is(.workbench, .tool-window)[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) #page-calendar .countdown-row {
+    --countdown-marker: var(--t3-strong-line);
+    display: grid;
+    grid-template-columns: 8px minmax(0, 1fr) auto auto;
+    column-gap: 8px;
+    border-left: 0;
+    padding: 12px 8px;
+  }
+  html:is(.workbench, .tool-window)[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) #page-calendar .countdown-row::before {
+    content: '';
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--countdown-marker);
+  }
+  html:is(.workbench, .tool-window)[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) #page-calendar .countdown-row:hover { background: var(--t3-wash); }
+  html:is(.workbench, .tool-window)[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) #page-calendar .countdown-row[data-kind="term"] { --countdown-marker: var(--t3-gold); }
+  html:is(.workbench, .tool-window)[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) #page-calendar .countdown-row[data-kind="holiday"] { --countdown-marker: var(--t3-cinnabar); }
+  html:is(.workbench, .tool-window)[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) #page-calendar .countdown-row[data-kind="custom"] { --countdown-marker: var(--t3-ochre); }
   html:is(.workbench, .tool-window)[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) #page-calendar .countdown-row strong { color: var(--t3-accent); }
   html:is(.workbench, .tool-window)[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) #page-calendar .countdown-row small { color: var(--t3-muted); }
-
-  /* ---------- §5 · Reduced motion ---------- */
-  @media (prefers-reduced-motion: reduce) {
-    html:is(.workbench, .tool-window)[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) #main-scroll .page.is-active { animation: none; }
-  }
 }
