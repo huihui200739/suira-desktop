@@ -1,0 +1,378 @@
+/* ==========================================================================
+   SUIRA · T3 light override (redesign/t3-light-five-pages)
+   --------------------------------------------------------------------------
+   Only the five main views in src/index.html get this look:
+   #page-shelf (任务匣), #page-library (内容库), #page-calendar (日历),
+   #page-markdown (Markdown), #page-settings (设置).
+   It is a last-loaded override layer, not a new theme preset:
+   - src/theme.css :root / GENERATED THEME SCALES are untouched, so the
+     change is fully reversible by removing the single <link> in index.html.
+   - Other tool windows are separate HTML files and never load this file.
+   - Because the layer is scoped to html.workbench / html.tool-window
+     (the calendar/markdown standalone windows share index.html), it applies
+     by default; the Settings preset picker no longer visibly changes these
+     five views while the layer is linked. That is intentional for this
+     redesign branch; making it a selectable preset would mean editing the
+     GENERATED scales in theme.css instead.
+
+   Tokens (from the T3 Code light theme, verified in pingdotgg/t3code):
+   bg #fcfcfc / card #ffffff / sidebar #fafafa / text #27272a /
+   muted #71717b / faint #a3a3a3 / border #e4e4e7 / strong border #d4d4d8 /
+   accent black #18181b. No purple, no celadon, no gradients, no glass.
+   Radii 8 / 12 / 16px. Hover: 0.18s ease, colour/border only.
+   View switch: 0.7s cubic-bezier(0.2, 0.7, 0.2, 1) fade + rise 8-16px.
+   Calendar alone gets traditional colours (see §4).
+   ========================================================================== */
+
+/* ---------- §1 · Token overrides, scoped to the main window ---------- */
+html.workbench,
+html.tool-window {
+  /* Surfaces / ink / lines */
+  --paper: #fcfcfc;
+  --paper-raised: #ffffff;
+  --paper-soft: #f4f4f5;
+  --paper-sink: #f4f4f5;
+  --surface: #ffffff;
+  --surface-raised: #ffffff;
+  --surface-soft: #f4f4f5;
+  --surface-inset: rgb(39 39 42 / 0.04);
+  --surface-hover: #f4f4f5;
+  --ink: #27272a;
+  --ink-soft: #52525b;
+  --ink-muted: #71717b;
+  --ink-faint: #a3a3a3;
+  --line: #e4e4e7;
+  --line-strong: #d4d4d8;
+  --line-glass: #e4e4e7;
+  --graphite: #27272a;
+
+  /* Slate scale remapped to a neutral grey scale (rules use it directly). */
+  --slate-1: #fcfcfc; --slate-2: #fafafa; --slate-3: #f4f4f5;
+  --slate-4: #e4e4e7; --slate-5: #d4d4d8; --slate-6: #d4d4d8;
+  --slate-7: #a3a3a3; --slate-8: #a3a3a3; --slate-9: #71717b;
+  --slate-10: #71717b; --slate-11: #52525b; --slate-12: #27272a;
+
+  /* Accent: black. Every accent-* step that used Iris purple is now grey. */
+  --accent-1: #fafafa; --accent-2: #f4f4f5; --accent-3: #f4f4f5;
+  --accent-4: #e4e4e7; --accent-5: #d4d4d8; --accent-6: #a3a3a3;
+  --accent-7: #71717b; --accent-8: #52525b; --accent-9: #18181b;
+  --accent-10: #000000; --accent-11: #18181b; --accent-12: #18181b;
+  --accent: #18181b;
+  --accent-deep: #18181b;
+  --accent-soft: #f4f4f5;
+  --accent-glow: transparent;
+  --on-accent: #ffffff;
+  --focus-ring: #18181b;
+  --action-blue: #18181b;
+
+  /* Formerly colourful kind tints -> traditional-colour tints (see §4). */
+  --blue-3: #eaf1f5; --blue-11: #2e5e7e;   /* 石青 */
+  --jade-3: #edf2ea; --jade-9: #5f7a5a; --jade-11: #5f7a5a; /* 松绿 */
+  --cyan-3: #eaf1f5; --cyan-9: #2e5e7e; --cyan-11: #2e5e7e;
+  --violet-3: #fbf3df; --violet-4: #fbf3df; --violet-9: #18181b; --violet-11: #8a6d1f;
+  --amber-3: #fbf3df; --amber-4: #fbf3df; --amber-9: #c99a3c; --amber-11: #8a6d1f;
+  --red-3: #fbefea; --red-4: #fbefea; --red-9: #c24a38; --red-11: #c24a38;
+  --kind-blue: #2e5e7e; --kind-blue-bg: #eaf1f5;
+  --kind-jade: #5f7a5a; --kind-jade-bg: #edf2ea;
+  --kind-violet: #8a6d1f; --kind-violet-bg: #fbf3df;
+  --kind-amber: #9c5a3c; --kind-amber-bg: #fbefea;
+
+  /* Shelf / edge surfaces (task shelf, library) */
+  --shelf-surface: #ffffff; --shelf-glow: transparent;
+  --shelf-card: #ffffff; --shelf-card-hover: #f4f4f5;
+  --shelf-selected: #f4f4f5; --shelf-line: #e4e4e7;
+  --shelf-highlight: #e4e4e7; --shelf-ink: #27272a;
+  --shelf-muted: #71717b; --shelf-faint: #a3a3a3;
+  --shelf-accent: #18181b; --shelf-field: #ffffff;
+  --shelf-text: #2e5e7e; --shelf-image: #8a6d1f;
+  --shelf-link: #5f7a5a; --shelf-files: #9c5a3c;
+  --edge-surface: #ffffff; --edge-item: #ffffff;
+  --edge-item-hover: #f4f4f5; --edge-ink: #27272a;
+  --edge-muted: #71717b; --edge-faint: #a3a3a3;
+  --edge-line: #e4e4e7; --edge-accent: #18181b;
+  --edge-danger: #c24a38;
+
+  /* Status colours:朱砂 for danger, 松绿 for success. */
+  --danger: #c24a38; --danger-solid: #c24a38; --danger-soft: #fbefea;
+  --success: #5f7a5a; --success-soft: #edf2ea;
+
+  /* Glass / floating surfaces become solid white; no blur, no glow. */
+  --floating-surface: #ffffff; --floating-light: transparent;
+  --floating-key: #ffffff; --floating-edge: #e4e4e7;
+  --floating-foot: transparent;
+  --control-top: #ffffff; --control-bottom: #ffffff;
+  --control-rim: #e4e4e7; --control-shade: rgb(39 39 42 / 0.06);
+  --control-shadow: 0 1px 2px rgb(0 0 0 / 0.04);
+  --control-selected: #f4f4f5; --control-field: #ffffff;
+
+  /* Geometry / motion */
+  --radius-panel: 16px;
+  --radius-card: 12px;
+  --radius-inner: 8px;
+  --radius-sm: 6px;
+  --radius-chip: 8px;
+  --shadow-float: 0 1px 2px rgb(0 0 0 / 0.04), 0 8px 24px rgb(0 0 0 / 0.06);
+  --shadow-lift: 0 1px 2px rgb(0 0 0 / 0.04), 0 8px 24px rgb(0 0 0 / 0.06);
+  --shadow-card: 0 1px 2px rgb(0 0 0 / 0.04);
+  --dur-fast: 140ms;
+  --dur-base: 180ms;
+  --ease-out: cubic-bezier(0.2, 0.7, 0.2, 1);
+
+  /* Workbench surface tokens (workbench-surface.css reads these). */
+  --wb-graphite: #fafafa; --wb-canvas: #fcfcfc;
+  --wb-rail: #fafafa; --wb-soft: #f4f4f5;
+  --wb-rail-hover: #f4f4f5; --wb-rail-ink: #27272a;
+  --wb-rail-muted: #71717b; --wb-rail-line: #e4e4e7;
+  --glass-primary: #18181b; --glass-selected: #f4f4f5;
+  --glass-hover: #f4f4f5; --glass-accent-ink: #18181b;
+  --glass-light: transparent; --glass-chrome: transparent;
+
+  /* Calendar badge surfaces (workspace-tools.css reads these vars). */
+  --workspace-tools-work-badge-work-surface: #2e5e7e;
+  --workspace-tools-work-badge-rest-surface: #5f7a5a;
+  --workspace-tools-work-badge-ink: #ffffff;
+  --workspace-tools-date-badge-term-ink: #8a6d1f;
+  --workspace-tools-date-badge-term-surface: #fbf3df;
+  --workspace-tools-date-badge-holiday-ink: #c24a38;
+  --workspace-tools-date-badge-holiday-surface: #fbefea;
+}
+
+/* ---------- §2 · Window chrome, five pages ---------- */
+html.workbench body,
+html.tool-window body { background: #fcfcfc; color: #27272a; }
+
+html.workbench .app-shell,
+html.tool-window .app-shell { background: #fcfcfc; }
+
+html.workbench .titlebar,
+html.tool-window .titlebar {
+  background: #fcfcfc;
+  border-bottom: 1px solid #e4e4e7;
+  backdrop-filter: none;
+}
+html.workbench .titlebar::before { background: #fafafa; }
+
+html.workbench .sidebar,
+html.tool-window .sidebar {
+  background: #fafafa;
+  border-right: 1px solid #e4e4e7;
+  backdrop-filter: none;
+}
+html.workbench .sidebar .brand b,
+html.workbench .sidebar-label { color: #27272a; }
+
+/* Nav: active = black text on light grey, 3px black edge bar. */
+html.workbench .nav-item { border-radius: 8px; color: #52525b; }
+html.workbench .nav-item:hover { background: #f4f4f5; color: #27272a; }
+html.workbench .nav-item.is-active {
+  background: #f4f4f5;
+  color: #18181b;
+}
+html.workbench .nav-item.is-active b { color: #18181b; }
+html.workbench .nav-item.is-active svg { color: #18181b; }
+html.workbench .nav-item.is-active::after { background: #18181b; }
+html.workbench .nav .shared-selection,
+html.workbench .nav.has-shared-selection > .shared-selection {
+  background: #f4f4f5;
+  border: 1px solid #e4e4e7;
+  box-shadow: none;
+}
+
+/* Kill the liquid-glass layer on the five pages: solid surfaces only. */
+html.workbench [data-glass]::after,
+html.tool-window [data-glass]::after { display: none; }
+html.workbench .glass-scene,
+html.workbench .glass-window > .glass-scene { background: #fcfcfc; box-shadow: none; }
+html.workbench :is(.calendar-card, .agenda-card, .document-sidebar, .document-main, .calendar-stats > div),
+html.tool-window :is(.calendar-card, .agenda-card, .document-sidebar, .document-main, .calendar-stats > div) {
+  backdrop-filter: none;
+}
+
+/* Page switch: one gentle fade + rise, no spring, no scale. */
+@keyframes t3-page-in {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+html.workbench #main-scroll .page.is-active,
+html.tool-window #main-scroll .page.is-active {
+  animation: t3-page-in 0.7s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+}
+
+/* Headings: tight tracking, as in the T3 light screenshot. */
+html.workbench .page-head h1,
+html.tool-window .page-head h1 { letter-spacing: -0.03em; }
+
+/* Cards shared by the five pages: white, 1px border, one soft shadow. */
+html.workbench :is(.task-column, .detail-card, .setting-card, .calendar-card,
+    .agenda-card, .document-sidebar, .document-main, .calendar-stats > div,
+    .library-card, .shelf-card, .modal-card),
+html.tool-window :is(.calendar-card, .agenda-card, .document-sidebar,
+    .document-main, .calendar-stats > div) {
+  background: #ffffff;
+  border: 1px solid #e4e4e7;
+  border-radius: 12px;
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.04);
+}
+
+/* ---------- §3 · Buttons, inputs, switches (five pages only) ---------- */
+html.workbench .primary-btn,
+html.tool-window .primary-btn {
+  background: #18181b;
+  color: #ffffff;
+  min-height: 44px;
+  padding: 11px 18px;
+  border-radius: 8px;
+  box-shadow: none;
+  transition: background 0.18s ease;
+}
+html.workbench .primary-btn:hover,
+html.tool-window .primary-btn:hover { background: #000000; }
+html.workbench .primary-btn:active,
+html.tool-window .primary-btn:active { transform: none; }
+
+html.workbench .quiet-btn,
+html.tool-window .quiet-btn {
+  background: #ffffff;
+  border: 1px solid #e4e4e7;
+  border-radius: 8px;
+  color: #52525b;
+  transition: border-color 0.18s ease, color 0.18s ease;
+}
+html.workbench .quiet-btn:hover,
+html.tool-window .quiet-btn:hover { border-color: #d4d4d8; color: #18181b; }
+
+html.workbench :is(.chip, .view-switch button, .agenda-tabs button, #countdown-filters button),
+html.tool-window :is(.view-switch button, .agenda-tabs button, #countdown-filters button) {
+  border-radius: 8px;
+  transition: background 0.18s ease, color 0.18s ease, border-color 0.18s ease;
+}
+html.workbench :is(.chip.is-active, .view-switch button.is-active, .agenda-tabs button.is-active, #countdown-filters button.is-active),
+html.tool-window :is(.view-switch button.is-active, .agenda-tabs button.is-active, #countdown-filters button.is-active) {
+  background: #18181b;
+  border-color: #18181b;
+  color: #ffffff;
+}
+
+html.workbench :is(.text-input, select.text-input, textarea.text-input, input[type="search"], input[type="date"], input[type="time"]),
+html.tool-window :is(.text-input, select.text-input, textarea.text-input, input[type="search"], input[type="date"], input[type="time"]) {
+  background: #ffffff;
+  border: 1px solid #e4e4e7;
+  border-radius: 8px;
+  color: #27272a;
+}
+html.workbench :is(.text-input, select, textarea):focus,
+html.tool-window :is(.text-input, select, textarea):focus {
+  border-color: #18181b;
+  outline: 2px solid #18181b;
+  outline-offset: 1px;
+}
+html.workbench :focus-visible,
+html.tool-window :focus-visible { outline: 2px solid #18181b; outline-offset: 2px; }
+
+/* Shelf / library rows: selected = black text on light grey. */
+html.workbench .task-row:hover { background: #f4f4f5; }
+html.workbench .task-row.is-active,
+html.workbench .task-row[aria-current="true"] {
+  background: #f4f4f5;
+  border-color: #e4e4e7;
+}
+html.workbench .settings-nav button.is-active {
+  background: #f4f4f5;
+  color: #18181b;
+}
+
+/* ---------- §4 · Calendar only: traditional colours ---------- */
+/* Stat cards stay white; only a thin coloured top edge distinguishes them. */
+#page-calendar .calendar-stats > div { border-top: 3px solid #e4e4e7; }
+#page-calendar .calendar-stats > div:nth-child(1) { border-top-color: #2e5e7e; }
+#page-calendar .calendar-stats > div:nth-child(2) { border-top-color: #c24a38; }
+#page-calendar .calendar-stats > div:nth-child(3) { border-top-color: #5f7a5a; }
+#page-calendar .calendar-stats b { color: #18181b; }
+
+/* Month / week grid cells. */
+#page-calendar .calendar-day { background: #ffffff; border-color: #e4e4e7; }
+#page-calendar .calendar-day:hover { background: #f4f4f5; }
+#page-calendar .calendar-day.outside { background: #fafafa; color: #a3a3a3; }
+#page-calendar .calendar-day.selected {
+  background: #f4f4f5;
+  box-shadow: inset 0 0 0 1px #18181b;
+}
+/* 班 / 休: the badge carries the colour; the cell gets a pale tint. */
+#page-calendar .calendar-day:has(.work-badge.work) { background: #eaf1f5; }
+#page-calendar .calendar-day:has(.work-badge.rest) { background: #edf2ea; }
+#page-calendar .work-badge.work { background: #2e5e7e; color: #ffffff; }
+#page-calendar .work-badge.rest { background: #5f7a5a; color: #ffffff; }
+/* Weekend cells fall back to the pale pine tint. */
+#page-calendar .calendar-day.weekend:not(.selected):not(:hover) { background: #edf2ea; }
+
+/* 节气 = 藤黄, 节假日 = 朱砂 (badge text is the term / holiday name). */
+#page-calendar .date-badge.term {
+  color: #8a6d1f;
+  background: #fbf3df;
+  border-color: #c99a3c;
+}
+#page-calendar .date-badge.holiday {
+  color: #c24a38;
+  background: #fbefea;
+  border-color: #c24a38;
+}
+
+/* Today keeps its black filled circle, on a pale cinnabar cell. */
+#page-calendar .calendar-day.today { background: #fbefea; }
+#page-calendar .calendar-day.today > span.day-number,
+#page-calendar .calendar-day.today > .day-number {
+  background: #18181b;
+  color: #ffffff;
+  border-radius: 50%;
+}
+html.tool-window #page-calendar .calendar-day.today > span.day-number {
+  min-width: 36px;
+  height: 36px;
+  display: inline-grid;
+  place-items: center;
+}
+
+/* Event pills in the grid: pale tint + deep text, by category. */
+#page-calendar .calendar-day small.category-work { background: #eaf1f5; color: #2e5e7e; }
+#page-calendar .calendar-day small.category-personal { background: #edf2ea; color: #5f7a5a; }
+#page-calendar .calendar-day small.category-study { background: #fbf3df; color: #8a6d1f; }
+#page-calendar .calendar-day small { border-radius: 4px; }
+
+/* Legend dots match the same three categories. */
+#page-calendar .calendar-legend span:nth-child(1) { color: #2e5e7e; }
+#page-calendar .calendar-legend span:nth-child(2) { color: #5f7a5a; }
+#page-calendar .calendar-legend span:nth-child(3) { color: #8a6d1f; }
+
+/* Agenda (日程列表) rows: 3px category bar on the left. */
+#page-calendar .calendar-agenda-row { border-left: 3px solid #e4e4e7; }
+#page-calendar .calendar-agenda-row.category-work { border-left-color: #2e5e7e; }
+#page-calendar .calendar-agenda-row.category-work time { color: #2e5e7e; }
+#page-calendar .calendar-agenda-row.category-personal { border-left-color: #5f7a5a; }
+#page-calendar .calendar-agenda-row.category-personal time { color: #5f7a5a; }
+#page-calendar .calendar-agenda-row.category-study { border-left-color: #c99a3c; }
+#page-calendar .calendar-agenda-row.category-study time { color: #8a6d1f; }
+
+/* Todo items in the right-hand panel: same category bar. */
+#page-calendar .agenda-item { border-left: 3px solid transparent; }
+#page-calendar .agenda-item.category-work { border-left-color: #2e5e7e; }
+#page-calendar .agenda-item.category-personal { border-left-color: #5f7a5a; }
+#page-calendar .agenda-item.category-study { border-left-color: #c99a3c; }
+#page-calendar .agenda-check { color: #18181b; }
+#page-calendar .agenda-content small { color: #71717b; }
+
+/* Countdown rows: 3px bar by kind — 节气藤黄 / 节假日朱砂 / 自定义赭石.
+   The kind comes from data-kind, added by workspace.js (no logic change). */
+#page-calendar .countdown-row { border-left: 3px solid #e4e4e7; }
+#page-calendar .countdown-row[data-kind="term"] { border-left-color: #c99a3c; }
+#page-calendar .countdown-row[data-kind="holiday"] { border-left-color: #c24a38; }
+#page-calendar .countdown-row[data-kind="custom"] { border-left-color: #9c5a3c; }
+#page-calendar .countdown-row strong { color: #18181b; }
+#page-calendar .countdown-row small { color: #71717b; }
+
+/* ---------- §5 · Reduced motion ---------- */
+@media (prefers-reduced-motion: reduce) {
+  html.workbench #main-scroll .page.is-active,
+  html.tool-window #main-scroll .page.is-active { animation: none; }
+  html.workbench *,
+  html.tool-window * { scroll-behavior: auto; }
+}
