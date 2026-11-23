@@ -462,3 +462,115 @@
     --writing-focus: var(--t3-accent-ink);
   }
 }
+
+/* ---------- §5 · Preview v9–v14 refinements (redesign/five-pages-20261123) ----------
+   Ported from the v14 preview. CSS-only additions on top of §1–§4; the small
+   DOM behaviours (library "···" menu, preview "整理并复制", drop hint) live in
+   t3-light-enhancements.js. Scoped to Mist + preset accent, like the rest. */
+html:is(.workbench, .tool-window)[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) {
+  font-family: "Inter", "Microsoft YaHei UI", "Microsoft YaHei", "PingFang SC", "Segoe UI", system-ui, -apple-system, sans-serif;
+}
+/* Window: 8px breathing room, 1px edge, 14px corners (workbench only). */
+html.workbench[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) body {
+  padding: 8px; box-sizing: border-box; background: #fcfcfc;
+}
+html.workbench[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) .app-shell {
+  border: 1px solid #e4e4e7; border-radius: 14px; height: calc(100dvh - 16px); overflow: hidden;
+}
+/* Buttons: one height everywhere in the five pages and dialogs. */
+html:is(.workbench, .tool-window)[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) :is(.detail-actions, .preview-actions, .page-actions, .document-heading, .workspace-toolbar) :is(.primary-btn, .quiet-btn) {
+  height: 36px; min-height: 36px; border-radius: 8px; font-size: 13.5px;
+  display: inline-flex; align-items: center; justify-content: center;
+}
+html:is(.workbench, .tool-window)[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) .detail-actions .icon-btn {
+  height: 36px; min-height: 36px; width: 36px; border-radius: 8px;
+}
+html:is(.workbench, .tool-window)[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) :is(.modal-foot, .md-delete-actions) {
+  display: flex; align-items: center; justify-content: flex-end; gap: 8px;
+}
+html:is(.workbench, .tool-window)[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) :is(.modal-foot, .md-delete-actions) button {
+  height: 36px; min-height: 36px; border-radius: 8px; font-size: 13.5px;
+}
+html:is(.workbench, .tool-window)[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) .dialog-foot { align-items: center; }
+/* Task shelf: 20px title, 24px item rhythm, ink kind tags, stone/pine states. */
+html.workbench[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) #page-shelf .detail-head h2 { font-size: 20px; line-height: 1.3; }
+html.workbench[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) #page-shelf .task-detail .shelf-card {
+  padding-top: 12px; padding-bottom: 12px; border-bottom-color: #d4d4d8;
+}
+html.workbench[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) #page-shelf .task-content-heading { border-top-color: #d4d4d8; }
+html.workbench[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) #page-shelf .kind-tag { color: #27272a; background: #f4f4f5; }
+html.workbench[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) #page-shelf .kind-tag::before { background: #27272a; }
+html.workbench[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) #page-shelf .task-state { background: #EAF1F5; color: #2E5E7E; }
+html.workbench[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) #page-shelf .task-state.is-done { background: #EDF2EA; color: #5F7A5A; }
+html.workbench[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) #page-shelf .task-row-mark { border-color: #2E5E7E; background: transparent; }
+html.workbench[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) #page-shelf .task-row-mark.is-done { background: #5F7A5A; border-color: #5F7A5A; }
+html.workbench[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) #page-shelf .trail-step:last-child b { background: #2E5E7E; border-color: #2E5E7E; color: #fff; }
+html.workbench[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) .side-status { font-size: 10.5px; color: #bdbdc4; }
+html.workbench[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) .side-status b { font-size: 10px; color: #bdbdc4; }
+html.workbench[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) .task-filters button .filter-count { margin-left: 4px; font-size: 11px; font-weight: 400; color: #a3a3a3; }
+html.workbench[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) .task-filters button[aria-pressed="true"] .filter-count { color: #71717b; }
+html.workbench[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) .drop-hint {
+  margin-top: auto; border: 1px dashed #d4d4d8; border-radius: 8px; padding: 10px 12px;
+  font-size: 12px; line-height: 1.5; color: #a3a3a3; text-align: center;
+}
+/* Library: equal-height cards, ink kind tags, hover/selected reveal, "···" menu. */
+html.workbench[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) #page-library .library-grid { align-items: stretch; }
+html.workbench[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) #page-library .library-card { display: flex; flex-direction: column; position: relative; }
+html.workbench[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) #page-library .library-card .shelf-text { flex: 1 1 auto; }
+html.workbench[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) #page-library .kind-tag { color: #27272a; background: #f4f4f5; }
+html.workbench[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) #page-library .kind-tag::before { background: #27272a; }
+html.workbench[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) #page-library .library-card.is-selected .shelf-card-actions { opacity: 1; pointer-events: auto; }
+html.workbench[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) #page-library .lib-count { font-size: 12px; color: #a3a3a3; font-weight: 400; margin-left: 8px; }
+html.workbench[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) #page-library .lib-menu-toggle {
+  min-height: 28px; height: 28px; min-width: 36px; padding: 0 10px; border: 0; border-radius: 6px;
+  background: transparent; color: #71717b; font-size: 13px; cursor: pointer;
+}
+html.workbench[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) #page-library .lib-menu-toggle:hover { background: #f4f4f5; color: #27272a; }
+html.workbench[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) #page-library .lib-menu {
+  position: absolute; z-index: 30; right: 12px; bottom: 44px; min-width: 180px; padding: 4px;
+  background: #ffffff; border: 1px solid #e4e4e7; border-radius: 12px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06), 0 8px 24px rgba(0, 0, 0, 0.08);
+}
+html.workbench[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) #page-library .lib-menu button {
+  display: block; width: 100%; text-align: left; border: 0; background: transparent;
+  padding: 8px 10px; border-radius: 8px; color: #27272a; font-size: 13px; cursor: pointer;
+}
+html.workbench[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) #page-library .lib-menu button:hover { background: #f4f4f5; }
+html.workbench[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) #page-library .lib-menu button.is-danger { color: #C24A38; }
+html.workbench[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) #page-library .lib-menu hr { border: 0; border-top: 1px solid #e4e4e7; margin: 4px 6px; }
+/* Settings: 3+3 preset cards, grey dots except the selected black one, 720px column, 32px nav rows. */
+html.workbench[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) #page-settings .theme-presets { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+html.workbench[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) #page-settings .theme-presets button[aria-pressed="false"] .theme-swatch::after { background: #a3a3a3; }
+html.workbench[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) #page-settings .theme-presets button[aria-pressed="true"] .theme-swatch::after { background: #18181b; }
+html.workbench[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) #page-settings .settings-grid { max-width: 720px; }
+html.workbench[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) #page-settings .settings-nav button { min-height: 32px; }
+/* Calendar: shorter rows, two-line event pills with a hover title. */
+html:is(.workbench, .tool-window)[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) #page-calendar .calendar-day { min-height: 96px; }
+html:is(.workbench, .tool-window)[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) #page-calendar .calendar-day small {
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+/* Markdown: 200px doc list, no-wrap source, 36px heading controls. */
+html:is(.workbench, .tool-window)[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) #page-markdown .markdown-layout .document-sidebar {
+  flex: 0 0 200px; width: 200px; min-width: 200px;
+}
+html:is(.workbench, .tool-window)[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) #page-markdown #md-editor,
+html:is(.workbench, .tool-window)[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) #page-markdown #md-source-highlight {
+  white-space: pre; overflow-x: auto;
+}
+html:is(.workbench, .tool-window)[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) #page-markdown .document-heading { align-items: center; }
+html:is(.workbench, .tool-window)[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) #page-markdown .md-new-weak {
+  display: block; width: 100%; border: 0; background: transparent; color: #a3a3a3;
+  font-size: 12px; padding: 10px 8px; text-align: left; cursor: pointer;
+}
+html:is(.workbench, .tool-window)[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) #page-markdown .md-new-weak:hover { color: #27272a; }
+/* Preview dialog: 640px, black primary copy, compact-copy as a small row below the body. */
+html:is(.workbench, .tool-window)[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) .preview-card {
+  max-width: 640px; width: min(640px, calc(100vw - 32px));
+}
+html:is(.workbench, .tool-window)[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) .preview-actions #preview-copy {
+  background: #18181b; color: #fff; border-color: #18181b;
+}
+html:is(.workbench, .tool-window)[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) .pv-compact-row {
+  display: flex; align-items: center; gap: 12px; margin: 12px 0 4px;
+}
+html:is(.workbench, .tool-window)[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) .pv-compact-note { font-size: 12px; color: #a3a3a3; }
