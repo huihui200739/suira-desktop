@@ -124,6 +124,14 @@ async function refreshShelf() {
 function renderTaskList() {
   const list = $('#task-list');
   $('#task-count').textContent = `${state.tasks.length} 个`;
+  const doneCount = state.tasks.filter((task) => task.progress === 'done').length;
+  const activeCount = state.tasks.length - doneCount;
+  $$('[data-task-filter]').forEach((button) => {
+    const label = { all: '全部', active: '进行中', done: '已完成' }[button.dataset.taskFilter];
+    if (!label) return;
+    const count = button.dataset.taskFilter === 'all' ? state.tasks.length : button.dataset.taskFilter === 'done' ? doneCount : activeCount;
+    button.innerHTML = `${label} <span class="filter-count">${count}</span>`;
+  });
   const visible=state.tasks.filter(task=>(state.taskFilter==='all'||(task.progress==='done')===(state.taskFilter==='done'))&&task.title.toLowerCase().includes(state.taskQuery.toLowerCase()));
   if(!visible.some(task=>task.id===state.selectedTaskId))state.selectedTaskId=visible[0]?.id||'';
   if (!state.tasks.length) {
