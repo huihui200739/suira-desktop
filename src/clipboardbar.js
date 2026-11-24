@@ -62,6 +62,7 @@
     imageActionBusy: false,
     sharingImages: false,
     checkedImages: new Set(),
+    batchMode: false,
     interactionRevision: 0,
     selected: -1,
     loading: true,
@@ -354,11 +355,17 @@
   function updateShareButton() {
     const count = state.checkedImages.size;
     const button = $('#bar-share-images');
-    $('#bar-track').classList.toggle('has-checked-images', count > 0);
+    $('#bar-track').classList.toggle('has-checked-images', state.batchMode);
+    $('#bar-done-selecting').hidden=!state.batchMode;
     if (count === 0 && shareAnchor === button) closeShare();
     button.hidden = count === 0;
     button.disabled = state.sharingImages;
     button.textContent = `分享 ${count} 张图片`;
+  }
+
+  function exitBatchMode(restoreFocus=false) {
+    state.batchMode=false;state.checkedImages.clear();syncSelection();
+    if(restoreFocus)$$('.bar-card')[state.selected]?.focus({preventScroll:true});
   }
 
   function syncSelection() {
@@ -638,7 +645,7 @@
   }
 
   async function submitSelected() {
-    if (state.committing || state.imageActionBusy || state.loading) return;
+    if (state.committing || state.imageActionBusy || state.loading || state.batchMode) return;
     const item = state.items[state.selected];
     if (!item) return;
     const api = state.returnApi;
@@ -849,6 +856,7 @@
     if (event.defaultPrevented) return;
     if (event.isComposing || event.keyCode === 229) return;
     const key = event.key;
+    if(event.repeat&&(key==='Escape'||key==='Esc')){event.preventDefault();return;}
     if (shareAnchor) {
       if (key === 'Escape') {
         event.preventDefault();
@@ -856,7 +864,7 @@
         closeShare();
         button.focus({ preventScroll: true });
       }
-      if (event.defaultPrevented || sharePanel.contains(event.target)) return;
+      return;
     }
     if(state.previewItem){
       if(key==='Escape'){event.preventDefault();closePreview();return;}
@@ -900,11 +908,16 @@
     }
     if (key === 'Enter') {
       event.preventDefault();
-      if (!event.repeat) submitSelected();
+      if (!event.repeat) {
+        const item=state.items[state.selected];
+        if (state.batchMode) toggleBatchImage(item);
+        else submitSelected();
+      }
       return;
     }
     if (key === 'Escape' || key === 'Esc') {
       event.preventDefault();
+      if (state.batchMode) {exitBatchMode(true);return;}
       clearNotice();
       hideBar();
     }
@@ -927,6 +940,15 @@
     }
   }
 
+  function toggleBatchImage(item) {
+    if (item?.kind !== 'image' || !state.barApi?.copyImages) return false;
+    state.batchMode=true;
+    if (state.checkedImages.has(item.id)) state.checkedImages.delete(item.id);
+    else state.checkedImages.add(item.id);
+    syncSelection();
+    return true;
+  }
+
   function onTrackClick(event) {
     const card = closestFrom(event.target, '.bar-card');
     if (!card || event.detail > 1 || closestFrom(event.target, '#bar-action-strip, [popover]')) return;
@@ -940,21 +962,15 @@
       state.selected = index;
       syncSelection();
     }
-    if (!button) {
+    if (!button && !state.batchMode) {
       card.focus({ preventScroll: true });
       submitSelected();
       return;
     }
-    const action = button.dataset.cardAction;
+    const action = button?.dataset.cardAction || 'select';
     if (action === 'select') {
-      if (card.dataset.kind === 'image' && state.barApi?.copyImages) {
-        const id = card.dataset.id;
-        if (state.checkedImages.has(id)) state.checkedImages.delete(id);
-        else state.checkedImages.add(id);
-        syncSelection();
-      } else {
-        card.focus({ preventScroll: true });
-      }
+      if (!button) card.focus({ preventScroll: true });
+      if (!toggleBatchImage(state.items[index])) card.focus({ preventScroll: true });
     } else if (action === 'share') openShare(state.items[index], button);
     else if (action === 'open') openLink(state.items[index]);
     else if (action === 'edit' && state.items[index].kind !== 'image') previewSelected(true);
@@ -999,6 +1015,7 @@
         const off = barApi.onShown(({ pinned = false } = {}) => {
           syncShelfPin(pinned);
           closeShare();
+          state.batchMode=false;
           state.checkedImages.clear();
           closePreview(false);
           state.hasOnShown = true;
@@ -1073,6 +1090,7 @@
       });
     }
 
+    $('#bar-done-selecting').addEventListener('click',()=>exitBatchMode(true));
     $('#bar-share-images').addEventListener('click', event => {
       if (!state.checkedImages.size) return;
       showShareMenu(event.currentTarget, [
@@ -1093,6 +1111,7 @@
       state.visible = document.visibilityState === 'visible';
       if (!state.visible) {
         closeShare();
+        state.batchMode=false;
         state.checkedImages.clear();
         closePreview(false);
         document.getElementById('relay-result')?.close();

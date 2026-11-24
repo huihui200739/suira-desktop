@@ -464,9 +464,7 @@
 }
 
 /* ---------- §5 · Preview v9–v14 refinements (redesign/five-pages-20261123) ----------
-   Ported from the v14 preview. CSS-only additions on top of §1–§4; the small
-   DOM behaviours (library "···" menu and drop hint) live in
-   t3-light-enhancements.js. Scoped to Mist + preset accent, like the rest. */
+   Ported from the v14 preview. Scoped to Mist with the preset accent. */
 html:is(.workbench, .tool-window)[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) {
   font-family: "Inter", "Microsoft YaHei UI", "Microsoft YaHei", "PingFang SC", "Segoe UI", system-ui, -apple-system, sans-serif;
 }
@@ -508,25 +506,18 @@ html.workbench[data-theme="mist"]:where(:not([data-accent-source]), [data-accent
 html.workbench[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) .side-status b { font-size: 10px; color: var(--t3-muted); }
 html.workbench[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) .task-filters button .filter-count { margin-left: 4px; font-size: 11px; font-weight: 400; color: var(--t3-muted); }
 html.workbench[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) .task-filters button[aria-pressed="true"] .filter-count { color: var(--t3-muted); }
-html.workbench[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) .drop-hint {
-  margin-top: auto; border: 1px dashed var(--t3-strong-line); border-radius: 8px; padding: 10px 12px;
-  font-size: 12px; line-height: 1.5; color: var(--t3-muted); text-align: center;
-}
 /* Library: equal-height cards, ink kind tags, hover/selected reveal, "···" menu. */
 html.workbench[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) #page-library .library-grid { align-items: stretch; }
 html.workbench[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) #page-library .library-card { display: flex; flex-direction: column; position: relative; }
 html.workbench[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) #page-library .library-card .shelf-text { flex: 1 1 auto; }
 html.workbench[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) #page-library .kind-tag { color: var(--t3-ink); background: var(--t3-wash); }
 html.workbench[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) #page-library .kind-tag::before { background: var(--t3-ink); }
-html.workbench[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) #page-library .library-card.is-selected .shelf-card-actions { opacity: 1; pointer-events: auto; }
-html.workbench[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) #page-library .lib-count { font-size: 12px; color: var(--t3-muted); font-weight: 400; margin-left: 8px; }
 html.workbench[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) #page-library .lib-menu-toggle {
   min-height: 28px; height: 28px; min-width: 36px; padding: 0 10px; border: 0; border-radius: 6px;
   background: transparent; color: var(--t3-muted); font-size: 13px; cursor: pointer;
 }
 html.workbench[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) #page-library .lib-menu-toggle:hover { background: var(--t3-wash); color: var(--t3-ink); }
 html.workbench[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) #page-library .lib-menu {
-  position: absolute; z-index: 30; right: 12px; bottom: 44px; min-width: 180px; padding: 4px;
   background: var(--t3-card); border: 1px solid var(--t3-line); border-radius: 12px;
   box-shadow: 0 1px 2px var(--t3-shadow-near), 0 8px 24px var(--t3-shadow-far);
 }
@@ -536,7 +527,6 @@ html.workbench[data-theme="mist"]:where(:not([data-accent-source]), [data-accent
 }
 html.workbench[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) #page-library .lib-menu button:hover { background: var(--t3-wash); }
 html.workbench[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) #page-library .lib-menu button.is-danger { color: var(--t3-cinnabar); }
-html.workbench[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) #page-library .lib-menu hr { border: 0; border-top: 1px solid var(--t3-line); margin: 4px 6px; }
 /* Settings: 3+3 preset cards, 720px column, 32px nav rows. */
 html.workbench[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) #page-settings .theme-presets { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 html.workbench[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) #page-settings .settings-grid { max-width: 720px; }
@@ -546,20 +536,17 @@ html:is(.workbench, .tool-window)[data-theme="mist"]:where(:not([data-accent-sou
 html:is(.workbench, .tool-window)[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) #page-calendar .calendar-day small {
   display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
 }
-/* Markdown: 200px doc list, no-wrap source, 36px heading controls. */
-html:is(.workbench, .tool-window)[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) #page-markdown .markdown-layout .document-sidebar {
-  flex: 0 0 200px; width: 200px; min-width: 200px;
+/* Markdown: let each pane fill its grid track, including narrow and focus modes. */
+@media (min-width:851px) {
+  html.tool-window[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) .mia-shell:not(.mia-hide-library,.mia-focus) {
+    grid-template-columns:clamp(112px, 13%, 164px) 200px minmax(0, 1fr);
+  }
 }
 html:is(.workbench, .tool-window)[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) #page-markdown #md-editor,
 html:is(.workbench, .tool-window)[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) #page-markdown #md-source-highlight {
   white-space: pre; overflow-x: auto;
 }
 html:is(.workbench, .tool-window)[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) #page-markdown .document-heading { align-items: center; }
-html:is(.workbench, .tool-window)[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) #page-markdown .md-new-weak {
-  display: block; width: 100%; border: 0; background: transparent; color: var(--t3-muted);
-  font-size: 12px; padding: 10px 8px; text-align: left; cursor: pointer;
-}
-html:is(.workbench, .tool-window)[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) #page-markdown .md-new-weak:hover { color: var(--t3-ink); }
 /* Preview dialog: 640px, black primary copy, compact-copy as a small row below the body. */
 html:is(.workbench, .tool-window)[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) .preview-card {
   max-width: 640px; width: min(640px, calc(100vw - 32px));
@@ -574,32 +561,12 @@ html:is(.workbench, .tool-window)[data-theme="mist"]:where(:not([data-accent-sou
 /* §6 — the five remaining items (v15). */
 /* Settings: #theme-status is now a small hint inside the accent-source row. */
 html.workbench[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) #page-settings .setting-row .theme-status { display: block; margin: 2px 0 0; font-size: 12px; color: var(--t3-muted); }
-/* Library: dashed "new content" card at the end of the grid. */
-html.workbench[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) #page-library .library-new-card {
-  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px;
-  min-height: 120px; border: 1px dashed var(--t3-strong-line); background: transparent; color: var(--t3-muted); cursor: pointer;
-}
-html.workbench[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) #page-library .library-new-card:hover { color: var(--t3-ink); border-color: var(--t3-muted); }
-html.workbench[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) #page-library .library-new-plus { font-size: 20px; line-height: 1; }
 /* Calendar: tomorrow preview under the side-panel list. */
 html:is(.workbench, .tool-window)[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) .tomorrow-preview {
   margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--t3-line);
 }
-html:is(.workbench, .tool-window)[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) .tomorrow-head b { font-size: 13px; }
 html:is(.workbench, .tool-window)[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) .tomorrow-row {
   display: block; width: 100%; border: 0; background: transparent; color: var(--t3-ink);
   font-size: 13px; text-align: left; padding: 6px 0; cursor: pointer;
 }
 html:is(.workbench, .tool-window)[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) .tomorrow-row:hover { text-decoration: underline; }
-html:is(.workbench, .tool-window)[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) .tomorrow-more,
-html:is(.workbench, .tool-window)[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) .tomorrow-empty { display: block; font-size: 12px; color: var(--t3-muted); }
-html:is(.workbench, .tool-window)[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) .tomorrow-countdown { font-size: 12px; color: var(--t3-muted); margin: 8px 0 0; }
-/* Markdown: format group next to the view switch. */
-html:is(.workbench, .tool-window)[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) .md-src-format-group {
-  display: flex; align-items: center; gap: 2px; margin-left: 8px; padding-left: 8px; border-left: 1px solid var(--t3-line);
-}
-html:is(.workbench, .tool-window)[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) .md-src-format {
-  min-width: 28px; height: 28px; padding: 0 6px; border: 0; border-radius: 6px; background: transparent;
-  color: var(--t3-muted); font-size: 13px; cursor: pointer;
-}
-html:is(.workbench, .tool-window)[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) .md-src-format:hover { background: var(--t3-wash); color: var(--t3-ink); }

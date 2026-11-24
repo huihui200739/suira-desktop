@@ -231,10 +231,10 @@ window.addEventListener('load', function () {
       var more = first.querySelector('.lib-menu-toggle');
       var menu = first.querySelector('.lib-menu');
       more.click();
-      out.menuOpens = !menu.hidden && more.getAttribute('aria-expanded') === 'true' && Boolean(menu.querySelector('[data-paste]'));
+      out.menuOpens = !menu.hidden && more.getAttribute('aria-expanded') === 'true' && Boolean(menu.querySelector('[data-delete]')) && Boolean(first.querySelector('.shelf-card-actions > [data-copy]'));
       document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
       out.menuCloses = menu.hidden && more.getAttribute('aria-expanded') === 'false';
-      out.newContentSeparate = document.querySelector('.library-new-card:not(.library-card)') !== null;
+      out.singleCaptureEntry = document.querySelectorAll('#page-library #library-capture').length === 1 && !document.querySelector('#library-grid [data-empty-capture]');
       // 4. 粘贴成功路径（commit 文案回显到 toast）
       first.querySelector('[data-paste]').click();
       setTimeout(function () {
@@ -527,10 +527,10 @@ try {
     assert.strictEqual(libFlow.imageCleanupHidden, true);
     assert.strictEqual(libFlow.reopenedTextCleanupVisible, true);
   });
-  t('内容库：更多菜单可开关，新建入口不计入素材卡片', () => {
+  t('内容库：更多菜单可开关，截图只保留页头入口', () => {
     assert.strictEqual(libFlow.menuOpens, true);
     assert.strictEqual(libFlow.menuCloses, true);
-    assert.strictEqual(libFlow.newContentSeparate, true);
+    assert.strictEqual(libFlow.singleCaptureEntry, true);
   });
   t('内容库：点遮罩关闭预览层', () => {
     assert.strictEqual(libFlow.reopened, true);

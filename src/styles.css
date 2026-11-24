@@ -432,6 +432,14 @@ svg { fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round
 }
 .shelf-card-actions button:hover { border-color: var(--line-strong); color: var(--ink); }
 .shelf-card-actions button.is-danger:hover { border-color:var(--styles-shelf-card-actions-is-danger-hover-edge); background: var(--danger-soft); color: var(--danger); }
+.lib-count { font-size: var(--text-2); color: var(--ink-muted); font-weight: 400; margin-left: var(--space-2); }
+.lib-menu-toggle svg { width: 16px; height: 16px; vertical-align: middle; }
+.lib-menu {
+  position: fixed; z-index: 45; width: 180px; margin: 0; padding: var(--space-1); overflow: auto;
+  background: var(--paper); border: 1px solid var(--line); border-radius: var(--radius-inner); box-shadow: var(--shadow-lift);
+}
+.library-card .lib-menu button { display: block; width: 100%; text-align: left; }
+.library-card .lib-menu .is-danger { color: var(--danger); border-top: 1px solid var(--line); }
 
 /* ---------- library ---------- */
 
@@ -718,6 +726,9 @@ svg { fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round
 .global-toast.is-visible { opacity: 1; transform: translate(-50%, 0); }
 .global-toast.error { background: var(--danger-solid); }
 .global-toast.success { background: var(--jade-9); }
+.undo-toast:not([hidden]) { display: flex; align-items: center; gap: var(--space-3); opacity: 1; transform: translate(-50%, 0); }
+.undo-toast { bottom: 74px; }
+.undo-toast button { pointer-events: auto; color: inherit; background: transparent; border: 0; text-decoration: underline; padding: var(--space-1); cursor: pointer; }
 
 .modal {
   position: fixed;

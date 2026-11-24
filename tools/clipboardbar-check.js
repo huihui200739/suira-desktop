@@ -864,6 +864,10 @@ async function runChecks(send) {
     image.querySelector('.card-select').click();await wait(60);
     const multiSelectDoesNotPaste=window.__calls.commit.length===before+1;
     image.click();await wait(60);
+    const bodyClearsSelectionWithoutPaste=!image.classList.contains('is-checked')&&window.__calls.commit.length===before+1;
+    image.click();await wait(60);
+    const lastUncheckKeepsBatch=image.classList.contains('is-checked')&&window.__calls.commit.length===before+1;
+    document.getElementById('bar-done-selecting').click();image.click();await wait(60);
     const pinKeepsOpen=pin.getAttribute('aria-pressed')==='true' && window.__calls.commit.at(-1)?.itemId==='img-1' && window.__calls.hide===hides+1;
     pin.click();await wait(60);
     window.__fireShown();await wait(30);
@@ -871,7 +875,7 @@ async function runChecks(send) {
     await wait(280);
     const query=search.value==='微信' && document.querySelectorAll('.bar-card').length===1 && document.querySelector('.bar-card').dataset.id==='img-1';
     search.value='';search.dispatchEvent(new Event('input',{bubbles:true}));window.__listDelay=0;
-    return {selectionDuringRefresh:selection,singleClickPastes,noDuplicate,multiSelectDoesNotPaste,pinKeepsOpen,queryDuringReopen:query};
+    return {selectionDuringRefresh:selection,singleClickPastes,noDuplicate,multiSelectDoesNotPaste,bodyClearsSelectionWithoutPaste,lastUncheckKeepsBatch,pinKeepsOpen,queryDuringReopen:query};
   })()`);
   for (const [name, passed] of Object.entries(lateRefresh)) check(name, passed);
   const shared = await evaluate(send, `(async function(){

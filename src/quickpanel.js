@@ -975,8 +975,12 @@ function renderUpdate(value){
   updateState=value;$('#update-version').textContent=`当前 ${value.current||''}${value.version?' → '+value.version:''}`;
   $('#update-message').textContent=value.message||'检查是否有新的正式版本。';
   $('#update-progress').hidden=value.phase!=='downloading';$('#update-progress').value=value.percent||0;
-  const button=$('#update-action');button.disabled=['checking','downloading','preparing','installing','unsupported'].includes(value.phase);
-  button.textContent=value.phase==='available'?'下载更新':value.phase==='ready'?'保存草稿并重启更新':value.phase==='downloading'?`正在下载 ${Math.round(value.percent||0)}%`:value.phase==='checking'?'正在检查…':'检查更新';
+  $('#update-calendar').hidden=!value.calendarPending;
+  const button=$('#update-action');
+  const busy=['checking','downloading','preparing','installing','unsupported'].includes(value.phase);
+  button.disabled=value.phase==='unsupported';
+  button.setAttribute('aria-disabled',String(busy));
+  button.textContent=value.phase==='available'?'下载更新':value.calendarPending?'重试更新':value.phase==='ready'?'保存草稿并重启更新':value.phase==='downloading'?`正在下载 ${Math.round(value.percent||0)}%`:value.phase==='checking'?'正在检查…':value.phase==='preparing'?'正在保存…':value.phase==='installing'?'正在安装…':'检查更新';
 }
 function closeUpdates(){$('#update-dialog')._dialogCleanup?.(false);$('#update-dialog').hidden=true;$('#panel-more').focus();}
 async function openUpdates(){
@@ -1061,7 +1065,8 @@ function installEvents() {
   showGuideIfNeeded().catch(()=>{});
   $('#update-close').onclick=closeUpdates;
   window.suira.updates?.onState(renderUpdate);
-  listen($('#update-action'),'click',async()=>{const api=window.suira.updates;renderUpdate(await (updateState.phase==='available'?api.download():updateState.phase==='ready'?api.install():api.check()));});
+  listen($('#update-calendar'),'click',async()=>{await window.suira.quick.hide();await window.suira.workspace.open('calendar');});
+  listen($('#update-action'),'click',async()=>{if($('#update-action').getAttribute('aria-disabled')==='true')return;const api=window.suira.updates;renderUpdate(await (updateState.phase==='available'?api.download():updateState.phase==='ready'?api.install():api.check()));});
   $('#update-dialog').addEventListener('click',event=>{if(event.target===$('#update-dialog'))closeUpdates();});
   $('#update-dialog').addEventListener('keydown',event=>{event.stopPropagation();if(event.key==='Escape'){event.preventDefault();closeUpdates();}});
 

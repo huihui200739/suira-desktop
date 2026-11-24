@@ -20,7 +20,7 @@ async function until(fn){let last;for(let i=0;i<120;i++){try{const value=await f
  await main.evaluate('window.suira.workspace.open("markdown")');const md=await page('tool=markdown');await until(()=>md.evaluate('document.getElementById("md-title").value==="多模式写作"'));
  assert.equal(await md.evaluate('document.getElementById("md-format-bar").hidden'),true,'The writing toolbar is collapsed by default');
  await md.evaluate('document.getElementById("md-format-toggle").click();true');
- const view=async name=>{await md.evaluate(`document.querySelector('[data-md-view="${name}"]').click();true`);assert.equal(await md.evaluate('Array.from(document.querySelectorAll("[data-document-menu],[data-rich-format]")).filter(b=>b.getClientRects().length).length'),10,'All modes expose the same format controls');};
+ const view=async name=>{await md.evaluate(`document.querySelector('[data-md-view="${name}"]').click();true`);assert.equal(await md.evaluate('Array.from(document.querySelectorAll("[data-document-menu],[data-rich-format]")).filter(b=>b.getClientRects().length).length'),name==='preview'?0:10,'Editing modes share one format bar; read-only preview hides it');};
  const end=async()=>{await md.evaluate('(()=>{const e=document.getElementById("md-editor");e.focus();e.setSelectionRange(e.value.length,e.value.length);return true;})()');};
  const type=async text=>md.send('Input.insertText',{text});
  const key=async (name,modifiers=0)=>{await md.send('Input.dispatchKeyEvent',{type:'keyDown',key:name,code:name==='z'?'KeyZ':name,modifiers,...(name==='Enter'&&!modifiers?{text:'\r'}:{}),windowsVirtualKeyCode:{Enter:13,Escape:27,ArrowDown:40,Tab:9,z:90}[name]});await md.send('Input.dispatchKeyEvent',{type:'keyUp',key:name,code:name});};

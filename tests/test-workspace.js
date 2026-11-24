@@ -84,21 +84,24 @@ async function testConcurrentDocumentSaving(){
 async function testCalendarSaveDate(){
   const nodes=new Map(),$=id=>{if(!nodes.has(id))nodes.set(id,{value:'',hidden:false});return nodes.get(id);};
   $('event-title').value='Planning';$('event-date').value='2026-11-08';
-  const started=deferred(),finished=deferred();let saved;
-  const context={$,api:{save:async(_type,payload)=>{saved=payload;started.resolve();await finished.promise;return {ok:true};}},loadCalendar:async()=>{},Date};
-  vm.runInNewContext(`let selected='2026-11-08',month=new Date(2026,10,8),events=[],editing='',submission;
+  const started=deferred(),finished=deferred(), button={disabled:false}, controls=[$('event-date'),$('event-title'),button];let saved,advanced=0;
+  const form=Object.assign($('event-form'),{elements:controls,querySelector:()=>button,contains:()=>false});
+  const context={$,form,eventFields:()=>({title:$('event-title').value,date:$('event-date').value,notes:''}),document:{},notify(){},showQueuedDraft(){advanced++;},api:{save:async(_type,payload)=>{saved=payload;started.resolve();await finished.promise;return {ok:true};}},loadCalendar:async()=>{},Date};
+  vm.runInNewContext(`let selected='2026-11-08',month=new Date(2026,10,8),events=[],editing='',submission,savingEvent=false;
     const checked=async promise=>{const result=await promise;if(!result.ok)throw Error(result.error);return result;};
     const safe=fn=>(...args)=>(submission=Promise.resolve().then(()=>fn(...args)));
-    ${rendererSection("  $('event-form').onsubmit=", "  document.querySelectorAll('[data-calendar-view]')")}
+    ${rendererSection('  form.onsubmit=', "  document.querySelectorAll('[data-calendar-view]')")}
     globalThis.ui={submit:$('event-form').onsubmit,pending:()=>submission,selected:()=>selected};`,context);
-  const button={disabled:false};context.ui.submit({preventDefault(){},submitter:button});await started.promise;
+  context.ui.submit({preventDefault(){},submitter:button});await started.promise;
+  assert.ok(controls.every(control=>control.disabled),'Cannot edit the submitted snapshot while saving');
   $('event-date').value='2026-12-01';finished.resolve();await context.ui.pending();
   assert.equal(saved.date,'2026-11-08');assert.equal(context.ui.selected(),saved.date,'Calendar must select the saved date, not a form value edited during the save');assert.equal(button.disabled,false);
   // Programmatic submission may legitimately have no submitter button.
   context.ui.submit({preventDefault(){},submitter:null});await context.ui.pending();assert.equal(saved.date,'2026-12-01');
   $('event-form').hidden=false;context.api.save=async()=>({ok:false,error:'Temporary calendar save failure'});
   context.ui.submit({preventDefault(){},submitter:button});await assert.rejects(context.ui.pending(),/Temporary calendar save failure/);
-  assert.equal(button.disabled,false);assert.equal($('event-form').hidden,false,'A failed save must leave the calendar draft available for retry');
+  assert.ok(controls.every(control=>!control.disabled));assert.equal(form.hidden,false,'A failed save must leave the calendar draft available for retry');
+  assert.equal(advanced,2,'A failed save must not advance the relay queue');
 }
 const dir=fs.mkdtempSync(path.join(os.tmpdir(),'suira-workspace-'));
 (async()=>{

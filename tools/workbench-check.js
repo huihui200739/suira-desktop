@@ -22,8 +22,9 @@ async function until(fn, label = 'state') {
   await store.updateSettings({ recordClipboard: false, globalShortcutsEnabled: false, panelGuideSeen: true });
   const task = store.createTask('产品体验打磨'), item = store.addItem({ kind: 'text', title: '让工作自然继续', text: '收起导航，专注当前内容。\n任务、截图和文字仍然触手可及。', source: { type: 'user' } });
   store.addItemToTask(task.id, item.id);
+  const removedTask=store.createTask('验收中会删除的任务');store.addItemToTask(removedTask.id,item.id);
   store.addItem({ kind: 'text', title: '整理结果', text: '保留一个干净的阅读界面。', parentIds: [item.id], source: { type: 'derived' } });
-  store.addItem({ kind: 'link', title: '链接示例', text: 'https://example.com', source: { type: 'user' } });
+  const link=store.addItem({ kind: 'link', title: '链接示例', text: 'https://example.com', source: { type: 'user' } });
   await store.save();
   const server = net.createServer(); await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
   const port = server.address().port; await new Promise(resolve => server.close(resolve));
@@ -139,6 +140,27 @@ async function until(fn, label = 'state') {
   await libraryStyle('link');
   assert.equal(await page.evaluate('document.querySelectorAll(".library-card").length'), 1);
   await click('[data-filter=all]');
+  for(const id of [item.id,link.id]){
+    await page.evaluate(`document.querySelector('#library-actions-${id}').previousElementSibling.click();true`);
+    await click(`[data-delete="${id}"]`);
+    await until(()=>page.evaluate(`!document.getElementById('library-actions-${id}')`),'deleted card disappears');
+  }
+  await until(()=>page.evaluate('document.getElementById("remove-message").textContent.includes("2 项可撤销")'));
+  await click('[data-page=shelf]');
+  await page.evaluate(`window.suira.tasks.remove(${JSON.stringify(removedTask.id)})`);
+  await page.evaluate('showGlobalToast("已复制");true');
+  await click('#undo-remove');
+  await until(()=>page.evaluate(`window.suira.content.get(${JSON.stringify(link.id)}).then(Boolean)`));
+  assert.equal(await page.evaluate(`window.suira.content.get(${JSON.stringify(item.id)}).then(Boolean)`),false,'Undo restores the most recent deletion first');
+  await until(()=>page.evaluate('document.getElementById("undo-remove").getAttribute("aria-disabled")==="false"'));
+  await page.evaluate('document.getElementById("undo-remove").focus();true');
+  for(const type of ['keyDown','keyUp'])await page.send('Input.dispatchKeyEvent',{type,key:' ',code:'Space',windowsVirtualKeyCode:32});
+  await until(()=>page.evaluate('document.getElementById("remove-feedback").hidden && document.activeElement.id==="main-scroll"'),'keyboard undo and focus fallback').catch(async error=>{console.error(await page.evaluate('({hidden:document.getElementById("remove-feedback").hidden,focus:document.activeElement?.id,feedback:document.getElementById("global-toast").textContent,aria:document.getElementById("undo-remove").getAttribute("aria-disabled")})'));throw error;});
+  const restoredTasks=await page.evaluate('window.suira.tasks.list()');
+  assert.ok(restoredTasks.find(value=>value.id===task.id).itemIds.includes(item.id));
+  assert.ok(!restoredTasks.some(value=>value.id===removedTask.id),'Undo never resurrects a deleted task');
+  await click('[data-page=library]');
+  await until(()=>page.evaluate('document.querySelectorAll(".library-card").length===3'));
   await polishShot(page, 'library');
   await click('[data-page="settings"]');
   assert.equal((await readStyle(page, '[data-preset=mist]', ['border-top-color']))['border-top-color'], neutral);
@@ -243,6 +265,12 @@ async function until(fn, label = 'state') {
   await calendar.evaluate('document.getElementById("calendar-new").click();document.getElementById("event-title").value="工作台打磨验收";document.getElementById("event-date").value="2026-11-08";document.getElementById("event-time").value="14:30";document.getElementById("event-form").requestSubmit();true');
   await until(async () => (await calendar.evaluate('window.suira.workspace.list("calendar")')).some(item => item.title === '工作台打磨验收' && item.meta.date === '2026-11-08'));
   await until(() => calendar.evaluate('document.getElementById("event-form").hidden'));
+  await calendar.evaluate(`(async()=>{const tomorrow=new Date();tomorrow.setDate(tomorrow.getDate()+1);const date=[tomorrow.getFullYear(),String(tomorrow.getMonth()+1).padStart(2,'0'),String(tomorrow.getDate()).padStart(2,'0')].join('-');await window.suira.workspace.save('calendar',{date,title:'明日待办验收'});await window.WorkspaceUI.open('calendar');document.querySelector('[data-calendar-view=week]').click();document.getElementById('calendar-next').click();return true;})()`);
+  assert.match(await calendar.evaluate('document.querySelector("#tomorrow-preview:not([hidden]) button").textContent'),/1 项待办/);
+  await calendar.evaluate('document.querySelector("#tomorrow-preview button").click();document.querySelector(".agenda-remove").click();true');
+  await until(()=>calendar.evaluate('!document.getElementById("remove-feedback").hidden'));
+  await calendar.evaluate('document.getElementById("undo-remove").click();true');
+  await until(()=>calendar.evaluate('document.querySelector(".agenda-content")?.textContent.includes("明日待办验收")'));
   // Toggle from the actual calendar toolbar so all open windows follow the same setting.
   const themeButton = 'button[aria-label="切换明暗主题"]';
   const toggleCalendarTheme = async (dark, background) => {

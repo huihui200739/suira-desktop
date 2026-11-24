@@ -17,6 +17,7 @@
   let viewRevision = 0, previewRevision = 0, imageRequest = null, queuedImagePreview = null;
   let imagePreviewDocument = null;
   const editor = $('md-editor'), previewPane = $('md-preview');
+  editor.wrap = 'off';
   const sourceHighlight = window.SuiraSourceHighlight?.attach(editor, $('md-source-highlight'));
   let sourceHeadingPositions, ignoreEditorScroll, ignorePreviewScroll;
   let documentLayout, documentLocation = 'all', locationsKey = '';
@@ -63,9 +64,35 @@
   let agendaMode='countdown', countdownFilter='all', upcomingDays=[];
   let calendarView='month';
   let month=new Date(), selected=dateKey(month), events=[], editing='', docs=[], current='', revision=0, savedRevision=0, timer;
-  const notify=message=>{const el=$('global-toast');el.textContent=message;el.classList.add('is-visible');setTimeout(()=>el.classList.remove('is-visible'),2600);};
+  const notify=(message,type='')=>showGlobalToast(message,type);
   async function checked(promise){const result=await promise;if(!result?.ok)throw Error(result?.error||'操作失败');return result;}
-  const safe=fn=>(...args)=>Promise.resolve().then(()=>fn(...args)).catch(error=>notify(error.message));
+  const safe=fn=>(...args)=>Promise.resolve().then(()=>fn(...args)).catch(error=>notify(error.message,'error'));
+  const tomorrowPreview=document.createElement('section');
+  tomorrowPreview.id='tomorrow-preview';tomorrowPreview.className='tomorrow-preview';tomorrowPreview.hidden=true;
+  const tomorrowButton=document.createElement('button');tomorrowButton.type='button';tomorrowButton.className='tomorrow-row';
+  tomorrowPreview.append(tomorrowButton);$('agenda-list').after(tomorrowPreview);
+  const setAgendaMode=mode=>{
+    agendaMode=mode;
+    document.querySelectorAll('[data-agenda]').forEach(button=>{
+      const active=button.dataset.agenda===mode;
+      button.classList.toggle('is-active',active);
+      button.setAttribute('aria-pressed',String(active));
+    });
+  };
+  function renderTomorrow() {
+    const next=new Date(); next.setDate(next.getDate()+1);
+    const key=dateKey(next), host=tomorrowPreview;
+    const pending=events.filter(e=>e.meta.date===key&&!e.meta.done);
+    host.hidden=!pending.length||(agendaMode==='todo'&&selected===key&&!$('calendar-search').value.trim()&&!$('calendar-category').value);
+    if(host.hidden)return;
+    const button=tomorrowButton;
+    button.textContent=`明天 · ${pending.length} 项待办`;
+    button.onclick=()=>{
+      selected=key;month=next;setAgendaMode('todo');
+      $('calendar-search').value='';$('calendar-category').value='';window.SuiraGlassSelect?.refresh($('calendar-category'));
+      calendar();$('agenda-list').querySelector('[data-event]')?.focus({preventScroll:true});
+    };
+  }
   function calendar() {
     $('calendar-month').textContent=`${month.getFullYear()} 年 ${month.getMonth()+1} 月`;
     if($('calendar-jump'))$('calendar-jump').value=dateKey(month).slice(0,7);
@@ -84,9 +111,9 @@
       const day=calendarView==='week'?new Date(first.getFullYear(),first.getMonth(),first.getDate()+i):new Date(month.getFullYear(),month.getMonth(),i-offset+1), key=dateKey(day), items=byDate.get(key)||[], info=window.CalendarData.day(day);
       const badge=info.term||info.festival;
       const shownItems=calendarView==='week'?8:2;
-      return `<button class="calendar-day ${i%7>=5?'weekend':''} ${day.getMonth()!==month.getMonth()?'outside':''} ${key===dateKey(new Date())?'today':''} ${key===selected?'selected':''}" data-date="${key}" aria-pressed="${key===selected}"><span class="day-number">${day.getDate()}${info.work!==null?`<i class="work-badge ${info.work?'work':'rest'}">${info.work?'班':'休'}</i>`:''}</span><label class="lunar-day">${badge?`<span class="date-badge ${info.term?'term':'holiday'}">${esc(badge)}</span>`:info.lunar}</label>${items.slice(0,shownItems).map(e=>`<small class="category-${eventCategory(e)} ${e.meta.done?'done':''}">${e.meta.priority==='high'?'! ':''}${esc(e.title)}</small>`).join('')}${items.length>shownItems?`<em>还有 ${items.length-shownItems} 项</em>`:''}</button>`;
+      return `<button class="calendar-day ${i%7>=5?'weekend':''} ${day.getMonth()!==month.getMonth()?'outside':''} ${key===today?'today':''} ${key===selected?'selected':''}" data-date="${key}" aria-pressed="${key===selected}"><span class="day-number">${day.getDate()}${info.work!==null?`<i class="work-badge ${info.work?'work':'rest'}">${info.work?'班':'休'}</i>`:''}</span><label class="lunar-day">${badge?`<span class="date-badge ${info.term?'term':'holiday'}">${esc(badge)}</span>`:info.lunar}</label>${items.slice(0,shownItems).map(e=>`<small title="${esc(e.title)}" class="category-${eventCategory(e)} ${e.meta.done?'done':''}">${e.meta.priority==='high'?'! ':''}${esc(e.title)}</small>`).join('')}${items.length>shownItems?`<em>还有 ${items.length-shownItems} 项</em>`:''}</button>`;
     }).join('');
-    $('calendar-grid').querySelectorAll('[data-date]').forEach(button=>button.onclick=()=>{selected=button.dataset.date;$('event-form').hidden=true;calendar();});
+    $('calendar-grid').querySelectorAll('[data-date]').forEach(button=>button.onclick=()=>{selected=button.dataset.date;setAgendaMode('todo');calendar();$('calendar-grid').querySelector(`[data-date="${selected}"]`)?.focus({preventScroll:true});});
     if($('calendar-week-numbers')){const start=calendarView==='week'?first:new Date(month.getFullYear(),month.getMonth(),1-offset);$('calendar-week-numbers').innerHTML=Array.from({length:calendarView==='week'?1:6},(_,i)=>`<span>${window.CalendarData.week(new Date(start.getFullYear(),start.getMonth(),start.getDate()+i*7))}</span>`).join('');}
     if($('calendar-selected')){const d=new Date(selected+'T12:00:00'),v=window.CalendarData.day(d);$('calendar-selected').textContent=d.toLocaleDateString('zh-CN',{month:'long',day:'numeric',weekday:'short'})+' '+v.month+v.lunar;}
     $('agenda-date').textContent=new Date(selected+'T12:00:00').toLocaleDateString('zh-CN',{month:'long',day:'numeric',weekday:'long'});
@@ -105,13 +132,55 @@
     $('calendar-new').textContent=agendaMode==='countdown'?'⊕ 添加倒数日':'⊕ 添加待办';
     $('agenda-list').querySelectorAll('[data-builtin-date]').forEach(b=>b.onclick=()=>{selected=b.dataset.builtinDate;month=new Date(selected+'T12:00:00');calendar();});
     $('agenda-list').querySelectorAll('[data-event]').forEach(b=>b.onclick=()=>editEvent(events.find(e=>e.id===b.dataset.event)));
-    $('agenda-list').querySelectorAll('[data-done]').forEach(b=>b.onclick=safe(async()=>{const e=events.find(e=>e.id===b.dataset.done);await checked(api.save('calendar',{id:e.id,title:e.title,text:e.text,...e.meta,done:!e.meta.done}));await loadCalendar();}));
-    $('agenda-list').querySelectorAll('[data-remove]').forEach(b=>b.onclick=safe(async()=>{if(!confirm('删除这条日程？'))return;await checked(api.remove('calendar',b.dataset.remove));await loadCalendar();}));
+    $('agenda-list').querySelectorAll('[data-done]').forEach(b=>b.onclick=safe(async()=>{
+      const e=events.find(e=>e.id===b.dataset.done);
+      b.disabled=true;
+      try {await checked(api.save('calendar',{id:e.id,title:e.title,text:e.text,...e.meta,done:!e.meta.done}));await loadCalendar();notify(e.meta.done?'已标记为待办':'已完成');}
+      finally {b.disabled=false;}
+    }));
+    $('agenda-list').querySelectorAll('[data-remove]').forEach(b=>b.onclick=safe(async()=>{
+      b.disabled=true;
+      try {const result=await checked(api.remove('calendar',b.dataset.remove));showRemoveFeedback('已删除日程',result,loadCalendar,()=>$('agenda-list').querySelector(`[data-event="${CSS.escape(b.dataset.remove)}"]`)||$('calendar-new'));await loadCalendar();}
+      finally {b.disabled=false;}
+    }));
+    $('calendar-prev').setAttribute('aria-label',calendarView==='week'?'上一周':'上个月');
+    $('calendar-next').setAttribute('aria-label',calendarView==='week'?'下一周':'下个月');
+    renderTomorrow();
   }
   async function loadCalendar(){await window.CalendarData.ready();events=await api.list('calendar');upcomingDays=window.CalendarData.upcoming(new Date());calendar();}
-  function editEvent(item){$('agenda-list').before($('event-form'));$('event-draft-hint')?.remove();$('event-form').dataset.draft='false';editing=item?.id||'';$('event-form').hidden=false;$('event-title').value=item?.title||'';$('event-notes').value=item?.text||'';$('event-date').value=item?.meta.date||selected;$('event-time').value=item?.meta.time||'';$('event-category').value=item?.meta.category||'work';$('event-priority').value=item?.meta.priority||'normal';$('event-location').value=item?.meta.location||'';$('event-title').focus();}
-  let calendarDraftRevision=0;async function receiveCalendarDraft(draft){if(!draft)return;const token=++calendarDraftRevision;await window.CalendarData.ready();if(token!==calendarDraftRevision)return;selected=draft.date;month=new Date(draft.date+'T12:00:00');calendar();editEvent({title:draft.title,text:draft.text,meta:draft});$('event-form').dataset.draft='true';let hint=$('event-draft-hint');if(!hint){hint=document.createElement('p');hint.id='event-draft-hint';hint.setAttribute('role','status');$('event-form').prepend(hint);}hint.textContent='日程草稿 · 请核对日期和时间，保存后才会加入日历。'+(draft.warning||'');requestAnimationFrame(()=>$('event-form').scrollIntoView({block:'nearest'}));}
-  if(document.documentElement.dataset.tool==='calendar'){api.onCalendarDraft?.(safe(async()=>receiveCalendarDraft(await api.calendarDraft())));api.calendarDraft?.().then(receiveCalendarDraft).catch(error=>notify(error.message));}
+  const form=$('event-form');
+  let eventBaseline='', savingEvent=false, closingWorkspace=false;
+  const queuedCalendarDrafts=[];
+  const draftNotice=document.createElement('p');draftNotice.className='calendar-draft-notice';draftNotice.setAttribute('role','status');draftNotice.hidden=true;form.after(draftNotice);
+  const updateDraftNotice=()=>{draftNotice.hidden=!queuedCalendarDrafts.length;draftNotice.textContent=`还有 ${queuedCalendarDrafts.length} 条日程草稿待处理`;};
+  const eventFields=()=>Object.fromEntries(['title','notes','date','time','category','priority','location'].map(key=>[key,$('event-'+key).value]));
+  const eventDirty=()=>!form.hidden&&(form.dataset.draft==='true'||JSON.stringify(eventFields())!==eventBaseline);
+  const unsavedCalendarCount=()=>Number(eventDirty())+queuedCalendarDrafts.length;
+  function editEvent(item,fromDraft=false){
+    if(savingEvent||eventDirty()) {notify('请先保存或取消正在编辑的日程');return false;}
+    $('agenda-list').before(form,draftNotice);$('event-draft-hint')?.remove();form.dataset.draft=String(fromDraft);editing=item?.id||'';form.hidden=false;
+    $('event-title').value=item?.title||'';$('event-notes').value=item?.text||'';$('event-date').value=item?.meta.date||selected;$('event-time').value=item?.meta.time||'';$('event-category').value=item?.meta.category||'work';$('event-priority').value=item?.meta.priority||'normal';$('event-location').value=item?.meta.location||'';
+    eventBaseline=JSON.stringify(eventFields());$('event-title').focus();return true;
+  }
+  function showQueuedDraft(){
+    if(!queuedCalendarDrafts.length||savingEvent||closingWorkspace||eventDirty())return;
+    const draft=queuedCalendarDrafts.shift();updateDraftNotice();
+    selected=draft.date;month=new Date(draft.date+'T12:00:00');setAgendaMode('todo');calendar();
+    editEvent({title:draft.title,text:draft.text,meta:draft},true);
+    const hint=document.createElement('p');hint.id='event-draft-hint';hint.setAttribute('role','status');hint.textContent=draft.warning||'核对日期和时间后保存';form.prepend(hint);
+    form.scrollIntoView({block:'nearest'});
+  }
+  async function receiveCalendarDraft(){
+    const drafts=await api.calendarDraft();
+    queuedCalendarDrafts.push(...drafts);updateDraftNotice();
+    await window.CalendarData.ready();
+    if(!form.contains(document.activeElement))showQueuedDraft();
+  }
+  let calendarDraftRead=Promise.resolve();
+  if(document.documentElement.dataset.tool==='calendar'){
+    const receive=()=>{calendarDraftRead=calendarDraftRead.then(receiveCalendarDraft).catch(error=>notify(error.message,'error'));};
+    api.onCalendarDraft?.(receive);receive();
+  }
   window.suira.relay?.onRequest?.(async request=>{if(request.kind!=='markdown.append')return;try{await flush();if(current!==request.id)throw Error('当前文档已切换，请重试');$('md-editor').value=[$('md-editor').value,request.text].filter(Boolean).join('\n\n');richText=$('md-editor').value;richDocument?.load(richText);dirty();await flush();await window.suira.relay.reply({token:request.token,ok:true});}catch(error){await window.suira.relay.reply({token:request.token,ok:false,error:error.message});}});
   const monthPicker=document.createElement('label');monthPicker.className='calendar-month-picker';monthPicker.title='选择年份和月份';
   $('calendar-month').before(monthPicker);monthPicker.append($('calendar-month'));
@@ -128,8 +197,24 @@
   $('calendar-prev').onclick=()=>{if(calendarView==='week'){const day=new Date(selected+'T12:00:00');day.setDate(day.getDate()-7);selected=dateKey(day);month=day;calendar();return;}month=new Date(month.getFullYear(),month.getMonth()-1,1);calendar();};
   $('calendar-next').onclick=()=>{if(calendarView==='week'){const day=new Date(selected+'T12:00:00');day.setDate(day.getDate()+7);selected=dateKey(day);month=day;calendar();return;}month=new Date(month.getFullYear(),month.getMonth()+1,1);calendar();};
   $('calendar-today').onclick=()=>{month=new Date();selected=dateKey(month);calendar();};
-  $('calendar-new').onclick=()=>editEvent();$('event-cancel').onclick=()=>{$('event-form').hidden=true;};
-  $('event-form').onsubmit=event=>{event.preventDefault();safe(async()=>{const button=event.submitter,payload={id:editing,title:$('event-title').value,text:$('event-notes').value,date:$('event-date').value,time:$('event-time').value,category:$('event-category').value,priority:$('event-priority').value,location:$('event-location').value,done:events.find(e=>e.id===editing)?.meta.done||false};if(button)button.disabled=true;try{await checked(api.save('calendar',payload));selected=payload.date;month=new Date(selected+'T12:00:00');$('event-form').hidden=true;await loadCalendar();}finally{if(button)button.disabled=false;}})();};
+  $('calendar-new').onclick=()=>editEvent();
+  $('event-cancel').onclick=()=>{if(!savingEvent){form.hidden=true;$('calendar-new').focus({preventScroll:true});showQueuedDraft();}};
+  form.onsubmit=event=>{
+    event.preventDefault();
+    if(savingEvent)return;
+    safe(async()=>{
+      const {notes,...fields}=eventFields(),payload={...fields,id:editing,text:notes,done:events.find(e=>e.id===editing)?.meta.done||false};
+      const controls=[...form.elements].filter(control=>!control.disabled), focused=document.activeElement;
+      const button=form.querySelector('[type="submit"]');
+      savingEvent=true;controls.forEach(control=>{control.disabled=true;});button.textContent='正在保存…';
+      try{await checked(api.save('calendar',payload));}
+      finally{savingEvent=false;controls.forEach(control=>{control.disabled=false;});button.textContent='保存日程';if(form.contains(focused)&&document.activeElement===document.body)focused.focus({preventScroll:true});}
+      selected=payload.date;month=new Date(selected+'T12:00:00');form.hidden=true;
+      notify('日程已保存');
+      showQueuedDraft();
+      await loadCalendar();
+    })();
+  };
   document.querySelectorAll('[data-calendar-view]').forEach(button=>button.onclick=()=>{calendarView=button.dataset.calendarView;document.querySelectorAll('[data-calendar-view]').forEach(b=>{b.classList.toggle('is-active',b===button);b.setAttribute('aria-pressed',String(b===button));});calendar();});
   for(const id of ['calendar-search','calendar-category','calendar-hide-done'])$(id).addEventListener(id==='calendar-search'?'input':'change',calendar);
   $('calendar-export').onclick=safe(async()=>{const result=await api.calendarExport();if(result.canceled)return;await checked(Promise.resolve(result));notify('日历已导出');});
@@ -458,6 +543,8 @@
     const isPreview = mode => mode === 'split' || mode === 'preview';
     if (isPreview(view) !== isPreview($('md-split').dataset.view) && docs.find(doc => doc.id === current)?.meta?.externalPath) renderedText = null;
     $('md-split').dataset.view=view;
+    const format=$('md-format-toggle');
+    if(format){format.hidden=view==='preview';if(format.hidden&&format.getAttribute('aria-expanded')==='true')format.click();}
     document.querySelectorAll('[data-md-view]').forEach(b=>{b.classList.toggle('is-active',b.dataset.mdView===view);b.setAttribute('aria-pressed',String(b.dataset.mdView===view));});
     $('md-sync-scroll').closest('label').hidden=view!=='split';
     if (!current) return;
@@ -663,7 +750,25 @@
   $('md-sync-scroll').addEventListener('change', () => syncScroll(editor));
   $('md-editor').addEventListener('click',updateActiveHeading);$('md-editor').addEventListener('keyup',updateActiveHeading);
   document.addEventListener('keydown',event=>{if(event.isComposing)return;if((event.ctrlKey||event.metaKey)&&document.querySelector('#page-markdown.is-active')){const views={'1':'edit','2':'split','3':'preview'};if(views[event.key]){event.preventDefault();setDocumentView(views[event.key]);return;}}if((event.ctrlKey||event.metaKey)&&event.key.toLowerCase()==='s'&&document.querySelector('#page-markdown.is-active')){event.preventDefault();saveCurrentFile().catch(error=>notify(error.message));}});
-  api.onClosing?.(safe(async()=>{await flush();const result=await api.confirmClose?.(current);if(result?.canceled)return;if(result && !result.ok)throw Error(result.error||'无法保存');await api.closeReady();}));
+  api.onClosing?.(safe(async()=>{
+    if(closingWorkspace)return;
+    closingWorkspace=true;
+    try{
+      if(document.documentElement.dataset.tool==='calendar'){
+        if(savingEvent){await api.cancelClose();notify('正在保存日程，请稍后再关闭');return;}
+        await calendarDraftRead;
+        const count=unsavedCalendarCount();
+        if(count&&!(await api.confirmCalendarClose(count))?.ok)return;
+      }else{
+        await flush();
+        const result=await api.confirmClose(current);
+        if(result.canceled)return;
+        if(!result.ok)throw Error(result.error||'无法保存');
+      }
+      await api.closeReady();
+    }catch(error){await api.cancelClose();throw error;}
+    finally{closingWorkspace=false;}
+  }));
   window.addEventListener('blur',()=>flush().catch(()=>{}));
   // Preserve every original settings control and listener while changing the layout.
   document.querySelectorAll('.settings-grid > .setting-card').forEach(card=>{card.dataset.category ||= card.querySelector('#recipe-name,#setting-currency,#color-history')?'tools':card.querySelector('#setting-translate-provider')?'translation':card.querySelector('#setting-key-longCapture')?'shortcuts':card.classList.contains('about-card')?'about':card.querySelector('#setting-record,#setting-days')?'storage':'general';});
@@ -677,7 +782,7 @@
     const top=document.createElement('div');top.className='tool-top-actions';
     document.querySelector('.titlebar').insertBefore(top,document.querySelector('.window-actions'));
     const theme=document.createElement('button');theme.className='quiet-btn tool-icon';theme.title='切换明暗主题';theme.setAttribute('aria-label',theme.title);theme.innerHTML='<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M12 4a8 8 0 0 1 0 16z" fill="currentColor"/></svg>';theme.onclick=safe(async()=>{const settings=await window.suira.settings.get();await window.suira.settings.update({theme:settings?.theme==='dark'?'light':'dark',themeChosen:true});});top.append(theme);
-    const pin=document.createElement('button');pin.className='quiet-btn tool-icon';pin.title='窗口置顶';pin.setAttribute('aria-label',pin.title);pin.innerHTML='<svg viewBox="0 0 24 24"><path d="M8 3h8l-1 7 4 4H5l4-4z M12 14v7"/></svg>';pin.onclick=safe(async()=>pin.setAttribute('aria-pressed',String(await window.suira.window.pin())));top.append(pin);
+    const pin=document.createElement('button');pin.className='quiet-btn tool-icon';pin.title='窗口置顶';pin.setAttribute('aria-label',pin.title);pin.setAttribute('aria-pressed','false');pin.innerHTML='<svg viewBox="0 0 24 24"><path d="M8 3h8l-1 7 4 4H5l4-4z M12 14v7"/></svg>';pin.onclick=safe(async()=>pin.setAttribute('aria-pressed',String(await window.suira.window.pin())));top.append(pin);
     if(tool==='markdown'){
       const { mountEditorLayout, iconButton } = window.SuiraMarkdownLayout;
       const shell = document.querySelector('.markdown-layout');
@@ -839,7 +944,7 @@
         filterToggle.setAttribute('aria-expanded', String(calendarControls.classList.toggle('is-open')));
       };
       top.prepend(filterToggle);
-      tabs.querySelectorAll('button').forEach(button=>button.onclick=()=>{agendaMode=button.dataset.agenda;tabs.querySelectorAll('button').forEach(b=>{b.classList.toggle('is-active',b===button);b.setAttribute('aria-pressed',String(b===button));});calendar();});
+      tabs.querySelectorAll('button').forEach(button=>button.onclick=()=>{setAgendaMode(button.dataset.agenda);calendar();});
     }
   }
   const visual=document.createElement('div');visual.id='md-rich';visual.className='md-rich';$('md-split').prepend(visual);
@@ -851,7 +956,8 @@
   const richFormats=document.createElement('div');richFormats.className='md-rich-formats';richFormats.innerHTML=[['bold','加粗','<b>B</b>'],['italic','斜体','<i>I</i>'],['underline','下划线','<u>U</u>'],['strike','删除线','<s>S</s>'],['inlineCode','行内代码','&lt;/&gt;']].map(([command,label,icon])=>`<button type="button" data-rich-format="${command}" aria-label="${label}" title="${label}">${icon}</button>`).join('');documentMenus.after(richFormats);richFormats.querySelectorAll('button').forEach(button=>{button.onmousedown=e=>e.preventDefault();button.onclick=()=>editingController()?.apply(button.dataset.richFormat);});
   document.querySelector('.document-sidebar').append($('md-outline'));
   window.SuiraToolArt?.mount();
-  window.WorkspaceUI={open:safe(async type=>{if(type==='calendar')await loadCalendar();else await loadDocs();}),flush,get documentEditor(){return richDocument;},
+  window.WorkspaceUI={open:safe(async type=>{if(type==='calendar')await loadCalendar();else await loadDocs();}),flush,
+    async calendarBlocksUpdate(){await calendarDraftRead;return savingEvent||closingWorkspace||unsavedCalendarCount()>0;},get documentEditor(){return richDocument;},
     shortcuts(snapshot){const rows=Object.entries(snapshot.bindings||{}).filter(([name,acc])=>name.startsWith('panelKey:')&&acc);$('all-shortcut-status').innerHTML=rows.map(([name,acc])=>`<div><kbd>${esc(acc.replace(/\+/g,' + '))}</kbd><small class="${snapshot.status?.[name]?.ok?'is-ok':'is-error'}">${snapshot.status?.[name]?.localOnly?'仅面板内':snapshot.status?.[name]?.ok?'已生效':esc(snapshot.status?.[name]?.error||'未注册')}</small></div>`).join('');}
   };
 })();

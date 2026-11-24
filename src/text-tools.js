@@ -4,6 +4,7 @@
   let mode='convert',revision=0,modeRevision=0,busy=false,currentResult=false,providerReady=false;
   let autoTimer,composing=false,preferredTarget='zh',targetChosen=false,selectionPaste=false;
   const history=[];
+  let cleared=null;
   const message=(text,error=false)=>{$('tool-status').textContent=text;$('tool-status').dataset.error=String(error);if(!error&&/复制/.test(text))window.SuiraUI?.copyFeedback($('tool-status'));};
   function invalidate(){clearTimeout(autoTimer);++revision;busy=false;currentResult=false;}
   function counts(){
@@ -11,6 +12,8 @@
     const unavailable=!currentResult||!$('tool-result').value.trim()||busy;
     $('tool-copy').disabled=$('tool-paste').disabled=unavailable;$('tool-next').hidden=unavailable;$('tool-back').hidden=!history.length;
     $('tool-run').disabled=busy||!$('tool-source').value.trim()||(mode==='translate'&&!providerReady);
+    $('tool-clear').hidden=!$('tool-source').value&&!$('tool-result').value;
+    $('tool-restore').hidden=!cleared;
   }
   async function run(){
     clearTimeout(autoTimer);const text=$('tool-source').value;if(!text.trim()||busy||(mode==='translate'&&!providerReady))return;
@@ -23,6 +26,7 @@
   }
   function schedule(){clearTimeout(autoTimer);if(mode==='translate'&&providerReady&&!composing&&$('tool-source').value.trim())autoTimer=setTimeout(run,500);}
   async function setMode(next,process=true){
+    cleared=null;
     invalidate();mode=next==='translate'?'translate':'convert';const token=revision,generation=++modeRevision;
     window.history.replaceState(null,'','text-tools.html?mode='+mode);document.title='随序 · 文字工具';$('tool-title').textContent='文字工具';
     $('tool-mark').innerHTML=window.SuiraToolArt?.render(mode==='translate'?'translate':'text-clean')||'';
@@ -47,11 +51,25 @@
   }
   $('tool-run').onclick=run;$('operation').onchange=()=>{invalidate();run();};
   for(const id of ['source-language','target-language'])$(id).onchange=()=>{if(id==='target-language')targetChosen=true;invalidate();run();};
-  $('tool-source').oninput=()=>{invalidate();if(!targetChosen&&mode==='translate')$('target-language').value=SuiraTranslateLanguage.defaultTarget($('tool-source').value,preferredTarget);message(mode==='translate'?(providerReady?'输入结束后自动翻译…':'还没有设置翻译服务'):'原文已修改，点击转换查看结果');counts();schedule();};
+  $('tool-source').oninput=()=>{cleared=null;invalidate();if(!targetChosen&&mode==='translate')$('target-language').value=SuiraTranslateLanguage.defaultTarget($('tool-source').value,preferredTarget);message(mode==='translate'?(providerReady?'输入结束后自动翻译…':'还没有设置翻译服务'):'');counts();schedule();};
   $('tool-source').addEventListener('compositionstart',()=>{composing=true;invalidate();counts();});$('tool-source').addEventListener('compositionend',()=>{composing=false;$('tool-source').oninput();});
-  $('tool-result').oninput=()=>{currentResult=true;counts();};
-  $('tool-clear').onclick=()=>{invalidate();history.length=0;$('tool-source').value=$('tool-result').value='';message('');counts();$('tool-source').focus();};
-  $('tool-clipboard').onclick=async()=>{const token=revision,clip=await api.workspace.clipboard();if(token!==revision)return;$('tool-source').value=clip.text||'';$('tool-source').oninput();if(mode==='convert')run();};
+  $('tool-result').oninput=()=>{cleared=null;currentResult=true;counts();};
+  const sourceMenu=$('tool-image').closest('details');
+  $('tool-clear').onclick=()=>{
+    cleared={source:$('tool-source').value,result:$('tool-result').value,currentResult};
+    invalidate();sourceMenu.open=false;$('tool-source').value=$('tool-result').value='';message('已清空');counts();$('tool-source').focus();
+  };
+  $('tool-restore').onclick=()=>{
+    if(!cleared)return;
+    const snapshot=cleared;cleared=null;invalidate();
+    $('tool-source').value=snapshot.source;$('tool-result').value=snapshot.result;currentResult=snapshot.currentResult;
+    message('已恢复原文和结果');counts();$('tool-source').focus();
+  };
+  $('tool-clipboard').onclick=async()=>{
+    const token=revision;
+    try{const clip=await api.workspace.clipboard();if(token!==revision)return;if(!clip?.ok)throw Error(clip?.error||'无法读取剪贴板');if(!clip.text?.trim()){message('剪贴板里没有文字');return;}$('tool-source').value=clip.text;$('tool-source').oninput();if(mode==='convert')run();}
+    catch(error){if(token===revision)message(error.message,true);}
+  };
   $('tool-capture').onclick=async()=>{invalidate();counts();try{const result=await api.textTools.capture({mode,text:$('tool-source').value,operation:$('operation').value});if(!result?.ok)throw Error(result?.error||'无法开始截图');}catch(error){message(error.message,true);}};
   $('tool-image').onclick=async()=>{
     $('tool-image').closest('details').open=false;invalidate();const token=revision;busy=true;message('正在从最近图片提取文字…');counts();

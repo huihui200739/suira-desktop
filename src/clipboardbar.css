@@ -80,6 +80,8 @@ kbd {
 .card-select svg, .card-actions :is(button, summary) > svg { width: 15px; height: 15px; }
 .card-select { opacity: 0; pointer-events: none; }
 .bar-card:is(.is-checked, :hover, :focus-visible, :has(:focus-visible)) .card-select { opacity: 1; pointer-events: auto; }
+.has-checked-images .bar-card[data-kind="image"] .card-select { opacity: 1; pointer-events: auto; }
+#bar-done-selecting { white-space: nowrap; }
 .card-select .card-select-check { visibility: hidden; }
 .card-select[aria-pressed="true"] { color: var(--accent-11); }
 .card-select[aria-pressed="true"] .card-select-check { visibility: visible; }

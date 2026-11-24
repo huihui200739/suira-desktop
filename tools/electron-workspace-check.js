@@ -95,11 +95,11 @@ async function until(fn){let error;for(let n=0;n<140;n++){try{const value=await 
   assert.equal(await main.evaluate('document.getElementById("md-outline-toggle").getAttribute("aria-expanded")'),'true');
   assert.notEqual(markdownClient,calendarClient);
   assert.equal(await workbench.evaluate('document.querySelector(".page.is-active").id'),'page-shelf');
-  await main.evaluate('document.getElementById("md-format-toggle").click();true');
   for(const view of ['preview','edit','split']){
     await main.evaluate(`document.querySelector('[data-md-view="${view}"]').click();true`);
     assert.equal(await main.evaluate('document.getElementById("md-split").dataset.view'),view);
-    assert.equal(await main.evaluate('document.querySelector(".markdown-toolbar").hidden'),false,'All document modes keep the shared format toolbar');
+    if(view!=='preview')await main.evaluate('if(document.getElementById("md-format-bar").hidden)document.getElementById("md-format-toggle").click();true');
+    assert.equal(await main.evaluate('document.querySelector(".markdown-toolbar").hidden'),view==='preview','Only editing modes show the shared format toolbar');
   }
   assert.equal(await main.evaluate('getComputedStyle(document.querySelector(".sidebar")).display'),'none');
   const beforeFind=await main.evaluate(`document.getElementById('md-editor').value`);

@@ -53,7 +53,7 @@
         <div class="sidebar-foot"><div class="side-status" aria-label="数据保存在本地" data-hint="数据保存在本地"><span class="live-dot" aria-hidden="true"></span><span>本地数据</span><b id="side-version">—</b></div></div>
       </aside>
 
-      <main class="main-scroll" id="main-scroll">
+      <main class="main-scroll" id="main-scroll" tabindex="-1">
         <section class="page is-active" id="page-shelf" aria-label="任务匣">
           <div class="shelf-layout">
             <div class="task-column">
@@ -87,7 +87,7 @@
         <section class="page" id="page-library" aria-label="内容库">
           <div class="page-head">
             <div>
-              <h1>内容库</h1>
+              <h1>内容库<span class="lib-count"></span></h1>
             </div>
             <div class="page-actions"><button class="quiet-btn" id="library-clear" type="button">清理历史记录</button><button class="primary-btn" id="library-capture" type="button"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M7 3v14h14M3 7h14v14"/></svg><span>截图</span></button></div>
           </div>
@@ -299,6 +299,9 @@
       </main>
     </div>
     <div class="global-toast" id="global-toast"></div>
+    <div class="global-toast undo-toast" id="remove-feedback" hidden>
+      <span id="remove-message" role="status"></span><button id="undo-remove" type="button">撤销</button>
+    </div>
     <div class="modal" id="modal" hidden>
       <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="modal-title">
         <div class="modal-head"><div><h2 id="modal-title">新建任务</h2></div><button type="button" id="modal-close">×</button></div>
@@ -341,7 +344,7 @@
     </form>
   </dialog>
   <script src="icons.js"></script><script src="ui-motion.js"></script>
-  <script src="vendor/marked.js"></script><script src="vendor/purify.js"></script><script src="markdown-format.js"></script><script src="vendor/document-source-editor.js"></script><script src="calendar-data.js"></script><script src="tool-art.js"></script><script src="workspace.js"></script><script src="text-spacing.js"></script><script src="trail-model.js"></script><script src="trail-view.js"></script><script src="app.js"></script><script src="t3-light-enhancements.js"></script>
+  <script src="vendor/marked.js"></script><script src="vendor/purify.js"></script><script src="markdown-format.js"></script><script src="vendor/document-source-editor.js"></script><script src="calendar-data.js"></script><script src="tool-art.js"></script><script src="workspace.js"></script><script src="text-spacing.js"></script><script src="trail-model.js"></script><script src="trail-view.js"></script><script src="app.js"></script>
   <script src="liquid-glass.js"></script>
   <script src="theme-settings.js"></script><script src="stage-tools.js"></script>
 <script src="glass-select.js"></script></body>

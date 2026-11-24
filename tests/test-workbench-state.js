@@ -13,9 +13,9 @@ function node(id) {
 }
 const context = vm.createContext({
   URLSearchParams, location: { search: '' }, console,
-  document: { querySelector: node, querySelectorAll: () => [] },
+  document: { querySelector: node, querySelectorAll: () => [], addEventListener() {} },
   setTimeout: fn => { timers.push(fn); return timers.length; }, clearTimeout() {}, requestAnimationFrame: fn => fn(),
-  window: { suira: {}, SuiraUI: { notify() {}, openDialog() {} } }
+  window: { suira: {}, addEventListener() {}, SuiraUI: { notify() {}, openDialog() {} } }
 });
 vm.runInContext(source.slice(0, source.lastIndexOf('\ninit().catch')), context);
 const run = expression => vm.runInContext(expression, context);

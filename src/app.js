@@ -59,6 +59,45 @@ function showGlobalToast(message, type = '') {
   state.toastTimer = setTimeout(() => el.classList.remove('is-visible'), 2200);
 }
 
+let removeFeedbackTimer, undoPending=false;
+let removals=[];
+function showRemoveFeedback(message, {token,expiresAt}, refresh, focusTarget) {
+  removals.push({message,token,expiresAt,refresh,focusTarget});
+  if(removals.length>10)removals.shift();
+  renderRemoveFeedback();
+}
+function renderRemoveFeedback(finished) {
+  const host = $('#remove-feedback'), button = $('#undo-remove');
+  const hadFocus=document.activeElement===button, previous=removals.at(-1);
+  clearTimeout(removeFeedbackTimer);
+  removals=removals.filter(entry=>entry.expiresAt>Date.now());
+  const entry=removals.at(-1);
+  host.hidden=!entry;button.setAttribute('aria-disabled',String(undoPending));
+  if(!entry){
+    button.onclick=null;
+    if(hadFocus){
+      const target=(finished||previous)?.focusTarget?.();
+      (target?.checkVisibility()?target:$('#main-scroll')).focus({preventScroll:true});
+    }
+    return;
+  }
+  $('#remove-message').textContent = entry.message+(removals.length>1?`，${removals.length} 项可撤销`:'');
+  removeFeedbackTimer=setTimeout(renderRemoveFeedback,removals[0].expiresAt-Date.now());
+  button.onclick = async () => {
+    if(undoPending)return;
+    undoPending=true;button.setAttribute('aria-disabled','true');
+    try {
+      const result = await window.suira.content.undoRemove(entry.token);
+      if(result?.ok||result?.expired)removals=removals.filter(item=>item!==entry);
+      if (!result?.ok) throw Error(result?.error || '无法撤销');
+      showGlobalToast('已恢复', 'success');
+      await refreshAfterChange(entry.refresh);
+    } catch (error) {
+      showGlobalToast(error.message || '无法撤销', 'error');
+    } finally {undoPending=false;renderRemoveFeedback(entry);}
+  };
+}
+
 function selectedTask() {
   return state.tasks.find((task) => task.id === state.selectedTaskId) || null;
 }
@@ -351,7 +390,7 @@ let libraryRefreshVersion = 0;
 async function refreshLibrary() {
   const version = ++libraryRefreshVersion;
   const contentVersion = ++contentRefreshVersion;
-  const items = await window.suira.content.list({ limit: 300 });
+  const items = await window.suira.content.list({ limit: 300, excludeWorkspace: true });
   if (version !== libraryRefreshVersion || contentVersion !== contentRefreshVersion) return;
   state.items = items || [];
   renderLibrary();
@@ -359,7 +398,7 @@ async function refreshLibrary() {
 
 function getVisibleItems() {
   return state.items.filter((item) => {
-    if (state.filter !== 'all' && item.kind !== state.filter) return false;
+    if (item.meta?.workspace || (state.filter !== 'all' && item.kind !== state.filter)) return false;
     if (!state.query) return true;
     const haystack = `${item.title} ${item.text || ''} ${item.filePath || ''} ${item.source?.appName || ''}`.toLowerCase();
     if (haystack.includes(state.query)) return true;
@@ -370,9 +409,14 @@ function getVisibleItems() {
 
 function renderLibrary() {
   const grid = $('#library-grid');
+  const active = document.activeElement;
+  const focusedCard = grid.contains(active) ? active.closest('.library-card')?.dataset.id : null;
+  const focusIndex = focusedCard ? [...grid.children].findIndex(card => card.dataset.id === focusedCard) : -1;
   const items = getVisibleItems();
+  $('#page-library .lib-count').textContent = `${items.length} 项`;
   if (!items.length) {
-    grid.innerHTML = `<div class="library-empty">${state.query ? '没有找到匹配的内容' : '还没有内容。截图、复制文字，或从随手面板开始。'}</div>`;
+    grid.innerHTML = `<div class="library-empty">${state.query || state.filter !== 'all' ? '没有找到匹配的内容' : '还没有内容。截图、复制文字，或从随手面板开始。'}</div>`;
+    if (focusedCard) $('#library-search').focus({ preventScroll: true });
     return;
   }
   grid.innerHTML = items.map((item) => {
@@ -397,12 +441,53 @@ function renderLibrary() {
         ${item.kind === 'image' ? `<button type="button" data-pin="${escapeHtml(item.id)}">钉住</button>` : ''}
         ${item.kind === 'files' || item.kind === 'link' ? `<button type="button" data-open="${escapeHtml(item.id)}">打开</button>` : ''}
         ${item.kind === 'files' ? `<button type="button" data-reveal="${escapeHtml(item.id)}">所在文件夹</button>` : ''}
-        <button type="button" data-shelf="${escapeHtml(item.id)}">入匣</button>
+        <button type="button" data-shelf="${escapeHtml(item.id)}">加入任务匣</button>
         <button type="button" data-fix="${escapeHtml(item.id)}">${item.pinned ? '取消固定' : '固定'}</button>
         <button type="button" class="is-danger" data-delete="${escapeHtml(item.id)}">删除</button>
       </footer>
     </article>`;
   }).join('');
+
+  for (const card of grid.children) {
+    const footer = card.querySelector('.shelf-card-actions');
+    const primary = footer.querySelector('[data-open]') || footer.querySelector('[data-copy]');
+    const controls = [...footer.children].filter(button => button !== primary);
+    const menu = document.createElement('div');
+    menu.className = 'lib-menu';
+    menu.id = `library-actions-${card.dataset.id}`;
+    menu.setAttribute('popover', 'manual');
+    menu.hidden = true;
+    const toggle = document.createElement('button');
+    toggle.type = 'button';
+    toggle.className = 'lib-menu-toggle';
+    toggle.innerHTML = window.suiraIcons.svg('more');
+    toggle.setAttribute('aria-label', '更多操作');
+    toggle.setAttribute('aria-controls', menu.id);
+    toggle.setAttribute('aria-expanded', 'false');
+    menu.append(...controls);
+    footer.append(toggle, menu);
+    toggle.onclick = () => {
+      const opening = menu.hidden;
+      closeLibraryMenu();
+      if (opening) {
+        menu.hidden = false;
+        menu.showPopover();
+        const rect = toggle.getBoundingClientRect();
+        menu.style.maxHeight = `${Math.max(72, Math.max(rect.top, innerHeight - rect.bottom) - 12)}px`;
+        menu.style.left = `${Math.max(8, Math.min(rect.right - menu.offsetWidth, innerWidth - menu.offsetWidth - 8))}px`;
+        menu.style.top = `${innerHeight - rect.bottom >= menu.offsetHeight + 8 ? rect.bottom + 4 : Math.max(8, rect.top - menu.offsetHeight - 4)}px`;
+        toggle.setAttribute('aria-expanded', 'true');
+        menu.querySelector('button:not(:disabled)')?.focus({ preventScroll: true });
+      }
+    };
+    menu.addEventListener('click', event => {
+      if (event.target.closest('button')) closeLibraryMenu(true);
+    });
+  }
+  if (focusedCard) {
+    const next = [...grid.children].find(card => card.dataset.id === focusedCard) || grid.children[Math.min(focusIndex, grid.children.length - 1)];
+    next?.querySelector('.lib-menu-toggle')?.focus({ preventScroll: true });
+  }
 
   $$('[data-preview]', grid).forEach((card) => card.addEventListener('click', (event) => {
     // 卡片主体打开预览；底部动作按钮有自己的语义，不触发预览
@@ -461,11 +546,45 @@ function renderLibrary() {
     }
   }));
   $$('[data-delete]', grid).forEach((button) => button.addEventListener('click', async () => {
-    await window.suira.content.remove(button.dataset.delete);
-    showGlobalToast('已删除');
-    await refreshLibrary();
+    button.disabled = true;
+    try {
+      const result = await window.suira.content.remove(button.dataset.delete);
+      if (!result?.ok) throw Error(result?.error || '删除失败');
+      const message=result.taskCount?`已删除内容，并从 ${result.taskCount} 个任务移除`:'已删除内容';
+      showRemoveFeedback(message, result, refreshLibrary, ()=>{
+        const restored=document.getElementById(`library-actions-${button.dataset.delete}`)?.previousElementSibling;
+        return $('#page-library.is-active')&&(restored||$('#library-grid .lib-menu-toggle')||$('#library-capture'));
+      });
+    } catch (error) {
+      showGlobalToast(error.message || '删除失败', 'error');
+    } finally { button.disabled = false; }
   }));
 }
+
+function closeLibraryMenu(restoreFocus = false) {
+  const toggle = $('#library-grid .lib-menu-toggle[aria-expanded="true"]');
+  if (!toggle) return false;
+  toggle.nextElementSibling.hidePopover();
+  toggle.nextElementSibling.hidden = true;
+  toggle.setAttribute('aria-expanded', 'false');
+  if (restoreFocus) toggle.focus({ preventScroll: true });
+  return true;
+}
+document.addEventListener('pointerdown', event => {
+  if (!event.target.closest('.lib-menu, .lib-menu-toggle')) closeLibraryMenu();
+});
+document.addEventListener('focusin', event => {
+  if (!event.target.closest('.lib-menu, .lib-menu-toggle')) closeLibraryMenu();
+});
+window.addEventListener('resize', () => closeLibraryMenu(true));
+window.addEventListener('blur', () => closeLibraryMenu());
+document.addEventListener('scroll', event => { if (!event.target.closest?.('.lib-menu')) closeLibraryMenu(true); }, true);
+document.addEventListener('keydown', event => {
+  if (event.key === 'Escape' && closeLibraryMenu(true)) {
+    event.preventDefault();
+    event.stopImmediatePropagation();
+  }
+}, true);
 
 /* ---------- preview ---------- */
 

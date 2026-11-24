@@ -51,7 +51,12 @@ function updates(){
       if(captureBusy||longCapture)throw Error('请先完成截图');
       const windows=[mainWindow,...workspaceWindows.values(),...noteWindows.values()].filter(win=>win&&!win.isDestroyed());
       await Promise.all(windows.map(win=>win.webContents.executeJavaScript('Promise.resolve(window.WorkspaceUI?.flush()).then(()=>window.NoteUI?.flush())')));
-      await store.save();for(const win of workspaceWindows.values())win.__allowClose=true;isQuitting=true;updateInstallPrepared=true;
+      await store.save();
+      const calendar=workspaceWindows.get('calendar');
+      if(calendar&&!calendar.isDestroyed()&&(await calendar.webContents.executeJavaScript('window.WorkspaceUI?.calendarBlocksUpdate()')||calendarDrafts.has(calendar.webContents.id))) {
+        throw Object.assign(Error('请先处理日历中未保存的日程，再重启更新。'),{code:'CALENDAR_DRAFT_PENDING'});
+      }
+      for(const win of workspaceWindows.values())win.__allowClose=true;isQuitting=true;updateInstallPrepared=true;
     }});
   updateController.on('state',state=>{if(state.phase==='error'&&updateInstallPrepared){isQuitting=false;updateInstallPrepared=false;for(const win of workspaceWindows.values())win.__allowClose=false;}broadcast('updates:state',state);});return updateController;
 }
@@ -2151,10 +2156,25 @@ async function appendRelayMarkdown(text){
   await store.save();broadcast('content:changed');broadcast('workspace:changed',{type:'markdown',id:item.id});return {type:'markdown',id:item.id};
 }
 function openRelayCalendar(draft){
-  const win=showWorkspaceWindow('calendar');calendarDrafts.set(win.webContents.id,draft);
-  win.webContents.send('workspace:calendar-draft',draft);
+  const existing=workspaceWindows.get('calendar');
+  if(isQuitting||existing?.__closeRequested)throw Error('日历正在关闭，请稍后重试');
+  const win=existing&&!existing.isDestroyed()?existing:showWorkspaceWindow('calendar');
+  const id=win.webContents.id,pending=calendarDrafts.get(id)||[];
+  pending.push(draft);calendarDrafts.set(id,pending);
+  win.webContents.send('workspace:calendar-draft');
 }
 let workspaceQuitRequested=false;
+let workspaceRestartRequested=false;
+function requestWorkspaceClose(win){
+  if(win.__closeRequested)return;
+  win.__closeRequested=true;
+  win.webContents.send('workspace:closing');
+}
+function cancelWorkspaceClose(win){
+  if(win)win.__closeRequested=false;
+  workspaceQuitRequested=false;
+  workspaceRestartRequested=false;
+}
 function showWorkspaceWindow(type) {
   let win=workspaceWindows.get(type);
   if(win&&!win.isDestroyed()){if(win.isMinimized())win.restore();win.show();win.focus();return win;}
@@ -2169,7 +2189,7 @@ function showWorkspaceWindow(type) {
   win.webContents.on('will-navigate',event=>event.preventDefault());
   win.loadFile(path.join(__dirname,'src/index.html'),{query:{tool:type}});
   win.once('ready-to-show',()=>{win.show();win.focus();});
-  win.on('close',event=>{if(!isQuitting&&!win.__allowClose){event.preventDefault();win.webContents.send('workspace:closing');}});
+  win.on('close',event=>{if(!isQuitting&&!win.__allowClose){event.preventDefault();requestWorkspaceClose(win);}});
   win.on('closed',()=>{workspaceWindows.delete(type);if(workspaceQuitRequested&&workspaceWindows.size===0)app.quit();});
   return win;
 }
@@ -3426,6 +3446,33 @@ function closeNoteWindow(noteId) {
 }
 
 function registerIpc() {
+  const removedItems = new WeakMap();
+  const removeWithUndo = async (sender, id) => {
+    const snapshot = store.detachItem(id);
+    if (!snapshot) return { ok: false, error: '内容不存在或已被清理' };
+    try { await store.save(); }
+    catch (error) { store.restoreDetachedItem(snapshot); throw error; }
+    const entry = { token: crypto.randomUUID(), snapshot, expiresAt: Date.now()+30000 };
+    const entries = removedItems.get(sender) || new Map();
+    entries.set(entry.token, entry);
+    if (entries.size > 10) entries.delete(entries.keys().next().value);
+    removedItems.set(sender, entries);
+    setTimeout(() => entries.delete(entry.token), 30000).unref();
+    broadcast('content:changed');
+    return { ok: true, token: entry.token, expiresAt: entry.expiresAt, taskCount: snapshot.memberships.length };
+  };
+  ipcMain.handle('content:undo-remove', async ({ sender }, token) => {
+    const entries = removedItems.get(sender),entry=entries?.get(token);
+    if (!entry || entry.expiresAt<=Date.now()) return { ok: false, expired:true, error: '已超过撤销时间' };
+    if (entry.restoring) return {ok:false,error:'正在恢复'};
+    if (!store.restoreDetachedItem(entry.snapshot)) {entries.delete(token);return { ok: false, expired:true, error: '这条内容已恢复' };}
+    entry.restoring=true;
+    try { await store.save(); }
+    catch (error) { store.removeItem(entry.snapshot.item.id); entry.restoring=false; throw error; }
+    entries.delete(token);
+    broadcast('content:changed');
+    return { ok: true };
+  });
   ipcMain.handle('voice:open', event => {
     const caller = BrowserWindow.fromWebContents(event.sender);
     if (caller !== quickWindow && caller !== mainWindow) return { ok: false, error: '语音输入入口无效' };
@@ -3621,6 +3668,7 @@ function registerIpc() {
   ipcMain.handle('window:hide', event => senderWindow(event)?.hide());
   ipcMain.handle('workspace:open', (_event,type) => {if(!['calendar','markdown'].includes(type))return {ok:false};showWorkspaceWindow(type);return {ok:true};});
   ipcMain.handle('workspace:close-ready', event => {const win=senderWindow(event);if([...workspaceWindows.values()].includes(win)){win.__allowClose=true;win.close();}return {ok:true};});
+  ipcMain.handle('workspace:cancel-close', event => {const win=senderWindow(event);if([...workspaceWindows.values()].includes(win))cancelWorkspaceClose(win);});
 
   ipcMain.handle('quick:hide', () => hideQuickPanel());
   ipcMain.handle('quick:presentation',()=>({mode:quickWindow?.isVisible()?(quickWindow.__launchpadFullscreen?'fullscreen':'window'):(store.getSettings().panelPresentation||'window')}));
@@ -3903,11 +3951,10 @@ function registerIpc() {
     broadcast('content:changed', { itemId: item.id });
     return { ok: true, item };
   });
-  ipcMain.handle('content:remove', async (_event, id) => {
-    const item = store.removeItem(String(id || ''));
-    await store.save();
-    broadcast('content:changed');
-    return { ok: Boolean(item) };
+  ipcMain.handle('content:remove', async ({ sender }, id) => {
+    const key = String(id || '');
+    if (store.getItem(key)?.meta?.workspace) return { ok: false, error: '请在原工具中删除' };
+    return removeWithUndo(sender, key);
   });
   ipcMain.handle('content:toggle-pin', async (_event, id) => {
     const item = store.getItem(String(id || ''));
@@ -3943,7 +3990,7 @@ function registerIpc() {
   ipcMain.handle('dates:parse',(_event,text)=>require('./lib/date-parse').parseDate(String(text||'').slice(0,200000)));
   ipcMain.handle('relay:reply',(event,payload)=>{const pending=relayRequests.get(payload?.token);if(!pending||pending.sender!==event.sender.id)return {ok:false};relayRequests.delete(payload.token);clearTimeout(pending.timer);payload.ok?pending.resolve(payload):pending.reject(Error(payload.error||'接力失败'));return {ok:true};});
   ipcMain.on('workspace:active-document',(event,id)=>{const win=BrowserWindow.fromWebContents(event.sender);if(id&&store.getItem(String(id))?.meta?.workspace==='markdown')activeDocuments.set(event.sender.id,{id:String(id),win,at:Date.now()});else activeDocuments.delete(event.sender.id);});
-  ipcMain.handle('workspace:calendar-draft',event=>{const draft=calendarDrafts.get(event.sender.id)||null;calendarDrafts.delete(event.sender.id);return draft;});
+  ipcMain.handle('workspace:calendar-draft',event=>{const drafts=calendarDrafts.get(event.sender.id)||[];calendarDrafts.delete(event.sender.id);return drafts;});
   ipcMain.handle('actions:list', (_event, itemId) => {
     const item = typeof itemId==='object'&&itemId?{kind:itemId.kind,text:String(itemId.text||''),qrUrl:String(itemId.qrUrl||'')}:store.getItem(String(itemId || ''));
     return actions.listForItem(item).map((id) => {
@@ -4373,12 +4420,20 @@ function registerIpc() {
 
   const workspace = require('./lib/workspace').createWorkspace(store);
   markdownFiles=createMarkdownFiles(store,workspace);
+  ipcMain.handle('workspace:confirm-calendar-close',async(event,count)=>{
+    const win=BrowserWindow.fromWebContents(event.sender);
+    if(win!==workspaceWindows.get('calendar')||!Number.isSafeInteger(count)||count<1)return {ok:false};
+    const result=await dialog.showMessageBox(win,{type:'warning',buttons:['继续编辑','放弃并关闭'],defaultId:0,cancelId:0,noLink:true,message:`还有 ${count} 条日程未保存`,detail:'关闭后，未保存的日程会丢失。'});
+    if(result.response===1)return {ok:true};
+    cancelWorkspaceClose(win);
+    return {ok:false,canceled:true};
+  });
   ipcMain.handle('workspace:confirm-close',async(event,id)=>{
     const item=store.getItem(String(id));
     if(item?.meta?.workspace!=='markdown'||!item.meta.externalPath||crypto.createHash('sha256').update(item.text).digest('hex')===item.meta.externalTextHash)return {ok:true};
     const result=await dialog.showMessageBox(BrowserWindow.fromWebContents(event.sender),{type:'question',buttons:['保存到原文件','保留草稿并关闭','取消'],defaultId:0,cancelId:2,noLink:true,message:'此文件有尚未写回原位置的修改',detail:item.meta.externalPath});
-    if(result.response===2){workspaceQuitRequested=false;return {ok:false,canceled:true};}
-    if(result.response===0){try{await markdownFiles.save(item.id);}catch(error){workspaceQuitRequested=false;return {ok:false,error:error.message};}}
+    if(result.response===2){cancelWorkspaceClose(BrowserWindow.fromWebContents(event.sender));return {ok:false,canceled:true};}
+    if(result.response===0){try{await markdownFiles.save(item.id);}catch(error){return {ok:false,error:error.message};}}
     return {ok:true};
   });
   ipcMain.handle('workspace:opened-file',event=>{const win=BrowserWindow.fromWebContents(event.sender);const id=win?.__openedDoc||'';if(win)win.__openedDoc='';return id;});
@@ -4437,8 +4492,14 @@ function registerIpc() {
     try { const item=workspace.save(type,payload); await store.save(); broadcast('content:changed'); return {ok:true,item}; }
     catch(error){return {ok:false,error:error.message};}
   });
-  ipcMain.handle('workspace:remove', async (_event,type,id) => {
-    try { workspace.remove(type,id); await store.save(); broadcast('content:changed'); return {ok:true}; }
+  ipcMain.handle('workspace:remove', async ({ sender },type,id) => {
+    try {
+      if (type === 'calendar') {
+        if (store.getItem(id)?.meta?.workspace !== type) throw Error('日程不存在');
+        return await removeWithUndo(sender, id);
+      }
+      workspace.remove(type,id); await store.save(); broadcast('content:changed'); return {ok:true};
+    }
     catch(error){return {ok:false,error:error.message};}
   });
   ipcMain.handle('workspace:import', async event => {
@@ -5120,15 +5181,18 @@ async function collectDiagnostics() {
 }
 
 function restartApplication() {
-  const args = process.argv.slice(1).filter(arg => !/^--(?:remote-debugging-|inspect)/.test(arg));
-  hideIsland();
-  app.relaunch({args});
+  workspaceRestartRequested=true;
   setTimeout(() => app.quit(), 150);
 }
 
 app.on('before-quit', event => {
   const unsaved=[...workspaceWindows.values()].filter(win=>!win.isDestroyed()&&!win.__allowClose);
-  if(unsaved.length){event.preventDefault();workspaceQuitRequested=true;isQuitting=false;for(const win of unsaved)win.webContents.send('workspace:closing');return;}
+  if(unsaved.length){event.preventDefault();workspaceQuitRequested=true;isQuitting=false;for(const win of unsaved)requestWorkspaceClose(win);return;}
+  if(workspaceRestartRequested){
+    workspaceRestartRequested=false;
+    const args=process.argv.slice(1).filter(arg=>!/^--(?:remote-debugging-|inspect)/.test(arg));
+    hideIsland();app.relaunch({args});
+  }
   if(longCapture){try{longCapture.worker?.stop();}catch{}try{longCapture.controller?.stop();}catch{}}
   isQuitting = true;
 });
