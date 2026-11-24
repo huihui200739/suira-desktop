@@ -35,7 +35,7 @@ const now = Date.now();
 const momentaryWatching = location.search.indexOf('momentary=off') < 0;
 const items = [
   { id:'i1', kind:'text', title:'产品需求摘要', text:'随序的核心承诺是顺手接住，让工作继续。', source:{type:'clipboard',confidence:'inferred'}, createdAt:now-120000, parentIds:[], meta:{}, pinned:true },
-  { id:'i2', kind:'image', title:'屏幕截图', text:'', filePath:'x.png', thumbnail:'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="240" height="130"><rect width="240" height="130" fill="%23dfe5ef"/></svg>', source:{type:'screenshot',confidence:'certain'}, createdAt:now-300000, parentIds:[], meta:{width:1920,height:1080} },
+  { id:'i2', kind:'image', title:'屏幕截图', text:'', thumbnail:'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="240" height="130"><rect width="240" height="130" fill="%23dfe5ef"/></svg>', source:{type:'screenshot',confidence:'certain'}, createdAt:now-300000, parentIds:[], meta:{width:1920,height:1080} },
   { id:'i3', kind:'text', title:'识别文字', text:'这是从截图识别出的文字内容。', source:{type:'ocr',confidence:'certain'}, createdAt:now-280000, parentIds:['i2'], meta:{derivedBy:'ocr.local'} },
   { id:'i4', kind:'link', title:'Windows App SDK', text:'https://learn.microsoft.com/windows/apps/windows-app-sdk/', source:{type:'clipboard',confidence:'inferred'}, createdAt:now-900000, parentIds:[], meta:{} },
   { id:'i5', kind:'files', title:'季度报告.pdf', text:'', filePath:'C:\\\\demo\\\\季度报告.pdf', source:{type:'user',confidence:'certain'}, createdAt:now-1800000, parentIds:[], meta:{} }
@@ -209,6 +209,8 @@ window.addEventListener('load', function () {
       // 1. 点卡片主体打开预览
       target.click();
       out.preview = previewState();
+      var cleanupRow = document.getElementById('preview-clean-row');
+      out.textCleanupVisible = cleanupRow && !cleanupRow.hidden && cleanupRow.contains(document.getElementById('preview-clean-spacing'));
       // 预览层里的提示必须盖在遮罩之上（toast z-index 高于 preview）
       out.previewZ = Number(getComputedStyle(document.getElementById('preview')).zIndex) || 0;
       out.toastZ = Number(getComputedStyle(document.getElementById('global-toast')).zIndex) || 0;
@@ -220,6 +222,19 @@ window.addEventListener('load', function () {
       out.reopened = previewState().opened;
       document.getElementById('preview').click();
       out.closedByMask = (document.getElementById('preview') || {}).hidden === true;
+      document.querySelector('.library-card[data-id="i2"] .shelf-card-head').click();
+      out.imageCleanupHidden = cleanupRow && cleanupRow.hidden;
+      document.getElementById('preview').click();
+      target.click();
+      out.reopenedTextCleanupVisible = cleanupRow && !cleanupRow.hidden && cleanupRow.contains(document.getElementById('preview-clean-spacing'));
+      document.getElementById('preview').click();
+      var more = first.querySelector('.lib-menu-toggle');
+      var menu = first.querySelector('.lib-menu');
+      more.click();
+      out.menuOpens = !menu.hidden && more.getAttribute('aria-expanded') === 'true' && Boolean(menu.querySelector('[data-paste]'));
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+      out.menuCloses = menu.hidden && more.getAttribute('aria-expanded') === 'false';
+      out.newContentSeparate = document.querySelector('.library-new-card:not(.library-card)') !== null;
       // 4. 粘贴成功路径（commit 文案回显到 toast）
       first.querySelector('[data-paste]').click();
       setTimeout(function () {
@@ -506,6 +521,16 @@ try {
   });
   t('内容库：Esc 只关闭预览层', () => {
     assert.strictEqual(libFlow.closedByEsc, true);
+  });
+  t('内容库：文字、图片、文字切换时正确保留整理并复制入口', () => {
+    assert.strictEqual(libFlow.textCleanupVisible, true);
+    assert.strictEqual(libFlow.imageCleanupHidden, true);
+    assert.strictEqual(libFlow.reopenedTextCleanupVisible, true);
+  });
+  t('内容库：更多菜单可开关，新建入口不计入素材卡片', () => {
+    assert.strictEqual(libFlow.menuOpens, true);
+    assert.strictEqual(libFlow.menuCloses, true);
+    assert.strictEqual(libFlow.newContentSeparate, true);
   });
   t('内容库：点遮罩关闭预览层', () => {
     assert.strictEqual(libFlow.reopened, true);

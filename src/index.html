@@ -137,8 +137,7 @@
                 <button type="button" data-preset="midnight" aria-pressed="false"><span class="theme-swatch" data-theme="midnight" aria-hidden="true">Aa</span>午夜蓝</button>
                 <button type="button" data-preset="wallpaper" aria-pressed="false"><span class="theme-swatch" data-theme="wallpaper" aria-hidden="true">Aa</span>跟随壁纸</button>
               </div>
-              <label class="setting-row"><span><b>强调色来源</b><small>预设底色保持不变，可独立跟随系统或壁纸</small></span><select id="setting-accent-source"><option value="preset">主题预设</option><option value="windows">Windows 强调色</option><option value="wallpaper">桌面壁纸</option></select></label>
-              <p id="theme-status" class="theme-status" role="status">所有窗口即时生效，明暗模式保持当前选择。</p>
+              <label class="setting-row"><span><b>强调色来源</b><small>预设底色保持不变，可独立跟随系统或壁纸</small><small id="theme-status" class="theme-status" role="status">所有窗口即时生效，明暗模式保持当前选择。</small></span><select id="setting-accent-source"><option value="preset">主题预设</option><option value="windows">Windows 强调色</option><option value="wallpaper">桌面壁纸</option></select></label>
               <label class="setting-row"><span><b>紧凑面板</b><small>只显示已绑定的键，保留字母键操作</small></span><input id="setting-panel-compact" type="checkbox"></label>
               <label class="setting-row"><span><b>面板最近内容</b><small>显示最近 60 秒复制或截图的内容与下一步动作</small></span><input id="setting-panel-recent" type="checkbox" checked></label>
               <div class="setting-row"><span><b>工作台窗口</b><small>窗口被拉得过大时，恢复默认大小并回到当前屏幕中央</small></span><button class="quiet-btn" id="reset-window-size" type="button">恢复默认大小</button></div>
@@ -317,7 +316,6 @@
             <time id="preview-time"></time>
           </div>
           <div class="preview-actions">
-            <button class="quiet-btn" type="button" id="preview-clean-spacing" hidden>紧凑复制</button>
             <button class="quiet-btn" type="button" id="preview-pixels" hidden aria-pressed="false">原始像素</button>
             <button class="quiet-btn" type="button" id="preview-copy">复制</button>
             <button class="quiet-btn" type="button" id="preview-paste">粘贴</button>
@@ -325,6 +323,9 @@
           </div>
         </header>
         <div class="preview-body" id="preview-body"></div>
+        <div class="pv-compact-row" id="preview-clean-row" hidden>
+          <button class="quiet-btn" type="button" id="preview-clean-spacing">整理并复制</button>
+        </div>
         <details id="preview-trail" class="content-trail"><summary><span data-icon="history" aria-hidden="true"></span>处理轨迹</summary><div id="content-trail"><div class="trail-list"></div></div></details>
       </div>
     </div>
@@ -340,7 +341,7 @@
     </form>
   </dialog>
   <script src="icons.js"></script><script src="ui-motion.js"></script>
-  <script src="vendor/marked.js"></script><script src="vendor/purify.js"></script><script src="markdown-format.js"></script><script src="vendor/document-source-editor.js"></script><script src="calendar-data.js"></script><script src="tool-art.js"></script><script src="workspace.js"></script><script src="text-spacing.js"></script><script src="trail-model.js"></script><script src="trail-view.js"></script><script src="app.js"></script>
+  <script src="vendor/marked.js"></script><script src="vendor/purify.js"></script><script src="markdown-format.js"></script><script src="vendor/document-source-editor.js"></script><script src="calendar-data.js"></script><script src="tool-art.js"></script><script src="workspace.js"></script><script src="text-spacing.js"></script><script src="trail-model.js"></script><script src="trail-view.js"></script><script src="app.js"></script><script src="t3-light-enhancements.js"></script>
   <script src="liquid-glass.js"></script>
   <script src="theme-settings.js"></script><script src="stage-tools.js"></script>
 <script src="glass-select.js"></script></body>

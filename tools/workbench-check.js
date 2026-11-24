@@ -44,14 +44,14 @@ async function until(fn, label = 'state') {
     assert.ok(box.hit, 'Reachable pointer target: ' + selector);
     for (const type of ['mousePressed', 'mouseReleased']) await page.send('Input.dispatchMouseEvent', { type, x: box.x, y: box.y, button: 'left', clickCount: 1 });
   };
-  const geometry = () => page.evaluate(`(()=>{const r=document.querySelector('.sidebar').getBoundingClientRect(),m=document.querySelector('.main-scroll').getBoundingClientRect(),b=document.querySelector('.brand').getBoundingClientRect(),n=document.querySelector('.nav-item').getBoundingClientRect(),i=document.querySelector('.nav .shared-selection').getBoundingClientRect();return {rail:r.width,main:m.x,brand:b.width,item:n.width,indicator:i.width,expanded:document.getElementById('sidebar-toggle').getAttribute('aria-expanded'),overflow:document.documentElement.scrollWidth>innerWidth};})()`);
+  const geometry = () => page.evaluate(`(()=>{const r=document.querySelector('.sidebar').getBoundingClientRect(),m=document.querySelector('.main-scroll').getBoundingClientRect(),b=document.querySelector('.brand').getBoundingClientRect(),n=document.querySelector('.nav-item').getBoundingClientRect(),i=document.querySelector('.nav .shared-selection').getBoundingClientRect();return {rail:r.width,main:m.x-b.x,brand:b.width,item:n.width,indicator:i.width,expanded:document.getElementById('sidebar-toggle').getAttribute('aria-expanded'),overflow:document.documentElement.scrollWidth>innerWidth};})()`);
   const shot = async name => { if (!process.argv.includes('--shots')) return; await page.evaluate('document.activeElement?.blur();true'); await page.send('Input.dispatchMouseEvent', { type:'mouseMoved', x:900, y:500 }); await wait(200); const image = await page.send('Page.captureScreenshot', { format: 'png' }); const directory = path.join(root, 'docs/product'); fs.mkdirSync(directory, { recursive: true }); fs.writeFileSync(path.join(directory, 'sidebar-' + name + '.png'), Buffer.from(image.data, 'base64')); };
   await until(async () => {
     const expanded = await geometry();
     return near(expanded.rail, 184) && near(expanded.main, expanded.brand);
   }, 'expanded sidebar aligned with the titlebar');
-  await page.send('Input.dispatchKeyEvent', { type:'keyDown', key:'Tab', code:'Tab', windowsVirtualKeyCode:9 });
-  await page.evaluate('document.activeElement?.blur();document.getElementById("sidebar-toggle").focus();true');
+  await page.send('Input.dispatchMouseEvent', { type:'mouseMoved', x: 1000, y: 64 });
+  await page.evaluate('document.activeElement?.blur();document.dispatchEvent(new KeyboardEvent("keydown", {key:"Tab", bubbles:true}));document.getElementById("sidebar-toggle").focus();true');
   await until(() => page.evaluate('!document.getElementById("surface-hint").hidden'));
   assert.ok(await page.evaluate('document.getElementById("surface-hint").textContent.includes("收起侧边栏")'), 'Expanded sidebar also explains its shortcut');
   const appearance = target => target.evaluate(`(() => {
@@ -125,6 +125,15 @@ async function until(fn, label = 'state') {
   }
   assert.equal(await page.evaluate('document.querySelectorAll("#library-filters [aria-pressed=true]").length'), 1);
   assert.equal(await page.evaluate('document.querySelectorAll(".library-card").length'), 3);
+  assert.equal(await page.evaluate('document.querySelector(".lib-count").textContent'), '3 项');
+  const libraryMenu = '.library-card:first-child .lib-menu-toggle';
+  const menuPoint = await page.evaluate(`(() => { const r = document.querySelector(${JSON.stringify(libraryMenu)}).getBoundingClientRect(); return { x: r.x + r.width / 2, y: r.y + r.height / 2 }; })()`);
+  await page.send('Input.dispatchMouseEvent', { type: 'mouseMoved', ...menuPoint });
+  await until(() => page.evaluate('getComputedStyle(document.querySelector(".library-card:first-child .shelf-card-actions")).opacity === "1"'), 'library actions revealed on hover');
+  await click(libraryMenu);
+  assert.equal(await page.evaluate('document.querySelector(".library-card:first-child .lib-menu").hidden'), false);
+  await page.send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 });
+  assert.equal(await page.evaluate('document.querySelector(".library-card:first-child .lib-menu").hidden'), true);
   await page.evaluate('document.querySelector("[data-filter=link]").focus();true');
   for (const type of ['keyDown', 'keyUp']) await page.send('Input.dispatchKeyEvent', { type, key: ' ', code: 'Space', windowsVirtualKeyCode: 32 });
   await libraryStyle('link');

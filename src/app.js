@@ -124,6 +124,14 @@ async function refreshShelf() {
 function renderTaskList() {
   const list = $('#task-list');
   $('#task-count').textContent = `${state.tasks.length} 个`;
+  const doneCount = state.tasks.filter((task) => task.progress === 'done').length;
+  const activeCount = state.tasks.length - doneCount;
+  $$('[data-task-filter]').forEach((button) => {
+    const label = { all: '全部', active: '进行中', done: '已完成' }[button.dataset.taskFilter];
+    if (!label) return;
+    const count = button.dataset.taskFilter === 'all' ? state.tasks.length : button.dataset.taskFilter === 'done' ? doneCount : activeCount;
+    button.innerHTML = `${label} <span class="filter-count">${count}</span>`;
+  });
   const visible=state.tasks.filter(task=>(state.taskFilter==='all'||(task.progress==='done')===(state.taskFilter==='done'))&&task.title.toLowerCase().includes(state.taskQuery.toLowerCase()));
   if(!visible.some(task=>task.id===state.selectedTaskId))state.selectedTaskId=visible[0]?.id||'';
   if (!state.tasks.length) {
@@ -558,7 +566,11 @@ function openPreview(itemId) {
     }
   }
 
-  const cleanup=$('#preview-clean-spacing');cleanup.hidden=!['text','link'].includes(item.kind);cleanup.textContent='紧凑复制';$('#preview-copy').textContent=cleanup.hidden?'复制':'复制原文';cleanup.onclick=async()=>{try{const result=await window.suira.textTools.transform(String(item.text||''),'compact');if(!result?.ok)throw Error(result?.error||'整理失败');const saved=await window.suira.content.addText({text:result.text,title:'整理间距后的文字',source:'derived'});if(!saved?.ok)throw Error(saved?.error||'保存失败');const copied=await window.suira.actions.run(saved.item.id,'output.copy');if(!copied?.ok)throw Error(copied?.error||'复制失败');const content=$('.preview-text');if(content)content.textContent=result.text;showGlobalToast('已清理间距并复制，原文保持不变');}catch(error){showGlobalToast(error.message,'error');}};
+  const cleanup = $('#preview-clean-spacing');
+  const cleanupRow = $('#preview-clean-row');
+  cleanupRow.hidden = !['text', 'link'].includes(item.kind);
+  $('#preview-copy').textContent = cleanupRow.hidden ? '复制' : '复制原文';
+  cleanup.onclick=async()=>{try{const result=await window.suira.textTools.transform(String(item.text||''),'compact');if(!result?.ok)throw Error(result?.error||'整理失败');const saved=await window.suira.content.addText({text:result.text,title:'整理间距后的文字',source:'derived'});if(!saved?.ok)throw Error(saved?.error||'保存失败');const copied=await window.suira.actions.run(saved.item.id,'output.copy');if(!copied?.ok)throw Error(copied?.error||'复制失败');const content=$('.preview-text');if(content)content.textContent=result.text;showGlobalToast('已清理间距并复制，原文保持不变');}catch(error){showGlobalToast(error.message,'error');}};
   $('#preview-trail').open=false;
   renderTrail();
   preview.hidden = false;
