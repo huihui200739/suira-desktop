@@ -3,7 +3,14 @@ const assert=require('node:assert/strict'),fs=require('node:fs'),os=require('nod
 const {SuiraStore}=require('../lib/store'),{createWorkspace,validDate}=require('../lib/workspace'),{completionUrl}=require('../lib/translate');
 const vm=require('node:vm');
 const renderer=fs.readFileSync(path.join(__dirname,'../src/workspace.js'),'utf8');
-function rendererSection(start,end){const from=renderer.indexOf(start),to=renderer.indexOf(end,from+start.length);assert.ok(from>=0&&to>from,'Renderer test section exists');return renderer.slice(from,to);}
+function rendererSection(start, end) {
+  const first = start.exec(renderer);
+  assert.ok(first, `Missing renderer test start: ${start}`);
+  const rest = renderer.slice(first.index + first[0].length);
+  const last = end.exec(rest);
+  assert.ok(last, `Missing renderer test end: ${end}`);
+  return first[0] + rest.slice(0, last.index);
+}
 const deferred=()=>{let resolve;const promise=new Promise(done=>{resolve=done;});return {promise,resolve};};
 function documentHarness(api,{dirty=true,external=false}={}){
   const nodes=new Map(),$=id=>{if(!nodes.has(id))nodes.set(id,{value:'',hidden:false,disabled:false,textContent:''});return nodes.get(id);};
@@ -16,8 +23,8 @@ function documentHarness(api,{dirty=true,external=false}={}){
     async function checked(promise){const result=await promise;if(!result?.ok)throw Error(result?.error||'操作失败');return result;}
     function setWritingFocus(){} function documentIdentity(){} function closeDocumentFind(){} function setDocumentView(){} function preview(){} function docList(){} function syncDocumentNavigation(){}
     const savedLabel=()=> '已保存';
-    ${rendererSection('  function flush() {','  async function loadDocs() {')}
-    ${rendererSection('  async function saveCurrentFile(){',"  $('md-save').onclick=")}
+    ${rendererSection(/\bfunction\s+flush\s*\(/, /\basync\s+function\s+loadDocs\s*\(/)}
+    ${rendererSection(/\basync\s+function\s+saveCurrentFile\s*\(/, /\$\('md-save'\)\.onclick\s*=/)}
     globalThis.ui={flush,selectDoc,saveCurrentFile,state:()=>({current,revision,savedRevision,docs}),edit:text=>{$('md-editor').value=text;revision++;$('md-status').textContent='未保存';}};
   `,context);
   return {...context.ui,$};
@@ -90,7 +97,7 @@ async function testCalendarSaveDate(){
   vm.runInNewContext(`let selected='2026-11-08',month=new Date(2026,10,8),events=[],editing='',submission,savingEvent=false;
     const checked=async promise=>{const result=await promise;if(!result.ok)throw Error(result.error);return result;};
     const safe=fn=>(...args)=>(submission=Promise.resolve().then(()=>fn(...args)));
-    ${rendererSection('  form.onsubmit=', "  document.querySelectorAll('[data-calendar-view]')")}
+    ${rendererSection(/\bform\.onsubmit\s*=/, /document\.querySelectorAll\('\[data-calendar-view\]'\)/)}
     globalThis.ui={submit:$('event-form').onsubmit,pending:()=>submission,selected:()=>selected};`,context);
   context.ui.submit({preventDefault(){},submitter:button});await started.promise;
   assert.ok(controls.every(control=>control.disabled),'Cannot edit the submitted snapshot while saving');

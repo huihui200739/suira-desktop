@@ -92,7 +92,7 @@ if ((Test-Path -LiteralPath $verificationReports -PathType Container) -and
     -not ((Get-Item -LiteralPath (Split-Path -Parent $verificationReports) -Force).Attributes -band [IO.FileAttributes]::ReparsePoint) -and
     -not ((Get-Item -LiteralPath $verificationReports -Force).Attributes -band [IO.FileAttributes]::ReparsePoint)) {
   Get-ChildItem -LiteralPath $verificationReports -File -Attributes !ReparsePoint | Where-Object {
-    $_.Name -match '^(?:hints-\d+\.\d+\.\d+-verification|(?:new-tools|ui-fixes)-\d+\.\d+\.\d+)\.json$'
+    $_.Name -match '^(?:hints-\d+\.\d+\.\d+-verification|(?:new-tools|trail|ui-fixes)-\d+\.\d+\.\d+)\.json$'
   } | ForEach-Object { Add-Target $_.FullName $repoRoot 'workspace-verification-reports' }
 }
 foreach ($relative in @('tools\.panel-shot','.udata\panel-review','.udata\island-hidden-review','debug.log','.workbuddy\long-frame-0.png','.workbuddy\long-frame-70.png')) {

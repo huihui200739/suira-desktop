@@ -35,7 +35,7 @@
 .trace-group-title small{font:12px/1.5 var(--font-ui);font-variant-numeric:tabular-nums;color:var(--ink-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .trace-group-meta{display:flex;align-items:center;gap:16px;font-size:12px;white-space:nowrap}
 .trace-group-meta time{width:72px;text-align:right;color:var(--ink-muted);font-size:11px}
-.trace-duration{width:68px;text-align:right;font:12px/1.5 var(--font-ui);font-variant-numeric:tabular-nums;font-variant-numeric:tabular-nums;color:var(--ink-muted);white-space:nowrap}
+.trace-duration{width:68px;text-align:right;font:12px/1.5 var(--font-ui);font-variant-numeric:tabular-nums;color:var(--ink-muted);white-space:nowrap}
 .trace-status{font-size:11px;font-weight:500;white-space:nowrap;color:var(--ink-muted)}
 .trace-status.done{color:var(--trail-trace-status-done-ink)}.trace-status.failed{color:var(--trail-trace-status-failed-ink)}.trace-status.running,.trace-status.queued{color:var(--accent)}
 .trace-group-toggle>svg,.trace-step summary>svg{width:14px;height:14px;fill:none;stroke:var(--ink-muted);stroke-width:1.5;flex:none;transition:transform var(--dur-fast) var(--ease-out)}

@@ -8,6 +8,18 @@ async function until(fn){let last;for(let n=0;n<160;n++){try{const value=await f
 (async()=>{
   try{execFileSync('robocopy.exe',[path.join(root,'dist','win-unpacked'),appDir,'/E','/R:1','/W:1','/NFL','/NDL','/NJH','/NJS','/NP'],{stdio:'ignore',windowsHide:true});}catch(e){if(e.status===null||e.status>=8)throw e;}
   const store=new SuiraStore(path.join(profile,'suira-data.json'));await store.updateSettings({recordClipboard:false,shortcutQuick:'',shortcutCapture:'',shortcutLongCapture:'',shortcutPanelCycle:'',shortcutPinnedToggle:'',shortcutClipboardBar:'',shortcutMomentary:''});await store.setPanelBindings(Object.fromEntries(KEY_ROWS.flat().map(key=>[key,{type:'none'}])));
+  const sample = path.join(tmp, 'ocr-fixture.png');
+  execFileSync('powershell.exe', ['-NoProfile', '-Command', [
+    'Add-Type -AssemblyName System.Drawing',
+    '$bitmap = New-Object System.Drawing.Bitmap 620,160',
+    '$graphics = [System.Drawing.Graphics]::FromImage($bitmap)',
+    '$graphics.Clear([System.Drawing.Color]::White)',
+    "$font = New-Object System.Drawing.Font 'Arial',40",
+    "$graphics.DrawString('HELLO SUIRA 2026', $font, [System.Drawing.Brushes]::Black, 12, 48)",
+    `$bitmap.Save('${sample.replace(/'/g, "''")}', [System.Drawing.Imaging.ImageFormat]::Png)`,
+    '$font.Dispose(); $graphics.Dispose(); $bitmap.Dispose()'
+  ].join('; ')], { windowsHide: true, timeout: 20000 });
+  const image = store.addItem({ kind: 'image', filePath: sample, title: 'OCR fixture' });
   store.setWindowState({x:20,y:900,width:3000,height:1800,maximized:false});await store.save();
   const env={...process.env,APPDATA:path.join(tmp,'roaming'),LOCALAPPDATA:path.join(tmp,'local')};delete env.ELECTRON_RUN_AS_NODE;fs.mkdirSync(env.APPDATA);fs.mkdirSync(env.LOCALAPPDATA);
   const server=net.createServer();await new Promise(r=>server.listen(0,'127.0.0.1',r));const port=server.address().port;await new Promise(r=>server.close(r));
@@ -49,6 +61,10 @@ async function until(fn){let last;for(let n=0;n<160;n++){try{const value=await f
   await panel.evaluate(`document.querySelector('[data-menu-action="shortcuts"]').click();true`);
   await until(()=>workbench.evaluate('document.querySelector("[data-setting-tab=shortcuts]").classList.contains("is-active")'));
   console.log('PASS actual packaged shared menu opens the shortcut settings section');
+  const recognized = await workbench.evaluate(`window.suira.ocr.recognizeItem(${JSON.stringify(image.id)})`);
+  assert.equal(recognized.ok, true, JSON.stringify(recognized));
+  assert.match(recognized.output.text, /HELLO SUIRA 2026/i);
+  console.log('PASS actual packaged offline OCR recognizes the fixture using bundled models');
 })().catch(error=>{console.error(error);if(fs.existsSync(path.join(tmp,'app.log')))console.error(fs.readFileSync(path.join(tmp,'app.log'),'utf8').slice(-1800));process.exitCode=1;}).finally(async()=>{
   sockets.forEach(ws=>ws.close());children.forEach(c=>{if(c.exitCode===null)c.kill();});await wait(600);
   const absolute=path.resolve(tmp);if(path.dirname(absolute)!==path.resolve(os.tmpdir())||!path.basename(absolute).startsWith('suira-workspace-'))throw Error('Unsafe cleanup path');
