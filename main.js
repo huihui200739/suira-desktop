@@ -35,6 +35,7 @@ const path = require('node:path');
 const fs = require('node:fs');
 const fsp = require('node:fs/promises');
 const { createWindowBoundary, blockNavigation } = require('./lib/window-ipc');
+const { registerTaskIpc } = require('./lib/task-ipc');
 const { createQuitCoordinator } = require('./lib/quit-coordinator');
 const { recordDiagnostic } = require('./lib/diagnostic-log');
 const windowIpc = createWindowBoundary({ ipcMain, BrowserWindow, srcDir: path.join(__dirname, 'src') });
@@ -4612,69 +4613,16 @@ function registerIpc() {
     if(result.canceled)return {ok:false,canceled:true};
     try{await fsp.writeFile(result.filePath,require('./lib/calendar-export').calendarICS(workspace.list('calendar')),'utf8');return {ok:true};}catch(error){return {ok:false,error:error.message};}
   });
-  windowIpc.handle('tasks:status', async (_event,payload) => {
-    const task=store.updateTask(String(payload?.id||''),{progress:payload?.done?'done':'idle'});
-    await store.save();broadcast('tasks:changed');return {ok:Boolean(task)};
-  });
-  windowIpc.handle('tasks:list', (_event, options) => store.listTasks(options || {}));
-  windowIpc.handle('tasks:create', async (_event, title) => {
-    const task = store.createTask(String(title || '临时收集').trim().slice(0, 120) || '临时收集');
-    await store.save();
-    broadcast('tasks:changed');
-    return { ok: true, task };
-  });
-  windowIpc.handle('tasks:rename', async (_event, payload) => {
-    const task = store.updateTask(String(payload?.id || ''), { title: payload?.title });
-    await store.save();
-    broadcast('tasks:changed');
-    return { ok: Boolean(task), task };
-  });
-  windowIpc.handle('tasks:delete', async (_event, id) => {
-    const task = store.deleteTask(String(id || ''));
-    await store.save();
-    broadcast('tasks:changed');
-    return { ok: Boolean(task) };
-  });
-  windowIpc.handle('tasks:add-item', async (_event, payload) => {
-    const task = store.addItemToTask(String(payload?.taskId || ''), String(payload?.itemId || ''));
-    await store.save();
-    broadcast('tasks:changed');
-    return { ok: Boolean(task), task };
-  });
-  windowIpc.handle('tasks:remove-item', async (_event, payload) => {
-    const task = store.removeItemFromTask(String(payload?.taskId || ''), String(payload?.itemId || ''));
-    await store.save();
-    broadcast('tasks:changed');
-    return { ok: Boolean(task), task };
-  });
-  windowIpc.handle('tasks:copy-text', async (_event, taskId) => {
-    const task = store.getTask(String(taskId || ''));
-    if (!task) return { ok: false, error: '任务不存在' };
-    const text = task.itemIds.map((id) => store.getItem(id)).filter(Boolean).map((item) => item.text || item.filePath || item.title).join('\n\n');
-    if (!text.trim()) return { ok: false, error: '任务里没有可复制的文字' };
-    await writeClipboardText(text);
-    return { ok: true, text };
-  });
-  windowIpc.handle('tasks:export', async (_event, taskId) => {
-    const task = store.getTask(String(taskId || ''));
-    if (!task) return { ok: false, error: '任务不存在' };
-    const parent = mainWindow && !mainWindow.isDestroyed() && mainWindow.isVisible() ? mainWindow : null;
-    const result = await dialog.showSaveDialog(parent, {
-      title: '导出任务匣',
-      defaultPath: path.join(app.getPath('documents'), `随序任务-${task.title.replace(/[\\/:*?"<>|]/g, '_')}.md`),
-      filters: [{ name: 'Markdown', extensions: ['md'] }]
-    });
-    if (result.canceled || !result.filePath) return { ok: false, canceled: true };
-    const items = task.itemIds.map((id) => store.getItem(id)).filter(Boolean);
-    const lines = [`# ${task.title}`, '', `导出时间：${new Date().toLocaleString('zh-CN')}`, ''];
-    for (const item of items) {
-      lines.push(`## ${item.title}`, '');
-      if (item.text) lines.push(item.text, '');
-      if (item.filePath) lines.push(`文件：${item.filePath}`, '');
-      if (item.kind === 'image' && item.filePath) lines.push(`![${item.title}](${pathToFileURL(item.filePath).href})`, '');
+  registerTaskIpc({
+    handle: windowIpc.handle,
+    store,
+    onChange: () => broadcast('tasks:changed'),
+    copyText: writeClipboardText,
+    documentsPath: () => app.getPath('documents'),
+    chooseExportPath(options) {
+      const parent = mainWindow && !mainWindow.isDestroyed() && mainWindow.isVisible() ? mainWindow : null;
+      return dialog.showSaveDialog(parent, options);
     }
-    await fsp.writeFile(result.filePath, lines.join('\n'), 'utf8');
-    return { ok: true, filePath: result.filePath };
   });
 
   windowIpc.handle('executions:list', (_event, limit) => store.listExecutions(limit));

@@ -44,9 +44,16 @@ async function run() {
     await fixture.save();
     const entry = path.join(profile, 'app.js'), result = path.join(profile, 'listener-ready');
     await fs.writeFile(entry, `
-      const { app, clipboard, globalShortcut, ipcMain } = require('electron');
+      const { app, clipboard, dialog, globalShortcut, ipcMain } = require('electron');
       const fs = require('node:fs');
       app.setPath('userData', ${JSON.stringify(profile)});
+      const taskExport = ${JSON.stringify(path.join(profile, 'task-export.md'))};
+      let savePrompts = 0;
+      dialog.showSaveDialog = async (_window, options) => {
+        require('node:assert/strict').ok(options.defaultPath.endsWith('Audit_Task.md'));
+        savePrompts += 1;
+        return { canceled: savePrompts === 1, filePath: taskExport };
+      };
       const registered = [];
       const handle = ipcMain.handle.bind(ipcMain);
       ipcMain.handle = (channel, callback) => { registered.push(channel); return handle(channel, callback); };
@@ -61,6 +68,9 @@ async function run() {
       clipboard.read = async () => text ? [{ types: ['text/plain'], getType: async () => text }] : [];
       clipboard.availableFormats = () => [];
       clipboard.readText = async () => text;
+      clipboard.writeText = async value => {
+        fs.writeFileSync(${JSON.stringify(path.join(profile, 'clipboard-written.txt'))}, value);
+      };
       const events = require(${JSON.stringify(path.join(root, 'lib/windows-clipboard-events'))});
       const watch = events.watchWindowsClipboard;
       events.watchWindowsClipboard = (win, callback) => {
@@ -128,6 +138,25 @@ async function run() {
     const panelState = await panel.evaluate('window.suira.panel.state()');
     for (const name of ['rows', 'keys', 'tools']) assert.ok(Array.isArray(panelState[name]), `Missing panel ${name}`);
     assert.equal((await panel.evaluate('window.suira.settings.update({recordClipboard:false})')).code, 'IPC_FORBIDDEN');
+    const task = (await main.evaluate(`window.suira.tasks.create('Audit/Task')`)).task;
+    assert.ok(task?.id);
+    const taskId = JSON.stringify(task.id);
+    const copied = path.join(profile, 'clipboard-written.txt');
+    const exported = path.join(profile, 'task-export.md');
+    assert.equal((await main.evaluate(`window.suira.tasks.copyText(${taskId})`)).ok, false);
+    await assert.rejects(fs.stat(copied), { code: 'ENOENT' });
+    const assignment = JSON.stringify({ taskId: task.id, itemId: sample.id });
+    assert.equal((await main.evaluate(`window.suira.tasks.addItem(${assignment})`)).ok, true);
+    assert.deepEqual(await main.evaluate(`window.suira.tasks.copyText(${taskId})`), { ok: true, text: 'legacy fixture' });
+    assert.equal(await fs.readFile(copied, 'utf8'), 'legacy fixture');
+    for (const method of ['list', 'copyText', 'export']) {
+      assert.equal((await panel.evaluate(`window.suira.tasks.${method}(${taskId})`)).code, 'IPC_FORBIDDEN');
+    }
+    assert.deepEqual(await main.evaluate(`window.suira.tasks.export(${taskId})`), { ok: false, canceled: true });
+    await assert.rejects(fs.stat(exported), { code: 'ENOENT' });
+    assert.deepEqual(await main.evaluate(`window.suira.tasks.export(${taskId})`), { ok: true, filePath: exported });
+    assert.match(await fs.readFile(exported, 'utf8'), /^# Audit\/Task\n[\s\S]*\n## Protected existing record\n\nlegacy fixture\n/);
+    assert.equal((await main.evaluate(`window.suira.tasks.removeItem(${assignment})`)).ok, true);
     const notes = await note.evaluate('window.suira.notes.list()');
     assert.ok(notes.length);
     assert.equal((await note.evaluate(`window.suira.notes.update(${JSON.stringify({ id: notes[0].id, text: 'last debounced edit' })})`)).ok, true);
@@ -139,7 +168,7 @@ async function run() {
     child = spawn(executable, [entry, '--remote-debugging-address=127.0.0.1', `--remote-debugging-port=${port}`], { cwd: root, env, windowsHide: true, stdio: 'ignore' });
     const restarted = await page(target => target.url.endsWith('/index.html'));
     assert.equal((await restarted.evaluate(`window.suira.content.get(${JSON.stringify(sample.id)})`)).text, 'legacy fixture');
-    console.log('PASS real Electron: legacy key migration and restart, native clipboard notification, denied navigation/popups/IPC and immediate quit flush');
+    console.log('PASS real Electron: legacy key migration and restart, native clipboard notification, denied navigation/popups/IPC, task copy/export/cancel and immediate quit flush');
   } finally {
     for (const socket of sockets) socket.close();
     if (child?.pid && child.exitCode === null && !child.signalCode) {
