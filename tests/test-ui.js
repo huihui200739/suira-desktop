@@ -1011,7 +1011,7 @@ t('取色放大镜：微信式绿色十字线、两行读数与 Ctrl+C 复制', 
   if (!/const colorCopy = [\s\S]{0,200}!magnifier\.hidden[\s\S]{0,160}shiftKey !== event\.ctrlKey/.test(overlayJs)) {
     throw new Error('Shift+C 与 Ctrl+C 都应要求放大镜可见，避免复制陈旧采样点');
   }
-  if (!overlayJs.includes("showAction(sampled.hex+' 已复制 · Enter 完成截图')")) throw new Error('复制色值后要提示如何完成截图');
+  if (!overlayJs.includes("showAction(sampled.hex+' 已复制 · Enter 完成截图','copied')")) throw new Error('复制色值成功后显示确认，并提示如何完成截图');
   if (stage.includes('Shift+C')) throw new Error('颜色历史文案仍写着旧快捷键');
 });
 

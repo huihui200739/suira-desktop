@@ -4,72 +4,217 @@
 (() => {
   const reduce = matchMedia('(prefers-reduced-motion: reduce)');
   const feedback = new WeakMap();
-  const animations = new WeakMap();
-  function animate(element, className) {
-    if (!element || reduce.matches) return;
-    const previous=animations.get(element);
-    if(previous) element.removeEventListener('animationend',previous);
-    const restarting=element.classList.contains(className);
-    element.classList.remove(className);
-    // Prepared reveals need no synchronous layout; only interrupted feedback restarts.
-    if(restarting) void element.offsetWidth;
-    element.classList.add(className);
-    const finish=()=>{element.classList.remove(className);animations.delete(element);};
-    animations.set(element,finish);element.addEventListener('animationend',finish,{once:true});
+  const selectionGroups = [];
+  const initializedGroups = new WeakSet();
+  const revealCleanups = new WeakMap();
+  const revealing = new Set();
+  const revealed = new WeakSet();
+  let inputMode = 'pointer';
+
+  const markPointer = () => { inputMode = 'pointer'; };
+  const markKeyboard = event => {
+    if (['Shift', 'Control', 'Alt', 'Meta'].includes(event.key)) return;
+    inputMode = 'keyboard';
+  };
+  document.addEventListener('pointerdown', markPointer, true);
+  document.addEventListener('mousedown', markPointer, true);
+  document.addEventListener('keydown', markKeyboard, true);
+
+  function isVisible(node) {
+    if (!node || !node.isConnected || document.hidden) return false;
+    if (!node.getClientRects().length) return false;
+    if (typeof node.checkVisibility === 'function' && !node.checkVisibility({ checkOpacity: true, checkVisibilityCSS: true })) return false;
+    const box = node.getBoundingClientRect();
+    return box.width > 0 && box.height > 0;
   }
+
+  function stopReveal(element) {
+    if (!element) return;
+    revealCleanups.get(element)?.();
+    revealCleanups.delete(element);
+    revealing.delete(element);
+    element.classList.remove('is-revealing');
+  }
+
+  function stopAllReveals() {
+    for (const element of revealing) stopReveal(element);
+  }
+
+  function resetReveal(element) {
+    if (!element) return;
+    revealed.delete(element);
+    stopReveal(element);
+  }
+
+  function reveal(element) {
+    if (!element || revealed.has(element)) return;
+    revealed.add(element);
+    if (reduce.matches) {
+      stopReveal(element);
+      return;
+    }
+    stopReveal(element);
+    element.classList.add('is-revealing');
+    revealing.add(element);
+    const onEnd = event => {
+      if (event.target !== element) return;
+      stopReveal(element);
+    };
+    element.addEventListener('animationend', onEnd);
+    element.addEventListener('animationcancel', onEnd);
+    revealCleanups.set(element, () => {
+      element.removeEventListener('animationend', onEnd);
+      element.removeEventListener('animationcancel', onEnd);
+    });
+  }
+
+  function syncSelections() {
+    selectionGroups.forEach(group => group.update(false));
+  }
+
   function copyFeedback(element) {
     if (!element) return;
     element.querySelector('.copy-check')?.remove();
-    const check=document.createElementNS('http://www.w3.org/2000/svg','svg');
-    check.setAttribute('viewBox','0 0 24 24');check.setAttribute('aria-hidden','true');check.classList.add('copy-check');
-    if(!reduce.matches){check.classList.add('is-drawing');check.addEventListener('animationend',()=>check.classList.remove('is-drawing'),{once:true});}
-    const path=document.createElementNS(check.namespaceURI,'path');path.setAttribute('d','M5 12l4 4L19 6');check.append(path);element.prepend(check);
+    const check = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    check.setAttribute('viewBox', '0 0 24 24');
+    check.setAttribute('aria-hidden', 'true');
+    check.classList.add('copy-check');
+    const path = document.createElementNS(check.namespaceURI, 'path');
+    path.setAttribute('d', 'M5 12l4 4L19 6');
+    check.append(path);
+    if (!reduce.matches) {
+      check.classList.add('is-drawing');
+      const done = () => check.classList.remove('is-drawing');
+      path.addEventListener('animationend', done, { once: true });
+      path.addEventListener('animationcancel', done, { once: true });
+    }
+    element.prepend(check);
   }
 
   function selectionGroup(group) {
+    if (!group || initializedGroups.has(group)) return;
+    initializedGroups.add(group);
     const indicator = document.createElement('span');
     indicator.className = 'shared-selection';
     indicator.setAttribute('aria-hidden', 'true');
     group.classList.add('has-shared-selection');
     group.append(indicator);
-    let frame = 0;
-    const update = () => {
-      frame = 0;
+    let previous = null;
+
+    const stopMoving = () => {
+      indicator.classList.remove('selection-moving');
+    };
+    indicator.addEventListener('transitionend', event => {
+      if (event.target === indicator) stopMoving();
+    });
+    indicator.addEventListener('transitioncancel', event => {
+      if (event.target === indicator) stopMoving();
+    });
+
+    const hideIndicator = () => {
+      stopMoving();
+      indicator.hidden = true;
+      previous = null;
+    };
+
+    const update = (allowMove = false) => {
       const active = group.querySelector('button[aria-pressed="true"], button.is-active');
-      if (!active || !group.getClientRects().length) { indicator.hidden = true; return; }
-      const target = active.getBoundingClientRect(), parent = group.getBoundingClientRect();
+      if (!isVisible(group) || !isVisible(active)) {
+        hideIndicator();
+        return;
+      }
+      const target = active.getBoundingClientRect();
+      const parent = group.getBoundingClientRect();
+      const x = target.left - parent.left + group.scrollLeft - group.clientLeft;
+      const y = target.top - parent.top + group.scrollTop - group.clientTop;
+      const width = target.width;
+      const height = target.height;
+      const parentWidth = parent.width;
+      const parentHeight = parent.height;
+      const scrollLeft = group.scrollLeft;
+      const scrollTop = group.scrollTop;
+
+      const sameRect = previous
+        && previous.active === active
+        && Math.abs(previous.x - x) < 0.5
+        && Math.abs(previous.y - y) < 0.5
+        && Math.abs(previous.width - width) < 0.5
+        && Math.abs(previous.height - height) < 0.5
+        && Math.abs(previous.parentWidth - parentWidth) < 0.5
+        && Math.abs(previous.parentHeight - parentHeight) < 0.5;
+      if (sameRect) return;
+
+      const sameLayout = Boolean(
+        previous
+        && Math.abs(previous.parentWidth - parentWidth) < 0.5
+        && Math.abs(previous.parentHeight - parentHeight) < 0.5
+        && previous.scrollLeft === scrollLeft
+        && previous.scrollTop === scrollTop
+      );
+      const keyboard = inputMode === 'keyboard' || active.matches(':focus-visible');
+      // Only a selection change within the same visible, stable container travels.
+      // Layout changes, reappearing from hidden, first paint and keyboard navigation snap.
+      const canMove = Boolean(
+        allowMove
+        && !reduce.matches
+        && !keyboard
+        && previous
+        && previous.active !== active
+        && isVisible(previous.active)
+        && sameLayout
+      );
+      indicator.classList.toggle('selection-moving', canMove);
       indicator.hidden = false;
       Object.assign(indicator.style, {
-        width: `${target.width}px`, height: `${target.height}px`,
-        transform: `translate(${target.left-parent.left+group.scrollLeft-group.clientLeft}px, ${target.top-parent.top+group.scrollTop-group.clientTop}px)`
+        width: `${width}px`,
+        height: `${height}px`,
+        transform: `translate(${x}px, ${y}px)`
       });
-      if (!group.classList.contains('selection-ready')) {
-        // 初次放置不从坐标原点飞入。
-        requestAnimationFrame(() => group.classList.add('selection-ready'));
-      }
+      previous = { active, x, y, width, height, parentWidth, parentHeight, scrollLeft, scrollTop };
     };
-    const schedule = () => { if (!frame) frame = requestAnimationFrame(update); };
-    new MutationObserver(schedule).observe(group, { subtree: true, attributes: true, attributeFilter: ['class', 'aria-pressed'] });
-    const resize = new ResizeObserver(schedule);
+
+    const resize = new ResizeObserver(() => update(false));
     resize.observe(group);
-    group.querySelectorAll('button').forEach(button => resize.observe(button));
-    update();
+    const observeButtons = () => {
+      group.querySelectorAll('button').forEach(button => resize.observe(button));
+    };
+    observeButtons();
+
+    new MutationObserver(records => {
+      let layoutMutated = false;
+      let selectionMutated = false;
+      for (const record of records) {
+        if (record.target === indicator) continue;
+        if (record.type === 'childList') {
+          layoutMutated = true;
+          observeButtons();
+        } else if (record.attributeName === 'hidden') {
+          layoutMutated = true;
+        } else {
+          selectionMutated = true;
+        }
+      }
+      if (layoutMutated) update(false);
+      else if (selectionMutated) update(true);
+    }).observe(group, { subtree: true, childList: true, attributes: true, attributeFilter: ['class', 'aria-pressed', 'hidden'] });
+
+    group.addEventListener('scroll', () => update(false), { passive: true });
+    selectionGroups.push({ update, hideIndicator, stopMoving });
+    update(false);
   }
 
   // 焦点约束与返回来源；动效关闭不延后完成操作，也不会挡住下一次点击。
   function openDialog(layer, { surface = layer.firstElementChild, trigger = document.activeElement, close } = {}) {
     layer._dialogCleanup?.(false);
-    const origin = trigger?.getBoundingClientRect?.();
-    const bounds = surface.getBoundingClientRect();
-    surface.style.transformOrigin = origin && origin.width
-      ? `${Math.max(0,Math.min(bounds.width,origin.x+origin.width/2-bounds.x))}px ${Math.max(0,Math.min(bounds.height,origin.y+origin.height/2-bounds.y))}px`
-      : '50% 50%';
     const background = Array.from(document.querySelectorAll('.titlebar, .app-body'));
     const inertBefore = background.map(node => node.inert);
     background.forEach(node => { node.inert = true; });
     window.SuiraUI?.dismissHints?.();
     const focusable = () => Array.from(surface.querySelectorAll('button:not(:disabled), input:not(:disabled), textarea:not(:disabled), select:not(:disabled), a[href]')).filter(node => node.getClientRects().length && !node.matches('.glass-select-native,[tabindex="-1"],[aria-hidden="true"]'));
-    const focusFirst = () => (surface.querySelector('input:not(:disabled)') || focusable()[0])?.focus({ preventScroll: true });
+    const focusFirst = () => {
+      const list = focusable();
+      (list.find(node => node.matches('input')) || list[0])?.focus({ preventScroll: true });
+    };
     const onFocus = event => { if (!surface.contains(event.target)) focusFirst(); };
     const onKey = event => {
       if (event.key === 'Escape' && close) { event.preventDefault(); event.stopImmediatePropagation(); close(); return; }
@@ -84,25 +229,25 @@
     };
     document.addEventListener('keydown', onKey, true);
     document.addEventListener('focusin', onFocus);
-    focusFirst();
+    if (!surface.contains(document.activeElement)) focusFirst();
     let cleaned = false;
     layer._dialogCleanup = (restore = true) => {
       if (cleaned) return;
       cleaned = true;
       document.removeEventListener('keydown', onKey, true);
       document.removeEventListener('focusin', onFocus);
-      background.forEach((node,index) => { node.inert = inertBefore[index]; });
+      background.forEach((node, index) => { node.inert = inertBefore[index]; });
       if (restore && trigger?.isConnected && trigger.getClientRects().length && !trigger.closest('[inert]')) trigger.focus({ preventScroll: true });
     };
   }
 
-  function notify(element, message, { error = false, duration = error ? 5000 : 2200 } = {}) {
+  function notify(element, message, { error = false, copied = false, duration = error ? 5000 : 2200 } = {}) {
     if (!element) return;
     const previous = feedback.get(element);
     const repeats = previous && element.classList.contains('is-visible') && previous.message === String(message) && previous.error === error ? previous.repeats + 1 : 1;
     clearTimeout(previous?.timer);
     element.textContent = String(message) + (repeats > 1 ? `（${repeats} 次）` : '');
-    if (!error && /复制|copied/i.test(String(message))) copyFeedback(element);
+    if (!error && copied) copyFeedback(element);
     element.classList.toggle('is-error', error);
     element.classList.toggle('error', error);
     element.setAttribute('role', 'status');
@@ -160,7 +305,7 @@
         if (record.type !== 'attributes') return true;
         const element = record.target;
         if (!element.contains(target) && !target.contains(element)) return false;
-        // Keycap/glass lighting writes CSS variables on every pointer frame;
+        // Keycap lighting writes CSS variables on pointer frames;
         // those do not move the stationary anchor and need no geometry reads.
         if (record.attributeName === 'style' && layoutStyle(record.oldValue) === layoutStyle(element.getAttribute('style'))) return false;
         return true;
@@ -263,50 +408,33 @@
   }
 
   function init() {
-    const interruptReveal=event=>{
-      const panel=event.target.closest?.('.panel.is-revealing');
-      if(!panel)return;panel.classList.remove('is-revealing');
-      const finish=animations.get(panel);if(finish)panel.removeEventListener('animationend',finish);animations.delete(panel);
-    };
-    document.addEventListener('pointerdown',interruptReveal,true);
-    document.addEventListener('keydown',interruptReveal,true);
+    document.addEventListener('pointerdown', stopAllReveals, true);
+    document.addEventListener('pointermove', stopAllReveals, {capture:true, passive:true});
+    document.addEventListener('keydown', stopAllReveals, true);
+    window.addEventListener('resize', syncSelections);
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden) {
+        stopAllReveals();
+        selectionGroups.forEach(group => group.hideIndicator());
+      } else {
+        syncSelections();
+      }
+    });
     window.SuiraUI.dismissHints = installHints();
     document.querySelectorAll('[data-selection-group]').forEach(selectionGroup);
     document.querySelectorAll('.bar-search, .capture-chip, .shortcut-pill').forEach(node => node.setAttribute('data-glass',''));
-    let frame = 0, last = null, point = null;
-    const clear = () => {
-      cancelAnimationFrame(frame); frame = 0;
-      last?.classList.remove('glass-active'); last = null; point = null;
-    };
-    document.addEventListener('pointermove', event => {
-      if (reduce.matches || event.pointerType === 'touch') { clear(); return; }
-      const target = event.target.closest?.('[data-glass]');
-      if (target !== last) { last?.classList.remove('glass-active'); last = target; }
-      if (!target) return;
-      point = { x: event.clientX, y: event.clientY };
-      if (frame) return;
-      frame = requestAnimationFrame(() => {
-        frame = 0;
-        if (!last || !point) return;
-        const bounds = last.getBoundingClientRect();
-        last.style.setProperty('--glass-x', `${point.x-bounds.left}px`);
-        last.style.setProperty('--glass-y', `${point.y-bounds.top}px`);
-        last.classList.add('glass-active');
-      });
-    }, { passive: true });
-    document.documentElement.addEventListener('pointerleave', clear);
-    document.addEventListener('visibilitychange', () => { if (document.hidden) clear(); });
     reduce.addEventListener('change', () => {
-      clear();
-      if(!reduce.matches) return;
-      document.querySelectorAll('.is-revealing,.is-result-new').forEach(element=>{
-        element.classList.remove('is-revealing','is-result-new');
-        const finish=animations.get(element);if(finish)element.removeEventListener('animationend',finish);animations.delete(element);
+      if (!reduce.matches) return;
+      stopAllReveals();
+      document.querySelectorAll('.copy-check.is-drawing').forEach(element => element.classList.remove('is-drawing'));
+      selectionGroups.forEach(group => {
+        group.stopMoving();
+        group.update(false);
       });
-      document.querySelectorAll('.copy-check.is-drawing').forEach(element=>element.classList.remove('is-drawing'));
     });
   }
-  window.SuiraUI = { openDialog, notify, copyFeedback, reveal:element=>animate(element,'is-revealing'), result:element=>animate(element,'is-result-new') };
+  // The launcher resets reveal state during preparation; duplicate shown events do not replay it.
+  window.SuiraUI = { openDialog, notify, copyFeedback, reveal, resetReveal, syncSelections };
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init, { once: true });
   else init();
 })();

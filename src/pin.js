@@ -2,7 +2,7 @@
 (() => {
   const api=window.pinApi,$=id=>document.getElementById(id),menu=$('pin-menu');
   let textMode=false;let baseW=300,baseH=200,scale=1,opacity=1,collapsed=false,drag=null,moveFrame=0,movePoint=null,noticeTimer,suppressRestore=false;
-  const notify=(message,error=false)=>{clearTimeout(noticeTimer);$('pin-notice').textContent=message;if(!error&&/复制/.test(message))window.SuiraUI?.copyFeedback($('pin-notice'));$('pin-notice').hidden=false;$('pin-notice').classList.toggle('is-error',error);noticeTimer=setTimeout(()=>$('pin-notice').hidden=true,2200);};
+  const notify=(message,error=false,copied=false)=>{clearTimeout(noticeTimer);$('pin-notice').textContent=message;if(!error&&copied)window.SuiraUI?.copyFeedback($('pin-notice'));$('pin-notice').hidden=false;$('pin-notice').classList.toggle('is-error',error);noticeTimer=setTimeout(()=>$('pin-notice').hidden=true,2200);};
   let menuAnchor;
   function updateControls() {
     const zoomLabel = Math.round(scale * 100) + '%';
@@ -69,7 +69,7 @@
       if(result?.canceled)return;
       if(!result?.ok)throw Error(result?.error||'操作失败');
       if(name==='top')$('top-item').setAttribute('aria-checked',String(result.alwaysOnTop));
-      else notify(name==='copy'?(textMode?'文字已复制':'图片已复制'):(textMode?'文字已保存':'图片已保存'));
+      else notify(name==='copy'?(textMode?'文字已复制':'图片已复制'):(textMode?'文字已保存':'图片已保存'),false,name==='copy');
     }catch(error){notify(error.message,true);}
   }
   $('zoom-in').onclick=()=>zoom(scale+.1);$('zoom-out').onclick=()=>zoom(scale-.1);

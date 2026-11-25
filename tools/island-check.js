@@ -791,6 +791,13 @@ async function runChecks(send) {
   check('操作过程无页面溢出', noOverflow(actions.afterClear));
   check('操作过程无脚本错误', actions.errors.length === 0, JSON.stringify(actions.errors));
 
+  await runScenario(send, 'four', 520, 148);
+  for (const value of ['reduce', 'no-preference']) {
+    await send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value }] });
+    const plain = await evaluate(send, `(()=>{const sheet=document.querySelector('.sheet');return getComputedStyle(sheet).opacity==='1'&&sheet.getAnimations().length===0;})()`);
+    check('已展开的浮引岛不重播入场：' + value, plain === true);
+  }
+
   console.log('\n== 截图（临时目录，不污染仓库）==');
   await runScenario(send, 'collapsed', 200, 68, 2);
   const shotCollapsed = await capture(send, 'island-collapsed.png');

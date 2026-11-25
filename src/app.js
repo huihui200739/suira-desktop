@@ -50,7 +50,7 @@ function relativeTime(timestamp) {
 function showGlobalToast(message, type = '') {
   const el = $('#global-toast');
   if (window.SuiraUI) {
-    state.toastTimer = window.SuiraUI.notify(el,message,{error:type === 'error'});
+    state.toastTimer = window.SuiraUI.notify(el,message,{error:type === 'error',copied:type === 'copied'});
     return;
   }
   el.textContent = message;
@@ -294,7 +294,7 @@ function bindItemCardActions(root, task) {
   $$('[data-copy]', root).forEach((button) => {
     button.addEventListener('click', async () => {
       const result = await window.suira.actions.run(button.dataset.copy, 'output.copy');
-      if (result?.ok) showGlobalToast('已复制', 'success');
+      if (result?.ok) showGlobalToast('已复制', 'copied');
       else showGlobalToast(result?.error || '复制失败', 'error');
     });
   });
@@ -504,7 +504,7 @@ function renderLibrary() {
 
   $$('[data-copy]', grid).forEach((button) => button.addEventListener('click', async () => {
     const result = await window.suira.actions.run(button.dataset.copy, 'output.copy');
-    if (result?.ok) showGlobalToast('已复制', 'success');
+    if (result?.ok) showGlobalToast('已复制', 'copied');
     else showGlobalToast(result?.error || '复制失败', 'error');
   }));
   $$('[data-ocr]', grid).forEach((button) => button.addEventListener('click', async () => {
@@ -689,7 +689,7 @@ function openPreview(itemId) {
   const cleanupRow = $('#preview-clean-row');
   cleanupRow.hidden = !['text', 'link'].includes(item.kind);
   $('#preview-copy').textContent = cleanupRow.hidden ? '复制' : '复制原文';
-  cleanup.onclick=async()=>{try{const result=await window.suira.textTools.transform(String(item.text||''),'compact');if(!result?.ok)throw Error(result?.error||'整理失败');const saved=await window.suira.content.addText({text:result.text,title:'整理间距后的文字',source:'derived'});if(!saved?.ok)throw Error(saved?.error||'保存失败');const copied=await window.suira.actions.run(saved.item.id,'output.copy');if(!copied?.ok)throw Error(copied?.error||'复制失败');const content=$('.preview-text');if(content)content.textContent=result.text;showGlobalToast('已清理间距并复制，原文保持不变');}catch(error){showGlobalToast(error.message,'error');}};
+  cleanup.onclick=async()=>{try{const result=await window.suira.textTools.transform(String(item.text||''),'compact');if(!result?.ok)throw Error(result?.error||'整理失败');const saved=await window.suira.content.addText({text:result.text,title:'整理间距后的文字',source:'derived'});if(!saved?.ok)throw Error(saved?.error||'保存失败');const copied=await window.suira.actions.run(saved.item.id,'output.copy');if(!copied?.ok)throw Error(copied?.error||'复制失败');const content=$('.preview-text');if(content)content.textContent=result.text;showGlobalToast('已清理间距并复制，原文保持不变','copied');}catch(error){showGlobalToast(error.message,'error');}};
   $('#preview-trail').open=false;
   renderTrail();
   preview.hidden = false;
@@ -725,7 +725,7 @@ async function pasteItemToTarget(itemId) {
   if (!id) return;
   try {
     const result = await window.suira.returnTo.commit({ itemId: id, intent: 'return-and-paste' });
-    if (result?.ok) showGlobalToast(result.message || '已复制', 'success');
+    if (result?.ok) showGlobalToast(result.message || '已复制', 'copied');
     else showGlobalToast(result?.error || '粘贴失败', 'error');
   } catch (error) {
     showGlobalToast(error.message || '粘贴失败', 'error');
@@ -1417,7 +1417,7 @@ function installEvents() {
     const task = selectedTask();
     if (!task) return;
     const result = await window.suira.tasks.copyText(task.id);
-    if (result?.ok) showGlobalToast('任务文字已按顺序复制', 'success');
+    if (result?.ok) showGlobalToast('任务文字已按顺序复制', 'copied');
     else showGlobalToast(result?.error || '复制失败', 'error');
   });
   $('#task-export').addEventListener('click', async () => {
@@ -1500,7 +1500,7 @@ function installEvents() {
     const id = state.previewId;
     if (!id) return;
     const result = await window.suira.actions.run(id, 'output.copy');
-    if (result?.ok) showGlobalToast('已复制', 'success');
+    if (result?.ok) showGlobalToast('已复制', 'copied');
     else showGlobalToast(result?.error || '复制失败', 'error');
   });
   $('#preview-paste').addEventListener('click', () => pasteItemToTarget(state.previewId));

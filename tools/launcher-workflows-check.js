@@ -80,14 +80,15 @@ require(${JSON.stringify(path.join(root,'main.js'))});`);
   await panel.send('Input.dispatchKeyEvent',{type:'keyDown',key:'Escape',code:'Escape',windowsVirtualKeyCode:27});
   assert.equal(await panel.evaluate('document.getElementById("panel-more-menu").hidden'),true);
   await panel.evaluate(`window.suira.quick.setPresentation('fullscreen')`);await until(async()=>(await info()).full);
-  await until(()=>panel.evaluate(`(()=>{
+  const waitForFullscreenFit=()=>until(()=>panel.evaluate(`(()=>{
     const panel=document.getElementById('panel'), body=document.getElementById('panel-body');
-    const grid=document.getElementById('key-grid'), key=grid.querySelector('.key-card');
+    const grid=document.getElementById('key-grid');
     if(panel.dataset.presentation!=='fullscreen'||!grid.offsetWidth||!grid.offsetHeight)return false;
     if(panel.getAnimations().some(animation=>animation.playState==='running'))return false;
     const expectedScale=Math.min((body.clientWidth-16)/grid.offsetWidth,(body.clientHeight-16)/grid.offsetHeight);
-    return Math.abs(key.getBoundingClientRect().width-key.offsetWidth*expectedScale)<2;
+    return Number(panel.style.getPropertyValue('--keyboard-scale'))===expectedScale;
   })()`));
+  await waitForFullscreenFit();
   assert.equal(await panel.evaluate('document.getElementById("panel").dataset.mode'),'actions');
   async function checkFullscreenKeyboard() {
     const keyboard=await panel.evaluate(`(()=>{const k=document.getElementById('key-grid').getBoundingClientRect(),b=document.getElementById('panel-body').getBoundingClientRect();return {count:document.querySelectorAll('.key').length,inside:k.left>=b.left&&k.right<=b.right&&k.top>=b.top&&k.bottom<=b.bottom,square:[...document.querySelectorAll('.key-card')].every(key=>{const r=key.getBoundingClientRect();return Math.abs(r.width-r.height)<1;})};})()`);
@@ -97,6 +98,7 @@ require(${JSON.stringify(path.join(root,'main.js'))});`);
   await panel.send('Emulation.setDeviceMetricsOverride',{width:800,height:480,deviceScaleFactor:1,mobile:false});
   try {
     await until(()=>panel.evaluate('innerWidth===800 && innerHeight===480'));
+    await waitForFullscreenFit();
     await checkFullscreenKeyboard();
   } finally {
     await panel.send('Emulation.clearDeviceMetricsOverride');

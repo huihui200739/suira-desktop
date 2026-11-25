@@ -16,14 +16,14 @@ button { font:inherit;font-variant-numeric:tabular-nums; color:inherit; border:0
 .sheet {
   position:absolute; inset:0; display:flex; flex-direction:column; gap:8px; padding:14px 16px 10px; overflow:hidden;
   border-radius:0 0 var(--radius-island) var(--radius-island); border:0; border-bottom:1px solid var(--edge-line);
-  background:var(--edge-surface); box-shadow:none; animation:edge-reveal 180ms var(--ease-out);
+  background:var(--edge-surface); box-shadow:none; transition:opacity var(--dur-fast) var(--ease-out);
+  @starting-style { opacity:.65; }
 }
-@keyframes edge-reveal { from { opacity:0; transform:translateY(-14px); } to { opacity:1; transform:translateY(0); } }
 .shelf-wrap { position:relative; flex:1; min-height:0; }
 .shelf { height:100%; display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); grid-auto-rows:42px; gap:6px 7px; align-content:start; overflow-x:hidden; overflow-y:auto; overscroll-behavior:contain; scrollbar-width:none; }
 .shelf.is-sparse { align-content:center; }
 .shelf::-webkit-scrollbar { width:0; height:0; }
-.shelf-wrap::after { content:""; position:absolute; left:0; right:0; bottom:0; height:12px; pointer-events:none; background:linear-gradient(transparent,var(--edge-surface)); opacity:0; transition:opacity var(--dur-fast); }
+.shelf-wrap::after { content:""; position:absolute; left:0; right:0; bottom:0; height:12px; pointer-events:none; background:linear-gradient(transparent,var(--edge-surface)); opacity:0; transition:opacity var(--dur-fast) var(--ease-out); }
 .shelf-wrap.is-scrollable::after { opacity:.9; }
 .file-card { position:relative; display:flex; align-items:center; min-width:0; height:100%; padding:0 18px 0 5px; border-radius:8px; border:1px solid transparent; background:var(--edge-item); box-shadow:none; transition:background var(--dur-fast),border-color var(--dur-fast); }
 .file-card:hover, .file-card:focus-within { background:var(--edge-item-hover); border-color:var(--edge-line); }
@@ -59,6 +59,6 @@ button { font:inherit;font-variant-numeric:tabular-nums; color:inherit; border:0
 .island[data-empty="true"] #undo { margin-left:auto; }
 .island.is-drop .drop-mark { color:var(--edge-accent); }
 .island.is-drop .sheet { border-bottom-color:var(--edge-accent); }
-.toast { position:absolute; left:50%; bottom:36px; z-index:9; transform:translateX(-50%); max-width:calc(100% - 24px); padding:5px 10px; border-radius:6px; background:var(--surface); color:var(--ink); border:1px solid var(--floating-edge); font-size:var(--text-1); line-height:1.4; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; opacity:0; pointer-events:none; transition:opacity var(--dur-base) var(--ease-out); }
+.toast { position:absolute; left:50%; bottom:36px; z-index:9; transform:translateX(-50%); max-width:calc(100% - 24px); padding:5px 10px; border-radius:6px; background:var(--surface); color:var(--ink); border:1px solid var(--floating-edge); font-size:var(--text-1); line-height:1.4; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; opacity:0; pointer-events:none; transition:opacity var(--dur-fast) var(--ease-out); }
 .toast.is-visible { opacity:1; }
 @media (prefers-reduced-motion:reduce) { *, *::before, *::after { animation:none !important; transition:none !important; } }

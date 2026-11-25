@@ -1320,8 +1320,10 @@ async function showQuickPanel() {
     // Coalesce a hide/toggle queued in the same input turn without a timed fade.
     await new Promise(resolve=>setImmediate(resolve));
     if(revision!==quickShowRevision||win.isDestroyed())return;
-    positionQuickPanel(win);win.show();win.focus();
-    win.webContents.send('quick:shown');
+    const wasVisible=win.isVisible();
+    if(!wasVisible){positionQuickPanel(win);win.show();}
+    win.focus();
+    if(!wasVisible)win.webContents.send('quick:shown');
     win.webContents.send('quick:selection',panelSelection?{...panelSelection,returnTarget:undefined}:null);
   }catch(error){if(!win.isDestroyed())console.warn('面板显示失败:',error.message);}
   finally{if(!win.isDestroyed()&&revision===quickShowRevision)win.__showRequested=false;}
@@ -4038,8 +4040,8 @@ function registerIpc() {
   const currencyService=require('./lib/search').createCurrencyService({fetchImpl:electron.net.fetch});
   ipcMain.handle('search:execute',async(_event,query)=>{const command=require('./lib/search').searchCommand(query,{exchangeEnabled:store.getSettings().currencyEnabled===true});if(!command)return {ok:false,error:'没有可执行的搜索命令'};
     if(command.type==='translate'){const result=await openTextTools('translate',command.text);if(result.ok)hideQuickPanel();return result;}
-    if(command.type==='currency'){const result=await currencyService.convert(command,store.getSettings().currencyEnabled===true);if(!result.ok)return result;if(!store.getSettings().currencyEnabled)return {ok:false,error:'已关闭汇率换算，结果已丢弃'};await writeClipboardText(result.text);return {...result,message:result.text+' 已复制 · '+result.date+' Frankfurter 日参考汇率'};}
-    if(command.type!=='copy')return {ok:false,error:command.title};await writeClipboardText(command.value);return {ok:true,text:command.value,message:command.value+' 已复制'};
+    if(command.type==='currency'){const result=await currencyService.convert(command,store.getSettings().currencyEnabled===true);if(!result.ok)return result;if(!store.getSettings().currencyEnabled)return {ok:false,error:'已关闭汇率换算，结果已丢弃'};await writeClipboardText(result.text);return {...result,copied:true,message:result.text+' 已复制 · '+result.date+' Frankfurter 日参考汇率'};}
+    if(command.type!=='copy')return {ok:false,error:command.title};await writeClipboardText(command.value);return {ok:true,copied:true,text:command.value,message:command.value+' 已复制'};
   });
   ipcMain.handle('search:query', async (_event, query, options) => {
     const value = String(query || '').trim();

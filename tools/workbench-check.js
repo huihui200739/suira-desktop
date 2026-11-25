@@ -7,6 +7,8 @@ const { spawn } = require('node:child_process');
 const { connect } = require('./runtime-client');
 const { SuiraStore } = require('../lib/store');
 const root = path.resolve(__dirname, '..'), tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'suira-workspace-'));
+const measureMotion = process.argv.includes('--measure-motion');
+const appRoot = measureMotion && process.env.SUIRA_MOTION_APP_ROOT ? path.resolve(process.env.SUIRA_MOTION_APP_ROOT) : root;
 const sockets = [], errors = [], wait = ms => new Promise(resolve => setTimeout(resolve, ms));
 // Fractional Windows DPI can round a CSS edge by one device pixel.
 const near = (value, expected) => Math.abs(value - expected) <= 1;
@@ -25,16 +27,19 @@ async function until(fn, label = 'state') {
   const removedTask=store.createTask('验收中会删除的任务');store.addItemToTask(removedTask.id,item.id);
   store.addItem({ kind: 'text', title: '整理结果', text: '保留一个干净的阅读界面。', parentIds: [item.id], source: { type: 'derived' } });
   const link=store.addItem({ kind: 'link', title: '链接示例', text: 'https://example.com', source: { type: 'user' } });
+  if (measureMotion) for (let index = 0; index < 300; index++) {
+    store.addItem({ kind: 'text', title: `Record ${index}: ${index % 2 ? 'blue' : 'green'}`, text: 'Sample content for scroll and filter. '.repeat(5), source: { type: 'user' } });
+  }
   await store.save();
   const server = net.createServer(); await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
   const port = server.address().port; await new Promise(resolve => server.close(resolve));
   const entry = path.join(tmp, 'app.js');
-  fs.writeFileSync(entry, `const {app,clipboard,globalShortcut}=require('electron');app.getVersion=()=>${JSON.stringify(require('../package.json').version)};app.setPath('userData',${JSON.stringify(profile)});clipboard.read=async()=>[];clipboard.readText=async()=>'';globalShortcut.register=()=>false;require(${JSON.stringify(path.join(root, 'main.js'))});`);
+  fs.writeFileSync(entry, `const {app,clipboard,globalShortcut}=require('electron');app.getVersion=()=>${JSON.stringify(require('../package.json').version)};app.setPath('userData',${JSON.stringify(profile)});clipboard.read=async()=>[];clipboard.readText=async()=>'';globalShortcut.register=()=>false;require(${JSON.stringify(path.join(appRoot, 'main.js'))});`);
   const env = { ...process.env }; delete env.ELECTRON_RUN_AS_NODE;
   const executable = process.env.SUIRA_TEST_ELECTRON || ['C:/suira-electron/electron.exe', path.join(root, 'node_modules/electron/dist/electron.exe')].find(p => fs.existsSync(p));
   assert.ok(executable, 'An Electron runtime must be installed');
   const log = fs.openSync(path.join(tmp, 'app.log'), 'w');
-  child = spawn(executable, [entry, '--remote-debugging-address=127.0.0.1', '--remote-debugging-port=' + port], { cwd: root, env, windowsHide: true, stdio: ['ignore', log, log] }); fs.closeSync(log);
+  child = spawn(executable, [entry, '--remote-debugging-address=127.0.0.1', '--remote-debugging-port=' + port], { cwd: appRoot, env, windowsHide: true, stdio: ['ignore', log, log] }); fs.closeSync(log);
   const page = await until(() => connect(port, target => target.url.endsWith('/index.html')), 'workbench window'); sockets.push(page.ws);
   await page.send('Emulation.setFocusEmulationEnabled', { enabled: true });
   await page.send('Runtime.enable'); page.ws.addEventListener('message', event => { const data = JSON.parse(event.data); if (data.method === 'Runtime.exceptionThrown') errors.push(data.params.exceptionDetails.exception?.description || data.params.exceptionDetails.text); });
@@ -45,6 +50,43 @@ async function until(fn, label = 'state') {
     assert.ok(box.hit, 'Reachable pointer target: ' + selector);
     for (const type of ['mousePressed', 'mouseReleased']) await page.send('Input.dispatchMouseEvent', { type, x: box.x, y: box.y, button: 'left', clickCount: 1 });
   };
+  if (measureMotion) {
+    await click('[data-page="library"]');
+    await until(() => page.evaluate('document.querySelectorAll("#library-grid .library-card").length === 300'), '300 library records');
+    await page.send('Performance.enable');
+    const metrics = async () => Object.fromEntries((await page.send('Performance.getMetrics')).metrics.map(metric => [metric.name, metric.value]));
+    for (const filter of [false, true]) {
+      const before = await metrics();
+      const sample = await page.evaluate(`new Promise(resolve => {
+        const search = document.getElementById('library-search');
+        const scroll = document.querySelector('.main-scroll');
+        const samples = [], counts = new Set();
+        let previous;
+        function frame(now) {
+          if (previous !== undefined) samples.push(now - previous);
+          previous = now;
+          counts.add(document.querySelector('.lib-count').textContent);
+          if (samples.length >= 120) { resolve({samples, counts:[...counts]}); return; }
+          if (${filter} && samples.length % 10 === 0) {
+            search.value = samples.length % 20 === 0 ? 'blue' : '';
+            search.dispatchEvent(new Event('input', {bubbles:true}));
+          }
+          scroll.scrollTop += 40;
+          requestAnimationFrame(frame);
+        }
+        requestAnimationFrame(frame);
+      })`);
+      const after = await metrics(), sorted = sample.samples.sort((a, b) => a - b);
+      assert.equal(sample.counts.length, filter ? 2 : 1, 'Exercise the intended list states');
+      const round = number => Number(number.toFixed(2));
+      const baseline = sorted[59];
+      console.log('MOTION', JSON.stringify({filter, samples: sorted.length, medianMs: round(baseline), p95Ms: round(sorted[113]),
+        maxMs: round(sorted.at(-1)), longFrames: sorted.filter(time => time > baseline * 1.5).length,
+        layouts: after.LayoutCount - before.LayoutCount, layoutMs: round((after.LayoutDuration - before.LayoutDuration) * 1000)}));
+    }
+    assert.deepEqual(errors, []);
+    return;
+  }
   const geometry = () => page.evaluate(`(()=>{const r=document.querySelector('.sidebar').getBoundingClientRect(),m=document.querySelector('.main-scroll').getBoundingClientRect(),b=document.querySelector('.brand').getBoundingClientRect(),n=document.querySelector('.nav-item').getBoundingClientRect(),i=document.querySelector('.nav .shared-selection').getBoundingClientRect();return {rail:r.width,main:m.x-b.x,brand:b.width,item:n.width,indicator:i.width,expanded:document.getElementById('sidebar-toggle').getAttribute('aria-expanded'),overflow:document.documentElement.scrollWidth>innerWidth};})()`);
   const shot = async name => { if (!process.argv.includes('--shots')) return; await page.evaluate('document.activeElement?.blur();true'); await page.send('Input.dispatchMouseEvent', { type:'mouseMoved', x:900, y:500 }); await wait(200); const image = await page.send('Page.captureScreenshot', { format: 'png' }); const directory = path.join(root, 'docs/product'); fs.mkdirSync(directory, { recursive: true }); fs.writeFileSync(path.join(directory, 'sidebar-' + name + '.png'), Buffer.from(image.data, 'base64')); };
   await until(async () => {
@@ -135,6 +177,31 @@ async function until(fn, label = 'state') {
   assert.equal(await page.evaluate('document.querySelector(".library-card:first-child .lib-menu").hidden'), false);
   await page.send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 });
   assert.equal(await page.evaluate('document.querySelector(".library-card:first-child .lib-menu").hidden'), true);
+  assert.equal(await page.evaluate(`document.activeElement.matches(${JSON.stringify(libraryMenu)})`), true, 'Escape restores menu focus immediately');
+  const dialog = await page.evaluate(`(() => {
+    const trigger = document.querySelector(${JSON.stringify(libraryMenu)});
+    const preview = document.getElementById('preview');
+    const close = document.getElementById('preview-close');
+    const states = [];
+    trigger.focus();
+    for(let i=0;i<2;i++){
+      openPreview(trigger.closest('.library-card').dataset.id);
+      states.push(!preview.hidden && preview.contains(document.activeElement) && trigger.closest('.app-body').inert);
+      close.click();
+      states.push(preview.hidden && document.activeElement===trigger && !trigger.closest('.app-body').inert && !preview.getClientRects().length);
+    }
+    return states;
+  })()`);
+  assert.deepEqual(dialog,[true,true,true,true], 'Closing and immediately reopening releases hits, inertness and focus synchronously');
+  const copyFeedback = await page.evaluate(`(() => {
+    const toast=document.getElementById('global-toast');
+    const hasCheck=()=>Boolean(toast.querySelector('.copy-check'));
+    showGlobalToast('先复制一段文字');const guidance=hasCheck();
+    showGlobalToast('复制失败','error');const failure=hasCheck();
+    showGlobalToast('已复制','copied');const success=hasCheck();
+    return {guidance,failure,success};
+  })()`);
+  assert.deepEqual(copyFeedback,{guidance:false,failure:false,success:true});
   await page.evaluate('document.querySelector("[data-filter=link]").focus();true');
   for (const type of ['keyDown', 'keyUp']) await page.send('Input.dispatchKeyEvent', { type, key: ' ', code: 'Space', windowsVirtualKeyCode: 32 });
   await libraryStyle('link');

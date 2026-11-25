@@ -38,7 +38,7 @@
 .trace-duration{width:68px;text-align:right;font:12px/1.5 var(--font-ui);font-variant-numeric:tabular-nums;font-variant-numeric:tabular-nums;color:var(--ink-muted);white-space:nowrap}
 .trace-status{font-size:11px;font-weight:500;white-space:nowrap;color:var(--ink-muted)}
 .trace-status.done{color:var(--trail-trace-status-done-ink)}.trace-status.failed{color:var(--trail-trace-status-failed-ink)}.trace-status.running,.trace-status.queued{color:var(--accent)}
-.trace-group-toggle>svg,.trace-step summary>svg{width:14px;height:14px;fill:none;stroke:var(--ink-muted);stroke-width:1.5;flex:none;transition:transform 140ms ease}
+.trace-group-toggle>svg,.trace-step summary>svg{width:14px;height:14px;fill:none;stroke:var(--ink-muted);stroke-width:1.5;flex:none;transition:transform var(--dur-fast) var(--ease-out)}
 .trace-group-toggle[aria-expanded="true"]>svg,.trace-step[open]>summary>svg{transform:rotate(90deg)}
 .trace-group-body{border-top:1px solid var(--line);padding:20px 24px 24px}
 .trace-group-body[hidden]{display:none}

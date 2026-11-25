@@ -16,12 +16,12 @@ html,body{margin:0;width:100%;height:100%;overflow:hidden;background:transparent
 .preview-frame::after{content:'';position:absolute;inset:0;pointer-events:none;
   background:linear-gradient(to bottom,color-mix(in srgb,var(--paper-raised) 92%,transparent) 0%,transparent 26%)}
 #preview-image{max-width:100%;max-height:100%;display:block;object-fit:contain;object-position:bottom center;
-  animation:preview-in 160ms var(--ease-out,ease)}
+  transition:opacity var(--dur-fast) var(--ease-out);
+  @starting-style{opacity:.65}}
 .preview-empty{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
   font-size:var(--text-1,12px);color:var(--ink-soft)}
 .preview-foot{display:flex;align-items:center;justify-content:space-between;gap:8px;flex:none;
   font-size:11px;color:var(--ink-soft);font-variant-numeric:tabular-nums;white-space:nowrap}
 .preview-foot #preview-frames{color:var(--accent-deep);font-weight:600}
 [hidden]{display:none!important}
-@keyframes preview-in{from{opacity:.4}to{opacity:1}}
-@media (prefers-reduced-motion:reduce){#preview-image{animation:none}}
+@media (prefers-reduced-motion:reduce){#preview-image{transition:none}}

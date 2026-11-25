@@ -102,6 +102,10 @@ require(${JSON.stringify(path.join(root,'main.js'))});`);
   if(preview){
     const previewState=await until(()=>preview.evaluate(`(()=>{const img=document.getElementById('preview-image');return img&&!img.hidden?{width:img.naturalWidth,height:img.naturalHeight,frames:document.getElementById('preview-frames').textContent}:null;})()`));
     assert.ok(previewState.width>0&&previewState.height>0,'预览窗必须渲染出缩略图');assert.match(previewState.frames,/3 段/);
+    for(const value of ['reduce','no-preference']){
+      await preview.send('Emulation.setEmulatedMedia',{features:[{name:'prefers-reduced-motion',value}]});
+      assert.equal(await preview.evaluate(`(()=>{const image=document.getElementById('preview-image');return getComputedStyle(image).opacity==='1'&&image.getAnimations().length===0;})()`),true,'An already visible preview must not replay its entrance: '+value);
+    }
     const previewShot=await preview.send('Page.captureScreenshot',{format:'png',fromSurface:true});fs.writeFileSync(path.join(root,'docs','screenshots','31-long-capture-preview.png'),Buffer.from(previewShot.data,'base64'));
     console.log('PASS 右下角预览窗按段数刷新缩略图',previewState.width+'×'+previewState.height);
   }else console.log('WARN 未找到长图预览窗');

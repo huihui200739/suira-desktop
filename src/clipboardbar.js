@@ -514,11 +514,11 @@
 
   /* ---------- 提示行 ---------- */
 
-  function showNotice(message, isError) {
+  function showNotice(message, isError, copied = false) {
     const notice = $('#bar-notice');
     if (!notice) return;
     notice.textContent = String(message || '');
-    if (!isError && /复制/.test(String(message))) window.SuiraUI?.copyFeedback(notice);
+    if (!isError && copied) window.SuiraUI?.copyFeedback(notice);
     notice.hidden = false;
     notice.classList.toggle('is-error', Boolean(isError));
     clearTimeout(state.noticeTimer);
@@ -660,7 +660,7 @@
       if (!result?.ok || !result.copied) {
         showNotice(result?.error || result?.message || '复制失败', true);
       } else if (result.keptOpen && !result.pasted) {
-        showNotice(result.message || '已复制，请按 Ctrl+V 粘贴', false);
+        showNotice(result.message || '已复制，请按 Ctrl+V 粘贴', false, Boolean(result.copied));
       }
     } catch (error) {
       showNotice(errorText(error, '复制失败'), true);
@@ -761,7 +761,7 @@
     try {
       const result = await state.barApi.copyImages(ids);
       if (!result?.ok) throw new Error(result?.error || '剪贴板暂时不可用');
-      showNotice(`已复制 ${result.count} 张原图，可粘贴到支持文件的应用`, false);
+      showNotice(`已复制 ${result.count} 张原图，可粘贴到支持文件的应用`, false, true);
     } catch (error) {
       showNotice(errorText(error, '分享失败'), true);
     } finally {
@@ -848,7 +848,7 @@
     // 预览内的 Ctrl+C 优先复制正在预览的记录。
     const item=target || (source==='preview'?state.previewItem:state.items[state.selected]);if(!item||state.committing||!state.returnApi)return;
     state.committing=true;syncSelection();
-    try{const result=await state.returnApi.commit({itemId:item.id,intent:'copy-only'});if(!result?.ok||!result.copied)throw Error(result?.error||'复制失败');showNotice(source === 'share' ? '已复制，可粘贴到要分享的应用' : '已复制，可继续浏览或按 Ctrl+V 粘贴',false);}
+    try{const result=await state.returnApi.commit({itemId:item.id,intent:'copy-only'});if(!result?.ok||!result.copied)throw Error(result?.error||'复制失败');showNotice(source === 'share' ? '已复制，可粘贴到要分享的应用' : '已复制，可继续浏览或按 Ctrl+V 粘贴',false,true);}
     catch(error){showNotice(errorText(error,'复制失败'),true);}finally{state.committing=false;syncSelection();}
   }
 

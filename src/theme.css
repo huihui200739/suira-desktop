@@ -13,7 +13,7 @@
  *
  * 字号全站只用四档：12（辅助）/ 13（正文）/ 15（标题）/ 20（页面大标题），
  * 最小可用字号 12px；层级关系优先用字重、颜色与间距表达。
- * 动效基准：反馈 140ms、常规 180ms ease-out；装饰性动画一律省略。
+ * 动效基准：按压与退场 90ms、微反馈 120ms、容器 180ms；跟手与输入不插值。
  *
  * 主题开关：settings.theme = system | light | dark，主进程写 nativeTheme.themeSource，
  * 明暗模式跟随 prefers-color-scheme；预设和动态色阶由共享 preload 同步。
@@ -176,6 +176,7 @@
 
   /* 动效：120ms 悬停反馈、180ms 菜单。 */
   --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --dur-quick: 90ms;
   --dur-fast: 120ms;
   --dur-base: 180ms;
   --space-1:4px; --space-2:8px; --space-3:12px;

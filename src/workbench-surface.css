@@ -68,19 +68,15 @@
 .liquid-ui.workbench.sidebar-collapsed { --wb-rail:64px; }
 .liquid-ui.workbench.sidebar-collapsed .titlebar .brand { justify-content:center; padding:0; }
 .liquid-ui.workbench.sidebar-collapsed .brand > div { display:none; }
-.sidebar-collapsed .sidebar-toggle-arrow { transform:rotate(180deg); transform-origin:14px 12px; }
+.sidebar-toggle-arrow { transform-origin:14px 12px; }
+.sidebar-toggle:focus:not(:focus-visible) .sidebar-toggle-arrow { transition:transform var(--dur-fast) var(--ease-out); }
+.sidebar-collapsed .sidebar-toggle-arrow { transform:rotate(180deg); }
 .liquid-ui.workbench.sidebar-collapsed .sidebar { padding-inline:var(--space-2); }
 .liquid-ui.workbench.sidebar-collapsed .nav-item { justify-content:center; gap:0; padding-inline:0; }
 .liquid-ui.workbench.sidebar-collapsed .nav-item > span:last-child { display:none; }
 .liquid-ui.workbench.sidebar-collapsed .nav-item.is-active::after { left:calc(var(--space-2) * -1); }
 .liquid-ui.workbench.sidebar-collapsed .side-status { justify-content:center; padding-inline:0; min-height:24px; }
 .liquid-ui.workbench.sidebar-collapsed .side-status > :not(.live-dot) { display:none; }
-/* Animate only when requested; restored preferences are applied before paint. */
-@media(prefers-reduced-motion:no-preference) {
- .liquid-ui.workbench .app-body { transition:grid-template-columns 160ms var(--ease-out); }
- .liquid-ui.workbench .titlebar::before { transition:width 160ms var(--ease-out); }
- .liquid-ui.workbench .titlebar .brand { transition:width 160ms var(--ease-out); }
-}
 
 /* ---------- pages ---------- */
 .liquid-ui.workbench .main-scroll { padding:var(--space-6) calc(var(--space-1) * 10); background:transparent; }

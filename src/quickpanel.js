@@ -13,6 +13,7 @@
 
 const $ = (selector, root = document) => root.querySelector(selector);
 const $$ = (selector, root = document) => Array.from(root.querySelectorAll(selector));
+const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
 let keyMotion = null;
 
 const GLYPHS = {
@@ -78,10 +79,10 @@ function escapeHtml(value) {
   return String(value ?? '').replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' }[char]));
 }
 
-function toast(message, type = '') {
+function toast(message, type = '', copied = false) {
   const el = $('#toast');
   if (window.SuiraUI) {
-    state.toastTimer = window.SuiraUI.notify(el,message,{error:type === 'error'});
+    state.toastTimer = window.SuiraUI.notify(el,message,{error:type === 'error',copied});
     return;
   }
   el.textContent = message;
@@ -222,7 +223,7 @@ function pressKey(char) {
   if (bindingState.busy || dragState.active) return;
   const key = keyByChar(char);
   if (!key) return;
-  keyMotion?.pulse($$('.key', $('#key-grid')).find(button => button.dataset.key === key.key));
+  if (!reducedMotion.matches) keyMotion?.pulse($$('.key', $('#key-grid')).find(button => button.dataset.key === key.key));
   if (key.state === 'bound') {
     runAction(key.actionId);
     return;
@@ -740,7 +741,7 @@ async function runCommand(index) {
   if (kind === 'content') { window.suira.quick.showMain('library'); return; }
   const action = String(entry.action || '');
   if(action==='search-error'){toast(entry.title,'error');return;}
-  if(action==='search-execute'){const result=await window.suira.search.execute(entry.query);if(!result?.ok)throw Error(result?.error||'命令执行失败');if(result.message)toast(result.message);return;}
+  if(action==='search-execute'){const result=await window.suira.search.execute(entry.query);if(!result?.ok)throw Error(result?.error||'命令执行失败');if(result.message)toast(result.message,'',result.copied===true);return;}
   if (action === 'capture') { runAction('capture'); return; }
   if (action === 'quick') { clearSearch(); return; }
   if (action === 'note') { runAction('note'); return; }
@@ -1025,6 +1026,7 @@ function syncPresentation(value){
   button.setAttribute('aria-label',full?'切换到窗口启动台':'切换到全屏启动台');
   if(full&&previous!==presentation){const mode=state.mode;state.appPage=0;clearSearch();setMode(mode);loadImmersiveBackground();}
   if(!full&&previous!==presentation){$('#launchpad-backdrop').style.backgroundImage='';renderApps();}
+  if(previous!==presentation)window.SuiraUI?.syncSelections?.();
   if(full){setSearchExpanded(true);$('#search').placeholder=state.mode==='apps'?'直接按首字母搜索':'搜索工具、应用、内容';renderApps();loadAppIcons();fitFullscreenKeys();}
   button.title=full?'窗口模式 (F11 / Esc)':'全屏启动台 (F11)';button.querySelector('span').textContent=full?'窗口':'全屏';
 }
@@ -1365,7 +1367,7 @@ function installEvents() {
     const saved = await window.suira.content.addText({ text, title: '译文', source: 'translate' });
     if (!saved?.ok) { toast(saved?.error || '保存失败', 'error'); return; }
     const result = await window.suira.actions.run(saved.item.id, 'output.copy');
-    if (result?.ok) { toast('译文已复制'); closeTranslate(); }
+    if (result?.ok) { toast('译文已复制', '', true); closeTranslate(); }
     else toast(result?.error || '复制失败', 'error');
   });
   listen($('#translate-shelf'), 'click', async () => {
@@ -1397,7 +1399,7 @@ function installEvents() {
     const saved = await window.suira.content.addText({ text, title: '识别文字', source: 'ocr' });
     if (!saved?.ok) { toast(saved?.error || '保存失败', 'error'); return; }
     const result = await window.suira.actions.run(saved.item.id, 'output.copy');
-    if (result?.ok) { toast('识别文字已复制'); closeOcr(); } else toast(result?.error || '复制失败', 'error');
+    if (result?.ok) { toast('识别文字已复制', '', true); closeOcr(); } else toast(result?.error || '复制失败', 'error');
   });
   listen($('#ocr-merge'), 'click', async () => {
     const text = $('#ocr-text').value;
@@ -1428,10 +1430,11 @@ function installEvents() {
     closeBindingEditor(false);
     clearSearch();
     setMode(mode);
+    window.SuiraUI?.syncSelections?.();
   });
   window.suira.quick.onPrepare(async ({token}) => {
     window.SuiraUI?.dismissHints?.();
-    $('#panel').classList.remove('is-revealing');
+    window.SuiraUI?.resetReveal?.($('#panel'));
     window.SuiraGlassSelect?.close();
     await initialPanelLoad;
     closeMoreMenu(false);
@@ -1442,12 +1445,14 @@ function installEvents() {
     $('#toast').className = 'toast';
     clearSearch();
     setMode(presentation==='fullscreen'?state.mode:'actions');
+    window.SuiraUI?.syncSelections?.();
     if(presentation==='fullscreen')loadImmersiveBackground();
     searchPointerNear = false; setSearchExpanded(false);
     closeOcr();
     closeTranslate();
     state.appPage = 0;
     await document.fonts.ready;
+    window.SuiraUI?.syncSelections?.();
     await new Promise(resolve=>requestAnimationFrame(resolve));
     document.documentElement.dataset.panelPrepared=String(token);
     window.suira.quick.prepared(token);
@@ -1455,8 +1460,11 @@ function installEvents() {
   window.suira.quick.onShown(() => { closeRecentContext();selectionContext=null;derivedContext=null;loadRecent();window.SuiraUI?.reveal($('#panel')); showGuideIfNeeded(); });
 }
 
+reducedMotion.addEventListener('change', () => {
+  if (reducedMotion.matches) keyMotion?.clear();
+});
 keyMotion=window.SuiraKeycapMotion?.attach($('#key-grid'),{
-  suspended:() => dragState.active || bindingState.busy || bindingEditorOpen() || state.mode !== 'actions' || Boolean(state.query)
+  suspended:() => reducedMotion.matches || dragState.active || bindingState.busy || bindingEditorOpen() || state.mode !== 'actions' || Boolean(state.query)
 });
 installEvents();
 setMode('actions');

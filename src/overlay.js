@@ -296,7 +296,7 @@ function selectWholeScreen() {
 
 function showAction(message, type = '') {
   actionToast.textContent = message;
-  if (type !== 'error' && /复制/.test(message)) window.SuiraUI?.copyFeedback(actionToast);
+  if (type === 'copied') window.SuiraUI?.copyFeedback(actionToast);
   actionToast.className = `action-toast is-visible${type === 'error' ? ' is-error' : ''}`;
   clearTimeout(state.toastTimer);
   state.toastTimer = setTimeout(() => {
@@ -926,7 +926,7 @@ async function copyOcrText(translated = false, paste = false) {
       ? await window.suira.returnTo.commit({ itemId: saved.item.id, intent: 'return-and-paste' })
       : await window.suira.actions.run(saved.item.id, 'output.copy');
     if (!result?.ok) throw new Error(result?.error || '复制失败');
-    showAction(result.message || (translated ? '译文已复制' : '原文已复制'));
+    showAction(result.message || (translated ? '译文已复制' : '原文已复制'), 'copied');
   } catch (error) { showAction(error.message || '复制失败', 'error'); }
 }
 
@@ -1380,7 +1380,7 @@ function setupEvents() {
       const sampled = sampleColor(colorPoint);
       if (!sampled) { showAction('请先把指针移到要取色的位置', 'error'); return; }
       window.suira.colors.pick(sampled.hex)
-        .then(result=>{if(!result?.ok)throw Error(result?.error||'取色失败');showAction(sampled.hex+' 已复制 · Enter 完成截图');})
+        .then(result=>{if(!result?.ok)throw Error(result?.error||'取色失败');showAction(sampled.hex+' 已复制 · Enter 完成截图','copied');})
         .catch(error=>showAction(error.message,'error'));
       return;
     }

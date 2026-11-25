@@ -35,10 +35,7 @@ kbd { font-family: var(--font-ui); font-size: var(--text-1); font-weight:600; }
   border: 1px solid var(--floating-edge);
   box-shadow: inset 0 1px 0 var(--floating-edge), inset 0 -1px 0 var(--control-shade);
   /* The complete frame is prepared before the native window becomes visible. */
-  animation: none;
 }
-@keyframes panel-in { from { opacity: 0; } to { opacity: 1; } }
-@media (prefers-reduced-motion: reduce) { .panel { animation: none; } }
 
 /* ---------- 顶部搜索条 ---------- */
 
@@ -76,18 +73,9 @@ kbd { font-family: var(--font-ui); font-size: var(--text-1); font-weight:600; }
 .search-field svg { width: 18px; height: 18px; fill: none; stroke: var(--ink-muted); stroke-width: 1.7; flex: 0 0 auto; }
 .search-field input { min-width: 0; flex: 1; border: 0; outline: 0; background: transparent; font-size: var(--text-2); }
 .search-field input::placeholder { color: var(--ink-muted); }
-/* A left anchored search affordance; the reserved slot keeps mode buttons still. */
-.search-slot { min-width:0; flex:1; display:flex; justify-content:flex-start; }
-.search-slot .search-field { flex:0 0 auto; width:44px; height:44px; padding:0; gap:0; border:1px solid var(--line); background:var(--control-field); border-radius:14px; overflow:hidden; box-shadow:var(--panel-search-slot-search-field-shadow); transition:width .28s cubic-bezier(.22,1,.36,1),border-radius .28s,border-color .18s; }
+.search-slot .search-field { flex:0 0 auto; box-shadow:var(--panel-search-slot-search-field-shadow); }
 .search-slot .search-toggle { display:grid; place-items:center; width:42px; height:42px; flex:0 0 42px; padding:0; border:0; background:transparent; cursor:pointer; }
 .search-slot .search-toggle svg { width:19px; height:19px; }
-.search-slot input,.search-slot .search-mode { opacity:0; visibility:hidden; pointer-events:none; transition:opacity .12s; }
-.search-slot input { width:0; }
-.search-slot .search-field.is-expanded { width:100%; border-radius:22px; border-color:var(--line-strong); }
-.search-field.is-expanded input,.search-field.is-expanded .search-mode { opacity:1; visibility:visible; pointer-events:auto; }
-.search-field.is-expanded input { width:auto; flex:1; }
-.search-slot .search-mode { margin-right:var(--space-3); }
-@media(prefers-reduced-motion:reduce){.search-slot .search-field,.search-slot input,.search-slot .search-mode { transition:none; }}
 .search-mode {
   flex: 0 0 auto;
   padding: calc(var(--space-1) * 0.75) var(--space-2);
@@ -407,8 +395,8 @@ kbd { font-family: var(--font-ui); font-size: var(--text-1); font-weight:600; }
   line-height: 1.65;
 }
 
-.toast { position: absolute; left: 50%; bottom: calc(var(--space-1) * 16.5); z-index: 9; transform: translate(-50%, 8px); max-width: 78%; padding: var(--space-2) calc(var(--space-1) * 3.5); border-radius: var(--radius-chip); background: var(--slate-12); color: var(--slate-2); font-size: var(--text-2); opacity: 0; pointer-events: none; transition: opacity var(--dur-base) var(--ease-out), transform var(--dur-base) var(--ease-out); box-shadow: var(--shadow-lift); }
-.toast.is-visible { opacity: 1; transform: translate(-50%, 0); }
+.toast { position: absolute; left: 50%; bottom: calc(var(--space-1) * 16.5); z-index: 9; transform: translateX(-50%); max-width: 78%; padding: var(--space-2) calc(var(--space-1) * 3.5); border-radius: var(--radius-chip); background: var(--slate-12); color: var(--slate-2); font-size: var(--text-2); opacity: 0; pointer-events: none; transition: opacity var(--dur-fast) var(--ease-out); box-shadow: var(--shadow-lift); }
+.toast.is-visible { opacity: 1; }
 .toast.is-error { background: var(--danger); }
 
 @media (max-width: 760px) {
@@ -433,6 +421,7 @@ kbd { font-family: var(--font-ui); font-size: var(--text-1); font-weight:600; }
 }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { transition: none !important; animation: none !important; }
+  .panel .key:hover .key-card, .panel .key:active .key-card, .panel .key.is-drop-over .key-card { transform: none !important; }
 }
 
 @media (min-width: 820px) {
@@ -477,9 +466,7 @@ kbd { font-family: var(--font-ui); font-size: var(--text-1); font-weight:600; }
   background: radial-gradient(ellipse at 0 0, var(--floating-light), transparent 58%), var(--floating-surface);
   backdrop-filter: blur(24px) saturate(1.2);
   box-shadow: 0 8px 24px color-mix(in srgb, var(--ink) 14%, transparent), var(--control-shadow);
-  animation: binding-in var(--dur-fast) var(--ease-out);
 }
-@keyframes binding-in { from { opacity: 0; transform: translateY(3px) scale(.98); } to { opacity: 1; transform: none; } }
 .binding-head { display: flex; align-items: center; gap: calc(var(--space-1) * 1.5); padding: calc(var(--space-1) * 0.5) var(--space-1) calc(var(--space-1) * 1.5); border-bottom: 1px solid var(--line); }
 .binding-head b { font-size: var(--text-2); font-weight:600; }
 .binding-key {
@@ -549,7 +536,6 @@ kbd { font-family: var(--font-ui); font-size: var(--text-1); font-weight:600; }
 .key-drag-preview { position: fixed; z-index: 45; width: var(--key-size); height: var(--key-size); pointer-events: none; margin: 0; }
 .key-drag-preview .key-card { transform: none; background: var(--paper-raised); box-shadow: var(--shadow-lift); opacity: .94; }
 .key-drag-preview.is-drop-blocked .key-card { border-color: var(--danger); }
-@media (prefers-reduced-motion: reduce) { .binding-card { animation: none; } }
 /* Individual glass frames, shared with the floating action keys. */
 .app-item { min-height:0; align-self:center; padding:calc(var(--space-1) * 1.5) var(--space-1); gap:calc(var(--space-1) * 1.5); border:1px solid transparent; background:transparent; box-shadow:none; border-radius:16px; }
 .app-item:hover,.app-item:focus-visible { background:var(--surface-hover); outline:none; border-color:var(--accent-glow); }
@@ -667,7 +653,7 @@ kbd { font-family: var(--font-ui); font-size: var(--text-1); font-weight:600; }
 /* A single, always-visible search capsule and shared options menu. */
 .panel-head{position:relative;justify-content:flex-end}
 .panel-brand{margin-right:auto}
-.search-slot{position:absolute;left:50%;transform:translateX(-50%);width:clamp(240px,27vw,320px);height:36px;flex:none}
+.search-slot{position:absolute;left:50%;transform:translateX(-50%);width:clamp(240px,27vw,320px);min-width:0;height:36px;flex:none}
 .search-slot .search-field,.search-slot .search-field.is-expanded{width:100%;height:36px;gap:var(--space-1);padding:0 calc(var(--space-1) * 1.25) 0 calc(var(--space-1) * 0.5);border-radius:18px;transition:none;background:var(--control-field);border-color:var(--line-strong);overflow:visible}
 .search-slot .search-toggle{width:30px;height:30px;flex-basis:30px}
 .search-slot .search-toggle svg{width:16px;height:16px}
@@ -727,7 +713,7 @@ kbd { font-family: var(--font-ui); font-size: var(--text-1); font-weight:600; }
 /* Quiet keyboard tray. Keep alpha presets on the native window surface. */
 .panel[data-presentation="window"] { background:var(--panel-panel-window-surface); border-color:var(--panel-panel-window-edge); box-shadow:var(--panel-panel-window-shadow); }
 .panel .key { gap:var(--space-2); min-height:calc(var(--key-size) + 24px); }
-.panel .key-card { border-radius:16px; padding:var(--space-2); transition:background 140ms var(--ease-out),border-color 140ms var(--ease-out),transform 140ms var(--ease-out); }
+.panel .key-card { border-radius:16px; padding:var(--space-2); transition:background var(--dur-fast) var(--ease-out),border-color var(--dur-fast) var(--ease-out),transform var(--dur-fast) var(--ease-out); }
 .panel[data-presentation="window"] .key-card,
 .panel[data-presentation="window"] .key.is-bound .key-card,
 .panel[data-presentation="window"] .key.is-custom .key-card { background:var(--tool-key); border:1px solid var(--tool-edge); box-shadow:none; }
@@ -757,8 +743,6 @@ kbd { font-family: var(--font-ui); font-size: var(--text-1); font-weight:600; }
 .panel .binding-head b { font-weight:500; }
 .panel .binding-card svg { width:18px; height:18px; stroke-width:1.5; }
 .panel .binding-key { border-radius:4px; border-color:var(--tool-edge); background:var(--paper-soft); box-shadow:none; }
-.panel :is(.binding-card,.panel-more-menu,.panel-more-submenu):not([hidden]) { animation:panel-menu-in 180ms var(--ease-out); }
-@keyframes panel-menu-in { from { opacity:0; } to { opacity:1; } }
 .panel .binding-tool-icon { width:20px; height:20px; color:var(--ink-soft); }
 .panel .panel-foot kbd { padding:calc(var(--space-1) * 0.5) var(--space-1); border:1px solid var(--tool-edge); border-radius:4px; font-weight:400; }
 .panel .key.is-drop-over .key-card { transform:none; border-color:var(--accent); background:var(--accent-soft); box-shadow:none; }

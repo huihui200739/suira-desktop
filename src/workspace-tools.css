@@ -15,7 +15,7 @@
 .tool-window :is(.quiet-btn,.primary-btn,.view-switch,.text-input,select) { border-radius:10px; }
 .tool-window .quiet-btn { background:color-mix(in srgb,var(--paper-raised) 62%,transparent); border:1px solid var(--line); }
 .tool-window .primary-btn { background:var(--accent-9); color:var(--workspace-tools-tool-window-primary-btn-ink); box-shadow:0 3px 10px color-mix(in srgb,var(--accent) 18%,transparent); }
-.tool-window button { transition:background .15s,border-color .15s,box-shadow .15s; }
+.tool-window button { transition:background var(--dur-fast) var(--ease-out),border-color var(--dur-fast) var(--ease-out),box-shadow var(--dur-fast) var(--ease-out); }
 .tool-window button:hover { border-color:var(--accent); }
 .tool-window :is(input,textarea,select) { background:color-mix(in srgb,var(--paper-raised) 65%,transparent); }
 .view-switch { display:flex; padding:3px; gap:3px; background:color-mix(in srgb,var(--slate-4) 65%,transparent); border:1px solid var(--line); border-radius:10px; }
