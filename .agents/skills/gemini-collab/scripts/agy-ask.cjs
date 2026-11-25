@@ -7,6 +7,7 @@ const { join } = require('node:path');
 const { parseArgs } = require('node:util');
 
 const testReply = 'GEMINI_COLLAB_OK';
+const model = 'gemini-4-neon-high';
 const conversationId = /^[\da-f]{8}(?:-[\da-f]{4}){3}-[\da-f]{12}$/i;
 const instructions = {
   plan: 'Give an independent recommendation, alternatives, tradeoffs, and assumptions to verify.',
@@ -51,8 +52,11 @@ function ask({ mode = 'plan', task, resume }, spawn = spawnSync) {
       authCheck(detail);
       throw new Error(`Antigravity could not list models (exit ${available.status}). Run agy models for details.`);
     }
+    if (!available.stdout.split(/\r?\n/).some(line => line.trim().split(/\s+/, 1)[0] === model)) {
+      throw new Error(`Gemini 4 Neon (High) is not available in agy models (${model}). No other model was used.`);
+    }
 
-    const result = run(['--mode', 'plan', '--disable-slash-commands',
+    const result = run(['--model', model, '--mode', 'plan', '--disable-slash-commands',
       '--output-format', 'json', '--print-timeout', mode === 'test' ? '45s' : '3m',
       ...(resume ? ['--conversation', resume] : []), '--print', prompt], mode === 'test' ? 75_000 : 210_000);
     let reply;
