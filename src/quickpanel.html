@@ -2,6 +2,7 @@
 <html data-theme="mist" lang="zh-CN">
 <head>
   <meta charset="UTF-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'none'; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>随序 动作面板</title>
   <link rel="stylesheet" href="theme.css">
@@ -16,7 +17,7 @@
   <main class="panel" id="panel" data-mode="actions" data-presentation="window" aria-label="随序动作面板">
     <div id="launchpad-backdrop" class="launchpad-backdrop" aria-hidden="true"></div>
     <header class="panel-head">
-      <div class="panel-brand" aria-label="随序 随手工作台"><span class="brand-symbol" aria-hidden="true"><img src="../assets/suira-icon.png" alt="" width="44" height="44"></span><span><b>随序</b><small>随手工作台</small></span></div>
+      <div class="panel-brand" aria-label="随序 随手工作台"><span class="brand-symbol" aria-hidden="true"><img src="../assets/suira-icon-runtime.png" alt="" width="44" height="44"></span><span><b>随序</b><small>随手工作台</small></span></div>
       <div class="search-slot"><div class="search-field" data-glass><button class="immersive-back" id="immersive-back" type="button" aria-label="切换到键位面板" title="切换应用与键位面板"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m14 6-6 6 6 6"/></svg></button><button class="search-toggle" id="search-toggle" type="button" aria-label="搜索" aria-expanded="false" aria-controls="search">
         <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m15.5 15.5 4 4"/></svg>
         </button><input id="search" type="text" autocomplete="off" spellcheck="false" placeholder="搜索工具、应用、内容" aria-label="搜索工具、应用、内容">

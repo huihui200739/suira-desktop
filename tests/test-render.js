@@ -281,12 +281,12 @@ window.addEventListener('DOMContentLoaded', function () {
   }, 120);
 });
 </script>` + PROBE_MAIN + PROBE_FLOW + '</body>');
-  fs.writeFileSync(path.join(FIXTURES, '__fx_main.html'), indexHtml, 'utf8');
+  probes.push(...writeFixture(path.join(FIXTURES, '__fx_main.html'), indexHtml));
 
   const overlayHtml = fs.readFileSync(path.join(PROJECT_ROOT, 'src', 'overlay.html'), 'utf8')
     .replace('<script src="overlay.js"></script>', OVERLAY_MOCK)
     .replace('</body>', PROBE_OVERLAY + '</body>');
-  fs.writeFileSync(path.join(FIXTURES, '__fx_overlay.html'), overlayHtml, 'utf8');
+  probes.push(...writeFixture(path.join(FIXTURES, '__fx_overlay.html'), overlayHtml));
 
   const qpMock = MOCK.replace(
     "search:{ query: async()=>[] }",
@@ -426,7 +426,7 @@ window.addEventListener('load', function () {
 });
 </script>
 </body>`);
-  fs.writeFileSync(path.join(FIXTURES, '__fx_qp.html'), qpHtml, 'utf8');
+  probes.push(...writeFixture(path.join(FIXTURES, '__fx_qp.html'), qpHtml));
   fs.writeFileSync(path.join(FIXTURES, '__fx_qp_mock.js'), qpMock, 'utf8');
 }
 
@@ -465,6 +465,8 @@ function probe(html, prefix) {
   return JSON.parse(html.slice(from, end));
 }
 
+const { writeFixture } = require('../tools/browser-fixture');
+const probes = [];
 try {
   buildFixtures();
 
@@ -683,6 +685,7 @@ try {
     assert.ok(!/input\[type="checkbox"\]::after/.test(css), '不应依赖 ::after');
   });
 } finally {
+  for (const script of probes) fs.rmSync(script, { force: true });
   for (const name of ['__fx_mock.js', '__fx_main.html', '__fx_overlay.html', '__fx_qp.html', '__fx_qp_mock.js']) {
     try { fs.rmSync(path.join(FIXTURES, name), { force: true }); } catch {}
   }

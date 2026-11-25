@@ -400,7 +400,7 @@ function buildFixtures() {
       '<script src="clipboardbar.js"></script>',
       '<script src="__bar_probe.js"></script>'
     ].join('\n'));
-  fs.writeFileSync(path.join(TMP, '__bar_check.html'), page, 'utf8');
+  require('./browser-fixture').writeFixture(path.join(TMP, '__bar_check.html'), page);
 }
 
 const fileUrl = (target) => 'file:///' + path.resolve(target).replace(/\\/g, '/');

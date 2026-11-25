@@ -12,7 +12,7 @@
   const shell = document.createElement('div');
   shell.className = 'editor-shell';
   shell.innerHTML = `<header class="editor-head">
-    <div class="editor-brand"><img src="../assets/suira-icon.png" alt=""><b>改图</b><span id="editor-name">图片工作台</span></div>
+    <div class="editor-brand"><img src="../assets/suira-icon-runtime.png" alt=""><b>改图</b><span id="editor-name">图片工作台</span></div>
     <button type="button" id="editor-open" data-hint="打开图片 (Ctrl+O)">打开图片</button>
     <div class="editor-window-controls"><button type="button" data-window="minimize" aria-label="最小化">−</button><button type="button" data-window="maximize" aria-label="最大化或还原">□</button><button type="button" data-window="close" aria-label="关闭">×</button></div>
     </header>

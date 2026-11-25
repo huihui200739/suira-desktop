@@ -761,6 +761,10 @@ async function refreshSettings() {
   $('#app-version').textContent = `版本 ${info?.version || '—'}`;
   $('#side-version').textContent = info?.version || '—';
   $('#user-data-path').textContent = info?.dataPath || info?.userData || '';
+  const dataWarning = $('#user-data-warning');
+  dataWarning.hidden = !info?.dataRootNotice;
+  dataWarning.textContent = info?.dataRootNotice
+    ? `默认位置不可写，数据暂存在${info.dataRootNotice}。请备份重要内容，避免数据随目录一起被清理。` : '';
   const settings = await window.suira.settings.get();
   state.settings = settings;
   $('#setting-record').checked = Boolean(settings.recordClipboard);

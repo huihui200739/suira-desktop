@@ -108,7 +108,19 @@ t('未配置引擎给出可操作提示', () => {
 t('缺密钥 / 缺区域 / 非法地址分别报清楚', () => {
   assert.match(translate.assertConfigured({ provider: 'deepl', apiKey: '', baseUrl: 'https://x' }).error, /密钥/);
   assert.match(translate.assertConfigured({ provider: 'microsoft', apiKey: 'k', baseUrl: 'https://x', region: '' }).error, /区域/);
-  assert.match(translate.assertConfigured({ provider: 'deepl', apiKey: 'k', baseUrl: 'ftp://x' }).error, /http/);
+  assert.equal(translate.assertConfigured({ provider: 'deepl', apiKey: 'k', baseUrl: 'ftp://x' }).ok, false);
+});
+
+t('所有翻译请求只接受 HTTPS 或本机 HTTP', () => {
+  for (const provider of ['openai', 'deepl', 'microsoft']) {
+    const build = baseUrl => translate.buildRequest({ provider, text: 'test', config: { baseUrl, apiKey: 'test' } });
+    for (const url of ['http://example.invalid/v1', 'https://user@example.invalid/v1', 'https://example.invalid/v1?']) {
+      assert.equal(build(url).ok, false);
+    }
+    for (const url of ['http://localhost:12345/v1', 'http://[::1]/v1', 'https://example.invalid/v1']) {
+      assert.equal(build(url).ok, true);
+    }
+  }
 });
 t('readConfig 会补默认地址与模型', () => {
   const config = translate.readConfig({ translateProvider: 'openai', translateTarget: 'en' }, SECRET);

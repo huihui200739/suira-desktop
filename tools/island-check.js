@@ -29,7 +29,7 @@ const CHROME_CANDIDATES = [
   'C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe'
 ];
 const CHROME = CHROME_CANDIDATES.find((candidate) => fs.existsSync(candidate));
-const ICON_PATH = path.join(ROOT, 'assets', 'suira-icon.png');
+const ICON_PATH = path.join(ROOT, 'assets', 'suira-icon-runtime.png');
 
 let pass = 0, fail = 0;
 function check(name, condition, detail) {
@@ -507,7 +507,7 @@ function buildFixtures() {
       '<script src="island.js"></script>',
       '<script src="__island_probe.js"></script>'
     ].join('\n'));
-  fs.writeFileSync(path.join(TMP, '__island_check.html'), page, 'utf8');
+  require('./browser-fixture').writeFixture(path.join(TMP, '__island_check.html'), page);
 }
 
 const fileUrl = (target) => 'file:///' + path.resolve(target).replace(/\\/g, '/');

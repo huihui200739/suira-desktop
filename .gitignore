@@ -33,6 +33,13 @@ src/__fx_*
 .udata/
 .devdata/
 .workbuddy/
+/.claude/worktrees/
+/Waza/
+/屏幕录制 *.mp4
+/docs/composition-0.2.54.json
+/docs/product/composition-0.2.54-*.png
+/docs/ui-fixes-0.2.54.json
+/docs/ui-fixes-0.2.55.json
 
 # 编辑器 / 系统
 .vscode/

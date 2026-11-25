@@ -260,18 +260,22 @@ t('未加密的旧条目可原样读出（向后兼容）', () => {
   assert.strictEqual(dec.text, '旧明文');
 });
 
+async function testVault() {
 console.log('\n== 密钥保管 ==');
 const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'suira-key-'));
 const keyPath = path.join(tmpDir, 'data.key');
 
-t('首次调用创建密钥并落盘', () => {
+const firstResult = await (async () => {
   // 用 XOR 模拟 DPAPI，避免测试依赖真实 Windows API
   const fake = {
     protect: (buf) => Buffer.from(buf.map((b) => b ^ 0x5a)),
     unprotect: (buf) => Buffer.from(buf.map((b) => b ^ 0x5a))
   };
   const vault = new KeyVault(fake);
-  const r = vault.loadOrCreate(keyPath);
+  return { vault, r: await vault.loadOrCreate(keyPath) };
+})();
+t('首次调用创建密钥并落盘', () => {
+  const { vault, r } = firstResult;
   assert.strictEqual(r.ok, true);
   assert.strictEqual(r.created, true);
   assert.strictEqual(fs.existsSync(keyPath), true);
@@ -281,23 +285,27 @@ t('落盘的密钥文件不是明文密钥', () => {
   const onDisk = Buffer.from(fs.readFileSync(keyPath, 'utf8').trim(), 'base64');
   assert.strictEqual(onDisk.length, KEY_BYTES, '模拟保护不改变长度，但内容应已变换');
 });
-t('二次加载复用同一密钥', () => {
+const reopened = await (async () => {
   const fake = {
     protect: (buf) => Buffer.from(buf.map((b) => b ^ 0x5a)),
     unprotect: (buf) => Buffer.from(buf.map((b) => b ^ 0x5a))
   };
   const first = new KeyVault(fake);
-  first.loadOrCreate(keyPath);
+  await first.loadOrCreate(keyPath);
   const savedKey = Buffer.from(first.key);
 
   const second = new KeyVault(fake);
-  const r = second.loadOrCreate(keyPath);
+  return { savedKey, second, r: await second.loadOrCreate(keyPath) };
+})();
+t('二次加载复用同一密钥', () => {
+  const { savedKey, second, r } = reopened;
   assert.strictEqual(r.created, false);
   assert.ok(second.key.equals(savedKey), '应解出同一密钥');
 });
+const broken = new KeyVault({ unprotect: () => { throw new Error('DPAPI 拒绝'); } });
+const failure = await broken.loadOrCreate(keyPath);
 t('解封失败时返回 ok:false 而不崩溃', () => {
-  const broken = new KeyVault({ protect: (b) => b, unprotect: () => { throw new Error('DPAPI 拒绝'); } });
-  const r = broken.loadOrCreate(keyPath);
+  const r = failure;
   assert.strictEqual(r.ok, false);
   assert.match(r.error, /解封失败/);
 });
@@ -311,7 +319,7 @@ if (process.platform === 'win32') {
   const realDir = fs.mkdtempSync(path.join(os.tmpdir(), 'suira-dpapi-'));
   const realKeyPath = path.join(realDir, 'data.key');
   const vault = new KeyVault();
-  const created = vault.loadOrCreate(realKeyPath);
+  const created = await vault.loadOrCreate(realKeyPath);
 
   t('真实 DPAPI 能创建密钥', () => {
     assert.strictEqual(created.ok, true, created.error || '');
@@ -323,9 +331,9 @@ if (process.platform === 'win32') {
     assert.ok(!onDisk.equals(vault.key), '磁盘内容与原始密钥相同，未加密！');
     assert.ok(onDisk.length > KEY_BYTES, '包裹后应比原始密钥长');
   });
+  const second = new KeyVault();
+  const r = await second.loadOrCreate(realKeyPath);
   t('二次加载解出同一密钥', () => {
-    const second = new KeyVault();
-    const r = second.loadOrCreate(realKeyPath);
     assert.strictEqual(r.ok, true, r.error || '');
     assert.strictEqual(r.created, false);
     assert.ok(second.key.equals(vault.key));
@@ -336,6 +344,7 @@ if (process.platform === 'win32') {
   });
 
   fs.rmSync(realDir, { recursive: true, force: true });
+}
 }
 
 /* ---------- 存储层集成 ---------- */
@@ -372,6 +381,7 @@ t('内存中保持明文（支持搜索）', () => {
 const waitSave = () => new Promise((r) => setTimeout(r, 120));
 
 (async () => {
+  await testVault();
   await encStore.save();
   await waitSave();
 

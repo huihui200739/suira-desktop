@@ -6,11 +6,16 @@ for(const name of ['udata','debug.log'])assert.equal(fs.existsSync(path.join(roo
 const files=asar.listPackage(payload).map(file=>file.replace(/\\/g,'/').replace(/^\//,''));
 assert.ok(!files.some(file=>/(^|\/)(?:__fx_[^/]*|suira-data\.(?:json|key)|\.workbuddy|\.git|shortcut-fallback[^/]*)(?:\/|$)/.test(file)),'Development files or obsolete fallback leaked into payload');
 let checked=0;
-for(const file of files.filter(file=>/^(main\.js|preload\.js|voice-preload\.js|pin-preload\.js|theme-preload\.js|lib\/|src\/|assets\/licenses\/|assets\/foreground-(host\.cs|helper\.ps1))/.test(file))){
+for(const file of files.filter(file=>/^(main\.js|preload\.js|voice-preload\.js|pin-preload\.js|lib\/|src\/|assets\/licenses\/|assets\/foreground-helper\.ps1)/.test(file))){
   const native=path.normalize(file),stat=asar.statFile(payload,native);if(stat.files)continue;
   assert.deepEqual(asar.extractFile(payload,native),fs.readFileSync(path.join(root,file)),'Payload differs: '+file);checked++;
 }
 assert.equal(JSON.parse(asar.extractFile(payload,'package.json')).version,version);
+for (const name of Object.keys(require('../lib/native-hosts').hosts)) {
+  assert.ok(!files.includes(`assets/${name}.cs`), 'Packaged app must not compile its own hosts');
+  const executable = fs.readFileSync(path.join(path.dirname(payload), 'native-hosts', `${name}.exe`));
+  assert.equal(executable.subarray(0, 2).toString('ascii'), 'MZ', `Missing executable: ${name}`);
+}
 assert.ok(files.includes('assets/licenses/miaoyan.txt'));
 const fontSource=require('../src/vendor/foundation-sources.json').misans;
 for(const [name,expected] of [['MiSansVF.ttf',fontSource.sha256],['MiSans-LICENSE.pdf',fontSource.licenseSha256]]){
@@ -27,9 +32,15 @@ execFileSync(sevenZip,['t',installer],{stdio:'ignore',windowsHide:true,timeout:9
 const scratch=path.join(root,'.workbuddy');fs.mkdirSync(scratch,{recursive:true});
 const fontCheckDir=fs.mkdtempSync(path.join(scratch,'package-font-'));
 try{
-  execFileSync(sevenZip,['e',installer,'$PLUGINSDIR\\app-64.7z','-o'+fontCheckDir,'-y'],{stdio:'ignore',windowsHide:true,timeout:90000});
+  const archive = path.join(fontCheckDir, 'app-64.7z');
+  const output = fs.openSync(archive, 'wx');
+  try {
+    execFileSync(sevenZip, ['e', '-so', installer, '$PLUGINSDIR\\app-64.7z'], {
+      stdio: ['ignore', output, 'pipe'], windowsHide: true, timeout: 90000
+    });
+  } finally { fs.closeSync(output); }
   for(const [name,expected] of [['MiSansVF.ttf',fontSource.sha256],['MiSans-LICENSE.pdf',fontSource.licenseSha256]]){
-    const bytes=execFileSync(sevenZip,['e','-so',path.join(fontCheckDir,'app-64.7z'),'resources/app.asar.unpacked/assets/fonts/'+name],{windowsHide:true,timeout:90000,maxBuffer:32*1024*1024});
+    const bytes=execFileSync(sevenZip,['e','-so',archive,'resources/app.asar.unpacked/assets/fonts/'+name],{windowsHide:true,timeout:90000,maxBuffer:32*1024*1024});
     assert.equal(crypto.createHash('sha256').update(bytes).digest('hex'),expected,'Installer font bytes differ: '+name);
   }
 }finally{
@@ -45,6 +56,6 @@ const updateFile=feed.files.find(file=>file.url===path.basename(installer));asse
 const manifest={version,artifact:path.basename(installer),bytes:fs.statSync(installer).size,sha256,sha512,platform:'win32',arch:'x64',electron:'45.0.0',checkedSourceFiles:checked,checks:['source-payload-byte-match','no-test-profile-or-obsolete-key-hook','installer-archive-crc','updater-feed-and-sha512-match','original-font-and-license-sha256-in-nsis-payload'],fontSha256:fontSource.sha256,signature:'unsigned',published:false};
 manifest.payloadSha256=fileHash(payload);
 manifest.executableSha256=fileHash(path.join(root,'dist','win-unpacked','随序.exe'));
-fs.writeFileSync(path.join(root,'docs',`release-${version}.json`),JSON.stringify(manifest,null,2)+'\n');
+if (!process.argv.includes('--check-only')) fs.writeFileSync(path.join(root,'docs',`release-${version}.json`),JSON.stringify(manifest,null,2)+'\n');
 console.log('PASS packaged source matches '+checked+' files; no private/test data or obsolete fallback; installer CRC verified');
 console.log(JSON.stringify(manifest,null,2));

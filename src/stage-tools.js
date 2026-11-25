@@ -1,5 +1,6 @@
 'use strict';
 (() => {
+ if (document.documentElement.dataset.tool) return;
  const api=window.suira,$=id=>document.getElementById(id);if(!$('recipe-settings')||!api.recipes?.catalog)return;
  let catalog={},recipes=[],currentId='',steps=[{action:'text.clean',onError:'stop'}];
  const message=(text,error=false)=>{$('recipe-status').textContent=text;$('recipe-status').dataset.error=String(error);};

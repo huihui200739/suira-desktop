@@ -95,8 +95,7 @@ async function until(fn, label = 'state') {
   }, 'expanded sidebar aligned with the titlebar');
   await page.send('Input.dispatchMouseEvent', { type:'mouseMoved', x: 1000, y: 64 });
   await page.evaluate('document.activeElement?.blur();document.dispatchEvent(new KeyboardEvent("keydown", {key:"Tab", bubbles:true}));document.getElementById("sidebar-toggle").focus();true');
-  await until(() => page.evaluate('!document.getElementById("surface-hint").hidden'));
-  assert.ok(await page.evaluate('document.getElementById("surface-hint").textContent.includes("收起侧边栏")'), 'Expanded sidebar also explains its shortcut');
+  await until(() => page.evaluate('!document.getElementById("surface-hint").hidden && document.getElementById("surface-hint").textContent.includes("收起侧边栏")'), 'expanded sidebar shortcut hint');
   const appearance = target => target.evaluate(`(() => {
     const root = document.documentElement;
     return { url: location.search, preset: root.dataset.theme, source: root.dataset.accentSource,

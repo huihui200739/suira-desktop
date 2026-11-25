@@ -9,7 +9,16 @@ for(const [source,target] of [
   ['marked/lib/marked.umd.js','marked.js'],['marked/LICENSE','marked-LICENSE.txt'],
   ['dompurify/dist/purify.min.js','purify.js'],['dompurify/LICENSE','dompurify-LICENSE.txt']
 ])fs.copyFileSync(path.join(root,'node_modules',source),path.join(out,target));
-const bundle=require('esbuild').buildSync({entryPoints:[path.join(root,'tools/document-editor-entry.mjs')],outfile:path.join(out,'document-editor.js'),bundle:true,minify:true,format:'iife',platform:'browser',target:'chrome140',legalComments:'eof',metafile:true});
+function buildEditor(entry, name) {
+  const outfile = path.join(out, name);
+  const result = require('esbuild').buildSync({
+    entryPoints: [path.join(root, entry)], outfile, write: false, bundle: true,
+    minify: true, format: 'iife', platform: 'browser', target: 'chrome140', legalComments: 'eof', metafile: true
+  });
+  for (const file of result.outputFiles) fs.writeFileSync(file.path, file.contents);
+  return result;
+}
+const bundle = buildEditor('tools/document-editor-entry.mjs', 'document-editor.js');
 // Use the exact files from the Windows port revision, even for an offline build.
 const portRoot=path.join(root,'vendor/miaoyan-windows');
 const portOrigin=require(path.join(portRoot,'origin.json'));
@@ -18,7 +27,7 @@ for(const [file,digest] of Object.entries(portOrigin.files)) {
  if(value!==digest)throw new Error('MiaoYan Windows source does not match its recorded revision: '+file);
 }
 fs.copyFileSync(path.join(portRoot,'lib/layout.css'),path.join(out,'markdown-layout.css'));
-const sourceBundle = require('esbuild').buildSync({entryPoints:[path.join(root,'tools/document-source-editor.mjs')],outfile:path.join(out,'document-source-editor.js'),bundle:true,minify:true,format:'iife',platform:'browser',target:'chrome140',legalComments:'eof',metafile:true});
+const sourceBundle = buildEditor('tools/document-source-editor.mjs', 'document-source-editor.js');
 const packages=new Set([...Object.keys(bundle.metafile.inputs),...Object.keys(sourceBundle.metafile.inputs)].map(file=>file.match(/node_modules\/((@[^/]+\/)?[^/]+)\//)?.[1]).filter(Boolean));
 const licenses=[];
 for(const name of [...packages].sort()){

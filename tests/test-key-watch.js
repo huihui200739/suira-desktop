@@ -365,15 +365,26 @@ function runSelfTestRaw() {
     assert.ok(found.endsWith('Framework64\\v4.0.30319\\csc.exe'), found);
     assert.ok(seen[0].includes('Framework64'));
   });
-  await t('ensureNativeHost 命中已编译产物时直接复用（不编译）', async () => {
-    const tmpExe = path.join(require('node:os').tmpdir(), 'suira-keywatch-test-' + process.pid + '.exe');
-    fs.writeFileSync(tmpExe, Buffer.alloc(4096));
+  await t('原生宿主按源码复用缓存，源码修改后替换缓存', async () => {
+    if (!findCsc()) return;
+    const owner = path.resolve(require('node:os').tmpdir());
+    const dir = fs.mkdtempSync(path.join(owner, 'suira-keywatch-cache-'));
+    const sourcePath = path.join(dir, 'fixture.cs');
+    const targetPath = path.join(dir, 'fixture.exe');
     try {
-      const result = await ensureNativeHost({ sourcePath: __filename, targetPath: tmpExe });
-      assert.strictEqual(result, tmpExe);
+      const options = { sourcePath, targetPath, onError: message => { throw Error(message); } };
+      fs.writeFileSync(sourcePath, 'class Fixture { static void Main() {} }');
+      const first = await ensureNativeHost(options);
+      assert.notEqual(first, targetPath);
+      assert.equal(await ensureNativeHost(options), first);
+      fs.appendFileSync(sourcePath, '\n// updated');
+      const second = await ensureNativeHost(options);
+      assert.notEqual(first, second);
+      assert.ok(fs.existsSync(second));
+      assert.equal(fs.existsSync(first), false);
     } finally {
-      // 同上：清理失败（受管控环境的 EPERM）不该让整轮测试失败
-      try { fs.rmSync(tmpExe, { force: true, maxRetries: 2 }); } catch {}
+      assert.equal(path.dirname(path.resolve(dir)), owner);
+      fs.rmSync(dir, { recursive: true, force: true, maxRetries: 3 });
     }
     assert.strictEqual(NATIVE_HOST_NAME, 'key-watch-host.exe');
   });

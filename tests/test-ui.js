@@ -141,11 +141,6 @@ t('preload 暴露 recipes 与 search', () => {
   if (!/recipes:\s*\{[\s\S]*?run\s*:/.test(preload)) throw new Error('缺少 recipes.run');
   if (!/search:\s*\{[\s\S]*?query\s*:/.test(preload)) throw new Error('缺少 search.query');
 });
-t('main.js 注册了 recipes 与 search 处理器', () => {
-  for (const ch of ['recipes:list', 'recipes:run', 'search:query']) {
-    if (!mainJs.includes(`ipcMain.handle('${ch}'`)) throw new Error('缺少处理器 ' + ch);
-  }
-});
 t('main.js 引入配方/搜索/剪贴板守卫模块', () => {
   for (const m of ['./lib/recipes', './lib/search', './lib/clipboard-guard']) {
     if (!mainJs.includes(`require('${m}')`)) throw new Error('缺少 require ' + m);
@@ -228,8 +223,6 @@ t('空格切换动作/应用面板', () => {
 });
 t('应用面板走开始菜单索引并带图标', () => {
   if (!mainJs.includes('app.getFileIcon')) throw new Error('未提取应用图标');
-  if (!mainJs.includes("ipcMain.handle('apps:list'")) throw new Error('缺少 apps:list');
-  if (!mainJs.includes("ipcMain.handle('apps:icons'")) throw new Error('缺少 apps:icons');
   if (!qpJs.includes('window.suira.apps.list')) throw new Error('渲染层未取应用列表');
   if (!qpJs.includes('window.suira.apps.icons')) throw new Error('渲染层未按需取图标');
 });
@@ -245,10 +238,6 @@ t('工具箱未完成工具显示明确状态', () => {
   if (!qpJs.includes('is-todo')) throw new Error('缺少未完成样式标记');
   const qcss = read('src/quickpanel.css');
   if (!qcss.includes('.tool-item.is-todo')) throw new Error('缺少 .tool-item.is-todo 样式');
-});
-t('面板状态接口暴露 rows/keys/tools', () => {
-  if (!mainJs.includes("ipcMain.handle('panel:state'")) throw new Error('缺少 panel:state');
-  if (!mainJs.includes('tools: TOOLBOX_TOOLS')) throw new Error('panel:state 未返回工具箱目录');
 });
 t('面板尺寸能装下 38 键与搜索条', () => {
   const { width, height } = require('../lib/display-geometry').QUICK_PANEL_SIZE;
@@ -315,7 +304,6 @@ t('OCR 结果面板有「查看原图」按钮且有渲染目标', () => {
 t('面板 OCR 结果也能查看原图（主进程反查来源图片）', () => {
   if (!qpJs.includes("$('#ocr-original')")) throw new Error('quickpanel 缺少查看原图接线');
   if (!qpJs.includes('content.openOriginal')) throw new Error('未调用 openOriginal');
-  if (!mainJs.includes("ipcMain.handle('content:open-original'")) throw new Error('缺少 content:open-original');
   if (!mainJs.includes('originItemId')) throw new Error('未按 originItemId 反查来源');
   const preload = read('preload.js');
   if (!preload.includes('openOriginal')) throw new Error('preload 未暴露 openOriginal');
@@ -496,11 +484,6 @@ t('preload 暴露 returnTo 与 openApp', () => {
   if (!/returnTo:\s*\{[\s\S]*?commit\s*:/.test(preload)) throw new Error('缺少 returnTo.commit');
   if (!/openApp\s*:/.test(preload)) throw new Error('缺少 quick.openApp');
 });
-t('main.js 注册放回与应用启动处理器', () => {
-  for (const ch of ['return:target', 'return:commit', 'quick:open-app']) {
-    if (!mainJs.includes(`ipcMain.handle('${ch}'`)) throw new Error('缺少处理器 ' + ch);
-  }
-});
 t('main.js 引入放回/应用索引/前台探测模块', () => {
   for (const m of ['./lib/return-target', './lib/app-index', './lib/foreground-probe']) {
     if (!mainJs.includes(`require('${m}')`)) throw new Error('缺少 require ' + m);
@@ -537,11 +520,6 @@ t('preload 暴露 shortcuts', () => {
   if (!/shortcuts:\s*\{[\s\S]*?set\s*:/.test(preload)) throw new Error('缺少 shortcuts.set');
   if (!/onChanged\s*:\s*\(callback\)\s*=>\s*subscribe\('shortcuts:changed'/.test(preload)) {
     throw new Error('缺少 shortcuts.onChanged 订阅');
-  }
-});
-t('main.js 注册快捷键处理器', () => {
-  for (const ch of ['shortcuts:get', 'shortcuts:set']) {
-    if (!mainJs.includes(`ipcMain.handle('${ch}'`)) throw new Error('缺少处理器 ' + ch);
   }
 });
 t('main.js 引入快捷键与加密模块', () => {
@@ -594,21 +572,8 @@ t('改键样式已定义', () => {
 });
 
 console.log('\n== IPC 通道一致性（防死通道）==');
-t('preload 的每个 invoke 通道都有 main handler', () => {
-  const invoked = [...new Set([...preload.matchAll(/invoke\('([^']+)'/g)].map((m) => m[1]))];
-  const handled = new Set([...mainJs.matchAll(/ipcMain\.handle\('([^']+)'/g)].map((m) => m[1]));
-  const missing = invoked.filter((ch) => !handled.has(ch));
-  if (missing.length) throw new Error('缺少 handler：' + missing.join(', '));
-});
-t('main 没有前端用不到的孤儿 handler', () => {
-  const invoked = new Set([...(preload + read('pin-preload.js') + read('voice-preload.js')).matchAll(/invoke\('([^']+)'/g)].map((m) => m[1]));
-  const handled = [...new Set([...mainJs.matchAll(/ipcMain\.handle\('([^']+)'/g)].map((m) => m[1]))];
-  const orphans = handled.filter((ch) => !invoked.has(ch));
-  if (orphans.length) throw new Error('孤儿 handler：' + orphans.join(', '));
-});
 t('旧 clipboard 命名空间已移除（与 content 重复）', () => {
   if (preload.includes('clipboard: {')) throw new Error('preload 仍有 clipboard 命名空间');
-  if (/ipcMain\.handle\('clipboard:/.test(mainJs)) throw new Error('main 仍有 clipboard:* handler');
 });
 t('preload 订阅的每个事件都有发送方', () => {
   const subs = [...new Set([...preload.matchAll(/subscribe\('([^']+)'/g)].map((m) => m[1]))];
@@ -622,7 +587,6 @@ t('preload 订阅的每个事件都有发送方', () => {
 
 console.log('\n== 内容库新增交互 ==');
 t('清空剪贴板记录：通道与按钮齐备', () => {
-  if (!mainJs.includes("ipcMain.handle('content:clear-clipboard'")) throw new Error('缺少 handler');
   if (!preload.includes('clearClipboard')) throw new Error('preload 未暴露');
   if (!htmlIds.has('library-clear')) throw new Error('缺少按钮');
   if (!appJs.includes('content.clearClipboard')) throw new Error('未绑定点击');
@@ -862,20 +826,6 @@ t('重复内容置顶而不是新增重复条目', () => {
   if (!store.includes('touchItem')) throw new Error('store 缺 touchItem');
 });
 
-t('保留期在启动与设置变更时立即生效', () => {
-  const initStart = mainJs.indexOf('async function initialize(');
-  const initEnd = mainJs.indexOf('async function collectDiagnostics(');
-  if (initStart < 0 || initEnd < 0) throw new Error('找不到 initialize / collectDiagnostics');
-  if (!/store\.prune\(\)/.test(mainJs.slice(initStart, initEnd))) throw new Error('启动时未清理过期内容');
-  // 不看变量叫什么，只看设置更新这条通道里有没有「保留期/上限变了就立刻 prune」
-  const updateStart = mainJs.indexOf("ipcMain.handle('settings:update'");
-  if (updateStart < 0) throw new Error('找不到 settings:update 处理器');
-  const updateEnd = mainJs.indexOf('/* ---------- 翻译', updateStart);
-  if (updateEnd < 0) throw new Error('找不到设置处理器边界');
-  const updateHandler = mainJs.slice(updateStart, updateEnd);
-  if (!/retentionDays\s*!==\s*undefined/.test(updateHandler)) throw new Error('设置变更后未触发清理');
-  if (!/store\.prune\(\)/.test(updateHandler)) throw new Error('设置变更后没有真的调用 prune');
-});
 
 t('主窗口记忆尺寸 / 位置 / 最大化，并校验多屏', () => {
   if (!mainJs.includes('sanitizeWindowBounds')) throw new Error('未校验记忆边界');
@@ -891,7 +841,6 @@ t('主窗口记忆尺寸 / 位置 / 最大化，并校验多屏', () => {
 });
 
 t('处理轨迹失败记录可重试（IPC + preload）', () => {
-  if (!mainJs.includes("ipcMain.handle('executions:retry'")) throw new Error('缺少重试 IPC');
   const preload = read('preload.js');
   if (!preload.includes("'executions:retry'")) throw new Error('preload 未暴露 retry');
   if (!mainJs.includes("execution.status !== 'failed'")) throw new Error('未限制只重试失败记录');

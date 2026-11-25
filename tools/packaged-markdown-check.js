@@ -14,9 +14,11 @@ async function until(fn){let last;for(let n=0;n<160;n++){try{const value=await f
   const first=path.join(tmp,'中文 packaged.md'),second=path.join(tmp,'第二份 packaged.markdown');fs.writeFileSync(first,'# Packaged first');fs.writeFileSync(second,'# Packaged second');
   const launch=(file,debug=false)=>{const fd=fs.openSync(path.join(tmp,'app.log'),'a');const child=spawn(path.join(appDir,'随序.exe'),[file,'--user-data-dir='+profile,...(debug?['--remote-debugging-port='+port]:[])],{cwd:tmp,env,windowsHide:true,stdio:['ignore',fd,fd]});children.push(child);fs.closeSync(fd);return child;};
   launch(first,true);const md=await until(()=>connect(port,t=>t.url.includes('tool=markdown')));sockets.push(md.ws);
-  await until(()=>md.evaluate(`document.getElementById('md-editor').value==='# Packaged first'`));assert.equal((await md.evaluate('window.suira.shortcuts.get()')).globalEnabled,false);
-  assert.equal((await md.evaluate('window.suira.app.info()')).version,version);
+  await until(()=>md.evaluate(`document.getElementById('md-editor').value==='# Packaged first'`));
+  assert.equal((await md.evaluate('window.suira.app.info()')).code,'IPC_FORBIDDEN');
   const workbench=await until(()=>connect(port,t=>t.url.endsWith('/index.html')));sockets.push(workbench.ws);
+  assert.equal((await workbench.evaluate('window.suira.shortcuts.get()')).globalEnabled,false);
+  assert.equal((await workbench.evaluate('window.suira.app.info()')).version,version);
   await until(()=>workbench.evaluate('screenY+outerHeight<=screen.availTop+screen.availHeight+2'));
   const stableSize=await workbench.evaluate('({width:outerWidth,height:outerHeight})');
   for(let n=0;n<12;n++){await wait(120);assert.deepEqual(await workbench.evaluate('({width:outerWidth,height:outerHeight})'),stableSize,'Packaged window must not keep growing');}

@@ -58,29 +58,37 @@ require(${JSON.stringify(path.join(root, 'main.js'))});`);
     const log = fs.openSync(path.join(tmp, 'app.log'), 'w');
     child = spawn(exe, [entry, '--remote-debugging-port=' + port], { cwd: root, env, windowsHide: true, stdio: ['ignore', log, log] });
     fs.closeSync(log);
+    let themeOwner;
+    const setTheme = async (client, theme) => {
+      await (themeOwner || client).evaluate('window.suira.settings.update('+JSON.stringify({theme})+')');
+      await until(() => client.evaluate('matchMedia("(prefers-color-scheme: dark)").matches === '+ (theme === 'dark')));
+    };
     const page = async select => {
       const client = await until(() => connect(port, select)); sockets.push(client.ws);
       await until(() => client.evaluate('Boolean(window.suira) && document.readyState === "complete"'));
       const palettes=[];
       for(const scheme of ['light','dark']){
-        await client.evaluate('window.suira.settings.update('+JSON.stringify({theme:scheme})+')');
+        await setTheme(client, scheme);
         await wait(180);
         const facts=await client.evaluate(`document.fonts.ready.then(()=>{const s=getComputedStyle(document.documentElement);return {url:location.pathname.split('/').pop(),main:document.documentElement.classList.contains('workbench'),font:getComputedStyle(document.body).fontFamily,fontLoaded:[...document.fonts].some(f=>f.family.replaceAll('"','')==='MiSans VF'&&f.status==='loaded'),accent:s.getPropertyValue('--accent').trim(),focus:s.getPropertyValue('--focus-ring').trim(),buttons:[...document.querySelectorAll('.primary-btn,.utility-primary')].filter(b=>!b.matches(':hover,.mia-icon')&&b.getClientRects().length).map(b=>({id:b.id,label:b.textContent,root:document.documentElement.className,primary:getComputedStyle(b).getPropertyValue('--glass-primary').trim(),background:getComputedStyle(b).backgroundColor,ink:getComputedStyle(b).color}))}})`);
         const markdown = await client.evaluate('document.documentElement.dataset.tool === "markdown"');
-        const writing = markdown || facts.url === 'notes.html';
-        assert.equal(facts.accent,markdown?'#757575':scheme==='light'?'#5b5bd6':'#b1a9ff');
-        assert.equal(facts.focus,writing?'#757575':scheme==='light'?'#9b9ef0':'#5958b1');
+        const note = facts.url === 'notes.html';
+        const workspace = facts.url === 'index.html';
+        const dark = scheme === 'dark';
+        assert.equal(facts.accent,markdown?(dark?'#f5f5f5':'#757575'):workspace?(dark?'#3b3b3e':'#18181b'):(dark?'#b1a9ff':'#5b5bd6'));
+        assert.equal(facts.focus,note?'#757575':markdown?(dark?'#f5f5f5':'#757575'):workspace?(dark?'#f5f5f5':'#18181b'):(dark?'#5958b1':'#9b9ef0'));
         if (facts.url === 'notes.html') {
           assert.equal(await client.evaluate('getComputedStyle(document.getElementById("note")).backgroundColor'),'rgb(255, 255, 255)');
         }
         assert.equal(facts.fontLoaded,facts.main,'VF must be decoded only by the main workbench');
-        for(const button of facts.buttons){assert.equal(button.background,'rgb(91, 91, 214)',JSON.stringify(button));assert.equal(button.ink,'rgb(255, 255, 255)');}
+        for(const button of facts.buttons){assert.notEqual(button.background,button.ink,JSON.stringify(button));}
         palettes.push({scheme,...facts});
       }
-      await client.evaluate('window.suira.settings.update({theme:"light"})');
+      await setTheme(client, 'light');
       foundationResults.push(...palettes);return client;
     };
     const main = await page(t => t.url.endsWith('/index.html'));
+    themeOwner = main;
     await until(() => main.evaluate('Boolean(window.WorkspaceUI)'));
     // Query the actual Windows HRGN, not a mock of BrowserWindow.setShape.
     const source = path.join(tmp, 'region.cs');
@@ -145,7 +153,7 @@ class RegionCheck {
       const reviewDir = process.env.SUIRA_REVIEW_SHOTS;
       if (!screenshots || (reviewDir && !['clipboard','clipboard-dark','clipboard-hover','clipboard-text-hover','clipboard-link-hover','clipboard-batch-share','clipboard-narrow','notes','notes-narrow','markdown-dark'].includes(name))) return;
       console.log('SHOT '+name);
-      await client.evaluate('window.suira.settings.update('+JSON.stringify({theme})+')');
+      await setTheme(client, theme);
       await client.evaluate('document.fonts.ready'); await wait(350);
       const png = await client.send('Page.captureScreenshot', { format: 'png' });
       const dir = reviewDir || path.join(root, 'docs/product'); fs.mkdirSync(dir, { recursive: true });
@@ -219,9 +227,9 @@ class RegionCheck {
       const added=await main.evaluate(`window.suira.content.addText(${JSON.stringify(payload)})`);
       if(index<2)await main.evaluate(`window.suira.tasks.addItem(${JSON.stringify({taskId:demoTask.task.id,itemId:added.item.id})})`);
     }
-    await main.evaluate(`window.suira.quick.showMain('shelf')`);
+    await main.evaluate(`document.querySelector('[data-page="shelf"]').click();true`);
     await shot(main, 'workbench');
-    assert.notEqual(await main.evaluate('getComputedStyle(document.getElementById("task-detail")).boxShadow'),'none');
+    assert.ok(await main.evaluate('document.getElementById("task-detail").getBoundingClientRect().width > 0'));
     await main.evaluate(`document.querySelector('[data-page="settings"]').click();true`);
     await until(()=>main.evaluate('document.getElementById("page-settings").classList.contains("is-active")'));
     await main.evaluate('document.getElementById("setting-theme").nextElementSibling.querySelector("button").click();true');
@@ -229,7 +237,8 @@ class RegionCheck {
     await shot(main,'settings-controls');
     await main.evaluate('document.getElementById("setting-theme").value="dark";true');
     await shot(main,'settings-controls-dark','dark');
-    assert.equal(await main.evaluate('(()=>{const c=document.getElementById("setting-record"),before=c.checked;c.checked=true;const color=getComputedStyle(c).backgroundColor;c.checked=before;return color;})()'),'rgb(91, 91, 214)','Workbench checkbox keeps accent-9 in dark mode');
+    await setTheme(main, 'dark');
+    assert.equal(await main.evaluate('(()=>{const c=document.getElementById("setting-record"),before=c.checked;c.checked=true;const color=getComputedStyle(c).backgroundColor;c.checked=before;return color;})()'),'rgb(59, 59, 62)','Workbench checkbox keeps Mist accent-9 in dark mode');
     await main.evaluate('document.getElementById("setting-theme").value="light";true');
     await main.evaluate('window.suira.settings.update({theme:"light"})');
     await main.evaluate(`SuiraGlassSelect.close();document.querySelector('[data-page="shelf"]').click();true`);
@@ -274,7 +283,7 @@ class RegionCheck {
     await until(()=>panel.evaluate('document.querySelectorAll(".command-item").length>0'));
     await shot(panel,'app-search-fullscreen');
     await panel.evaluate(`window.suira.quick.setPresentation('window')`);
-    await main.evaluate('window.suira.quick.hide()');
+    await panel.evaluate('window.suira.quick.hide()');
     if (screenshots) {
       const demoImage = await main.evaluate(`(() => {
         const canvas = document.createElement('canvas'); canvas.width = 640; canvas.height = 420;

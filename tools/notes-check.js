@@ -333,7 +333,7 @@ function buildFixtures() {
       '<script src="__notes_probe.js"></script>',
       '<script src="__notes_error_probe.js"></script>'
     ].join('\n'));
-  fs.writeFileSync(path.join(TMP, '__notes_check.html'), page, 'utf8');
+  require('./browser-fixture').writeFixture(path.join(TMP, '__notes_check.html'), page);
 }
 
 const fileUrl = (target) => 'file:///' + path.resolve(target).replace(/\\/g, '/').replace(/^([A-Za-z]):/, '$1:');

@@ -1,7 +1,6 @@
 'use strict';
 
 const { contextBridge, ipcRenderer, webUtils } = require('electron');
-if (typeof document !== 'undefined' && typeof window !== 'undefined') require('./lib/theme-preload').installThemeBridge({ipcRenderer,document,window});
 
 function subscribe(channel, callback) {
   const handler = (_event, value) => callback(value);

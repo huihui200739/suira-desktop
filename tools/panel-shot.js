@@ -106,14 +106,14 @@ window.suira.clipboardBar={show:async()=>{window.__barOpened++;return {ok:true};
 
 function buildPage() {
   const html = fs.readFileSync(path.join(ROOT, 'src', 'quickpanel.html'), 'utf8')
-    .replace('../assets/suira-icon.png', 'suira-icon.png')
+    .replace('../assets/suira-icon-runtime.png', 'suira-icon-runtime.png')
     .replace('<link rel="stylesheet" href="quickpanel.css">', '<link rel="stylesheet" href="quickpanel.css">')
     .replace('<script src="quickpanel.js"></script>',
       '<script>window.__errs=[];window.addEventListener("error",function(e){window.__errs.push(String(e.message||e.error));});window.addEventListener("unhandledrejection",function(e){window.__errs.push("rejection: "+String((e.reason&&e.reason.message)||e.reason));});</script>'
       + '<script src="__mock.js"></script><script src="quickpanel.js"></script>');
   fs.writeFileSync(path.join(TMP, '__mock.js'), MOCK + bindingFixture, 'utf8');
-  fs.writeFileSync(path.join(TMP, 'panel.html'), html, 'utf8');
-  fs.copyFileSync(path.join(ROOT, 'assets', 'suira-icon.png'), path.join(TMP, 'suira-icon.png'));
+  require('./browser-fixture').writeFixture(path.join(TMP, 'panel.html'), html);
+  fs.copyFileSync(path.join(ROOT, 'assets', 'suira-icon-runtime.png'), path.join(TMP, 'suira-icon-runtime.png'));
   for (const asset of ['theme.css', 'quickpanel.css', 'quickpanel.js', 'ui-motion.css', 'ui-motion.js', 'tool-art.css', 'tool-art.js', 'icons.js','glass-select.js','glass-select.css','liquid-glass.js','liquid-glass.css','companion.js', 'companion.css', 'art/companion-courier.png', 'keycap-material.css', 'keycap-motion.js','action-strip.js','action-strip.css','panel-context.css','panel-context.js','relay-surfaces.js','stage-tools.css']) {
     fs.mkdirSync(path.dirname(path.join(TMP,asset)),{recursive:true});
     fs.copyFileSync(path.join(ROOT, 'src', asset), path.join(TMP, asset));
