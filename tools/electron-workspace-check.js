@@ -17,7 +17,7 @@ async function until(fn){let error;for(let n=0;n<140;n++){try{const value=await 
   const errors=[];main.ws.addEventListener('message',event=>{const data=JSON.parse(event.data);if(data.method==='Runtime.exceptionThrown')errors.push(data.params.exceptionDetails.text);});await main.send('Runtime.enable');
   await main.send('Emulation.setDeviceMetricsOverride',{width:1360,height:900,deviceScaleFactor:1,mobile:false});
   const workbench=main;
-  const go=async page=>{await workbench.evaluate(`window.suira.quick.showMain(${JSON.stringify(page)})`);if(['calendar','markdown'].includes(page)){main=await until(()=>connect(port,t=>t.url.includes('tool='+page)));sockets.push(main.ws);await until(()=>main.evaluate('Boolean(window.WorkspaceUI)'));}else main=workbench;await wait(200);};
+  const go=async page=>{await workbench.evaluate(`document.querySelector('.nav-item[data-page="${page}"]').click()`);if(['calendar','markdown'].includes(page)){main=await until(()=>connect(port,t=>t.url.includes('tool='+page)));sockets.push(main.ws);await until(()=>main.evaluate('Boolean(window.WorkspaceUI)'));}else main=workbench;await wait(200);};
   const shot=async name=>{const result=await main.send('Page.captureScreenshot',{format:'png'});fs.writeFileSync(path.join(tmp,name),Buffer.from(result.data,'base64'));};
   const task=await main.evaluate(`window.suira.tasks.create('工作台改版')`);assert.ok(task.ok);
   await main.evaluate(`window.suira.tasks.rename({id:${JSON.stringify(task.task.id)},title:'本周工作台计划'})`);

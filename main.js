@@ -210,7 +210,12 @@ let clipboardSessionTarget = null;
 let clipboardClickTarget = null;
 const clipboardLedger = new ClipboardWriteLedger();
 const appIndex = new AppIndex();
-const foregroundProbe = new ForegroundProbe({ onWarn: (...args) => console.warn(...args) });
+const foregroundProbe = new ForegroundProbe({
+  onWarn(message, error) {
+    console.warn(message);
+    reportDiagnostic('warn', 'foreground-helper', error);
+  }
+});
 const panelNative=require('./lib/panel-native').createPanelNative();
 const inputInjector = new InputInjector();
 let shortcutManager = null;
@@ -1084,7 +1089,9 @@ async function migrateLegacyHistory() {
       });
     }
     await store.save();
-  } catch {}
+  } catch (error) {
+    if (error.code !== 'ENOENT') reportDiagnostic('warn', 'legacy-history-import', error);
+  }
 }
 
 function positionQuickPanel(win,mode=store?.getSettings().panelPresentation||'window') {
@@ -5321,9 +5328,9 @@ app.on('will-quit', () => {
   shortcutManager?.dispose();
   // 第二个实例会在 ready 前退出，此时 Electron 不允许访问全局快捷键。
   if (app.isReady()) globalShortcut.unregisterAll();
-  ocr?.terminate().catch(() => {});
+  ocr?.terminate().catch(error => reportDiagnostic('warn', 'ocr-shutdown', error));
   foregroundProbe.dispose();
-  try { momentaryProbe?.stop().catch(() => {}); } catch {}
+  momentaryProbe?.stop().catch(error => reportDiagnostic('warn', 'key-watch-shutdown', error));
 });
 app.on('window-all-closed', () => { if (process.platform !== 'darwin' && isQuitting) app.quit(); });
 

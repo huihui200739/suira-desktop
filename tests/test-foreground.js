@@ -7,6 +7,8 @@ const assert = require('assert');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
+const { once } = require('node:events');
+const { createHook } = require('node:async_hooks');
 
 const { ForegroundProbe, resolveScriptPath } = require('../lib/foreground-probe');
 
@@ -154,19 +156,18 @@ const ta = async (n, f) => { try { await f(); console.log('  PASS  ' + n); pass+
   });
 
   console.log('\n== dispose 清理 ==');
-  t('dispose 会等待后强制结束阻塞进程', () => {
-    const { FORCE_KILL_DELAY } = require('../lib/foreground-probe');
-    assert.ok(Number.isFinite(FORCE_KILL_DELAY) && FORCE_KILL_DELAY > 0, 'FORCE_KILL_DELAY 未定义');
-  });
-  t('dispose 使用 taskkill 兜底（阻塞在 ReadLine 时 kill 不可靠）', () => {
-    const src = fs.readFileSync(path.join(PROJECT_ROOT, 'lib', 'foreground-probe.js'), 'utf8');
-    assert.ok(src.includes('taskkill'), '未使用 taskkill 兜底');
-    assert.ok(src.includes('/T') && src.includes('/F'), '缺少强制终止参数');
-  });
-  t('dispose 会销毁管道句柄，避免 Node 挂住', () => {
-    const src = fs.readFileSync(path.join(PROJECT_ROOT, 'lib', 'foreground-probe.js'), 'utf8');
-    assert.ok(src.includes('stdin?.destroy()'), '未销毁 stdin');
-    assert.ok(src.includes('stdout?.destroy()'), '未销毁 stdout');
+  if (process.platform === 'win32') await ta('dispose 结束实际子进程并关闭管道，不留下延迟强杀任务', async () => {
+    const probe = new ForegroundProbe();
+    assert.ok(await probe.start());
+    const child = probe.child;
+    const closed = once(child, 'close', { signal: AbortSignal.timeout(3000) });
+    let scheduled = 0;
+    const hook = createHook({ init(_id, type) { if (type === 'Timeout') scheduled++; } }).enable();
+    try { probe.dispose(); } finally { hook.disable(); }
+    await closed;
+    assert.strictEqual(scheduled, 0, 'child disposal must not schedule a delayed PID kill');
+    assert.ok(child.stdin.destroyed && child.stdout.destroyed && child.stderr.destroyed);
+    assert.strictEqual(probe.isReady(), false);
   });
 
   console.log('\n========== ' + pass + ' 通过 / ' + fail + ' 失败 ==========');

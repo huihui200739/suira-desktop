@@ -2,24 +2,28 @@
 /*
  * 在真实 Electron 里验证「截图 / 剪贴板 / 主体」三大基础框架的核心链路。
  *
- * 与 electron-island-check.js 一样：应用需先带调试口启动，
- * 本脚本只连现有实例做黑盒验证，不替代 npm test。
- *
- * 前置启动（数据目录指到工作区内，别污染真实用户数据）：
- *   npm start -- --remote-debugging-port=9223 --user-data-dir=.udata/core
- *   （路径可为绝对路径；脚本默认从 .udata/core/suira-data.json 读落盘结果，
- *     可用环境变量 SUIRA_E2E_USERDATA 覆盖）
+ * 自行启动隔离实例，使用临时资料库与模拟剪贴板，不连接用户实例。
  *
  * 用法：node tools/electron-core-check.js
  */
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const { execFileSync } = require('node:child_process');
+const net = require('node:net');
+const assert = require('node:assert/strict');
+const { pathToFileURL } = require('node:url');
+const { execFileSync, spawn } = require('node:child_process');
+const { once } = require('node:events');
+const { PNG } = require('pngjs');
 
-const PORT = Number(process.env.SUIRA_CDP_PORT || 9223);
-const USER_DATA = process.env.SUIRA_E2E_USERDATA || path.join(process.cwd(), '.udata', 'core');
+const root = path.resolve(__dirname, '..');
+const tempDir = fs.mkdtempSync(path.join(path.resolve(os.tmpdir()), 'suira-core-e2e-'));
+const USER_DATA = path.join(tempDir, 'profile');
+const input = path.join(tempDir, 'clipboard-input.json');
+const output = path.join(tempDir, 'clipboard-output');
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const sockets = [];
+let PORT, child, exited;
 
 let pass = 0, fail = 0;
 const check = (name, cond, detail) => {
@@ -37,14 +41,22 @@ function connect(wsUrl) {
     const ws = new WebSocket(wsUrl);
     let id = 0;
     const pending = new Map();
-    ws.addEventListener('open', () => resolve({ ws, send }));
+    ws.addEventListener('open', () => { sockets.push(ws); resolve({ ws, send }); });
     ws.addEventListener('error', () => reject(new Error('WS error')));
+    ws.addEventListener('close', () => {
+      for (const entry of pending.values()) {
+        clearTimeout(entry.timer);
+        entry.reject(new Error('Electron debugger disconnected'));
+      }
+      pending.clear();
+    });
     ws.addEventListener('message', (ev) => {
       let msg;
       try { msg = JSON.parse(ev.data); } catch { return; }
       if (msg.id && pending.has(msg.id)) {
         const entry = pending.get(msg.id);
         pending.delete(msg.id);
+        clearTimeout(entry.timer);
         if (msg.error) entry.reject(new Error(JSON.stringify(msg.error)));
         else entry.resolve(msg.result);
       }
@@ -52,10 +64,9 @@ function connect(wsUrl) {
     function send(method, params = {}) {
       return new Promise((r, j) => {
         const mid = ++id;
-        pending.set(mid, { resolve: r, reject: j });
+        const timer = setTimeout(() => { if (pending.delete(mid)) j(new Error('timeout ' + method)); }, 120000);
+        pending.set(mid, { resolve: r, reject: j, timer });
         ws.send(JSON.stringify({ id: mid, method, params }));
-        // OCR 首次运行要解压语言包并初始化引擎，可能需要 10-30 秒，放宽到 120 秒
-        setTimeout(() => { if (pending.has(mid)) { pending.delete(mid); j(new Error('timeout ' + method)); } }, 120000);
       });
     }
   });
@@ -73,7 +84,7 @@ async function evaluate(send, expression) {
 
 const listItems = (send) => evaluate(send, `JSON.stringify(await window.suira.content.list({ limit: 50 }))`).then((raw) => JSON.parse(raw));
 
-/** 轮询直到条件满足；剪贴板是 550ms 轮询采集，测试必须等它真正落库。 */
+/** 等待异步原生通知和保存，不假定采集间隔。 */
 async function waitFor(check, timeoutMs = 6000, intervalMs = 250) {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
@@ -85,41 +96,105 @@ async function waitFor(check, timeoutMs = 6000, intervalMs = 250) {
 }
 
 (async () => {
-  const targets = await (await fetch(`http://127.0.0.1:${PORT}/json/list`)).json();
-  const mainTarget = targets.find((t) => t.type === 'page' && t.url.includes('index.html'));
-  if (!mainTarget) throw new Error('找不到主窗口（index.html），请先带 --remote-debugging-port=' + PORT + ' 启动应用');
+  const server = net.createServer();
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  PORT = server.address().port;
+  await new Promise(resolve => server.close(resolve));
+  const entry = path.join(tempDir, 'app.js');
+  fs.writeFileSync(entry, `
+    const { app, clipboard, globalShortcut } = require('electron');
+    const fs = require('node:fs');
+    const input = ${JSON.stringify(input)}, output = ${JSON.stringify(output)};
+    app.setPath('userData', ${JSON.stringify(USER_DATA)});
+    globalShortcut.register = () => false;
+    let sequence = 1, types = {};
+    const { InputInjector } = require(${JSON.stringify(path.join(root, 'lib/input-injector'))});
+    InputInjector.prototype.clipboardSequence = () => sequence;
+    InputInjector.prototype.paste = async () => { throw Error('System paste is disabled in this fixture'); };
+    const { ForegroundProbe } = require(${JSON.stringify(path.join(root, 'lib/foreground-probe'))});
+    ForegroundProbe.prototype.pasteTo = async () => ({ ok: false });
+    clipboard.availableFormats = () => [];
+    clipboard.read = async () => Object.keys(types).length ? [{ types: Object.keys(types), getType: async type => types[type] }] : [];
+    clipboard.readText = async () => types['text/plain'] || '';
+    clipboard.writeText = async text => { types = { 'text/plain': text }; sequence++; fs.writeFileSync(output, 'text'); };
+    clipboard.write = async items => {
+      const image = await items[0]?.getType('image/png');
+      types = image ? { 'image/png': image } : {};
+      sequence++;
+      fs.writeFileSync(output, image ? 'image' : 'other');
+    };
+    const events = require(${JSON.stringify(path.join(root, 'lib/windows-clipboard-events'))});
+    const watch = events.watchWindowsClipboard;
+    events.watchWindowsClipboard = (win, callback) => {
+      const dispose = watch(win, callback);
+      const ffi = require(${JSON.stringify(path.join(root, 'node_modules/koffi'))});
+      const notify = ffi.load('user32.dll').func('__stdcall', 'PostMessageW', 'int', ['uintptr_t','uint32','uintptr_t','intptr_t']);
+      const timer = setInterval(() => {
+        if (!fs.existsSync(input)) return;
+        const data = JSON.parse(fs.readFileSync(input, 'utf8'));
+        fs.unlinkSync(input);
+        types = data.image ? { 'image/png': new Blob([Buffer.from(data.image, 'base64')]) } : data.types;
+        sequence++;
+        if (!notify(win.getNativeWindowHandle().readBigUInt64LE(), 0x031d, 0, 0)) throw Error('Clipboard notification failed');
+      }, 40);
+      return () => { clearInterval(timer); dispose(); };
+    };
+    require(${JSON.stringify(path.join(root, 'main.js'))});
+  `);
+  const executable = [process.env.SUIRA_TEST_ELECTRON, 'C:/suira-electron/electron.exe', path.join(root, 'node_modules/electron/dist/electron.exe')].filter(Boolean).find(fs.existsSync);
+  assert.ok(executable, 'An Electron runtime must be installed');
+  const env = { ...process.env }; delete env.ELECTRON_RUN_AS_NODE;
+  child = spawn(executable, [entry, '--remote-debugging-address=127.0.0.1', `--remote-debugging-port=${PORT}`], { cwd: root, env, windowsHide: true, stdio: 'ignore' });
+  exited = once(child, 'exit').catch(error => { console.error(error.message); process.exitCode = 1; });
+  const pageTargets = async () => (await (await fetch(`http://127.0.0.1:${PORT}/json/list`)).json()).filter(t => t.type === 'page');
+  const overlayTargets = async () => (await pageTargets()).filter(t => t.url.endsWith('/overlay.html'));
+  const mainTarget = await waitFor(async () => {
+    try { return (await pageTargets()).find(t => t.url.endsWith('/index.html')); } catch { return null; }
+  });
+  assert.ok(mainTarget, '找不到隔离实例的主窗口');
   const main = await connect(mainTarget.webSocketDebuggerUrl);
   await main.send('Runtime.enable');
-
-  const tempDir = path.join(os.tmpdir(), 'suira-core-e2e-' + process.pid);
-  fs.mkdirSync(tempDir, { recursive: true });
-  const pngDataUrl = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
-
-  // 这个脚本要能重复跑：先清掉上一轮留下的内容，避免「重复条目」「文件已落盘」误报
-  const staleItems = JSON.parse(await evaluate(main.send, `JSON.stringify(await window.suira.content.list({ limit: 500 }))`));
-  for (const item of staleItems) {
-    await evaluate(main.send, `window.suira.content.remove(${JSON.stringify(item.id)})`);
-  }
-  await sleep(300);
+  assert.ok(await waitFor(() => evaluate(main.send, 'Boolean(window.suira && document.querySelector(".nav-item"))')));
+  const startOverlay = async () => {
+    const result = await evaluate(main.send, 'window.suira.capture.start()');
+    assert.ok(result.ok, JSON.stringify(result));
+    const target = await waitFor(async () => (await overlayTargets())[0]);
+    assert.ok(target, '截图覆盖层未就绪');
+    return connect(target.webSocketDebuggerUrl);
+  };
+  const finishCapture = async (dataUrl, action) => {
+    const overlay = await startOverlay();
+    try {
+      const result = await evaluate(overlay.send, `window.suira.capture.finish(${JSON.stringify({ dataUrl, action })})`);
+      if (action === 'ocr') await evaluate(overlay.send, 'window.suira.capture.cancel()');
+      return result;
+    } finally { overlay.ws.close(); }
+  };
+  const png = new PNG({ width: 36, height: 36 });
+  png.data.fill(255);
+  const dataUrl = () => 'data:image/png;base64,' + PNG.sync.write(png).toString('base64');
+  const pngDataUrl = dataUrl();
+  const writeFixture = value => {
+    fs.writeFileSync(input + '.tmp', JSON.stringify(value));
+    fs.renameSync(input + '.tmp', input);
+  };
+  const writeText = text => writeFixture({ types: { 'text/plain': text } });
 
   console.log('\n== 截图：复制 ==');
-  const copyResult = JSON.parse(await evaluate(main.send, `JSON.stringify(await window.suira.capture.finish({ dataUrl: ${JSON.stringify(pngDataUrl)}, action: 'copy' }))`));
+  const copyResult = await finishCapture(pngDataUrl, 'copy');
   check('截图完成并入库（action=copy）', copyResult.ok === true && Boolean(copyResult.item?.id), JSON.stringify(copyResult).slice(0, 200));
   check('截图条目类型为 image', copyResult.item?.kind === 'image', copyResult.item?.kind);
   // 同一张图重复截图会命中 hash 去重、删掉新写的文件并复用旧条目，
   // 所以这里校验「条目实际指向的文件存在」而不是「新写的那份存在」。
   const captureFile = copyResult.item?.filePath || copyResult.filePath;
   check('截图文件已落盘', Boolean(captureFile) && fs.existsSync(captureFile), captureFile);
-  const clipboardHasImage = ps("Add-Type -AssemblyName System.Windows.Forms; if ([System.Windows.Forms.Clipboard]::GetImage()) { 'YES' } else { 'NO' }");
-  check('复制后系统剪贴板里确实是图片', clipboardHasImage === 'YES', clipboardHasImage);
+  check('复制写入了图片格式', fs.readFileSync(output, 'utf8') === 'image');
 
   console.log('\n== 截图：钉图 ==');
-  const beforeTargets = (await (await fetch(`http://127.0.0.1:${PORT}/json/list`)).json()).length;
-  const pinResult = JSON.parse(await evaluate(main.send, `JSON.stringify(await window.suira.capture.finish({ dataUrl: ${JSON.stringify(pngDataUrl)}, action: 'pin' }))`));
-  await sleep(600);
-  const afterTargets = (await (await fetch(`http://127.0.0.1:${PORT}/json/list`)).json()).length;
+  const pinResult = await finishCapture(pngDataUrl, 'pin');
   check('钉图完成', pinResult.ok === true, JSON.stringify(pinResult).slice(0, 200));
-  check('钉图后多出一个置顶窗口', afterTargets > beforeTargets, beforeTargets + ' -> ' + afterTargets);
+  const pin = await waitFor(async () => (await pageTargets()).find(t => t.url.endsWith('/pin.html')));
+  check('钉图后打开独立窗口', Boolean(pin));
 
   console.log('\n== 截图：提字 ==');
   const ocrPng = path.join(tempDir, 'ocr-sample.png');
@@ -130,24 +205,24 @@ async function waitFor(check, timeoutMs = 6000, intervalMs = 250) {
     '$g.Clear([System.Drawing.Color]::White)',
     "$font = New-Object System.Drawing.Font 'Arial',40",
     "$g.DrawString('HELLO SUIRA 2026', $font, [System.Drawing.Brushes]::Black, 12, 48)",
-    "$bmp.Save('" + ocrPng.replace(/\\/g, '\\\\') + "', [System.Drawing.Imaging.ImageFormat]::Png)",
+    "$bmp.Save('" + ocrPng.replace(/'/g, "''") + "', [System.Drawing.Imaging.ImageFormat]::Png)",
     '$g.Dispose(); $bmp.Dispose()'
   ].join('; '));
   const ocrDataUrl = 'data:image/png;base64,' + fs.readFileSync(ocrPng).toString('base64');
-  const ocrResult = JSON.parse(await evaluate(main.send, `JSON.stringify(await window.suira.capture.finish({ dataUrl: ${JSON.stringify(ocrDataUrl)}, action: 'ocr' }))`));
+  const ocrResult = await finishCapture(ocrDataUrl, 'ocr');
   check('截图提字返回成功', ocrResult.ok === true, JSON.stringify(ocrResult).slice(0, 200));
   check('识别结果非空', Boolean(ocrResult.output?.text && ocrResult.output.text.trim().length), ocrResult.output?.text);
   check('识别结果与原图建立派生关系', (ocrResult.output?.parentIds || []).includes(ocrResult.item?.id), JSON.stringify(ocrResult.output?.parentIds));
 
   console.log('\n== 剪贴板：文本 ==');
-  ps("Set-Clipboard -Value 'E2E-TEXT-001 core framework'");
+  writeText('E2E-TEXT-001 core framework');
   const textItem = await waitFor(async () => {
     const items = await listItems(main.send);
     return items.find((item) => item.source?.type === 'clipboard' && String(item.text).includes('E2E-TEXT-001'));
   });
   check('剪贴板文本被采集', Boolean(textItem), '等待 6 秒仍未入库');
   check('文本条目带来源对象（type=clipboard）', textItem?.source?.type === 'clipboard', JSON.stringify(textItem?.source));
-  check('文本条目记录了采集方式', textItem?.source?.acquisitionMethod === 'clipboard-poll', textItem?.source?.acquisitionMethod);
+  check('文本条目记录了通知采集方式', textItem?.source?.acquisitionMethod === 'clipboard-update', textItem?.source?.acquisitionMethod);
   check('文本条目记录了来源应用字段', typeof textItem?.source?.appName === 'string', JSON.stringify(textItem?.source));
 
   console.log('\n== 剪贴板：文件引用 ==');
@@ -155,7 +230,7 @@ async function waitFor(check, timeoutMs = 6000, intervalMs = 250) {
   const fileB = path.join(tempDir, 'e2e-b.txt');
   fs.writeFileSync(fileA, 'a');
   fs.writeFileSync(fileB, 'b');
-  ps(`Set-Clipboard -Path '${fileA}','${fileB}'`);
+  writeFixture({ types: { 'text/uri-list': [fileA, fileB].map(file => pathToFileURL(file).href).join('\r\n') } });
   const filesItem = await waitFor(async () => {
     const items = await listItems(main.send);
     return items.find((item) => item.kind === 'files' && String(item.text).includes(fileA));
@@ -168,11 +243,11 @@ async function waitFor(check, timeoutMs = 6000, intervalMs = 250) {
   check('文件条目不重复入库', allFilesItems.length === 1, 'files items = ' + allFilesItems.length);
 
   console.log('\n== 剪贴板：重复内容置顶 ==');
-  ps("Set-Clipboard -Value 'E2E-DEDUPE-AAA'");
+  writeText('E2E-DEDUPE-AAA');
   await waitFor(async () => (await listItems(main.send)).some((item) => String(item.text) === 'E2E-DEDUPE-AAA'));
-  ps("Set-Clipboard -Value 'E2E-DEDUPE-BBB'");
+  writeText('E2E-DEDUPE-BBB');
   await waitFor(async () => (await listItems(main.send)).some((item) => String(item.text) === 'E2E-DEDUPE-BBB'));
-  ps("Set-Clipboard -Value 'E2E-DEDUPE-AAA'");
+  writeText('E2E-DEDUPE-AAA');
   const dupItem = await waitFor(async () => {
     const items = await listItems(main.send);
     return items[0]?.text === 'E2E-DEDUPE-AAA' ? items : null;
@@ -183,7 +258,8 @@ async function waitFor(check, timeoutMs = 6000, intervalMs = 250) {
   check('再次复制后回到列表最前', dedupeList[0]?.text === 'E2E-DEDUPE-AAA', dedupeList[0]?.text);
 
   console.log('\n== 剪贴板：图片 ==');
-  ps("Add-Type -AssemblyName System.Windows.Forms,System.Drawing; $bmp = New-Object System.Drawing.Bitmap 36,36; $g = [System.Drawing.Graphics]::FromImage($bmp); $g.Clear([System.Drawing.Color]::Blue); [System.Windows.Forms.Clipboard]::SetImage($bmp)");
+  for (let i = 0; i < png.data.length; i += 4) png.data[i] = 0;
+  writeFixture({ image: dataUrl().split(',')[1] });
   const clipboardImage = await waitFor(async () => {
     const list = await listItems(main.send);
     return list.find((item) => item.kind === 'image' && item.source?.type === 'clipboard');
@@ -242,22 +318,17 @@ async function waitFor(check, timeoutMs = 6000, intervalMs = 250) {
     check('重试会产生新的执行记录', afterExecutions.length > executions.length, executions.length + ' -> ' + afterExecutions.length);
   }
 
-  console.log('\n== 主体：轨迹页重试按钮 ==');
-  await evaluate(main.send, `document.querySelector('[data-page="trail"]').click()`);
-  await sleep(500);
-  const trailUi = JSON.parse(await evaluate(main.send, `JSON.stringify({
-    rows: document.querySelectorAll('.trail-row').length,
-    retry: document.querySelectorAll('.trail-retry').length
-  })`));
-  check('轨迹页渲染出记录', trailUi.rows > 0, JSON.stringify(trailUi));
-  check('失败记录带「重试」按钮', trailUi.retry > 0, JSON.stringify(trailUi));
-  if (trailUi.retry > 0) {
+  console.log('\n== 主体：内容预览中的轨迹重试按钮 ==');
+  await evaluate(main.send, `document.querySelector(${JSON.stringify(`[data-preview="${retryTarget?.id}"]`)}).click()`);
+  await evaluate(main.send, 'document.querySelector("#preview-trail > summary").click()');
+  const retryVisible = await waitFor(() => evaluate(main.send, 'Boolean(document.querySelector("#preview-trail[open] [data-trace-retry]"))'));
+  check('内容预览中的失败记录可重试', Boolean(retryVisible));
+  if (retryVisible) {
     const beforeClick = JSON.parse(await evaluate(main.send, `JSON.stringify(await window.suira.executions.list(50))`)).length;
-    await evaluate(main.send, `document.querySelector('.trail-retry').click()`);
-    await sleep(900);
-    const afterClick = JSON.parse(await evaluate(main.send, `JSON.stringify(await window.suira.executions.list(50))`)).length;
-    check('点「重试」真实触发一次新的执行', afterClick > beforeClick, beforeClick + ' -> ' + afterClick);
+    await evaluate(main.send, `document.querySelector('[data-trace-retry]').click()`);
+    check('点「重试」真实触发一次新的执行', Boolean(await waitFor(() => evaluate(main.send, `(async () => (await window.suira.executions.list(50)).length > ${beforeClick})()`))));
   }
+  await evaluate(main.send, `document.querySelector('#preview-close').click()`);
 
   console.log('\n== 主体：窗口状态记忆 ==');
   const dataPath = path.join(USER_DATA, 'suira-data.json');
@@ -278,16 +349,8 @@ async function waitFor(check, timeoutMs = 6000, intervalMs = 250) {
   check('还原后 windowState 回到 maximized=false', restoredState?.maximized === false, JSON.stringify(restoredState));
 
   console.log('\n== 截图：预热覆盖层 / 工具栏时序 / 合帧 ==');
-  const pageTargets = async () => (await (await fetch(`http://127.0.0.1:${PORT}/json/list`)).json()).filter((t) => t.type === 'page');
-  const overlayTargets = async () => (await pageTargets()).filter((t) => t.url.includes('overlay.html'));
-
-  await evaluate(main.send, `window.suira.capture.start()`);
-  const firstOverlay = await waitFor(async () => {
-    const list = await overlayTargets();
-    return list.length ? list[list.length - 1] : null;
-  }, 8000);
-  check('截图覆盖层窗口已出现', Boolean(firstOverlay));
-  const overlay = await connect(firstOverlay.webSocketDebuggerUrl);
+  const overlay = await startOverlay();
+  check('截图覆盖层窗口已出现', Boolean(overlay));
   await overlay.send('Runtime.enable');
   const ready = await waitFor(async () => {
     const hidden = await evaluate(overlay.send, `document.getElementById('loading-state').hidden`);
@@ -355,17 +418,18 @@ async function waitFor(check, timeoutMs = 6000, intervalMs = 250) {
   }, 6000);
   check('历史条渲染出卡片（读取真实内容库）', Boolean(barReady), 'cards = ' + barReady);
   const barState = JSON.parse(await evaluate(bar.send, `JSON.stringify({
-    selected: (document.querySelector('.bar-card[aria-selected="true"]') || {dataset:{}}).dataset.id || '',
+    selected: document.querySelector('.bar-card[aria-current="true"]')?.dataset.id || '',
+    first: document.querySelector('.bar-card')?.dataset.id || '',
     pageScroll: document.documentElement.scrollHeight > window.innerHeight + 2,
     trackScrollable: (function () { var t = document.getElementById('bar-track'); return t ? t.scrollWidth > t.clientWidth : false; })()
   })`));
-  check('默认选中第一条', barState.selected.length > 0, JSON.stringify(barState));
+  check('默认选中第一条', barState.selected.length > 0 && barState.selected === barState.first, JSON.stringify(barState));
   check('历史条没有页面级滚动条', barState.pageScroll === false, JSON.stringify(barState));
   check('轨道可横向滚动（内容多于视口时）', barState.trackScrollable === true, JSON.stringify(barState));
   await evaluate(bar.send, `document.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }))`);
   await sleep(200);
-  const selectedAfterRight = await evaluate(bar.send, `(document.querySelector('.bar-card[aria-selected="true"]') || {dataset:{}}).dataset.id || ''`);
-  check('→ 可以切换选中项', selectedAfterRight !== barState.selected, barState.selected + ' -> ' + selectedAfterRight);
+  const selectedAfterRight = await evaluate(bar.send, `document.querySelector('.bar-card[aria-current="true"]')?.dataset.id || ''`);
+  check('→ 可以切换选中项', Boolean(selectedAfterRight) && selectedAfterRight !== barState.selected, barState.selected + ' -> ' + selectedAfterRight);
   await evaluate(bar.send, `document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))`);
   await sleep(500);
   check('Esc 收起历史条', await evaluate(bar.send, `document.visibilityState`) === 'hidden');
@@ -377,23 +441,20 @@ async function waitFor(check, timeoutMs = 6000, intervalMs = 250) {
   if (imageItem) {
     const commit = JSON.parse(await evaluate(main.send, `JSON.stringify(await window.suira.returnTo.commit({ itemId: ${JSON.stringify(imageItem.id)}, intent: 'return-and-paste' }))`));
     check('图片条目提交返回已复制', commit.ok === true && commit.copied === true, JSON.stringify(commit));
-    const hasBitmap = ps("Add-Type -AssemblyName System.Windows.Forms; if ([System.Windows.Forms.Clipboard]::GetImage()) { 'YES' } else { 'NO' }");
-    check('图片条目复制的是位图而不是路径文本', hasBitmap === 'YES', hasBitmap);
+    check('图片条目复制的是图片而不是路径文本', fs.readFileSync(output, 'utf8') === 'image');
   }
-  await evaluate(main.send, `window.suira.clipboardBar.hide()`);
-  await sleep(300);
-  bar.ws.close();
-
-  // 恢复现场：清掉本脚本写入的剪贴板内容与临时文件
-  ps("Set-Clipboard -Value 'suira core e2e done'");
-  fs.rmSync(tempDir, { recursive: true, force: true });
-  main.ws.close();
-  await sleep(250);
+  await evaluate(bar.send, `window.suira.clipboardBar.hide()`);
 
   console.log('\n========== ' + pass + ' 通过 / ' + fail + ' 失败 ==========');
-  process.exit(fail ? 1 : 0);
-})().catch(async (error) => {
-  console.error('验证失败：' + (error && error.message ? error.message : error));
-  await sleep(300);
-  process.exit(1);
+  process.exitCode = fail ? 1 : 0;
+})().catch(error => {
+  console.error(error);
+  process.exitCode = 1;
+}).finally(async () => {
+  for (const socket of sockets) socket.close();
+  if (child?.pid && child.exitCode === null && child.signalCode === null) child.kill();
+  await exited;
+  assert.equal(path.dirname(tempDir), path.resolve(os.tmpdir()));
+  assert.match(path.basename(tempDir), /^suira-core-e2e-[a-z0-9]+$/i);
+  fs.rmSync(tempDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
 });

@@ -565,7 +565,7 @@ npm run verify:electron   # 启动并确认窗口
 npm run verify:ipc        # 20 项：preload / IPC / 渲染 / 面板交互
 npm run verify:capture    # 11 项：截图链路（含预热窗口复用/隐藏）
 npm run verify:island     # 38 项：浮引岛增删改清落盘 + 窗口尺寸 + 按住型侦测真实运行
-npm run verify:core       # 61 项：截图/剪贴板/主体 + 预热覆盖层/工具栏时序/底部剪贴板条
+npm run verify:core       # 隔离实例验证截图、合帧、剪贴板通知、内容库及轨迹
 npm run verify:notes      # 16 项：真实 Electron 里的速记链路（建 → 改 → 钉 → 开 → 删 → 落盘）
 ```
 

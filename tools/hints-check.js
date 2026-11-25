@@ -53,7 +53,7 @@ async function until(fn,label='state'){let last;for(let i=0;i<120;i++){try{const
  await suite(panel,'panel');
  await panel.evaluate('document.getElementById("presentation-toggle").title="全屏提示刷新";true');await until(()=>panel.evaluate('document.getElementById("presentation-toggle").dataset.hint==="全屏提示刷新"'));checks.push('panel:presentation-title-conversion');
  await panel.evaluate('window.suira.quick.hide()');await main.evaluate('window.suira.quick.show()');await until(()=>hidden(panel));checks.push('panel:hide-reopen-no-old-hint');
- await main.evaluate('window.suira.quick.showMain("settings")');await main.evaluate('document.querySelector("[data-setting-tab=general]").click();true');
+ await panel.evaluate('window.suira.quick.hide()');await main.evaluate('document.querySelector("[data-page=settings]").click();document.querySelector("[data-setting-tab=general]").click();true');
  await until(()=>main.evaluate('Boolean(document.querySelector("#setting-theme + .glass-select .glass-select-trigger"))'));
  await click(main,'#setting-theme + .glass-select .glass-select-trigger');await until(()=>main.evaluate('window.SuiraGlassSelect.isOpen()'));
  await main.evaluate('document.getElementById("setting-theme").closest(".setting-card").hidden=true;true');await until(()=>main.evaluate('!window.SuiraGlassSelect.isOpen()'));checks.push('settings:hidden-select-ancestor-dismisses-body-menu');
@@ -73,9 +73,11 @@ async function until(fn,label='state'){let last;for(let i=0;i<120;i++){try{const
  await hover(note,'#note-pin');await move(note,{x:140,y:210});await until(()=>hidden(note));await click(note,'#note-pin');
  await until(()=>note.evaluate('document.getElementById("note-pin").dataset.hint==="取消置顶" && !document.getElementById("note-pin").hasAttribute("title")'));
  await move(note,{x:140,y:210});await until(()=>hidden(note));checks.push('notes:pin-dynamic-title-and-mouse-leave');
- await main.evaluate('window.suira.content.addText({text:"Clipboard hint lifecycle fixture",source:"clipboard"})');await main.evaluate('window.suira.clipboardBar.show()');const bar=await page('/clipboardbar.html');await until(()=>bar.evaluate('Boolean(document.querySelector(".bar-card[data-hint]"))'));
- await hover(bar,'.bar-card');await bar.evaluate('document.querySelector(".bar-card").focus();true');await move(bar,{x:8,y:8});await until(()=>hidden(bar));assert.equal(await bar.evaluate('document.querySelectorAll(".bar-card[title]").length'),0);checks.push('clipboardbar:dynamic-card-title-and-focus-leave');
- await bar.evaluate('window.suira.clipboardBar.hide()');await main.evaluate('window.suira.quick.showMain("shelf")');
+ await main.evaluate('window.suira.content.addText({text:"Clipboard hint lifecycle fixture",source:"clipboard"})');await main.evaluate('window.suira.clipboardBar.show()');const bar=await page('/clipboardbar.html');
+ const cardHint='.bar-card .card-source-icon[data-hint]';
+ await until(()=>bar.evaluate(`Boolean(document.querySelector(${JSON.stringify(cardHint)}))`),'clipboard source hint');
+ await hover(bar,cardHint);await bar.evaluate('document.querySelector(".bar-card").focus();true');await move(bar,{x:8,y:8});await until(()=>hidden(bar));assert.equal(await bar.evaluate('document.querySelectorAll(".bar-card .card-source-icon[title]").length'),0);checks.push('clipboardbar:dynamic-source-title-and-focus-leave');
+ await bar.evaluate('window.suira.clipboardBar.hide()');await main.evaluate('document.querySelector("[data-page=shelf]").click()');
  assert.deepEqual(errors,[]);
  const proof={version:require('../package.json').version,checkedAt:new Date().toISOString(),isolatedData:true,realElectronPointerAndKeyboard:true,checks,rendererErrors:errors};
  fs.writeFileSync(path.join(root,'docs','hints-'+proof.version+'-verification.json'),JSON.stringify(proof,null,2)+'\n');console.log('PASS '+checks.length+' real Electron tooltip/menu lifecycle checks');
