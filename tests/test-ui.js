@@ -846,12 +846,6 @@ t('处理轨迹失败记录可重试（IPC + preload）', () => {
   if (!mainJs.includes("execution.status !== 'failed'")) throw new Error('未限制只重试失败记录');
 });
 
-t('截图保存 / 任务导出对话框不再以隐藏窗口为父窗口', () => {
-  const guard = /mainWindow && !mainWindow\.isDestroyed\(\) && mainWindow\.isVisible\(\) \? mainWindow : null/g;
-  const count = (mainJs.match(guard) || []).length;
-  if (count < 2) throw new Error('保存/导出对话框仍有隐藏父窗口风险，实际命中 ' + count);
-});
-
 t('诊断报告不再把异步剪贴板读取写成同步', () => {
   if (!mainJs.includes('await clipboard.readText()')) throw new Error('缺少 await readText');
   if (mainJs.includes('const raw = clipboard.readText();')) throw new Error('仍存在未 await 的 readText');

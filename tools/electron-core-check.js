@@ -21,6 +21,7 @@ const tempDir = fs.mkdtempSync(path.join(path.resolve(os.tmpdir()), 'suira-core-
 const USER_DATA = path.join(tempDir, 'profile');
 const input = path.join(tempDir, 'clipboard-input.json');
 const output = path.join(tempDir, 'clipboard-output');
+const savedCapture = path.join(tempDir, 'saved-capture.png');
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const sockets = [];
 let PORT, child, exited;
@@ -102,9 +103,14 @@ async function waitFor(check, timeoutMs = 6000, intervalMs = 250) {
   await new Promise(resolve => server.close(resolve));
   const entry = path.join(tempDir, 'app.js');
   fs.writeFileSync(entry, `
-    const { app, clipboard, globalShortcut } = require('electron');
+    const { app, clipboard, dialog, globalShortcut } = require('electron');
     const fs = require('node:fs');
     const input = ${JSON.stringify(input)}, output = ${JSON.stringify(output)};
+    dialog.showSaveDialog = async (parent, options) => {
+      if (parent !== null) throw Error('A hidden workbench must not own the screenshot save dialog');
+      if (options.filters[0].extensions[0] !== 'png') throw Error('Expected a PNG save dialog');
+      return { canceled: false, filePath: ${JSON.stringify(savedCapture)} };
+    };
     app.setPath('userData', ${JSON.stringify(USER_DATA)});
     globalShortcut.register = () => false;
     let sequence = 1, types = {};
@@ -179,6 +185,14 @@ async function waitFor(check, timeoutMs = 6000, intervalMs = 250) {
     fs.renameSync(input + '.tmp', input);
   };
   const writeText = text => writeFixture({ types: { 'text/plain': text } });
+
+  console.log('\n== 截图：另存 ==');
+  const saveResult = await finishCapture(pngDataUrl, 'save');
+  check('截图另存不使用隐藏窗口作为对话框的父窗口', saveResult?.ok && fs.existsSync(savedCapture), JSON.stringify(saveResult));
+  if (saveResult?.ok && fs.existsSync(savedCapture)) {
+    const saved = PNG.sync.read(fs.readFileSync(savedCapture));
+    check('另存的 PNG 保留像素和尺寸', saved.width === png.width && saved.height === png.height && saved.data.equals(png.data));
+  }
 
   console.log('\n== 截图：复制 ==');
   const copyResult = await finishCapture(pngDataUrl, 'copy');

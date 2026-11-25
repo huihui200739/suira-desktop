@@ -49,8 +49,11 @@ async function run() {
       app.setPath('userData', ${JSON.stringify(profile)});
       const taskExport = ${JSON.stringify(path.join(profile, 'task-export.md'))};
       let savePrompts = 0;
-      dialog.showSaveDialog = async (_window, options) => {
-        require('node:assert/strict').ok(options.defaultPath.endsWith('Audit_Task.md'));
+      dialog.showSaveDialog = async (parent, options) => {
+        const assert = require('node:assert/strict');
+        assert.ok(options.defaultPath.endsWith('Audit_Task.md'));
+        if (savePrompts === 0) assert.equal(parent, null, 'Hidden workbench is not a dialog parent');
+        else assert.ok(parent?.isVisible() && parent.webContents.getURL().endsWith('/index.html'), 'Visible workbench owns the dialog');
         savePrompts += 1;
         return { canceled: savePrompts === 1, filePath: taskExport };
       };
@@ -152,8 +155,12 @@ async function run() {
     for (const method of ['list', 'copyText', 'export']) {
       assert.equal((await panel.evaluate(`window.suira.tasks.${method}(${taskId})`)).code, 'IPC_FORBIDDEN');
     }
+    await main.evaluate('window.suira.window.close()');
+    await until(() => main.evaluate('document.visibilityState === "hidden"'));
     assert.deepEqual(await main.evaluate(`window.suira.tasks.export(${taskId})`), { ok: false, canceled: true });
     await assert.rejects(fs.stat(exported), { code: 'ENOENT' });
+    await panel.evaluate('window.suira.quick.showMain("shelf")');
+    await until(() => main.evaluate('document.visibilityState === "visible"'));
     assert.deepEqual(await main.evaluate(`window.suira.tasks.export(${taskId})`), { ok: true, filePath: exported });
     assert.match(await fs.readFile(exported, 'utf8'), /^# Audit\/Task\n[\s\S]*\n## Protected existing record\n\nlegacy fixture\n/);
     assert.equal((await main.evaluate(`window.suira.tasks.removeItem(${assignment})`)).ok, true);
