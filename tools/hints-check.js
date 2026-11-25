@@ -1,4 +1,5 @@
 'use strict';
+const { writeVerificationReport } = require('./verification-report');
 // Production Electron UI; all profile/content/cache paths are isolated. Never
 // read the real clipboard, register global shortcuts or touch installed data.
 const fs=require('node:fs'),path=require('node:path'),os=require('node:os'),net=require('node:net'),assert=require('node:assert/strict'),{spawn}=require('node:child_process');
@@ -80,5 +81,6 @@ async function until(fn,label='state'){let last;for(let i=0;i<120;i++){try{const
  await bar.evaluate('window.suira.clipboardBar.hide()');await main.evaluate('document.querySelector("[data-page=shelf]").click()');
  assert.deepEqual(errors,[]);
  const proof={version:require('../package.json').version,checkedAt:new Date().toISOString(),isolatedData:true,realElectronPointerAndKeyboard:true,checks,rendererErrors:errors};
- fs.writeFileSync(path.join(root,'docs','hints-'+proof.version+'-verification.json'),JSON.stringify(proof,null,2)+'\n');console.log('PASS '+checks.length+' real Electron tooltip/menu lifecycle checks');
+ writeVerificationReport(`hints-${proof.version}-verification.json`, proof);
+ console.log('PASS '+checks.length+' real Electron tooltip/menu lifecycle checks');
 })().catch(error=>{console.error(error);if(fs.existsSync(path.join(tmp,'app.log')))console.error(fs.readFileSync(path.join(tmp,'app.log'),'utf8').slice(-1800));process.exitCode=1;}).finally(async()=>{sockets.forEach(s=>s.close());if(child&&child.exitCode===null){const done=new Promise(r=>child.once('exit',r));child.kill();await done;}await wait(300);assert.equal(path.dirname(path.resolve(tmp)),path.resolve(os.tmpdir()));assert.match(path.basename(tmp),/^suira-workspace-[A-Za-z0-9]+$/);fs.rmSync(tmp,{recursive:true,force:true,maxRetries:5,retryDelay:200});});
