@@ -13,11 +13,16 @@
     "no-test-profile-or-obsolete-key-hook",
     "installer-archive-crc",
     "updater-feed-and-sha512-match",
-    "original-font-and-license-sha256-in-nsis-payload"
+    "original-font-and-license-sha256-in-nsis-payload",
+    "packaged-runtime-smoke-with-isolated-profile",
+    "0.2.60-discovers-and-downloads-0.2.61-through-production-updater"
   ],
   "fontSha256": "0ddef90648998900175cfdca9a6f087a2544c182f130b0ad4f7e94a03a115e79",
   "signature": "unsigned",
-  "published": false,
+  "published": true,
   "payloadSha256": "A4B4CCFDE7C02A7405E2754E3899CEA4656EA9422C21F0486547D94D5E940022",
-  "executableSha256": "3F1ABFDAEB645D12EE29839F4F6E3EB29D4E935C8D15258040424B05700B4215"
+  "executableSha256": "3F1ABFDAEB645D12EE29839F4F6E3EB29D4E935C8D15258040424B05700B4215",
+  "releaseUrl": "https://github.com/huihui200739/suira-updates/releases/tag/v0.2.61",
+  "publishedAt": "2026-11-25T12:08:19Z",
+  "buildCommit": "abb363c0fb37c1d23fcbe1767a623818d7a124fa"
 }
