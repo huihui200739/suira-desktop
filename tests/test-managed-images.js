@@ -6,6 +6,7 @@ const os = require('node:os');
 const path = require('node:path');
 const { SuiraStore } = require('../lib/store');
 const { createManagedImages } = require('../lib/managed-images');
+const { createRemovalUndo } = require('../lib/removal-undo');
 
 async function run() {
   const owner = path.resolve(os.tmpdir());
@@ -62,7 +63,32 @@ async function run() {
     assert.ok(!(await fs.readdir(root)).some(name => name.endsWith('.tmp')));
     await store.save();
     await assert.rejects(fs.stat(filePath), { code: 'ENOENT' });
-    console.log('PASS managed images: shared reference, undo, restart, retention, failed commit, external original');
+
+    await fs.writeFile(filePath, 'undo queue image');
+    const queued = store.addItem({ kind: 'image', filePath, source });
+    const task = store.createTask('Image task');
+    store.addItemToTask(task.id, queued.id);
+    let changes = 0;
+    const saveErrors = [];
+    const undo = createRemovalUndo({ store, onChange: () => changes++, onSaveError: error => saveErrors.push(error) });
+    const sender = {};
+    const first = await undo.remove(sender, queued.id);
+    assert.equal(first.taskCount, 1);
+    assert.equal((await undo.undo({}, first.token)).expired, true, 'Tokens are scoped to the originating window');
+    assert.equal(await fs.readFile(filePath, 'utf8'), 'undo queue image');
+    assert.deepEqual(await undo.undo(sender, first.token), { ok: true });
+    assert.deepEqual(store.getTask(task.id).itemIds, [queued.id]);
+    const evicted = await undo.remove(sender, queued.id);
+    for (let index = 0; index < 10; index++) {
+      const item = store.addItem({ kind: 'text', text: `queue ${index}` });
+      assert.equal((await undo.remove(sender, item.id)).ok, true);
+    }
+    await store.save();
+    assert.equal((await undo.undo(sender, evicted.token)).expired, true);
+    await assert.rejects(fs.stat(filePath), { code: 'ENOENT' });
+    assert.deepEqual(saveErrors, []);
+    assert.equal(changes, 13);
+    console.log('PASS managed images: shared reference, restart, retention, failed commit, external original, window-scoped undo and queue eviction');
   } finally {
     assert.equal(path.dirname(path.resolve(root)), owner);
     await fs.rm(root, { recursive: true, force: true, maxRetries: 3 });

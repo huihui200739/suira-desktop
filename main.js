@@ -36,6 +36,7 @@ const fs = require('node:fs');
 const fsp = require('node:fs/promises');
 const { createWindowBoundary, blockNavigation } = require('./lib/window-ipc');
 const { registerTaskIpc } = require('./lib/task-ipc');
+const { createRemovalUndo } = require('./lib/removal-undo');
 const { createQuitCoordinator } = require('./lib/quit-coordinator');
 const { recordDiagnostic } = require('./lib/diagnostic-log');
 const windowIpc = createWindowBoundary({ ipcMain, BrowserWindow, srcDir: path.join(__dirname, 'src') });
@@ -3506,51 +3507,12 @@ function closeNoteWindow(noteId) {
 }
 
 function registerIpc() {
-  const removedItems = new WeakMap();
-  const expireRemoval = (entries, entry) => {
-    if (!entries.delete(entry.token)) return;
-    clearTimeout(entry.timer);
-    entry.release();
-    if (store.hasPendingImageCleanup()) store.save().catch(logSaveFailure);
-  };
-  const removeWithUndo = async (sender, id) => {
-    const snapshot = store.detachItem(id);
-    if (!snapshot) return { ok: false, error: '内容不存在或已被清理' };
-    const release = store.holdImage(snapshot.item);
-    try { await store.save(); }
-    catch (error) { store.restoreDetachedItem(snapshot); release(); throw error; }
-    const entry = { token: crypto.randomUUID(), snapshot, expiresAt: Date.now()+30000, release };
-    const entries = removedItems.get(sender) || new Map();
-    entries.set(entry.token, entry);
-    removedItems.set(sender, entries);
-    entry.timer = setTimeout(() => expireRemoval(entries, entry), 30000);
-    entry.timer.unref();
-    if (entries.size > 10) {
-      const oldest = [...entries.values()].find(value => !value.restoring && value !== entry);
-      if (oldest) expireRemoval(entries, oldest);
-    }
-    broadcast('content:changed');
-    return { ok: true, token: entry.token, expiresAt: entry.expiresAt, taskCount: snapshot.memberships.length };
-  };
-  windowIpc.handle('content:undo-remove', async ({ sender }, token) => {
-    const entries = removedItems.get(sender),entry=entries?.get(token);
-    if (!entry || entry.expiresAt<=Date.now()) return { ok: false, expired:true, error: '已超过撤销时间' };
-    if (entry.restoring) return {ok:false,error:'正在恢复'};
-    if (!store.restoreDetachedItem(entry.snapshot)) {expireRemoval(entries, entry);return { ok: false, expired:true, error: '这条内容已恢复' };}
-    entry.restoring=true;
-    clearTimeout(entry.timer);
-    try { await store.save(); }
-    catch (error) {
-      store.removeItem(entry.snapshot.item.id);
-      entry.restoring = false;
-      entry.timer = setTimeout(() => expireRemoval(entries, entry), Math.max(0, entry.expiresAt - Date.now()));
-      entry.timer.unref();
-      throw error;
-    }
-    expireRemoval(entries, entry);
-    broadcast('content:changed');
-    return { ok: true };
+  const removalUndo = createRemovalUndo({
+    store,
+    onChange: () => broadcast('content:changed'),
+    onSaveError: logSaveFailure
   });
+  windowIpc.handle('content:undo-remove', ({ sender }, token) => removalUndo.undo(sender, token));
   windowIpc.handle('voice:open', event => {
     const caller = BrowserWindow.fromWebContents(event.sender);
     if (caller !== quickWindow && caller !== mainWindow) return { ok: false, error: '语音输入入口无效' };
@@ -4033,7 +3995,7 @@ function registerIpc() {
   windowIpc.handle('content:remove', async ({ sender }, id) => {
     const key = String(id || '');
     if (store.getItem(key)?.meta?.workspace) return { ok: false, error: '请在原工具中删除' };
-    return removeWithUndo(sender, key);
+    return removalUndo.remove(sender, key);
   });
   windowIpc.handle('content:toggle-pin', async (_event, id) => {
     const item = store.getItem(String(id || ''));
@@ -4574,7 +4536,7 @@ function registerIpc() {
     try {
       if (type === 'calendar') {
         if (store.getItem(id)?.meta?.workspace !== type) throw Error('日程不存在');
-        return await removeWithUndo(sender, id);
+        return await removalUndo.remove(sender, id);
       }
       workspace.remove(type,id); await store.save(); broadcast('content:changed'); return {ok:true};
     }
