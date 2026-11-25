@@ -141,18 +141,32 @@ const ta = async (n, f) => { try { await f(); console.log('  PASS  ' + n); pass+
       } finally { probe.dispose(); }
     });
   }
-  await ta('助手无响应时 query 在超时内返回 null', async () => {
+  await ta('助手无响应时记录超时并安全返回 null', async () => {
     const tmp = path.join(os.tmpdir(), 'suira-hang-' + Date.now() + '.ps1');
     // 一个只读 stdin 但从不回话的脚本
     fs.writeFileSync(tmp, 'while ($true) { $l = [Console]::In.ReadLine(); if ($null -eq $l) { break } }\n');
-    const probe = new ForegroundProbe({ scriptPath: tmp });
+    const warnings = [];
+    const probe = new ForegroundProbe({ scriptPath: tmp, onWarn: (_message, error) => warnings.push(error?.code) });
     const t0 = Date.now();
     const result = await probe.query();
     const elapsed = Date.now() - t0;
     probe.dispose();
     fs.rmSync(tmp, { force: true });
     assert.strictEqual(result, null);
+    if (process.platform === 'win32') assert.deepStrictEqual(warnings, ['ETIMEDOUT']);
     assert.ok(elapsed < 12000, `耗时 ${elapsed}ms 过长`);
+  });
+
+  await ta('坏协议响应可诊断，但不把原始内容写进异常', async () => {
+    const warnings = [];
+    const probe = new ForegroundProbe({ onWarn: (message, error) => warnings.push([message, error]) });
+    let result;
+    probe.pending.push({ resolve: value => { result = value; } });
+    probe.handleData('private fixture\n');
+    assert.equal(result, null);
+    assert.equal(warnings.length, 1);
+    assert.equal(warnings[0][1].code, 'ERR_FOREGROUND_PROTOCOL');
+    assert.doesNotMatch(warnings[0].join(' '), /private fixture/);
   });
 
   console.log('\n== dispose 清理 ==');

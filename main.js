@@ -234,7 +234,7 @@ function scheduleForegroundStop() {
   foregroundIdleTimer = setTimeout(() => {
     foregroundIdleTimer = null;
     if (foregroundProbe.nativeHost) return;
-    try { foregroundProbe.stop(); } catch { /* 进程可能已退出 */ }
+    foregroundProbe.stop();
     console.log('[助手] 前台窗口查询助手闲置 5 分钟，已释放');
   }, FOREGROUND_IDLE_STOP_MS);
   if (foregroundIdleTimer.unref) foregroundIdleTimer.unref();
@@ -244,7 +244,8 @@ function scheduleForegroundStop() {
 async function queryForeground() {
   try {
     return await foregroundProbe.query();
-  } catch {
+  } catch (error) {
+    reportDiagnostic('warn', 'foreground-query', error);
     return null;
   } finally {
     scheduleForegroundStop();
@@ -1954,7 +1955,7 @@ function momentaryStatus() {
 async function setupMomentaryProbe() {
   const accelerator = momentaryAccelerator();
   if (momentaryProbe) {
-    try { await momentaryProbe.stop(); } catch {}
+    await momentaryProbe.stop();
     momentaryProbe = null;
   }
   if (momentaryOpened) hideQuickPanel();
@@ -1976,14 +1977,15 @@ async function setupMomentaryProbe() {
     onDown: () => {
       if (quickWindow && !quickWindow.isDestroyed() && quickWindow.isVisible()) return;
       momentaryOpened = true;
-      showQuickPanel();
+      return showQuickPanel();
     },
     onUp: () => {
       if (!momentaryOpened) return;
       momentaryOpened = false;
       hideQuickPanel();
     },
-    onError: (message) => console.warn('按住型唤起侦测失败:', message)
+    onError: () => reportDiagnostic('warn', 'key-watch-helper'),
+    onDiagnostic: (event, error) => reportDiagnostic('warn', event, error)
   });
   const result = await momentaryProbe.start();
   const ok = Boolean(result && result.ok);
@@ -5034,7 +5036,7 @@ async function initialize() {
   // 按住型侦测失败不阻塞启动：设置页会显示原因，普通快捷键照常可用
   momentaryReady = setupMomentaryProbe().catch((error) => {
     momentaryError = error && error.message ? error.message : String(error);
-    console.warn('按住型唤起初始化失败:', momentaryError);
+    reportDiagnostic('warn', 'key-watch-initialize', error);
     return { ok: false, error: momentaryError };
   });
   // 剪贴板监听失败时不能只写日志：剪贴板历史会完全失效，用户必须知道

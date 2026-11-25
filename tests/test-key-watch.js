@@ -554,15 +554,22 @@ function runSelfTestRaw() {
   });
   await t('回调抛错不会拖垮侦测状态机', async () => {
     const { calls, spawnImpl } = makeSpawner();
+    const reported = [];
+    const downError = new Error('synchronous callback failure');
+    const upError = new Error('asynchronous callback failure');
     const probe = new KeyWatchProbe({
       accelerator: 'Control+Alt+Space',
       spawnImpl,
-      onDown: () => { throw new Error('caller bug'); },
-      onUp: () => { throw new Error('caller bug'); }
+      onDown: () => { throw downError; },
+      onUp: async () => { throw upError; },
+      onDiagnostic: (event, error) => reported.push([event, error])
     });
     await startFake(probe, calls);
     await feed(calls[0].child, 'DOWN\nUP\n');
     assert.strictEqual(probe.status, 'watching');
+    assert.deepStrictEqual(reported, [['key-watch-callback', downError], ['key-watch-callback', upError]]);
+    await probe.stop();
+    assert.strictEqual(reported.length, 2, 'Normal shutdown should not report an error');
   });
 
   console.log('\n== KeyWatchProbe：stop() 与 update() ==');
