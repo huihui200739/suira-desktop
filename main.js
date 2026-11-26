@@ -87,7 +87,7 @@ const { captureTarget, validateTarget, decideCommit, normalizeHwnd, ClipboardWri
 const { AppIndex } = require('./lib/app-index');
 const { createAppIconLoader, extractResourceBatch } = require('./lib/app-icons');
 const { createIconDiskCache } = require('./lib/icon-disk-cache');
-const { captureNative, nativeDesktopTiles } = require('./lib/native-capture');
+const { captureNative, captureWindowsNative, nativeDesktopTiles, normalizeSnapRects } = require('./lib/native-capture');
 const { ForegroundProbe } = require('./lib/foreground-probe');
 const { DEFAULT_BINDINGS, DEFAULT_MOMENTARY_BINDINGS, ShortcutManager, normalizeAccelerator, validateMomentaryAccelerator, momentaryConflict } = require('./lib/shortcuts');
 const { KeyVault, decryptItem, encryptText, decryptText } = require('./lib/crypto-store');
@@ -2186,11 +2186,15 @@ async function beginScreenCapture(source = 'panel', options = {}) {
 
     // 合成用缩放：以最大 scaleFactor 为准，保证最清晰屏幕不被降采样
     const maxScale = maxScaleFactor(displays);
-    let tiles=null, captureBackend='native';
+    let tiles=null, captureBackend='native', snapRects=[];
     if(process.platform==='win32') {
       try {
         const executable=await readyCaptureHost();
-        if(executable)tiles=nativeDesktopTiles(displays,await captureNative(executable),virtualBounds,maxScale);
+        if(executable){
+          const [frames,rawWindows]=await Promise.all([captureNative(executable),captureWindowsNative(executable,process.pid)]);
+          tiles=nativeDesktopTiles(displays,frames,virtualBounds,maxScale);
+          snapRects=normalizeSnapRects(rawWindows,virtualBounds,pt=>screen.screenToDipPoint(pt));
+        }
       }catch(error){console.warn('原始像素采集回退:',error.message);}
     }
     if(!tiles) {
@@ -2227,6 +2231,7 @@ async function beginScreenCapture(source = 'panel', options = {}) {
         bounds: d.bounds,
         scaleFactor: d.scaleFactor || 1
       })),
+      snapRects,
       // 入口意图：覆盖层据此处决定框选完成后直接做哪一步
       intent,
       source
@@ -2972,7 +2977,11 @@ const pins = createPinWindows({
   windowIpc, BrowserWindow, screen, nativeImage, dialog, app,
   findImage: filePath => store?.data.items.find(item => item.kind === 'image' && item.filePath === filePath),
   onClosed: () => { if (!isQuitting && store?.hasPendingImageCleanup()) store.save().catch(logSaveFailure); },
-  prepareFloatingSurface, toastToUser, writeClipboardText, writeClipboardImage
+  prepareFloatingSurface, toastToUser, writeClipboardText, writeClipboardImage,
+  recognizePinImage: async (buffer) => {
+    if (!ocr) throw new Error('OCR 引擎尚未就绪');
+    return ocr.recognizeBuffer(buffer, store?.getSettings()?.ocrLangs || 'chi_sim+eng');
+  }
 });
 const createPinWindow = pins.create;
 const togglePinnedVisibility = pins.toggleVisibility;

@@ -202,6 +202,23 @@
   --tool-key-bound: rgba(255, 255, 255, .88);
   --tool-hover: rgba(255, 255, 255, .96);
 
+  /* 截图智能吸附、聚光灯与一键美化套壳令牌 */
+  --overlay-snap-edge: var(--accent-9);
+  --overlay-snap-fill: color-mix(in srgb, var(--accent-9) 12%, transparent);
+  --overlay-spotlight-dim: rgba(9, 12, 18, .62);
+  --overlay-select-ring: var(--accent-9);
+  --beautify-1-a: #6366f1; --beautify-1-b: #38bdf8;
+  --beautify-2-a: #fb7185; --beautify-2-b: #f59e0b;
+  --beautify-3-a: #0ea5e9; --beautify-3-b: #1e3a8a;
+  --beautify-4-a: #10b981; --beautify-4-b: #06b6d4;
+  --beautify-5-a: #334155; --beautify-5-b: #0f172a;
+  --beautify-6-a: #f8fafc; --beautify-6-b: #e2e8f0;
+  --beautify-shadow-soft: rgba(15, 23, 42, .24);
+  --beautify-shadow-deep: rgba(15, 23, 42, .38);
+  --beautify-frame-edge: rgba(255, 255, 255, .28);
+  --beautify-chrome-bg: rgba(255, 255, 255, .92);
+  --beautify-dot-red: #ff5f57; --beautify-dot-yellow: #febc2e; --beautify-dot-green: #28c840;
+
   font-family: var(--font-ui);
   font-weight: 400;
   font-variant-numeric: tabular-nums;

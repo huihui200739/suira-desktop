@@ -165,7 +165,7 @@ const check = (name, cond, detail) => {
     .replace('<script src="overlay.js"></script>', '<script src="__mock.js"></script><script src="overlay.js"></script>');
   fs.writeFileSync(path.join(TMP, '__mock.js'), MOCK, 'utf8');
   fs.writeFileSync(path.join(TMP, 'overlay.html'), html, 'utf8');
-  for (const asset of ['translate-language.js', 'text-spacing.js', 'theme.css', 'ui-motion.css', 'ui-motion.js', 'overlay.css', 'overlay.js', 'image-editor.css', 'image-editor.js']) {
+  for (const asset of ['translate-language.js', 'text-spacing.js', 'overlay-annotations.js', 'theme.css', 'ui-motion.css', 'ui-motion.js', 'overlay.css', 'overlay.js', 'image-editor.css', 'image-editor.js']) {
     fs.copyFileSync(path.join(ROOT, 'src', asset), path.join(TMP, asset));
   }
 
@@ -835,6 +835,122 @@ const check = (name, cond, detail) => {
     check('单屏原图与裁剪共用一次解码',decoding.singleDecoded===1,JSON.stringify(decoding));
     check('双屏各解码一次，并直接使用合成画布',decoding.multiDecoded===2&&decoding.composed,JSON.stringify(decoding));
     check('多屏拼接保持左右屏原始颜色',decoding.left.join(',')==='255,0,0,255'&&decoding.right.join(',')==='0,0,255,255',JSON.stringify(decoding));
+
+    console.log('\n== 阶段 1：智能吸附、新标注工具、二次编辑与一键美化套壳 ==');
+    const stage1 = await evaluate(send, `(async()=>{
+      const pause=()=>new Promise(r=>setTimeout(r,60));
+      const rootEl=document.getElementById('capture-root');
+      // Reload clean capture with mock snapRects (window + child control)
+      const origGetData=window.suira.capture.getData;
+      window.suira.capture.getData=async()=>({
+        ...(await origGetData()),
+        snapRects:[{x:80,y:60,width:420,height:300,children:[{x:120,y:100,width:160,height:80}]}]
+      });
+      try {
+        window.__fireShown();
+        for(let i=0;i<60&&!document.getElementById('loading-state').hidden;i++)await pause();
+        // 1. Smart snap hover -> hits child control first -> wheel cycles to parent window -> single click locks it
+        rootEl.dispatchEvent(new PointerEvent('pointermove',{clientX:160,clientY:130,bubbles:true,pointerId:81}));
+        await pause();
+        const snapChild=!document.getElementById('snap-preview').hidden&&Math.round(parseFloat(document.getElementById('snap-preview').style.width))===160;
+        rootEl.dispatchEvent(new WheelEvent('wheel',{deltaY:120,bubbles:true,cancelable:true}));
+        await pause();
+        const snapWindow=Math.round(parseFloat(document.getElementById('snap-preview').style.width))===420;
+        rootEl.dispatchEvent(new PointerEvent('pointerdown',{button:0,clientX:160,clientY:130,bubbles:true,pointerId:81}));
+        rootEl.dispatchEvent(new PointerEvent('pointermove',{clientX:240,clientY:200,bubbles:true,pointerId:81}));
+        rootEl.dispatchEvent(new PointerEvent('pointermove',{clientX:161,clientY:130,bubbles:true,pointerId:81}));
+        rootEl.dispatchEvent(new PointerEvent('pointerup',{button:0,clientX:161,clientY:130,bubbles:true,pointerId:81}));
+        await pause();
+        const dragBackNoSnap=!state.selection&&!state.selectionReady;
+
+        // Now real hover -> wheel -> single click locks parent window
+        rootEl.dispatchEvent(new PointerEvent('pointermove',{clientX:160,clientY:130,bubbles:true,pointerId:81}));
+        await pause();
+        rootEl.dispatchEvent(new WheelEvent('wheel',{deltaY:120,bubbles:true,cancelable:true}));
+        await pause();
+        rootEl.dispatchEvent(new PointerEvent('pointerdown',{button:0,clientX:160,clientY:130,bubbles:true,pointerId:81}));
+        rootEl.dispatchEvent(new PointerEvent('pointerup',{button:0,clientX:161,clientY:130,bubbles:true,pointerId:81}));
+        await pause();
+        const snapClicked=state.selectionReady&&state.selection.w===420&&state.selection.h===300&&document.getElementById('snap-preview').hidden;
+
+        // 2. New annotation tools: highlighter (H), ellipse (E), blur (B), spotlight (K)
+        const press=(k,extra={})=>document.dispatchEvent(new KeyboardEvent('keydown',{key:k,bubbles:true,cancelable:true,...extra}));
+        const drag=(x1,y1,x2,y2,id)=>{
+          rootEl.dispatchEvent(new PointerEvent('pointerdown',{button:0,clientX:x1,clientY:y1,bubbles:true,pointerId:id}));
+          rootEl.dispatchEvent(new PointerEvent('pointermove',{clientX:x2,clientY:y2,bubbles:true,pointerId:id}));
+          rootEl.dispatchEvent(new PointerEvent('pointerup',{clientX:x2,clientY:y2,bubbles:true,pointerId:id}));
+        };
+        press('h'); drag(100,100,200,100,82);
+        press('e'); drag(120,140,220,210,83);
+        press('b'); drag(240,100,340,160,84);
+        press('k'); drag(250,180,380,280,85);
+        await pause();
+        const newTypes=state.annotations.map(a=>a.type);
+        const toolsCreated=['highlighter','ellipse','blur','spotlight'].every(t=>newTypes.includes(t));
+
+        // 3. Secondary editing: draw a rect, switch to select, click its border to select, drag to move, recolor, Delete only selected, Ctrl+Z restores
+        press('r'); drag(100,230,200,300,86);
+        await pause();
+        const rectItem=state.annotations.find(a=>a.type==='rect');
+        const origX=rectItem.x;
+        press('a');
+        // Click & drag on rect top border (y=230, x=150)
+        rootEl.dispatchEvent(new PointerEvent('pointerdown',{button:0,clientX:150,clientY:230,bubbles:true,pointerId:87}));
+        rootEl.dispatchEvent(new PointerEvent('pointermove',{clientX:180,clientY:250,bubbles:true,pointerId:87}));
+        rootEl.dispatchEvent(new PointerEvent('pointerup',{clientX:180,clientY:250,bubbles:true,pointerId:87}));
+        await pause();
+        const selectedAndMoved=state.selectedAnnotationId===rectItem.id&&Math.round(rectItem.x-origX)===30;
+        // 1px micro-move + Ctrl+Z must undo the 1px move, NOT delete the rect
+        const xBeforeMicro=rectItem.x;
+        rootEl.dispatchEvent(new PointerEvent('pointerdown',{button:0,clientX:180,clientY:250,bubbles:true,pointerId:87}));
+        rootEl.dispatchEvent(new PointerEvent('pointermove',{clientX:181,clientY:250,bubbles:true,pointerId:87}));
+        rootEl.dispatchEvent(new PointerEvent('pointerup',{clientX:181,clientY:250,bubbles:true,pointerId:87}));
+        await pause();
+        press('z',{ctrlKey:true});
+        await pause();
+        const rectAfterMicroUndo=state.annotations.find(a=>a.id===rectItem.id);
+        const microMoveUndoKeepsRect=Boolean(rectAfterMicroUndo)&&Math.round(rectAfterMicroUndo.x-xBeforeMicro)===0;
+        // Recolor selected annotation
+        setColor('drawing-green');
+        const recolored=rectAfterMicroUndo.color===themePaint('drawing-green');
+        const countBeforeDel=state.annotations.length;
+        press('Delete');
+        const deletedOnlyOne=state.annotations.length===countBeforeDel-1&&state.selectionReady===true&&state.selectedAnnotationId===null;
+        press('z',{ctrlKey:true});
+        const undoRestored=state.annotations.length===countBeforeDel;
+
+        // 4. Double-click text annotation to edit in place
+        press('t');
+        rootEl.dispatchEvent(new PointerEvent('pointerdown',{button:0,clientX:130,clientY:110,bubbles:true,pointerId:88}));
+        document.getElementById('text-input').value='初版文字';
+        document.getElementById('text-confirm').click();
+        await pause();
+        rootEl.dispatchEvent(new MouseEvent('dblclick',{clientX:140,clientY:118,bubbles:true}));
+        await pause();
+        const textOpened=!document.getElementById('text-editor').hidden&&document.getElementById('text-input').value==='初版文字';
+        document.getElementById('text-input').value='改后文字';
+        document.getElementById('text-confirm').click();
+        await pause();
+        const textEdited=state.annotations.some(a=>a.type==='text'&&a.text==='改后文字');
+
+        // 5. Beautify frame (F opens popover, enable adds padding + chrome to export, withoutAnnotations stays raw 420x300)
+        press('f');
+        await pause();
+        const beautifyOpened=!document.getElementById('beautify-popover').hidden;
+        document.getElementById('beautify-enabled').click();
+        document.getElementById('beautify-chrome').click();
+        await pause();
+        const framed=compositeSelection();
+        const raw=compositeSelection({withoutAnnotations:true});
+        const beautifySized=framed.width===420+96&&framed.height===300+96+32&&raw.width===420&&raw.height===300;
+        framed.width=framed.height=0;raw.width=raw.height=0;
+        press('Escape');
+        const beautifyClosed=document.getElementById('beautify-popover').hidden;
+
+        return {snapChild,snapWindow,dragBackNoSnap,snapClicked,toolsCreated,selectedAndMoved,microMoveUndoKeepsRect,recolored,deletedOnlyOne,undoRestored,textOpened,textEdited,beautifyOpened,beautifySized,beautifyClosed};
+      } finally { window.suira.capture.getData=origGetData; }
+    })()`);
+    for (const [k, ok] of Object.entries(stage1)) check('阶段 1 ' + k, ok, JSON.stringify(stage1));
 
     console.log('\n== 隐藏即释放：capture:release 归还画面与画布后备缓冲 ==');
     const releaseResult = await evaluate(send, `(function(){

@@ -20,9 +20,26 @@ button { font:inherit;font-variant-numeric:tabular-nums;color:inherit;cursor:poi
   .pin-menu > button > kbd { display:none; }
 }
 .is-collapsed .pin-compact-adjust { display:none; }
-@media (max-width: 145px) {
-  .pin-bar #copy,.pin-bar #collapse { display:none; }
+@media (max-width: 410px) {
+  .pin-bar #ocr-btn,.pin-bar #passthrough-btn { display:none; }
 }
+@media (max-width: 145px) {
+  .pin-bar #copy,.pin-bar #collapse,.pin-bar #ocr-btn,.pin-bar #passthrough-btn { display:none; }
+}
+.pin-unlock { position:absolute;top:8px;right:8px;z-index:20;height:26px;padding:0 10px;border-radius:var(--radius-pill);border:1px solid var(--accent-8);background:var(--surface);color:var(--accent-11);font-size:11px;font-weight:500;box-shadow:var(--shadow-lift);transition:background var(--dur-quick) var(--ease-out),color var(--dur-quick) var(--ease-out); }
+.pin-unlock:hover { background:var(--accent-9);color:var(--on-accent); }
+body.is-passthrough .pin-surface { border-style:dashed;border-color:var(--accent-9); }
+body.is-passthrough .pin-bar { display:none; }
+.pin-ocr-overlay { position:absolute;inset:0;z-index:15;cursor:crosshair;background:var(--overlay-shade-surface); }
+.pin-ocr-box { position:absolute;border:1.5px solid var(--accent-9);background:var(--overlay-snap-fill);pointer-events:none; }
+.pin-ocr-tip { position:absolute;left:50%;top:10px;transform:translateX(-50%);padding:4px 10px;border-radius:var(--radius-pill);border:0.5px solid var(--line);background:var(--surface);color:var(--ink);font-size:11px;white-space:nowrap;box-shadow:var(--shadow-lift);pointer-events:none; }
+.pin-ocr-result { position:absolute;left:8px;right:8px;bottom:8px;z-index:18;display:flex;flex-direction:column;gap:6px;padding:8px;border-radius:var(--radius-card);border:1px solid var(--floating-edge);background:var(--surface);box-shadow:var(--shadow-float); }
+.pin-ocr-result header { display:flex;align-items:center;gap:6px; }
+.pin-ocr-result header b { margin-right:auto;font-size:12px;color:var(--ink); }
+.pin-ocr-result header button { height:24px;padding:0 8px;border-radius:var(--radius-sm);background:var(--floating-key);color:var(--ink);font-size:11px; }
+.pin-ocr-result header button:hover { background:var(--control-selected); }
+.pin-ocr-result textarea { width:100%;height:78px;resize:vertical;padding:6px 8px;border:0.5px solid var(--line);border-radius:var(--radius-sm);background:var(--control-field);color:var(--ink);font:12px/1.5 var(--font-ui);user-select:text;outline:none; }
+#ocr-btn.is-active,#passthrough-btn.is-active { background:var(--accent-3);color:var(--accent-11); }
 .pin-menu { position:fixed;z-index:10;width:min(226px,calc(100% - 12px));max-height:calc(100% - 12px);overflow:auto;padding:5px;border-radius:12px;border:1px solid var(--floating-edge);background:var(--surface);box-shadow:var(--shadow-lift);backdrop-filter:blur(18px); }
 .pin-menu > button,.pin-compact-adjust > button { width:100%;display:flex;gap:12px;align-items:center;justify-content:space-between;text-align:left;padding:8px;border-radius:7px;overflow-wrap:anywhere; }
 .pin-menu > button:hover,.pin-menu > button:focus-visible,.pin-compact-adjust > button:hover:not(:disabled),.pin-compact-adjust > button:focus-visible { background:var(--control-selected); }

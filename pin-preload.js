@@ -18,6 +18,13 @@ contextBridge.exposeInMainWorld('pinApi', {
   resize: (width, height) => ipcRenderer.send('pin:resize', { width, height }),
   setOpacity: (value) => ipcRenderer.send('pin:opacity', value),
   collapse: (collapsed) => ipcRenderer.send('pin:collapse', Boolean(collapsed)),
+  setPassthrough: (enabled, options) => ipcRenderer.invoke('pin:passthrough', { enabled: Boolean(enabled), hoverUnlock: Boolean(options?.hoverUnlock) }),
+  onPassthrough: (callback) => {
+    const handler = (_event, value) => callback(Boolean(value));
+    ipcRenderer.on('pin:passthrough-changed', handler);
+    return () => ipcRenderer.removeListener('pin:passthrough-changed', handler);
+  },
+  ocrRegion: (dataUrl) => ipcRenderer.invoke('pin:ocr', { dataUrl }),
   bounds: () => ipcRenderer.sendSync('pin:bounds'),
   close: () => ipcRenderer.send('pin:close')
 });
