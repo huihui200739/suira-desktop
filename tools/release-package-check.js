@@ -5,6 +5,30 @@ const payload=path.join(root,'dist','win-unpacked','resources','app.asar'),insta
 for(const name of ['udata','debug.log'])assert.equal(fs.existsSync(path.join(root,'dist/win-unpacked',name)),false,'Runtime-owner cache must not ship: '+name);
 const files=asar.listPackage(payload).map(file=>file.replace(/\\/g,'/').replace(/^\//,''));
 assert.ok(!files.some(file=>/(^|\/)(?:__fx_[^/]*|suira-data\.(?:json|key)|\.workbuddy|\.git|shortcut-fallback[^/]*)(?:\/|$)/.test(file)),'Development files or obsolete fallback leaked into payload');
+const packagedPaths = new Set(files);
+const checkedPackages = new Set();
+function checkProductionDependencies(manifestPath) {
+  if (checkedPackages.has(manifestPath)) return;
+  checkedPackages.add(manifestPath);
+  const manifest = JSON.parse(asar.extractFile(payload, path.normalize(manifestPath)));
+  for (const name of Object.keys(manifest.dependencies || {})) {
+    if (Object.hasOwn(manifest.optionalDependencies || {}, name)) continue;
+    let directory = path.posix.dirname(manifestPath);
+    while (true) {
+      if (path.posix.basename(directory) !== 'node_modules') {
+        const candidate = path.posix.join(directory, 'node_modules', name, 'package.json');
+        if (packagedPaths.has(candidate)) {
+          checkProductionDependencies(candidate);
+          break;
+        }
+      }
+      assert.notEqual(directory, '.', `Missing packaged dependency ${name} (required by ${manifestPath}). Run npm ci in the build checkout and rebuild.`);
+      directory = path.posix.dirname(directory);
+    }
+  }
+}
+checkProductionDependencies('package.json');
+console.log(`PASS ${checkedPackages.size - 1} required production packages are present`);
 let checked=0;
 for(const file of files.filter(file=>/^(main\.js|preload\.js|voice-preload\.js|pin-preload\.js|lib\/|src\/|assets\/licenses\/|assets\/foreground-helper\.ps1)/.test(file))){
   const native=path.normalize(file),stat=asar.statFile(payload,native);if(stat.files)continue;
@@ -54,6 +78,7 @@ const publish=require('../package.json').build.publish[0],sha512=crypto.createHa
 assert.equal(config.provider,publish.provider);assert.equal(config.owner,publish.owner);assert.equal(config.repo,publish.repo);assert.equal(feed.version,version);
 const updateFile=feed.files.find(file=>file.url===path.basename(installer));assert.ok(updateFile);assert.equal(updateFile.sha512,sha512);assert.equal(updateFile.size,fs.statSync(installer).size);assert.ok(fs.existsSync(installer+'.blockmap'));assert.ok(files.includes('node_modules/electron-updater/out/main.js'));
 const manifest={version,artifact:path.basename(installer),bytes:fs.statSync(installer).size,sha256,sha512,platform:'win32',arch:'x64',electron:'45.0.0',checkedSourceFiles:checked,checks:['source-payload-byte-match','no-test-profile-or-obsolete-key-hook','installer-archive-crc','updater-feed-and-sha512-match','original-font-and-license-sha256-in-nsis-payload'],fontSha256:fontSource.sha256,signature:'unsigned',published:false};
+manifest.checks.push('required-production-dependency-closure');
 manifest.payloadSha256=fileHash(payload);
 manifest.executableSha256=fileHash(path.join(root,'dist','win-unpacked','随序.exe'));
 if (!process.argv.includes('--check-only')) fs.writeFileSync(path.join(root,'docs',`release-${version}.json`),JSON.stringify(manifest,null,2)+'\n');

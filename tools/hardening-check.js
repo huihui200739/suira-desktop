@@ -10,6 +10,7 @@ const { setTimeout: sleep } = require('node:timers/promises');
 const { connect } = require('./runtime-client');
 const { KeyVault, decryptItem, encryptItem } = require('../lib/crypto-store');
 const { SuiraStore } = require('../lib/store');
+const { checkKeyPersistence } = require('./key-persistence-check');
 
 const root = path.resolve(__dirname, '..');
 async function until(read) {
@@ -23,6 +24,7 @@ async function until(read) {
 }
 
 async function run() {
+  await checkKeyPersistence();
   const owner = path.resolve(os.tmpdir());
   const profile = await fs.mkdtemp(path.join(owner, 'suira-hardening-'));
   const sockets = [];
@@ -36,11 +38,16 @@ async function run() {
     const dataPath = path.join(profile, 'suira-data.json');
     const legacy = new KeyVault();
     assert.equal((await legacy.loadOrCreate(keyPath)).ok, true);
+    const wrappedKey = await fs.readFile(keyPath, 'utf8');
     const codec = { isReady: () => true, encode: item => encryptItem(legacy.key, item), decode: item => decryptItem(legacy.key, item) };
     const fixture = new SuiraStore(dataPath, { codec });
     await fixture.updateSettings({ recordClipboard: true, globalShortcutsEnabled: false, panelGuideSeen: true });
     const sample = fixture.addItem({ kind: 'text', title: 'Protected existing record', text: 'legacy fixture' });
     const stale = fixture.addItem({ kind: 'text', title: 'Expired fixture', text: 'expire this', createdAt: Date.now() - 2 * 86400000 });
+    const imagePath = path.join(profile, 'legacy-fixture.png');
+    const { PNG } = require('pngjs');
+    await fs.writeFile(imagePath, PNG.sync.write(new PNG({ width: 5, height: 7 })));
+    const image = fixture.addItem({ kind: 'image', title: 'Legacy image', filePath: imagePath });
     await fixture.save();
     const entry = path.join(profile, 'app.js'), result = path.join(profile, 'listener-ready');
     await fs.writeFile(entry, `
@@ -113,10 +120,18 @@ async function run() {
     }
     assert.deepEqual(registered.sort(), [...invoked].sort(), 'Preload and actual IPC registrations must match');
     assert.equal((await main.evaluate(`window.suira.content.get(${JSON.stringify(sample.id)})`)).text, 'legacy fixture');
+    const listed = await main.evaluate(`(async () => {
+      const items = await window.suira.content.list({ cardDetails: true });
+      return items.find(item => item.id === ${JSON.stringify(image.id)});
+    })()`);
+    assert.match(listed.thumbnail, /^data:image\/png;base64,/);
+    assert.equal(listed.meta.byteSize, (await fs.stat(imagePath)).size);
+    assert.equal(listed.meta.width, 5);
+    assert.equal(listed.meta.height, 7);
     assert.equal((await main.evaluate(`window.suira.content.get(${JSON.stringify(stale.id)})`)).text, 'expire this');
     await main.evaluate('window.suira.settings.update({retentionDays:1})');
     assert.ok(!(await main.evaluate('window.suira.content.list()')).some(item => item.id === stale.id));
-    assert.match(await fs.readFile(keyPath, 'utf8'), /^safeStorage:/);
+    assert.ok((await fs.readFile(keyPath, 'utf8')) === wrappedKey, 'Existing DPAPI envelope should remain intact');
     assert.equal(await until(() => fs.readFile(result, 'utf8')), 'ok');
     // The injected clipboard does not touch the user's system clipboard. The Win32
     // message still travels through the real hidden HWND and Electron's hook.
@@ -175,7 +190,7 @@ async function run() {
     child = spawn(executable, [entry, '--remote-debugging-address=127.0.0.1', `--remote-debugging-port=${port}`], { cwd: root, env, windowsHide: true, stdio: 'ignore' });
     const restarted = await page(target => target.url.endsWith('/index.html'));
     assert.equal((await restarted.evaluate(`window.suira.content.get(${JSON.stringify(sample.id)})`)).text, 'legacy fixture');
-    console.log('PASS real Electron: legacy key migration and restart, native clipboard notification, denied navigation/popups/IPC, task copy/export/cancel and immediate quit flush');
+    console.log('PASS real Electron: existing DPAPI profile and restart, native clipboard notification, denied navigation/popups/IPC, task copy/export/cancel and immediate quit flush');
   } finally {
     for (const socket of sockets) socket.close();
     if (child?.pid && child.exitCode === null && !child.signalCode) {

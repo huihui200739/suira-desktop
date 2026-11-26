@@ -36,6 +36,9 @@ const fs = require('node:fs');
 const fsp = require('node:fs/promises');
 const { createWindowBoundary, blockNavigation } = require('./lib/window-ipc');
 const { registerTaskIpc } = require('./lib/task-ipc');
+const { registerWorkspaceFileIpc } = require('./lib/workspace-file-ipc');
+const { registerContentIpc } = require('./lib/content-ipc');
+const { registerTranslationIpc } = require('./lib/translation-ipc');
 const { createRemovalUndo } = require('./lib/removal-undo');
 const { createQuitCoordinator } = require('./lib/quit-coordinator');
 const { recordDiagnostic } = require('./lib/diagnostic-log');
@@ -1135,7 +1138,9 @@ function clipFloatingSurface(win) {
     });
     shape=clipToWorkAreas(shape,bounds,areas);
   }
-  try { win.setShape(shape); } catch {}
+  try { win.setShape(shape); } catch (error) {
+    if (!win.isDestroyed()) reportDiagnostic('warn', 'window-shape', error);
+  }
   if (win.__allowNativeBlur) updateWindowMaterial(win);
 }
 
@@ -1561,7 +1566,9 @@ function createIslandWindow() {
   islandWindow.setAlwaysOnTop(true, 'floating');
   islandWindow.setIgnoreMouseEvents(true);
   if (process.platform === 'win32') {
-    try { islandWindow.setBackgroundMaterial('none'); } catch {}
+    try { islandWindow.setBackgroundMaterial('none'); } catch (error) {
+      reportDiagnostic('warn', 'island-background-material', error);
+    }
   }
   islandWindow.loadFile(path.join(__dirname, 'src', 'island.html'));
   islandWindow.setMenuBarVisibility(false);
@@ -2291,7 +2298,9 @@ function createMainWindow() {
     if(longCapture||longPickerPayload||[quickWindow,clipboardBarWindow,overlayWindow].some(win=>win&&!win.isDestroyed()&&win.isVisible()))return;
     // 上次退出时是最大化状态：先恢复最大化再显示，避免先闪一下小窗口
     if (saved?.maximized) {
-      try { mainWindow.maximize(); } catch {}
+      try { mainWindow.maximize(); } catch (error) {
+        if (!mainWindow.isDestroyed()) reportDiagnostic('warn', 'window-restore-maximized', error);
+      }
     }
     mainWindow.show();
     mainWindow.focus();
@@ -2514,7 +2523,12 @@ function hideOverlayWindow(options = {}) {
   capturePayload = null;
   captureBusy = false;
   if (overlayWindow && !overlayWindow.isDestroyed()) {
-    if(options.release!==false)try { overlayWindow.webContents.send('capture:release'); } catch {}
+    if (options.release !== false) {
+      const contents = overlayWindow.webContents;
+      try { contents.send('capture:release'); } catch (error) {
+        if (!contents.isDestroyed()) reportDiagnostic('warn', 'capture-release', error);
+      }
+    }
     overlayWindow.hide();
     if (options.release !== false) scheduleIdleTeardown(overlayWindow, '截图', HOT_WINDOW_IDLE_MS);
   }
@@ -3507,12 +3521,22 @@ function closeNoteWindow(noteId) {
 }
 
 function registerIpc() {
+  registerTranslationIpc({
+    handle: windowIpc.handle,
+    translateConfig,
+    translateStatus,
+    runTranslation,
+    fetchImpl: (...args) => electron.net.fetch(...args)
+  });
   const removalUndo = createRemovalUndo({
     store,
     onChange: () => broadcast('content:changed'),
     onSaveError: logSaveFailure
   });
-  windowIpc.handle('content:undo-remove', ({ sender }, token) => removalUndo.undo(sender, token));
+  registerContentIpc({
+    handle: windowIpc.handle, store, removalUndo, broadcast,
+    classifyText, thumbnailFor, nativeImage, shell
+  });
   windowIpc.handle('voice:open', event => {
     const caller = BrowserWindow.fromWebContents(event.sender);
     if (caller !== quickWindow && caller !== mainWindow) return { ok: false, error: '语音输入入口无效' };
@@ -3715,7 +3739,13 @@ function registerIpc() {
   windowIpc.handle('material:preferences',event=>{
     const win=BrowserWindow.fromWebContents(event.sender);
     if(!win||!win.__surfaceRadius)return {};
-    return {nativeGlass:Boolean(win.__systemGlass),reducedTransparency:Boolean(nativeTheme.prefersReducedTransparency),highContrast:Boolean(nativeTheme.shouldUseHighContrastColors)};
+    return {
+      nativeGlass: Boolean(win.__systemGlass),
+      nativeBlur: Boolean(win.__nativeBlur),
+      frameReady: Boolean(win.__glassFrameReady),
+      reducedTransparency: Boolean(nativeTheme.prefersReducedTransparency),
+      highContrast: Boolean(nativeTheme.shouldUseHighContrastColors)
+    };
   });
   windowIpc.handle('quick:background',()=>({dataUrl:'',source:'native'}));
   windowIpc.on('quick:prepared',(event,token)=>{
@@ -3954,80 +3984,6 @@ function registerIpc() {
     }
   });
 
-  windowIpc.handle('content:list', async (_event, options) => {
-    const items = store.listItems(options || {});
-    // 图片条目若缺缩略图（旧数据或生成失败），按需补齐，避免列表出现空白卡
-    for (const item of items) {
-      if (item.kind === 'image' && !item.thumbnail && item.filePath) {
-        const thumbnail = thumbnailFor(item.filePath);
-        if (thumbnail) item.thumbnail = thumbnail;
-      }
-    }
-    if (options?.cardDetails === true) {
-      // 补齐旧条目的原图信息，进程内缓存成功结果，无需迁移或写盘。
-      await Promise.all(items.filter(item => item.kind === 'image' && item.filePath &&
-        (!Number.isFinite(item.meta?.byteSize) || !item.meta?.width || !item.meta?.height)).map(async item => {
-        const original = await fsp.stat(item.filePath).catch(() => null);
-        if (!original?.isFile()) return;
-        item.meta.byteSize = original.size;
-        if (!item.meta.width || !item.meta.height) {
-          const image = nativeImage.createFromPath(item.filePath);
-          if (!image.isEmpty()) Object.assign(item.meta, image.getSize());
-        }
-      }));
-    }
-    return items;
-  });
-  windowIpc.handle('content:get', (_event, id) => store.getItem(String(id || '')));
-  windowIpc.handle('content:add-text', async (_event, payload) => {
-    const value = String(payload?.text || '').trim();
-    if (!value) return { ok: false, error: '文字为空' };
-    const item = store.addItem({
-      kind: classifyText(value),
-      title: payload?.title || value.slice(0, 42),
-      text: value,
-      source: { type: payload?.source || 'user', acquisitionMethod: 'manual', confidence: 'certain' }
-    });
-    await store.save();
-    broadcast('content:changed', { itemId: item.id });
-    return { ok: true, item };
-  });
-  windowIpc.handle('content:remove', async ({ sender }, id) => {
-    const key = String(id || '');
-    if (store.getItem(key)?.meta?.workspace) return { ok: false, error: '请在原工具中删除' };
-    return removalUndo.remove(sender, key);
-  });
-  windowIpc.handle('content:toggle-pin', async (_event, id) => {
-    const item = store.getItem(String(id || ''));
-    if (!item) return { ok: false };
-    item.pinned = !item.pinned;
-    await store.save();
-    broadcast('content:changed');
-    return { ok: true, pinned: item.pinned };
-  });
-
-  /**
-   * 打开某条内容的来源原图。
-   * 识别结果（kind=text, meta.originItemId）指向它由哪张图片生成；
-   * 图片本身没有 originItemId，直接开自己。
-   */
-  windowIpc.handle('content:open-original', async (_event, id) => {
-    const item = store.getItem(String(id || ''));
-    if (!item) return { ok: false, error: '内容不存在或已被清理' };
-    const sourceId = item.meta?.originItemId || '';
-    const source = sourceId ? store.getItem(sourceId) : item;
-    const target = source || item;
-    if (!target.filePath) return { ok: false, error: '这条内容没有来源图片' };
-    if (!fs.existsSync(target.filePath)) return { ok: false, error: '原图文件已被移动或删除' };
-    // 优先交给系统默认看图程序；失败再退到资源管理器定位
-    const error = await shell.openPath(target.filePath);
-    if (error) {
-      shell.showItemInFolder(target.filePath);
-      return { ok: true, fallback: true, message: '无法用默认程序打开，已在资源管理器中定位' };
-    }
-    return { ok: true };
-  });
-
   windowIpc.handle('dates:parse',(_event,text)=>require('./lib/date-parse').parseDate(String(text||'').slice(0,200000)));
   windowIpc.handle('relay:reply',(event,payload)=>{const pending=relayRequests.get(payload?.token);if(!pending||pending.sender!==event.sender.id)return {ok:false};relayRequests.delete(payload.token);clearTimeout(pending.timer);payload.ok?pending.resolve(payload):pending.reject(Error(payload.error||'接力失败'));return {ok:true};});
   windowIpc.on('workspace:active-document',(event,id)=>{const win=BrowserWindow.fromWebContents(event.sender);if(id&&store.getItem(String(id))?.meta?.workspace==='markdown')activeDocuments.set(event.sender.id,{id:String(id),win,at:Date.now()});else activeDocuments.delete(event.sender.id);});
@@ -4049,9 +4005,40 @@ function registerIpc() {
   });
 
   windowIpc.handle('colors:list',()=>store.data.colorHistory||[]);
-  windowIpc.handle('colors:pick',async(_event,value)=>{const hex=String(value||'').toUpperCase();if(!/^#[0-9A-F]{6}$/.test(hex))return {ok:false,error:'颜色格式无效'};await writeClipboardText(hex);const previous=store.data.items.find(item=>item.meta?.pickedColor===hex);if(previous)store.touchItem(previous.id);else store.addItem({kind:'text',text:hex,title:'颜色 '+hex,source:{type:'clipboard',acquisitionMethod:'color-picker'},meta:{pickedColor:hex}});broadcast('content:changed');store.data.colorHistory=[{hex,at:Date.now()},...(store.data.colorHistory||[]).filter(color=>color.hex!==hex)].slice(0,24);await store.save();broadcast('colors:changed');return {ok:true,hex};});
+  windowIpc.handle('colors:pick', async (_event, value) => {
+    const hex = String(value || '').toUpperCase();
+    if (!/^#[0-9A-F]{6}$/.test(hex)) return { ok: false, error: '颜色格式无效' };
+    await writeClipboardText(hex);
+    const previous = store.data.items.find(item => item.meta?.pickedColor === hex);
+    if (previous) store.touchItem(previous.id);
+    else store.addItem({
+      kind: 'text', text: hex, title: '颜色 ' + hex,
+      source: { type: 'clipboard', acquisitionMethod: 'color-picker' }, meta: { pickedColor: hex }
+    });
+    broadcast('content:changed');
+    const history = (store.data.colorHistory || []).filter(color => color.hex !== hex);
+    store.data.colorHistory = [{ hex, at: Date.now() }, ...history].slice(0, 24);
+    await store.save();
+    broadcast('colors:changed');
+    return { ok: true, hex };
+  });
   windowIpc.handle('recipes:catalog',()=>require('./lib/recipes').RECIPE_STEP_LABELS);
-  windowIpc.handle('recipes:save',async(_event,payload)=>{const recipe=require('./lib/recipes').cleanRecipe(payload);if(!recipe)return {ok:false,error:'组合动作无效：需要名称与 1–12 个有效步骤'};const values=store.data.recipes||[];if(values.length>=50&&!values.some(r=>r.id===recipe.id))return {ok:false,error:'最多保存 50 个组合动作'};const previous=values.find(r=>r.id===recipe.id);recipe.version=(previous?.version||0)+1;store.data.recipes=[...values.filter(r=>r.id!==recipe.id),recipe];for(const binding of Object.values(store.data.panelBindings))if(binding.type==='recipe'&&binding.id===recipe.id)binding.name=recipe.title;await store.save();broadcast('recipes:changed');broadcast('panel:changed');return {ok:true,recipe};});
+  windowIpc.handle('recipes:save', async (_event, payload) => {
+    const recipe = require('./lib/recipes').cleanRecipe(payload);
+    if (!recipe) return { ok: false, error: '组合动作无效：需要名称与 1–12 个有效步骤' };
+    const values = store.data.recipes || [];
+    const previous = values.find(value => value.id === recipe.id);
+    if (values.length >= 50 && !previous) return { ok: false, error: '最多保存 50 个组合动作' };
+    recipe.version = (previous?.version || 0) + 1;
+    store.data.recipes = [...values.filter(value => value.id !== recipe.id), recipe];
+    for (const binding of Object.values(store.data.panelBindings)) {
+      if (binding.type === 'recipe' && binding.id === recipe.id) binding.name = recipe.title;
+    }
+    await store.save();
+    broadcast('recipes:changed');
+    broadcast('panel:changed');
+    return { ok: true, recipe };
+  });
   windowIpc.handle('recipes:remove',async(_event,id)=>{store.data.recipes=(store.data.recipes||[]).filter(recipe=>recipe.id!==id);await store.save();broadcast('recipes:changed');return {ok:true};});
   windowIpc.handle('recipes:list', (_event, kind) => listRecipes(kind ? String(kind) : undefined,store.data.recipes||[]));
   windowIpc.handle('recipes:run', async (_event, payload) => {
@@ -4528,54 +4515,11 @@ function registerIpc() {
   windowIpc.handle('text-tools:initial',event=>BrowserWindow.fromWebContents(event.sender)?.__textTool||{mode:'convert',text:''});
   windowIpc.handle('text-tools:transform',(_event,text,operation)=>{try{return {ok:true,text:require('./lib/text-tools').transformText(text,operation)};}catch(error){return {ok:false,error:error.message};}});
   windowIpc.handle('text-tools:configure',()=>{showMain('settings');const send=()=>mainWindow?.webContents.send('settings:translation');if(mainWindow?.webContents.isLoading())mainWindow.webContents.once('did-finish-load',send);else send();return {ok:true};});
-  windowIpc.handle('workspace:save', async (_event,type,payload) => {
-    try { const item=workspace.save(type,payload); await store.save(); broadcast('content:changed'); return {ok:true,item}; }
-    catch(error){return {ok:false,error:error.message};}
-  });
-  windowIpc.handle('workspace:remove', async ({ sender },type,id) => {
-    try {
-      if (type === 'calendar') {
-        if (store.getItem(id)?.meta?.workspace !== type) throw Error('日程不存在');
-        return await removalUndo.remove(sender, id);
-      }
-      workspace.remove(type,id); await store.save(); broadcast('content:changed'); return {ok:true};
-    }
-    catch(error){return {ok:false,error:error.message};}
-  });
-  windowIpc.handle('workspace:import', async event => {
-    const result=await dialog.showOpenDialog(BrowserWindow.fromWebContents(event.sender),{title:'打开 Markdown',filters:[{name:'Markdown',extensions:['md','markdown','txt']}],properties:['openFile']});
-    if(result.canceled)return {ok:false,canceled:true};
-    try {
-      const file=result.filePaths[0];
-      if(/\.(md|markdown)$/i.test(file)) {
-        const opened=await markdownFiles.open(file);broadcast('content:changed');return {ok:true,...opened};
-      }
-      if((await fsp.stat(file)).size>800000)throw Error('文件过大，请选择 800 KB 以内的文档');
-      const text=new TextDecoder('utf-8',{fatal:true}).decode(await fsp.readFile(file)); const item=workspace.save('markdown',{title:path.basename(file,path.extname(file)),text});
-      await store.save(); broadcast('content:changed'); return {ok:true,item};
-    }catch(error){return {ok:false,error:error.message};}
-  });
-  windowIpc.handle('workspace:export', async (event,id,format='md') => {
-    const item=store.getItem(String(id));if(item?.meta?.workspace!=='markdown')return {ok:false,error:'文档不存在'};
-    if(!['md','html','pdf'].includes(format))return {ok:false,error:'不支持的导出格式'};
-    const result=await dialog.showSaveDialog(BrowserWindow.fromWebContents(event.sender),{title:'导出文档',defaultPath:item.title.replace(/[\\/:*?"<>|]/g,'_')+'.'+format,filters:[{name:format.toUpperCase(),extensions:[format]}]});
-    if(result.canceled)return {ok:false,canceled:true};
-    let render;
-    try {
-      let data=item.text;
-      if(format!=='md'){
-        render=windowIpc.create('export',{show:false});
-        await render.loadFile(path.join(__dirname,'src/export.html'));
-        const html=await render.webContents.executeJavaScript(`window.renderExport(${JSON.stringify({title:item.title,text:item.text})})`);
-        data=format==='pdf'?await render.webContents.printToPDF({printBackground:true,pageSize:'A4'}):html;
-      }
-      await fsp.writeFile(result.filePath,data);return {ok:true};
-    }catch(error){return {ok:false,error:error.message};}finally{render?.destroy();}
-  });
-  windowIpc.handle('workspace:calendar-export', async event => {
-    const result=await dialog.showSaveDialog(BrowserWindow.fromWebContents(event.sender),{title:'导出日历',defaultPath:'随序日历.ics',filters:[{name:'iCalendar',extensions:['ics']}]});
-    if(result.canceled)return {ok:false,canceled:true};
-    try{await fsp.writeFile(result.filePath,require('./lib/calendar-export').calendarICS(workspace.list('calendar')),'utf8');return {ok:true};}catch(error){return {ok:false,error:error.message};}
+  registerWorkspaceFileIpc({
+    handle: windowIpc.handle, store, workspace, markdownFiles, removalUndo,
+    broadcast, senderWindow, dialog,
+    createExportWindow: () => windowIpc.create('export', { show: false }),
+    exportPage: path.join(__dirname, 'src', 'export.html')
   });
   registerTaskIpc({
     handle: windowIpc.handle,
@@ -4702,42 +4646,6 @@ function registerIpc() {
     }
     return { ok: true, settings: safe };
   });
-
-  /* ---------- 翻译（图片取词翻译 = 翻译 B 支） ---------- */
-
-  windowIpc.handle('translate:status', () => translateStatus());
-  windowIpc.handle('translate:models',()=>translateLib.listModels(translateConfig(),electron.net.fetch));
-  windowIpc.handle('translate:run', async (_event, payload) => {
-    const text = String(payload?.text || '');
-    if (!text.trim()) return { ok: false, error: '没有需要翻译的文字' };
-    const overrides = {};
-    if (payload?.target) overrides.target = translateLib.normalizeLang(payload.target, { allowAuto: false });
-    if (payload?.source) overrides.source = translateLib.normalizeLang(payload.source);
-    const result = await runTranslation(text, overrides);
-    return result;
-  });
-  // 设置页的「测试」：拿一句固定短句走一遍真实链路，不写任何内容
-  windowIpc.handle('translate:test', async () => {
-    const config=translateConfig();
-    const result = await runTranslation(config.target==='en'?'你好，这是一条翻译测试。':'Hello, this is a translation test.', { source: config.target==='en'?'zh':'en' });
-    if (!result.ok) return result;
-    return { ...result, sample: result.text };
-  });
-
-  // 清空剪贴板来源的内容（保留固定项与任务内引用）
-  windowIpc.handle('content:clear-clipboard', async () => {
-    const plan=require('./lib/history-cleanup').historyCleanup(store.data.items,store.data.tasks);
-    const items=plan.removed;
-    const snapshots = items.map(item => store.detachItem(item.id)).filter(Boolean);
-    try { await store.save(); }
-    catch (error) {
-      for (const snapshot of snapshots) store.restoreDetachedItem(snapshot);
-      throw error;
-    }
-    broadcast('content:changed');
-    return { ok: true, removed: items.length, protected:plan.protectedCount };
-  });
-
 }
 
 /** 加速键转托盘/界面展示文案。 */
@@ -4881,7 +4789,7 @@ async function initialize() {
   if (!keyResult.ok) {
     throw new Error('无法打开受保护的数据。原有数据未更改，请检查是否使用原来的 Windows 帐户。', { cause: keyResult.error });
   }
-  if (keyResult.migrationPending) console.warn('旧密钥仍可使用，暂未迁移到系统安全存储。');
+  if (keyResult.migrationPending) console.warn('旧密钥仍可使用，暂未转换为 Windows 保护格式。');
 
   store = new SuiraStore(dataPath(), {
     getEncryptionKey: () => keyVault.key,

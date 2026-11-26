@@ -45,3 +45,32 @@ assert.deepEqual(documents.removed.map(value => value.id), ['discard']);
 assert.equal(documents.protectedCount, 3);
 assert.deepEqual(documents.kept.map(value => value.id), ['document-source', 'workspace-source', 'document', 'workspace-document']);
 console.log('PASS history cleanup preserves complete task, pinned and document source chains; addItem survives prune reordering');
+
+const { test } = require('node:test');
+const { registerContentIpc } = require('../lib/content-ipc');
+
+test('content cleanup restores removed items after a failed save, without broadcasting', async () => {
+  const store = new SuiraStore(nodePath.join(os.tmpdir(), 'suira-clear-' + require('node:crypto').randomUUID() + '.json'));
+  const history = store.addItem({ text: 'unprotected fixture', source: { type: 'clipboard' } });
+  const pinned = store.addItem({ text: 'pinned fixture', source: { type: 'clipboard' }, pinned: true });
+  const taskItem = store.addItem({ text: 'task fixture', source: { type: 'clipboard' } });
+  const task = store.createTask('test task');
+  store.addItemToTask(task.id, taskItem.id);
+  const failure = Error('fixture: disk unavailable');
+  let allowSave = false;
+  store.save = async () => { if (!allowSave) throw failure; };
+  const handlers = new Map(), changes = [];
+  registerContentIpc({ store, handle: (channel, handler) => handlers.set(channel, handler), broadcast: name => changes.push(name) });
+  const clear = handlers.get('content:clear-clipboard');
+  await assert.rejects(clear(), error => error === failure);
+  assert.equal(store.getItem(history.id), history);
+  assert.deepEqual(store.getTask(task.id).itemIds, [taskItem.id]);
+  assert.deepEqual(changes, []);
+
+  allowSave = true;
+  assert.deepEqual(await clear(), { ok: true, removed: 1, protected: 2 });
+  assert.ok(!store.getItem(history.id));
+  assert.equal(store.getItem(pinned.id), pinned);
+  assert.equal(store.getItem(taskItem.id), taskItem);
+  assert.deepEqual(changes, ['content:changed']);
+});

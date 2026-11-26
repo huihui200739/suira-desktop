@@ -609,10 +609,6 @@ t('最大化按钮同步图标状态', () => {
   if (!appJs.includes('syncMaximizeIcon')) throw new Error('缺少 syncMaximizeIcon');
   if (!appJs.includes('window.suira.window.maximize()')) throw new Error('未调用 maximize');
 });
-t('content:list 为缺缩略图的图片条目补齐', () => {
-  if (!mainJs.includes('thumbnailFor(item.filePath)')) throw new Error('未补齐缩略图');
-  if (!/kind === 'image' && !item\.thumbnail/.test(mainJs)) throw new Error('未判断缩略图缺失');
-});
 t('旧 clipboard 渲染函数已删除（无死代码）', () => {
   if (mainJs.includes('renderClipboardRecord')) throw new Error('renderClipboardRecord 仍存在');
 });
@@ -977,13 +973,12 @@ t('覆盖层回归：画笔拖拽入队、浮层保护、指针取消与迟到�
 t('小问题回归：弹窗标签、重启提示、Esc 逐级、搜索条、主题与视图偏好', () => {
   const app = read('src/app.js'), panel = read('src/quickpanel.js');
   const textTools = read('src/text-tools.js'), notes = read('src/notes.js');
-  const workspace = read('src/workspace.js'), bar = read('src/clipboardbar.js');
+  const bar = read('src/clipboardbar.js');
   if (app.includes('catch (error) { toast(')) throw new Error('重启失败分支仍在调用不存在的 toast');
   if (!app.includes("confirmBtn.textContent = options.confirmLabel || '创建';")) throw new Error('弹窗必须重置确认按钮标签');
   if (!/function setSearchExpanded\(expanded = true\)[\s\S]{0,300}classList\.toggle\('is-expanded', expanded\)/.test(panel)) throw new Error('搜索条收起参数必须生效');
   if (!textTools.includes("details[open], dialog[open], [popover]:popover-open")) throw new Error('文字工具 Esc 要先收起浮层');
   if (!notes.includes("if (event.key !== 'Escape' || event.defaultPrevented) return;")) throw new Error('速记 Esc 需要挂到 document');
-  if (!workspace.includes("settings?.theme==='dark'?'light':'dark'")) throw new Error('主题按钮要按当前设置切换');
   if (!bar.includes("copySelected('selection')") || !bar.includes("source==='preview'?state.previewItem")) throw new Error('剪贴板条复制必须区分预览项与选中项');
 });
 
@@ -1014,7 +1009,9 @@ t('性能回归：标注历史层、主题缓存、临时画布与大文本热�
   if (store.includes('}, null, 2)')) throw new Error('store 整库序列化不应带缩进');
   if (!main.includes('imageBlobFingerprint')) throw new Error('剪贴板轮询要先比对轻量指纹');
   if (!panel.includes("image.getAttribute('src')!==currentContext.thumbnail")) throw new Error('最近内容缩略图不能每秒重新解码');
-  if (!workspace.includes("if(agendaMode!=='countdown')$('agenda-list').innerHTML")) throw new Error('倒数日模式不应先建再丢弃待办 DOM');
+  if (!/if\s*\(agendaMode\s*!==\s*'countdown'\)\s*\$\('agenda-list'\)\.innerHTML\s*=/.test(workspace)) {
+    throw new Error('倒数日模式不应先建再丢弃待办 DOM');
+  }
   if (!icons.includes('CACHE_LIMIT=512') || !disk.includes('entries=Object.fromEntries(rows)')) throw new Error('图标缓存要有上界并同步裁剪内存');
 });
 
