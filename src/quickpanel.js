@@ -432,6 +432,7 @@ function updateKeyDrag(event) {
     drag.source.classList.add('is-drag-source');
     $('#panel').classList.add('is-key-dragging');
     drag.ghost = drag.source.cloneNode(true);
+    window.SuiraToolArt?.refresh?.(drag.ghost);
     drag.ghost.classList.remove('is-drag-source');
     drag.ghost.classList.add('key-drag-preview');
     drag.ghost.removeAttribute('data-key');

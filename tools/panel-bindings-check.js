@@ -101,6 +101,23 @@ async function checkBindings({ send, evaluate, capture }) {
   const held=await start('C','R');
   assert.equal(await ev('document.querySelectorAll(".is-key-near,.is-key-hover,.is-key-trail,.is-key-sheen,.is-key-pressed").length'),0,'Dragging suspends key feedback, trails, reflection and press');
   assert.equal(await ev('Boolean(document.querySelector(".key-drag-preview .suira-art"))'),true,'Dragging retains the actual tool object');
+  const dragGradients=await ev(`(()=>{
+    const src=document.querySelector('[data-key="C"] .suira-art');
+    const ghost=document.querySelector('.key-drag-preview .suira-art');
+    const srcIds=[...src.querySelectorAll('linearGradient,radialGradient')].map(n=>n.id);
+    const ghostIds=[...ghost.querySelectorAll('linearGradient,radialGradient')].map(n=>n.id);
+    const overlap=ghostIds.filter(id=>srcIds.includes(id));
+    src.style.display='none';
+    const baseFill=ghost.querySelector('.art-base')?.getAttribute('fill')||'';
+    const refId=(baseFill.match(/url\\(#([^)]+)\\)/)||[])[1]||'';
+    const target=refId?document.getElementById(refId):null;
+    const intact=Boolean(target&&ghost.contains(target)&&getComputedStyle(ghost.querySelector('.art-base')).fill.includes(refId));
+    src.style.display='';
+    return {srcCount:srcIds.length,ghostCount:ghostIds.length,overlap,intact};
+  })()`);
+  assert.ok(dragGradients.srcCount>=5&&dragGradients.ghostCount>=5,'Tool SVG gradients exist on source and drag ghost');
+  assert.deepEqual(dragGradients.overlap,[],'Dragging ghost must not duplicate SVG gradient IDs');
+  assert.equal(dragGradients.intact,true,'Hiding the source icon keeps drag ghost SVG gradients intact');
   assert.equal(await ev('getComputedStyle(document.querySelector(".key-drag-preview .key-face")).backgroundImage.includes("linear-gradient")'),true,'Dragging retains the key material');
   const anchor=await ev(`(()=>{const r=document.querySelector('.key-drag-preview').getBoundingClientRect();const original=document.querySelector('[data-key="C"]').getBoundingClientRect();return {x:r.x,y:r.y,w:r.width,h:r.height,sourceW:original.width,sourceH:original.height};})()`);
   assert.ok(Math.abs(held.x-anchor.x-anchor.sourceW/2)<1,'拖动保留鼠标按下时的横向抓取点');
