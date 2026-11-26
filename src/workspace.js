@@ -306,6 +306,7 @@
         (button) =>
           (button.onclick = () => {
             selected = button.dataset.date;
+            delete $('calendar-quick-date')?.dataset.userPicked;
             setAgendaMode('todo');
             calendar();
             $('calendar-grid').querySelector(`[data-date="${selected}"]`)?.focus({ preventScroll: true });
@@ -377,6 +378,18 @@
     }
     $('countdown-filters')?.toggleAttribute('hidden', agendaMode !== 'countdown');
     $('calendar-new').textContent = agendaMode === 'countdown' ? '⊕ 添加倒数日' : '⊕ 添加待办';
+    const quickTitle = $('calendar-quick-title');
+    const quickDate = $('calendar-quick-date');
+    if (quickTitle) {
+      quickTitle.placeholder = agendaMode === 'countdown' ? '输入倒数日名称，回车添加' : '输入待办，回车快速添加';
+      quickTitle.setAttribute('aria-label', agendaMode === 'countdown' ? '快速添加倒数日' : '快速添加待办');
+    }
+    if (quickDate) {
+      quickDate.hidden = agendaMode !== 'countdown';
+      if (agendaMode === 'countdown' && !quickDate.dataset.userPicked) {
+        quickDate.value = selected >= today ? selected : today;
+      }
+    }
     $('agenda-list')
       .querySelectorAll('[data-builtin-date]')
       .forEach(
@@ -557,11 +570,25 @@
     if (year < 1900 || year > 2200) return;
     month = new Date(year, value - 1, 1);
     selected = dateKey(month);
+    delete $('calendar-quick-date')?.dataset.userPicked;
     calendar();
   };
   let wheelLast = 0,
     wheelTotal = 0,
-    wheelLocked = false;
+    wheelLocked = false,
+    wheelDir = 0;
+  function stepCalendarMonth(delta) {
+    if (!delta) return;
+    const step = delta > 0 ? 1 : -1;
+    month = new Date(month.getFullYear(), month.getMonth() + step, 1);
+    calendar();
+    const grid = $('calendar-grid');
+    if (grid) {
+      grid.classList.remove('is-month-next', 'is-month-prev');
+      void grid.offsetWidth;
+      grid.classList.add(step > 0 ? 'is-month-next' : 'is-month-prev');
+    }
+  }
   $('calendar-grid').addEventListener(
     'wheel',
     (event) => {
@@ -570,20 +597,37 @@
       if (!delta) return;
       event.preventDefault();
       const now = performance.now();
-      if (now - wheelLast > 200) {
+      const dir = Math.sign(delta);
+      const gap = now - wheelLast;
+      wheelLast = now;
+      if (gap > 160 || (wheelDir && dir !== wheelDir)) {
         wheelLocked = false;
         wheelTotal = 0;
+        wheelDir = dir;
       }
-      wheelLast = now;
       if (wheelLocked) return;
       wheelTotal += delta * (event.deltaMode === 1 ? 32 : event.deltaMode === 2 ? 300 : 1);
-      if (Math.abs(wheelTotal) < 40) return;
+      if (Math.abs(wheelTotal) < 48) return;
+      wheelDir = Math.sign(wheelTotal);
+      wheelTotal = 0;
       wheelLocked = true;
-      month = new Date(month.getFullYear(), month.getMonth() + Math.sign(wheelTotal), 1);
-      calendar();
+      stepCalendarMonth(wheelDir);
     },
     { passive: false }
   );
+  document.addEventListener('keydown', (event) => {
+    if (event.isComposing || event.defaultPrevented || $('md-delete-dialog')?.open) return;
+    if (!document.querySelector('#page-calendar.is-active')) return;
+    if (event.ctrlKey || event.metaKey || event.shiftKey) return;
+    if (event.target.closest?.('input,textarea,select,[contenteditable="true"]')) return;
+    if ((!event.altKey && event.key === 'PageUp') || (event.altKey && event.key === 'ArrowLeft')) {
+      event.preventDefault();
+      $('calendar-prev').click();
+    } else if ((!event.altKey && event.key === 'PageDown') || (event.altKey && event.key === 'ArrowRight')) {
+      event.preventDefault();
+      $('calendar-next').click();
+    }
+  });
   $('calendar-prev').onclick = () => {
     if (calendarView === 'week') {
       const day = new Date(selected + 'T12:00:00');
@@ -593,8 +637,7 @@
       calendar();
       return;
     }
-    month = new Date(month.getFullYear(), month.getMonth() - 1, 1);
-    calendar();
+    stepCalendarMonth(-1);
   };
   $('calendar-next').onclick = () => {
     if (calendarView === 'week') {
@@ -605,8 +648,7 @@
       calendar();
       return;
     }
-    month = new Date(month.getFullYear(), month.getMonth() + 1, 1);
-    calendar();
+    stepCalendarMonth(1);
   };
   $('calendar-today').onclick = () => {
     month = new Date();
@@ -2361,22 +2403,109 @@
     } else {
       top.append($('calendar-export'));
       const clock = document.createElement('time');
+      clock.id = 'calendar-clock';
       clock.className = 'calendar-clock';
+      clock.setAttribute('aria-label', '当前时间');
       top.append(clock);
       let tick;
       const updateClock = () => {
         clearTimeout(tick);
         if (document.hidden) return;
-        clock.textContent = window.CalendarData.clock(new Date());
-        tick = setTimeout(updateClock, 60000 - (Date.now() % 60000));
+        const now = new Date();
+        clock.dateTime = now.toISOString();
+        clock.textContent = window.CalendarData.clock(now);
+        tick = setTimeout(updateClock, Math.max(1, 1000 - now.getMilliseconds()));
       };
       document.addEventListener('visibilitychange', updateClock);
+      window.addEventListener('beforeunload', () => clearTimeout(tick));
       updateClock();
       const nav = document.querySelector('.calendar-month');
       nav.prepend($('calendar-prev'));
       nav.append($('calendar-next'), $('calendar-today'));
       const aside = document.querySelector('.agenda-card');
+      const quickForm = document.createElement('form');
+      quickForm.id = 'calendar-quick-form';
+      quickForm.className = 'calendar-quick-form';
+      quickForm.noValidate = true;
+      quickForm.innerHTML =
+        '<input id="calendar-quick-title" class="text-input" type="text" maxlength="120" autocomplete="off" placeholder="输入倒数日名称，回车添加" aria-label="快速添加倒数日">' +
+        '<input id="calendar-quick-date" class="text-input" type="date" aria-label="目标日期">' +
+        '<button type="submit" class="quiet-btn" id="calendar-quick-submit">添加</button>';
+      const quickTitle = quickForm.querySelector('#calendar-quick-title');
+      const quickDate = quickForm.querySelector('#calendar-quick-date');
+      const quickSubmit = quickForm.querySelector('#calendar-quick-submit');
+      quickDate.value = selected;
+      const markDatePicked = () => {
+        quickDate.dataset.userPicked = 'true';
+      };
+      quickDate.addEventListener('input', markDatePicked);
+      quickDate.addEventListener('change', markDatePicked);
+      quickForm.addEventListener('submit', (ev) => {
+        ev.preventDefault();
+        if (savingEvent) return;
+        const title = quickTitle.value.trim();
+        if (!title) {
+          quickTitle.focus();
+          return;
+        }
+        const submitMode = agendaMode;
+        const todayKey = dateKey(new Date());
+        if (submitMode === 'countdown') {
+          if (!/^\d{4}-\d{2}-\d{2}$/.test(quickDate.value)) {
+            notify('请选择有效的目标日期', 'error');
+            quickDate.focus();
+            return;
+          }
+          if (quickDate.value < todayKey) {
+            notify('倒数日请选择今天或之后的日期', 'error');
+            quickDate.focus();
+            return;
+          }
+        }
+        const targetDate = submitMode === 'countdown' ? quickDate.value : selected;
+        const hadFocus = quickForm.contains(document.activeElement);
+        safe(async () => {
+          savingEvent = true;
+          quickTitle.disabled = quickDate.disabled = quickSubmit.disabled = true;
+          let savedOk = false;
+          try {
+            await checked(
+              api.save('calendar', {
+                title,
+                date: targetDate,
+                time: '',
+                category: $('calendar-category').value || 'work',
+                priority: 'normal',
+                location: '',
+                text: '',
+                done: false
+              })
+            );
+            savedOk = true;
+          } finally {
+            savingEvent = false;
+            quickTitle.disabled = quickDate.disabled = quickSubmit.disabled = false;
+            if (!savedOk && hadFocus) quickTitle.focus({ preventScroll: true });
+          }
+          quickTitle.value = '';
+          delete quickDate.dataset.userPicked;
+          selected = targetDate;
+          month = new Date(targetDate + 'T12:00:00');
+          if (submitMode === 'countdown' && !['all', 'custom'].includes(countdownFilter)) {
+            countdownFilter = 'all';
+            for (const filter of $('countdown-filters')?.children || []) {
+              const active = filter.dataset.countdown === 'all';
+              filter.classList.toggle('is-active', active);
+              filter.setAttribute('aria-pressed', String(active));
+            }
+          }
+          notify(submitMode === 'countdown' ? '倒数日已添加' : '待办已添加');
+          await loadCalendar();
+          if (hadFocus || document.activeElement === document.body) quickTitle.focus({ preventScroll: true });
+        })();
+      });
       aside.prepend($('calendar-new'));
+      $('calendar-new').after(quickForm);
       const tabs = document.createElement('div');
       tabs.className = 'agenda-tabs view-switch';
       tabs.innerHTML =

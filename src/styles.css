@@ -1254,10 +1254,19 @@ body { background:transparent; }
 .tool-window .calendar-day small { font-size:12px; padding:0 4px; line-height:18px; background:color-mix(in srgb,var(--accent) 7%,transparent); }
 .tool-window .calendar-day .category-personal { color:var(--jade-11); background:color-mix(in srgb,var(--jade-11) 7%,transparent); }
 .tool-window .calendar-day .category-study { color:var(--violet-11); background:color-mix(in srgb,var(--violet-11) 7%,transparent); }
-.tool-window .calendar-clock { font-size:18px; font-weight:500; }
+.tool-window .calendar-clock { font-size:18px; font-weight:500; font-variant-numeric:tabular-nums; letter-spacing:.02em; }
+.calendar-quick-form { display:flex; flex-wrap:wrap; align-items:center; gap:6px; margin:0 0 12px; }
+.calendar-quick-form #calendar-quick-title { flex:1 1 130px; min-width:0; height:32px; padding:4px 10px; font-size:13px; }
+.calendar-quick-form #calendar-quick-date { flex:0 1 124px; min-width:0; height:32px; padding:4px 8px; font-size:12px; }
+.calendar-quick-form #calendar-quick-submit { flex:none; height:32px; padding:0 10px; font-size:12px; }
+@keyframes calendar-month-next { from { opacity:.65; transform:translateY(6px); } to { opacity:1; transform:none; } }
+@keyframes calendar-month-prev { from { opacity:.65; transform:translateY(-6px); } to { opacity:1; transform:none; } }
+.calendar-grid.is-month-next { animation:calendar-month-next 140ms cubic-bezier(.22,1,.36,1); }
+.calendar-grid.is-month-prev { animation:calendar-month-prev 140ms cubic-bezier(.22,1,.36,1); }
+@media (prefers-reduced-motion: reduce) { .calendar-grid.is-month-next, .calendar-grid.is-month-prev { animation:none; } }
 .tool-window .agenda-card { padding:0 0 12px 24px; border-color:var(--tool-edge); }
 .tool-window .agenda-tabs { margin-bottom:16px; padding:4px; gap:4px; border-radius:8px; }
-.tool-window #calendar-new { min-height:36px; margin-bottom:16px; border-radius:8px; box-shadow:none; font-weight:500; }
+.tool-window #calendar-new { min-height:36px; margin-bottom:8px; border-radius:8px; box-shadow:none; font-weight:500; }
 .tool-window .agenda-item,.tool-window .countdown-row { margin:0; padding:16px 0; border:0; border-bottom:1px solid var(--tool-edge); border-radius:0; background:transparent; gap:8px; }
 .tool-window .agenda-content b,.tool-window .countdown-row b { font-size:14px; font-weight:500; }
 .tool-window .agenda-content small { color:var(--ink-soft); font-size:12px; }

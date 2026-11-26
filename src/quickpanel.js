@@ -223,7 +223,17 @@ function pressKey(char) {
   if (bindingState.busy || dragState.active) return;
   const key = keyByChar(char);
   if (!key) return;
-  if (!reducedMotion.matches) keyMotion?.pulse($$('.key', $('#key-grid')).find(button => button.dataset.key === key.key));
+  const keyEl = $$('.key', $('#key-grid')).find(button => button.dataset.key === key.key);
+  if (!reducedMotion.matches) {
+    keyMotion?.pulse(keyEl);
+    if (keyEl) {
+      clearTimeout(keyEl._triggerTimer);
+      keyEl.classList.remove('is-key-triggered');
+      void keyEl.offsetWidth;
+      keyEl.classList.add('is-key-triggered');
+      keyEl._triggerTimer = setTimeout(() => keyEl.classList.remove('is-key-triggered'), 160);
+    }
+  }
   if (key.state === 'bound') {
     runAction(key.actionId);
     return;
@@ -585,8 +595,8 @@ function renderApps() {
 
   grid.innerHTML = pageApps.map((app,index) => {
     const icon = appIconMarkup(app.filePath,app.icon);
-    return `<button class="app-item" type="button" data-path="${escapeHtml(app.filePath || '')}" title="${escapeHtml(app.name || '')}">
-      <span class="app-launch-number">${index<7?index+1:''}</span><span class="app-icon" data-icon-path="${escapeHtml(app.filePath)}">${icon}</span>
+    return `<button class="app-item" type="button" data-path="${escapeHtml(app.filePath || '')}" title="${escapeHtml(app.name || '')}${index < 9 ? `（Alt+${index + 1}）` : ''}">
+      <span class="app-launch-number">${index<9?index+1:''}</span><span class="app-icon" data-icon-path="${escapeHtml(app.filePath)}">${icon}</span>
       <span class="app-name">${escapeHtml(app.name || '')}</span>
     </button>`;
   }).join('');
@@ -717,7 +727,7 @@ function renderCommands() {
     return `<button class="command-item ${index === state.commandIndex ? 'is-selected' : ''}" type="button" role="option" aria-selected="${index===state.commandIndex}" data-index="${index}" data-kind="${escapeHtml(entry.kind)}" data-id="${escapeHtml(entry.id)}">
       <span class="command-icon" ${appPath?`data-icon-path="${escapeHtml(appPath)}"`:''}>${glyph}</span>
       <span class="command-copy"><b>${escapeHtml(entry.title)}</b><small>${escapeHtml(entry.subtitle || '')}</small></span>
-      <span class="command-type">${({app:'应用',command:'工具',task:'任务',content:'内容'})[entry.kind]||'内容'}</span><kbd class="command-enter">↵</kbd>
+      <span class="command-type">${({app:'应用',command:'工具',task:'任务',content:'内容'})[entry.kind]||'内容'}</span>${index < 9 ? `<kbd class="command-hotkey" aria-hidden="true">Alt+${index + 1}</kbd>` : ''}<kbd class="command-enter">↵</kbd>
     </button>`;
   }).join('');
   $$('.command-item', list).forEach((button) => {
@@ -1108,11 +1118,31 @@ function installEvents() {
     else if(action==='restart')await window.suira.app.restart();
     else if(action==='quit')await window.suira.app.quit();
   }));
+  const quickDigit = (event) => {
+    const codeMatch = /^Digit([1-9])$/.exec(event.code || '');
+    if (codeMatch) return Number(codeMatch[1]);
+    return /^[1-9]$/.test(event.key) ? Number(event.key) : 0;
+  };
+  const isModeSwitchKey = (event) => {
+    if ((event.ctrlKey || event.metaKey) && !event.altKey && !event.shiftKey) {
+      const digit = quickDigit(event);
+      if (digit >= 1 && digit <= 3) return true;
+    }
+    return Boolean(event.ctrlKey && !event.altKey && !event.metaKey && event.key === 'Tab');
+  };
+  const hasBlockingOverlay = () =>
+    !$('#update-dialog').hidden ||
+    !$('#ocr-panel').hidden ||
+    !$('#translate-panel').hidden ||
+    bindingEditorOpen() ||
+    bindingState.busy ||
+    Boolean(dragState.source);
   [$('#panel-more-menu'),...$$('[data-menu-group]')].forEach(surface=>surface.addEventListener('keydown',event=>{
     if(event.isComposing)return;
+    if(isModeSwitchKey(event))return;
     event.stopPropagation();
     if(event.key==='Escape'){event.preventDefault();closeMoreMenu();return;}
-    if(event.key==='Tab'){closeMoreMenu(false);return;}
+    if(event.key==='Tab'&&!event.ctrlKey&&!event.metaKey){closeMoreMenu(false);return;}
     const buttons=$$('button',surface).filter(button=>button.getClientRects().length),index=buttons.indexOf(document.activeElement);
     if(['ArrowDown','ArrowUp','Home','End'].includes(event.key)){
       event.preventDefault();const next=event.key==='Home'?0:event.key==='End'?buttons.length-1:(index+(event.key==='ArrowDown'?1:-1)+buttons.length)%buttons.length;buttons[next]?.focus();
@@ -1132,8 +1162,23 @@ function installEvents() {
   input.addEventListener('compositionstart', () => { state.composing = true; });
   input.addEventListener('compositionend', () => { state.composing = false; });
   input.addEventListener('keydown', (event) => {
-    if (event.isComposing || state.composing) return;
-    if(presentation==='fullscreen'&&state.mode==='apps'&&!state.query&&!event.ctrlKey&&!event.altKey&&!event.metaKey&&/^[1-7]$/.test(event.key)){event.preventDefault();const app=filteredApps()[state.appPage*appPageSize()+Number(event.key)-1];if(app)openApp(app.filePath);return;}
+    if (event.isComposing || state.composing || hasBlockingOverlay()) return;
+    if (event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey) {
+      const digit = quickDigit(event);
+      if (digit >= 1 && digit <= 9 && (state.query || state.mode === 'apps')) {
+        event.preventDefault();
+        if (event.repeat) return;
+        if (state.query && state.commandResults[digit - 1]) {
+          runCommand(digit - 1).catch((error) => toast(error?.message || '执行失败', 'error'));
+          return;
+        }
+        if (state.mode === 'apps' && !state.query) {
+          const app = filteredApps()[state.appPage * appPageSize() + digit - 1];
+          if (app) openApp(app.filePath);
+        }
+        return;
+      }
+    }
     if (event.key === 'Escape') {
       event.preventDefault();
       event.stopPropagation();
@@ -1143,7 +1188,7 @@ function installEvents() {
       else window.suira.quick.hide();
       return;
     }
-    if(presentation==='fullscreen'&&state.mode==='apps'&&!state.query&&['ArrowLeft','ArrowRight'].includes(event.key)){event.preventDefault();const button=event.key==='ArrowLeft'?$('#apps-prev'):$('#apps-next');if(!button.disabled)button.click();return;}
+    if(state.mode==='apps'&&!state.query&&((presentation==='fullscreen'&&['ArrowLeft','ArrowRight'].includes(event.key))||['PageUp','PageDown'].includes(event.key))){event.preventDefault();const button=event.key==='ArrowLeft'||event.key==='PageUp'?$('#apps-prev'):$('#apps-next');if(!button.disabled)button.click();return;}
     if (event.key === ' ' && !state.query && !event.ctrlKey && !event.altKey && !event.metaKey) {
       // 搜索条为空时空格是面板切换键，不写入内容。
       // 带修饰键的空格要放过去：那是「按住型唤起」的键位，不能被面板吃掉。
@@ -1206,9 +1251,42 @@ function installEvents() {
       return;
     }
     if (!inInput && event.key === 'F3') { event.preventDefault(); focusSearch(); return; }
-    // An explicit Alt+voice chord can open the recorder while search is focused.
-    // Bare letters and IME keystrokes still belong to the text field.
+    if ((event.ctrlKey || event.metaKey) && !event.altKey && !event.shiftKey) {
+      const modeDigit = quickDigit(event);
+      if (modeDigit >= 1 && modeDigit <= 3) {
+        event.preventDefault();
+        closeMoreMenu(false);
+        closeRecentContext();
+        clearSearch();
+        setMode(['actions', 'apps', 'toolbox'][modeDigit - 1]);
+        return;
+      }
+    }
+    if (event.ctrlKey && !event.altKey && !event.metaKey && event.key === 'Tab') {
+      event.preventDefault();
+      closeMoreMenu(false);
+      closeRecentContext();
+      const modes = ['actions', 'apps', 'toolbox'];
+      const next = modes[(modes.indexOf(state.mode) + (event.shiftKey ? 2 : 1)) % modes.length];
+      clearSearch();
+      setMode(next);
+      return;
+    }
+    // Alt+1..9 launches search commands or paged apps even when search input is focused.
     if (event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey) {
+      const digit = quickDigit(event);
+      if (digit >= 1 && digit <= 9 && (state.query || state.mode === 'apps')) {
+        event.preventDefault();
+        if (state.query && state.commandResults[digit - 1]) {
+          runCommand(digit - 1).catch((error) => toast(error?.message || '执行失败', 'error'));
+          return;
+        }
+        if (state.mode === 'apps' && !state.query) {
+          const app = filteredApps()[state.appPage * appPageSize() + digit - 1];
+          if (app) openApp(app.filePath);
+        }
+        return;
+      }
       const voice = keyByChar(event.key);
       if (voice?.actionId === 'voice' && voice.accelerator?.toLowerCase() === 'alt+' + voice.key.toLowerCase()
         && (voice.shortcutStatus?.localOnly || voice.shortcutStatus?.ok === false)) {
@@ -1236,6 +1314,14 @@ function installEvents() {
         runCommand(state.commandIndex).catch((error) => toast(error?.message || '执行失败', 'error'));
         return;
       }
+      if (!event.ctrlKey && !event.altKey && !event.metaKey && /^[1-9]$/.test(event.key)) {
+        const idx = Number(event.key) - 1;
+        if (state.commandResults[idx]) {
+          event.preventDefault();
+          runCommand(idx).catch((error) => toast(error?.message || '执行失败', 'error'));
+          return;
+        }
+      }
       if (event.key === 'Backspace' || event.key === 'Delete') {
         event.preventDefault();
         input.value = state.query.slice(0, -1);
@@ -1255,6 +1341,22 @@ function installEvents() {
       event.preventDefault();
       toggleApps();
       return;
+    }
+    if (state.mode === 'apps' && !event.ctrlKey && !event.altKey && !event.metaKey) {
+      if (['ArrowLeft', 'ArrowRight', 'PageUp', 'PageDown'].includes(event.key)) {
+        event.preventDefault();
+        const button = event.key === 'ArrowLeft' || event.key === 'PageUp' ? $('#apps-prev') : $('#apps-next');
+        if (!button.disabled) button.click();
+        return;
+      }
+      if (/^[1-9]$/.test(event.key)) {
+        const app = filteredApps()[state.appPage * appPageSize() + Number(event.key) - 1];
+        if (app) {
+          event.preventDefault();
+          openApp(app.filePath);
+          return;
+        }
+      }
     }
     if (event.key === '/' || event.key === 'F3') { event.preventDefault(); focusSearch(); return; }
     if (event.ctrlKey || event.metaKey || event.shiftKey) return;
@@ -1295,7 +1397,7 @@ function installEvents() {
     if (event.target === $('#binding-editor')) closeBindingEditor();
   });
   $('#immersive-back').addEventListener('click',()=>{clearSearch();setMode(state.mode==='apps'?'actions':'apps');});
-  $('#apps-grid').addEventListener('wheel',event=>{if(presentation!=='fullscreen'||state.query||event.ctrlKey||event.metaKey)return;event.preventDefault();const now=Date.now();if(now-(state.lastPageWheel||0)<300)return;state.lastPageWheel=now;const next=state.appPage+Math.sign(event.deltaY||event.deltaX);state.appPage=Math.max(0,Math.min(Math.ceil(filteredApps().length/appPageSize())-1,next));renderApps();loadAppIcons();},{passive:false});
+  $('#apps-grid').addEventListener('wheel',event=>{if(state.query||event.ctrlKey||event.metaKey)return;const maxPage=Math.max(0,Math.ceil(filteredApps().length/appPageSize())-1);if(maxPage<=0)return;event.preventDefault();const now=Date.now();if(now-(state.lastPageWheel||0)<240)return;state.lastPageWheel=now;const next=state.appPage+Math.sign(event.deltaY||event.deltaX);state.appPage=Math.max(0,Math.min(maxPage,next));renderApps();loadAppIcons();},{passive:false});
   $('#presentation-toggle').addEventListener('click',()=>changePresentation());
   window.suira.quick.onPresentation?.(syncPresentation);
   window.suira.quick.presentation?.().then(syncPresentation).catch(()=>{});

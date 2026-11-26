@@ -17,6 +17,7 @@ window.CalendarData=(()=>{
  }
  function upcoming(date){const result=[];for(let i=0;i<90;i++){const d=new Date(date.getFullYear(),date.getMonth(),date.getDate()+i),v=day(d);if(v.term)result.push({title:v.term,date:v.key,kind:'term'});if(v.festival)result.push({title:v.festival,date:v.key,kind:'holiday'});}return result;}
  function week(date){const d=new Date(Date.UTC(date.getFullYear(),date.getMonth(),date.getDate()));d.setUTCDate(d.getUTCDate()+4-(d.getUTCDay()||7));return Math.ceil((((d-new Date(Date.UTC(d.getUTCFullYear(),0,1)))/86400000)+1)/7);}
- const clock=date=>date.toLocaleTimeString('zh-CN',{hour:'2-digit',minute:'2-digit',hour12:false});
+ const pad2=n=>String(n).padStart(2,'0');
+ const clock=date=>`${pad2(date.getHours())}:${pad2(date.getMinutes())}:${pad2(date.getSeconds())}`;
  return {ready,day,upcoming,week,clock};
 })();
