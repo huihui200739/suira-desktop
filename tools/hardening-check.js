@@ -109,7 +109,10 @@ async function run() {
       const client = await until(() => connect(port, predicate));
       sockets.push(client.ws);
       await until(() => client.evaluate('Boolean(window.suira)'));
-      return client;
+      return { ...client, async evaluate(expression) {
+        try { return await client.evaluate(expression); }
+        catch (error) { throw new Error(`Electron fixture evaluation failed: ${expression.slice(0, 120)}`, { cause: error }); }
+      } };
     };
     const main = await page(target => target.url.endsWith('/index.html'));
     const registered = await until(async () => JSON.parse(await fs.readFile(path.join(profile, 'registered.json'), 'utf8')));
@@ -232,8 +235,18 @@ async function run() {
       title.value = 'last debounced title';
       title.dispatchEvent(new Event('input', { bubbles: true }));
     }`);
-    assert.equal((await panel.evaluate('window.suira.app.quit()')).ok, true);
-    assert.equal(await Promise.race([exit, sleep(8000, 'timeout', { ref: false })]), 0);
+    await main.evaluate(`window.WorkspaceUI.flush = () => {
+      const deadline = performance.now() + 15000;
+      while (performance.now() < deadline) { /* Simulate a blocked renderer thread, not just a pending promise. */ }
+    }; true`);
+    // Once quit is dispatched, its DevTools reply can race the process exit.
+    const requested = panel.evaluate('window.suira.app.quit()').then(result => {
+      assert.equal(result.ok, true);
+      return exit;
+    });
+    assert.equal(await Promise.race([requested, exit, sleep(8000, 'timeout', { ref: false })]), 0, 'Quit must not wait for a stalled renderer');
+    const diagnostics = (await fs.readFile(path.join(profile, 'diagnostics.log'), 'utf8')).trim().split(/\r?\n/).map(JSON.parse);
+    assert.ok(diagnostics.some(line => line.event === 'quit-renderer-flush' && line.code === 'ERR_RENDERER_TIMEOUT'));
     const persisted = new SuiraStore(dataPath, { codec });
     assert.equal(persisted.getNote(createdNote.id).text, 'last debounced body');
     assert.equal(persisted.getNote(createdNote.id).customTitle, 'last debounced title');
@@ -241,7 +254,7 @@ async function run() {
     child = spawn(executable, [entry, '--remote-debugging-address=127.0.0.1', `--remote-debugging-port=${port}`], { cwd: root, env, windowsHide: true, stdio: 'ignore' });
     const restarted = await page(target => target.url.endsWith('/index.html'));
     assert.equal((await restarted.evaluate(`window.suira.content.get(${JSON.stringify(sample.id)})`)).text, 'legacy fixture');
-    console.log('PASS real Electron: existing DPAPI profile and restart, native clipboard notification, denied navigation/popups/IPC, task copy/export/cancel, note pin/close/reopen, relay actions and immediate quit flush');
+    console.log('PASS real Electron: DPAPI restart, native clipboard, navigation and IPC guard, task export, notes, relay and stalled-renderer quit');
   } finally {
     for (const socket of sockets) socket.close();
     if (child?.pid && child.exitCode === null && !child.signalCode) {

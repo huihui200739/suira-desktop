@@ -41,6 +41,7 @@ const { registerContentIpc } = require('./lib/content-ipc');
 const { registerTranslationIpc } = require('./lib/translation-ipc');
 const { createRemovalUndo } = require('./lib/removal-undo');
 const { createQuitCoordinator } = require('./lib/quit-coordinator');
+const { flushRendererDrafts, runRendererScript } = require('./lib/renderer-flush');
 const { recordDiagnostic } = require('./lib/diagnostic-log');
 const windowIpc = createWindowBoundary({ ipcMain, BrowserWindow, srcDir: path.join(__dirname, 'src') });
 const os = require('node:os');
@@ -59,10 +60,10 @@ function updates(){
     beforeInstall:async()=>{
       if(captureBusy||longCapture)throw Error('请先完成截图');
       const windows=[mainWindow,...workspaceWindows.values(),...noteDomain.activeWindows()].filter(win=>win&&!win.isDestroyed());
-      await Promise.all(windows.map(win=>win.webContents.executeJavaScript('Promise.resolve(window.WorkspaceUI?.flush()).then(()=>window.NoteUI?.flush())')));
+      await Promise.all(windows.map(win => flushRendererDrafts(win)));
       await flushNotes();
       const calendar=workspaceWindows.get('calendar');
-      if(calendar&&!calendar.isDestroyed()&&(await calendar.webContents.executeJavaScript('window.WorkspaceUI?.calendarBlocksUpdate()')||calendarDrafts.has(calendar.webContents.id))) {
+      if(calendar&&!calendar.isDestroyed()&&(await runRendererScript(calendar, 'window.WorkspaceUI?.calendarBlocksUpdate()')||calendarDrafts.has(calendar.webContents.id))) {
         throw Object.assign(Error('请先处理日历中未保存的日程，再重启更新。'),{code:'CALENDAR_DRAFT_PENDING'});
       }
       for(const win of workspaceWindows.values())win.__allowClose=true;isQuitting=true;updateInstallPrepared=true;
@@ -151,7 +152,7 @@ let longPickerWorker = null;
 
 let store = null;
 let themeController = null;
-windowIpc.on('theme:initial', event => { event.returnValue = themeController?.snapshot() || null; });
+windowIpc.handleSync('theme:initial', () => themeController?.snapshot());
 windowIpc.handle('theme:state', () => themeController?.snapshot() || null);
 let ocr = null;
 let actions = null;
@@ -1294,9 +1295,9 @@ function scheduleIdleTeardown(win, label, delay = HOT_WINDOW_IDLE_MS) {
     if (win.isDestroyed() || win.isVisible()) return;
     if (win === mainWindow) {
       try {
-        await win.webContents.executeJavaScript('Promise.resolve(window.WorkspaceUI?.flush()).then(()=>window.NoteUI?.flush())');
+        await flushRendererDrafts(win);
       } catch (error) {
-        console.warn('主窗口草稿未保存，保留窗口:', error.message);
+        reportDiagnostic('warn', 'idle-renderer-flush', error);
         return;
       }
       if (win.isDestroyed() || win.isVisible() || win.__teardownTimer) return;
@@ -4616,7 +4617,10 @@ app.on('before-quit', createQuitCoordinator({
   needsFlush: () => Boolean(store && !updateInstallPrepared),
   async flush() {
     const windows = [mainWindow, ...noteDomain.activeWindows()].filter(win => win && !win.isDestroyed() && !win.webContents.isLoading());
-    await Promise.all(windows.map(win => win.webContents.executeJavaScript('Promise.resolve(window.WorkspaceUI?.flush()).then(()=>window.NoteUI?.flush())')));
+    const results = await Promise.allSettled(windows.map(win => flushRendererDrafts(win)));
+    for (const result of results) {
+      if (result.status === 'rejected') reportDiagnostic('warn', 'quit-renderer-flush', result.reason);
+    }
     await flushNotes();
   },
   quit: () => app.quit(),

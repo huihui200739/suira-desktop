@@ -7,8 +7,26 @@ const path = require('node:path');
 const { setImmediate: tick } = require('node:timers/promises');
 const { createQuitCoordinator } = require('../lib/quit-coordinator');
 const { recordDiagnostic } = require('../lib/diagnostic-log');
+const { flushRendererDrafts } = require('../lib/renderer-flush');
 
 async function main() {
+  const renderer = executeJavaScript => ({ webContents: { executeJavaScript } });
+  const crashed = new Error('Renderer process gone');
+  const destroyed = new Error('Object has been destroyed');
+  const results = await Promise.allSettled([
+    flushRendererDrafts(renderer(() => Promise.reject(crashed))),
+    flushRendererDrafts(renderer(() => { throw destroyed; })),
+    flushRendererDrafts(renderer(() => new Promise(() => {})), 20),
+    flushRendererDrafts(renderer(async () => { await tick(); return 'saved'; }))
+  ]);
+  assert.deepEqual(results.slice(0, 2), [
+    { status: 'rejected', reason: crashed },
+    { status: 'rejected', reason: destroyed }
+  ]);
+  assert.equal(results[2].status, 'rejected');
+  assert.equal(results[2].reason.code, 'ERR_RENDERER_TIMEOUT');
+  assert.deepEqual(results[3], { status: 'fulfilled', value: 'saved' });
+
   let windows = [{}];
   const events = [];
   const error = Object.assign(new Error('secret and C:\\private'), { code: 'EPERM' });
