@@ -1692,10 +1692,23 @@ async function tryReturnToTarget(item, intent = 'return-and-paste', options = {}
     : options.clipboardBar ? options.target : returnTarget;
 
   // 无论是否能粘贴，都先完成复制——这是「已复制，切回目标后粘贴」的前提
+  const plainText = Boolean(options.plainText);
   try {
     // 图片条目要复制位图本身（底部剪贴板条选历史图片时就是这条路）；
     // 之前固定 writeClipboardText，会把图片粘成文件路径文本。
-    if (item?.kind === 'image') {
+    if (plainText) {
+      if (item?.kind === 'image') throw Error('图片不支持纯文本粘贴');
+      if (item?.kind === 'files') {
+        const paths = [...new Set(String(item.text || item.filePath || '').split(/\r?\n/).filter(Boolean))];
+        if (!paths.length) throw Error('没有可粘贴的文件路径');
+        await writeClipboardText(paths.join('\n'));
+      } else {
+        const { normalizePlainText } = require('./src/clipboard-color');
+        const clean = normalizePlainText(item?.text || item?.filePath || '');
+        if (!clean) throw Error('没有可粘贴的纯文本');
+        await writeClipboardText(clean);
+      }
+    } else if (item?.kind === 'image') {
       if(!item.filePath||!fs.existsSync(item.filePath))throw Error('原图片不存在或已被清理');
       const image = nativeImage.createFromPath(item.filePath);
       if (image.isEmpty()) throw new Error('图片读取失败');
@@ -3187,6 +3200,20 @@ function registerIpc() {
       return { ok: false, error: error.message || '无法复制图片文件' };
     }
   });
+  windowIpc.handle('clipboard-bar:copy-text', async (event, payload) => {
+    const win = clipboardBarWindow;
+    if (!win || win.isDestroyed() || !win.isVisible() || event.sender !== win.webContents) {
+      return { ok: false, error: '请从剪贴板历史操作' };
+    }
+    const text = typeof payload?.text === 'string' ? payload.text.slice(0, 200000) : '';
+    if (!text) return { ok: false, error: '没有可复制的文字' };
+    try {
+      await writeClipboardText(text);
+      return { ok: true, copied: true };
+    } catch (error) {
+      return { ok: false, error: error.message || '复制失败' };
+    }
+  });
   windowIpc.handle('clipboard-bar:save-image', async (event, id) => {
     const win = clipboardBarWindow;
     if (!win || win.isDestroyed() || !win.isVisible() || event.sender !== win.webContents || win.__savingImage) {
@@ -3673,6 +3700,7 @@ function registerIpc() {
     const revision = clipboardShowRevision;
     const fromOverlay = overlayWindow && event.sender === overlayWindow.webContents;
     const fromTextTool = [...textToolWindows.values()].some(win => !win.isDestroyed() && event.sender === win.webContents);
+    const plainText = Boolean(payload?.plainText);
     let decision;
     if (bar) {
       if (!bar.isVisible() || bar.__pastingHistory) return { ok: false, error: '剪贴板当前无法粘贴' };
@@ -3684,7 +3712,7 @@ function registerIpc() {
         const fallback = current?.pid === process.pid && clickTarget ? await clickTarget : sessionTarget;
         if (bar.isDestroyed() || !bar.isVisible() || revision !== clipboardShowRevision) return { ok: false, error: '剪贴板已关闭' };
         const target = currentPasteTarget(current, process.pid, fallback, true);
-        decision = await tryReturnToTarget(item, intent, { clipboardBar: bar, target, revision });
+        decision = await tryReturnToTarget(item, intent, { clipboardBar: bar, target, revision, plainText });
         if (!decision.copyFailed && intent !== 'copy-only' && !bar.isDestroyed() && revision === clipboardShowRevision) {
           decision.keptOpen = bar.__shelfPinned;
           if (!decision.keptOpen) hideClipboardBar();
@@ -3693,7 +3721,7 @@ function registerIpc() {
         bar.__pastingHistory = false;
       }
     } else {
-      decision = await tryReturnToTarget(item, intent, { captureOverlay: fromOverlay, explicitPaste: fromOverlay || fromTextTool });
+      decision = await tryReturnToTarget(item, intent, { captureOverlay: fromOverlay, explicitPaste: fromOverlay || fromTextTool, plainText });
     }
     if (decision.copyFailed) {
       // 复制失败是真正的失败：给渲染层 ok:false，才能显示错误而不是成功提示

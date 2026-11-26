@@ -28,6 +28,7 @@
         <button type="button" data-filter="link" aria-pressed="false">链接</button>
         <button type="button" data-filter="files" aria-pressed="false">文件</button>
         <button type="button" data-filter="favorite" aria-pressed="false">收藏</button>
+        <span class="bar-tag-filters" id="bar-tag-filters" hidden></span>
       </nav>
       <div class="bar-tools">
         <button class="bar-retry" id="bar-refresh-retry" type="button" title="刷新失败，重试" aria-label="刷新失败，重试" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8 8 0 1 0-2 6m2-11v5h-5"/></svg></button>
@@ -57,9 +58,11 @@
     </div>
   </main>
   <div id="bar-share" role="dialog" aria-label="分享剪贴板内容" popover></div>
+  <div id="bar-tag-popover" class="bar-tag-popover" role="dialog" aria-label="管理分组标签" popover></div>
   <script src="liquid-glass.js"></script>
   <script src="ui-motion.js"></script>
   <script src="tool-art.js"></script>
+  <script src="clipboard-color.js"></script>
   <script src="clipboardbar.js"></script>
   <script src="action-strip.js"></script>
   <script src="relay-surfaces.js"></script>

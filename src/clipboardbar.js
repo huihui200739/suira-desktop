@@ -38,6 +38,8 @@
     crop: ['改图 · 裁剪', '<path d="M7 3v12a2 2 0 0 0 2 2h12M3 7h12a2 2 0 0 1 2 2v12"/>'],
     open: ['在浏览器打开链接', '<path d="M10.5 13.5a3.5 3.5 0 0 0 5 0l2.5-2.5a3.5 3.5 0 0 0-5-5l-1 1M13.5 10.5a3.5 3.5 0 0 0-5 0L6 13a3.5 3.5 0 0 0 5 5l1-1"/>'],
     copy: ['复制（Ctrl+C）', '<rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 4H6a2 2 0 0 0-2 2v10"/>'],
+    plain: ['纯文本粘贴（Shift+Enter）', '<path d="M5 7h14M12 7v11M8 18h8M4 19 20 5"/>'],
+    tag: ['分组标签', '<path d="M20.6 13.4 13.4 20.6a2 2 0 0 1-2.8 0L4 14V4h10l6.6 6.6a2 2 0 0 1 0 2.8z"/><circle cx="8.5" cy="8.5" r="1.2"/>'],
     edit: ['编辑', '<path d="m5 16-1 4 4-1L20 7l-3-3zM15 6l3 3"/>'],
     pin: ['钉在桌面', '<path d="m8 3 8 0-1 7 3 4H6l3-4zM12 14v7"/>'],
     save: ['下载原图', '<path d="M12 3v12m-4-4 4 4 4-4M4 16v4h16v-4"/>'],
@@ -58,6 +60,7 @@
     query: '',
     filter: 'all',
     pinning: false,
+    tagging: false,
     shelfPinBusy: false,
     imageActionBusy: false,
     sharingImages: false,
@@ -114,19 +117,25 @@
     const rawId = raw.id == null ? '' : String(raw.id);
     const kind = KIND_LABELS[raw.kind] ? raw.kind : 'text';
     const source = raw.source && typeof raw.source === 'object' ? raw.source : null;
+    const meta = raw.meta && typeof raw.meta === 'object' ? raw.meta : {};
+    const tags = window.SuiraClipboardColor?.sanitizeTags?.(meta.tags) || [];
+    const text = typeof raw.text === 'string' ? raw.text : '';
+    const color = kind === 'text' ? (window.SuiraClipboardColor?.parseColor?.(text) || null) : null;
     return {
       id: rawId || `item-${index}`,
       kind,
       title: typeof raw.title === 'string' ? raw.title : '',
-      text: typeof raw.text === 'string' ? raw.text : '',
+      text,
       filePath: typeof raw.filePath === 'string' ? raw.filePath : '',
       thumbnail: typeof raw.thumbnail === 'string' ? raw.thumbnail : '',
       appName: source && typeof source.appName === 'string' ? source.appName : '',
       sourceType: source?.type || '',
-      textDetails: ['text', 'link'].includes(kind) && raw.text ? textDetails(raw.text) : '',
+      textDetails: ['text', 'link'].includes(kind) && text ? textDetails(text) : '',
       createdAt: Number(raw.createdAt) || 0,
       pinned: Boolean(raw.pinned),
-      meta: raw.meta && typeof raw.meta === 'object' ? raw.meta : {}
+      tags,
+      color,
+      meta
     };
   }
 
@@ -229,12 +238,13 @@
       : action === 'edit' && item.kind === 'image' ? '编辑 · 标注' : label;
     const extra = action === 'favorite' ? ` aria-pressed="${item.pinned}"`
       : action === 'select' ? ' class="card-select" aria-pressed="false"'
+      : action === 'tag' ? ` aria-haspopup="dialog" aria-controls="bar-tag-popover" aria-expanded="false"${item.tags?.length ? ' aria-pressed="true"' : ''}`
       : action === 'share' ? ' aria-haspopup="dialog" aria-controls="bar-share" aria-expanded="false"' : '';
     return `<button type="button" tabindex="-1" data-card-action="${action}"${extra} aria-label="${name}" title="${name}"><svg viewBox="0 0 24 24" aria-hidden="true">${icon}</svg></button>`;
   }
 
   function cardMarkup(item, index) {
-    const label = KIND_LABELS[item.kind] || '内容';
+    const label = item.color ? '颜色' : (KIND_LABELS[item.kind] || '内容');
     const time = relativeTime(item.createdAt).replace(/前$/, '');
     let visual;
     let visualClass = 'card-visual';
@@ -250,6 +260,18 @@
       visual = `<span class="card-glyph" aria-hidden="true">${isLink ? GLYPHS.link : GLYPHS.file}</span>
         <div class="card-stack"><b class="card-name">${escapeHtml(name)}</b>
           ${details ? `<span class="${isLink ? 'card-caption' : 'card-count'}">${escapeHtml(details)}</span>` : ''}</div>`;
+    } else if (item.color) {
+      const c = item.color;
+      visual = `<div class="card-color-wrap">
+        <div class="card-color-swatch ${c.isLight ? 'is-light' : 'is-dark'}" style="background-color:${c.css}">
+          <span class="card-color-code">${escapeHtml(c.hex)}</span>
+        </div>
+        <div class="card-color-formats" role="group" aria-label="复制颜色格式">
+          <button type="button" class="card-color-fmt" tabindex="-1" data-color-fmt="HEX" data-color-copy="${escapeHtml(c.hex)}" title="复制 ${escapeHtml(c.hex)}">HEX</button>
+          <button type="button" class="card-color-fmt" tabindex="-1" data-color-fmt="RGB" data-color-copy="${escapeHtml(c.rgb)}" title="复制 ${escapeHtml(c.rgb)}">RGB</button>
+          <button type="button" class="card-color-fmt" tabindex="-1" data-color-fmt="HSL" data-color-copy="${escapeHtml(c.hsl)}" title="复制 ${escapeHtml(c.hsl)}">HSL</button>
+        </div>
+      </div>`;
     } else {
       visual = `<p class="card-snippet">${escapeHtml(textSummary(item))}</p>`;
     }
@@ -262,25 +284,30 @@
       if (window.suira?.actions?.run) actions.push('pin');
     } else if (item.kind === 'text' || item.kind === 'link') {
       if (item.kind === 'link' && window.suira?.actions?.run) actions.push('open');
-      if (state.returnApi) actions.push('share', 'copy');
+      if (state.returnApi) actions.push('plain', 'copy');
       if (state.contentApi?.addText) actions.push('edit');
     } else if (state.returnApi) {
-      actions.push('copy');
+      actions.push('plain', 'copy');
     }
+    if (state.contentApi?.setTags) actions.push('tag');
     if (state.contentApi?.togglePin) actions.push('favorite');
     if (window.suira?.actions) actions.push('more');
     const appName = item.appName || SOURCE_LABELS[item.sourceType] || '本机';
     const source = `<span class="card-source-icon"${item.appName ? ` data-source-app="${escapeHtml(item.appName)}"` : ''} role="img" aria-label="来源：${escapeHtml(appName)}" title="${escapeHtml(appName)}"><span>${escapeHtml(appName.slice(0, 1).toUpperCase())}</span></span>`;
-    const details = cardDetails(item);
+    const details = item.color ? item.color.rgb : cardDetails(item);
     const metadata = [time, details].filter(Boolean).join(' · ');
+    const tagsHtml = item.tags?.length
+      ? `<div class="card-tags" aria-label="分组标签">${item.tags.slice(0, 3).map(t => `<span class="card-tag-chip">#${escapeHtml(t)}</span>`).join('')}${item.tags.length > 3 ? `<span class="card-tag-chip">+${item.tags.length - 3}</span>` : ''}</div>`
+      : '';
     const name = [label, selectionTitle(item), appName, metadata].filter(Boolean).join('，');
-    return `<article class="bar-card" id="bar-card-${index}" role="listitem" tabindex="-1" data-index="${index}" data-id="${escapeHtml(item.id)}" data-kind="${escapeHtml(item.kind)}" aria-label="${escapeHtml(name)}">
+    return `<article class="bar-card" id="bar-card-${index}" role="listitem" tabindex="-1" data-index="${index}" data-id="${escapeHtml(item.id)}" data-kind="${escapeHtml(item.kind)}"${item.color ? ' data-color-card="true"' : ''} aria-label="${escapeHtml(name)}">
       <div class="card-head">
         ${cardButton('select', item)}
         <span class="card-type">${label}${item.pinned ? ' <span class="card-favorite" aria-label="已收藏">★</span>' : ''}</span>
         <div class="card-actions" role="group" aria-label="卡片操作">${actions.map(action => cardButton(action, item)).join('')}<span class="card-more-slot"></span></div>
       </div>
       <div class="${visualClass}">${visual}</div>
+      ${tagsHtml}
       <div class="card-foot">${source}<span class="card-metadata" title="${escapeHtml(metadata)}">${escapeHtml(metadata)}</span>${index < 9 ? `<kbd class="card-hotkey" aria-hidden="true" title="Alt+${index + 1} 快速粘贴">${index + 1}</kbd>` : ''}</div>
     </article>`;
   }
@@ -383,8 +410,9 @@
       for (const button of card.querySelectorAll('[data-card-action]')) {
         const action = button.dataset.cardAction;
         button.tabIndex = active ? 0 : -1;
-        const busy = state.loading || (action === 'copy' && state.committing) ||
+        const busy = state.loading || ((action === 'copy' || action === 'plain') && state.committing) ||
           (action === 'favorite' && state.pinning) ||
+          (action === 'tag' && state.tagging) ||
           (card.dataset.kind === 'image' && IMAGE_ACTIONS.includes(action) && state.imageActionBusy);
         if (busy) button.setAttribute('aria-disabled', 'true');
         else button.removeAttribute('aria-disabled');
@@ -393,6 +421,10 @@
           button.setAttribute('aria-pressed', String(batchSelectable ? checked : active && !state.checkedImages.size));
         }
         if (action === 'share') button.setAttribute('aria-expanded', String(button === shareAnchor));
+        if (action === 'tag') button.setAttribute('aria-expanded', String(button === tagAnchor));
+      }
+      for (const fmtBtn of card.querySelectorAll('.card-color-fmt')) {
+        fmtBtn.tabIndex = active ? 0 : -1;
       }
     }
     updateShareButton();
@@ -435,8 +467,13 @@
           if (!unchanged) {
             const active = document.activeElement;
             const action = card.contains(active) ? active.dataset.cardAction : '';
+            const hadTagAnchor = tagAnchor && card.contains(tagAnchor);
             if (card.contains(shareAnchor)) closeShare();
             card.innerHTML = next.innerHTML;
+            if (hadTagAnchor) {
+              tagAnchor = card.querySelector('[data-card-action="tag"]');
+              tagAnchor?.setAttribute('aria-expanded', 'true');
+            }
             if (action) card.querySelector(`[data-card-action="${action}"]`)?.focus({ preventScroll: true });
           } else {
             const footer = card.querySelector('.card-metadata');
@@ -460,6 +497,7 @@
       });
       existing.forEach(card => {
         if (card.contains(shareAnchor)) closeShare();
+        if (tagAnchor && card.contains(tagAnchor)) closeTagPopover();
         card.remove();
       });
       bindImageFallbacks();
@@ -475,10 +513,43 @@
       refresh.disabled = state.refreshing;
       refresh.title = state.refreshError;
     }
+    renderTagFilters();
     $$('[data-filter]').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.filter === state.filter)));
     configureEmpty();
     syncSelection();
     syncTrackFades();
+  }
+
+  const PRESET_TAGS = ['工作', '代码', '常用', '待办'];
+
+  function allKnownTags() {
+    const counts = new Map();
+    for (const item of state.allItems) {
+      for (const tag of item.tags || []) {
+        counts.set(tag, (counts.get(tag) || 0) + 1);
+      }
+    }
+    return [...counts.entries()]
+      .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], 'zh-CN'))
+      .map(([tag]) => tag);
+  }
+
+  function renderTagFilters() {
+    const host = $('#bar-tag-filters');
+    if (!host) return;
+    const tags = allKnownTags();
+    host.hidden = tags.length === 0;
+    const activeTag = state.filter.startsWith('tag:') ? state.filter.slice(4) : '';
+    if (activeTag && !tags.includes(activeTag)) {
+      state.filter = 'all';
+    }
+    const key = tags.join('\0');
+    if (host.dataset.renderedTags !== key) {
+      host.dataset.renderedTags = key;
+      host.innerHTML = tags
+        .map(tag => `<button type="button" data-filter="tag:${escapeHtml(tag)}" aria-pressed="false">${escapeHtml(tag)}</button>`)
+        .join('');
+    }
   }
 
   function syncTrackFades() {
@@ -563,9 +634,16 @@
 
   function applyFilters(keepId = '', { reset = true } = {}) {
     const query = state.query.trim().toLocaleLowerCase();
+    const activeTag = state.filter.startsWith('tag:') ? state.filter.slice(4) : '';
+    if (activeTag && !state.allItems.some(item => (item.tags || []).includes(activeTag))) {
+      state.filter = 'all';
+    }
     state.items = state.allItems.filter(item => {
-      const kindMatch = state.filter === 'all' || (state.filter === 'favorite' ? item.pinned : item.kind === state.filter);
-      return kindMatch && (!query || [item.title, item.text, item.filePath, item.appName].join(' ').toLocaleLowerCase().includes(query));
+      const kindMatch = state.filter === 'all'
+        || (state.filter === 'favorite' ? item.pinned
+          : state.filter.startsWith('tag:') ? (item.tags || []).includes(state.filter.slice(4))
+          : item.kind === state.filter);
+      return kindMatch && (!query || [item.title, item.text, item.filePath, item.appName, ...(item.tags || [])].join(' ').toLocaleLowerCase().includes(query));
     });
     const index = keepId ? state.items.findIndex(item => item.id === keepId) : -1;
     const selected = index >= 0 ? index : state.items.length ? 0 : -1;
@@ -658,10 +736,14 @@
     }
   }
 
-  async function submitSelected() {
+  async function submitSelected({ plainText = false } = {}) {
     if (state.committing || state.imageActionBusy || state.loading || state.batchMode) return;
     const item = state.items[state.selected];
     if (!item) return;
+    if (plainText && item.kind === 'image') {
+      showNotice('图片不支持纯文本粘贴', true);
+      return;
+    }
     const api = state.returnApi;
     if (!api) {
       showNotice('当前版本不支持复制并返回', true);
@@ -670,14 +752,41 @@
     state.committing = true;
     syncSelection();
     try {
-      const result = await api.commit({ itemId: item.id, intent: 'paste-current' });
+      const payload = plainText
+        ? { itemId: item.id, intent: 'paste-current', plainText: true }
+        : { itemId: item.id, intent: 'paste-current' };
+      const result = await api.commit(payload);
       if (!result?.ok || !result.copied) {
         showNotice(result?.error || result?.message || '复制失败', true);
       } else if (result.keptOpen && !result.pasted) {
-        showNotice(result.message || '已复制，请按 Ctrl+V 粘贴', false, Boolean(result.copied));
+        showNotice(result.message || (plainText ? '已复制纯文本，请按 Ctrl+V 粘贴' : '已复制，请按 Ctrl+V 粘贴'), false, Boolean(result.copied));
+      } else if (plainText && result.copied && !result.pasted) {
+        showNotice(result.message || '已复制纯文本，切回目标后粘贴', false, true);
       }
     } catch (error) {
       showNotice(errorText(error, '复制失败'), true);
+    } finally {
+      state.committing = false;
+      syncSelection();
+    }
+  }
+
+  async function copyColorFormat(fmt, value) {
+    if (!value || state.committing) return;
+    state.committing = true;
+    syncSelection();
+    try {
+      if (typeof state.barApi?.copyText === 'function') {
+        const res = await state.barApi.copyText(value);
+        if (!res?.ok) throw new Error(res?.error || '复制颜色失败');
+      } else if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(value);
+      } else {
+        throw new Error('当前环境不支持复制颜色格式');
+      }
+      showNotice(`已复制 ${fmt}：${value}`, false, true);
+    } catch (error) {
+      showNotice(errorText(error, '复制颜色失败'), true);
     } finally {
       state.committing = false;
       syncSelection();
@@ -727,6 +836,108 @@
 
   let shareAnchor = null;
   const sharePanel = $('#bar-share');
+  let tagAnchor = null;
+  let tagItemId = '';
+  const tagPanel = $('#bar-tag-popover');
+
+  function closeTagPopover() {
+    if (!tagAnchor && !tagItemId) return;
+    tagAnchor?.setAttribute('aria-expanded', 'false');
+    tagAnchor = null;
+    tagItemId = '';
+    if (tagPanel?.matches(':popover-open')) tagPanel.hidePopover();
+    tagPanel?.replaceChildren();
+  }
+
+  async function saveItemTags(itemId, nextTags, focusTarget = null) {
+    if (state.tagging || typeof state.contentApi?.setTags !== 'function') return;
+    const sanitized = window.SuiraClipboardColor?.sanitizeTags?.(nextTags) || [];
+    state.interactionRevision++;
+    state.tagging = true;
+    syncSelection();
+    try {
+      const res = await state.contentApi.setTags(itemId, sanitized);
+      if (!res?.ok) throw new Error(res?.error || '保存标签失败');
+      const stored = state.allItems.find(record => record.id === itemId);
+      if (stored) {
+        stored.tags = Array.isArray(res.tags) ? res.tags : sanitized;
+        stored.meta = { ...(stored.meta || {}), tags: stored.tags };
+      }
+      applyFilters(itemId, { reset: false });
+      if (tagItemId === itemId && tagPanel?.matches(':popover-open')) {
+        const refreshed = state.allItems.find(record => record.id === itemId);
+        if (refreshed) {
+          renderTagPopoverContent(refreshed);
+          if (focusTarget?.type === 'input') {
+            tagPanel.querySelector('input')?.focus({ preventScroll: true });
+          } else if (focusTarget?.type === 'tag') {
+            const match = [...tagPanel.querySelectorAll('[data-tag-toggle]')].find(b => b.dataset.tagToggle === focusTarget.tag);
+            (match || tagPanel.querySelector('input'))?.focus({ preventScroll: true });
+          }
+        }
+      }
+      showNotice(stored?.tags?.length ? `已更新标签（${stored.tags.length} 个）` : '已清空标签', false);
+    } catch (error) {
+      showNotice(errorText(error, '标签更新失败'), true);
+    } finally {
+      state.tagging = false;
+      syncSelection();
+    }
+  }
+
+  function renderTagPopoverContent(item) {
+    if (!tagPanel) return;
+    const currentTags = item.tags || [];
+    const candidates = [...new Set([...currentTags, ...PRESET_TAGS, ...allKnownTags()])];
+    tagPanel.innerHTML = `<div class="bar-tag-popover-head"><span>分组标签</span><small>${currentTags.length} / 5</small></div>
+      <form class="bar-tag-form"><input type="text" maxlength="16" placeholder="输入自定义标签后回车" aria-label="新增自定义标签"><button type="submit">添加</button></form>
+      <div class="bar-tag-choices">${candidates.map(tag => {
+        const active = currentTags.includes(tag);
+        return `<button type="button" class="bar-tag-choice" data-tag-toggle="${escapeHtml(tag)}" aria-pressed="${active}">#${escapeHtml(tag)}</button>`;
+      }).join('')}</div>`;
+    const form = tagPanel.querySelector('form');
+    const input = tagPanel.querySelector('input');
+    form.addEventListener('submit', (ev) => {
+      ev.preventDefault();
+      const val = input.value.trim();
+      if (!val) return;
+      if (currentTags.length >= 5 && !currentTags.some(t => t.toLowerCase() === val.toLowerCase())) {
+        showNotice('每条记录最多设置 5 个标签', true);
+        return;
+      }
+      input.value = '';
+      saveItemTags(item.id, [...currentTags, val], { type: 'input' });
+    });
+    tagPanel.querySelectorAll('[data-tag-toggle]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const target = btn.dataset.tagToggle;
+        const exists = currentTags.includes(target);
+        if (!exists && currentTags.length >= 5) {
+          showNotice('每条记录最多设置 5 个标签', true);
+          return;
+        }
+        const next = exists ? currentTags.filter(t => t !== target) : [...currentTags, target];
+        saveItemTags(item.id, next, { type: 'tag', tag: target });
+      });
+    });
+  }
+
+  function openTagPopover(item, button) {
+    if (!tagPanel || typeof state.contentApi?.setTags !== 'function') return;
+    const wasOpen = tagAnchor === button && tagPanel.matches(':popover-open');
+    closeShare();
+    closeTagPopover();
+    if (wasOpen) return;
+    tagAnchor = button;
+    tagItemId = item.id;
+    button.setAttribute('aria-expanded', 'true');
+    renderTagPopoverContent(item);
+    const rect = button.getBoundingClientRect();
+    tagPanel.style.top = `${Math.max(8, Math.min(innerHeight - 176, rect.bottom + 4))}px`;
+    tagPanel.style.right = `${Math.max(8, Math.min(innerWidth - 252, innerWidth - rect.right))}px`;
+    tagPanel.showPopover();
+    tagPanel.querySelector('input')?.focus({ preventScroll: true });
+  }
 
   function closeShare() {
     if (!shareAnchor) return;
@@ -871,6 +1082,15 @@
     if (event.isComposing || event.keyCode === 229) return;
     const key = event.key;
     if(event.repeat&&(key==='Escape'||key==='Esc')){event.preventDefault();return;}
+    if (tagAnchor) {
+      if (key === 'Escape') {
+        event.preventDefault();
+        const button = tagAnchor;
+        closeTagPopover();
+        button.focus({ preventScroll: true });
+      }
+      return;
+    }
     if (shareAnchor) {
       if (key === 'Escape') {
         event.preventDefault();
@@ -913,7 +1133,7 @@
       if (digit >= 1 && digit <= state.items.length && !state.batchMode) {
         event.preventDefault();
         selectIndex(digit - 1, { behavior: 'instant' });
-        if (!event.repeat) submitSelected();
+        if (!event.repeat) submitSelected({ plainText: event.shiftKey });
         return;
       }
     }
@@ -936,7 +1156,7 @@
       if (!event.repeat) {
         const item=state.items[state.selected];
         if (state.batchMode) toggleBatchImage(item);
-        else submitSelected();
+        else submitSelected({ plainText: event.shiftKey });
       }
       return;
     }
@@ -987,9 +1207,14 @@
       state.selected = index;
       syncSelection();
     }
+    const colorBtn = closestFrom(event.target, '[data-color-copy]');
+    if (colorBtn) {
+      copyColorFormat(colorBtn.dataset.colorFmt || 'HEX', colorBtn.dataset.colorCopy || '');
+      return;
+    }
     if (!button && !state.batchMode) {
       card.focus({ preventScroll: true });
-      submitSelected();
+      submitSelected({ plainText: event.shiftKey });
       return;
     }
     const action = button?.dataset.cardAction || 'select';
@@ -997,6 +1222,8 @@
       if (!button) card.focus({ preventScroll: true });
       if (!toggleBatchImage(state.items[index])) card.focus({ preventScroll: true });
     } else if (action === 'share') openShare(state.items[index], button);
+    else if (action === 'tag') openTagPopover(state.items[index], button);
+    else if (action === 'plain') submitSelected({ plainText: true });
     else if (action === 'open') openLink(state.items[index]);
     else if (action === 'edit' && state.items[index].kind !== 'image') previewSelected(true);
     else if (action === 'copy') copySelected('selection');
@@ -1040,6 +1267,7 @@
         const off = barApi.onShown(({ pinned = false } = {}) => {
           syncShelfPin(pinned);
           closeShare();
+          closeTagPopover();
           state.batchMode=false;
           state.checkedImages.clear();
           closePreview(false);
@@ -1081,10 +1309,12 @@
       state.interactionRevision++;
       state.query = event.target.value; clearNotice(); applyFilters();
     });
-    $$('[data-filter]').forEach(button => button.addEventListener('click', () => {
+    $('.bar-filters')?.addEventListener('click', event => {
+      const button = closestFrom(event.target, '[data-filter]');
+      if (!button) return;
       state.interactionRevision++;
       state.filter = button.dataset.filter; clearNotice(); applyFilters();
-    }));
+    });
     $('#bar-close')?.addEventListener('click', hideBar);
     const shelfPin = $('#bar-shelf-pin');
     shelfPin.hidden = typeof state.barApi?.setPinned !== 'function';
@@ -1103,6 +1333,7 @@
     if (track) {
       track.addEventListener('scroll', () => {
         if (shareAnchor?.closest('.bar-card')) closeShare();
+        if (tagAnchor?.closest('.bar-card')) closeTagPopover();
         syncTrackFades();
       }, { passive: true });
       if (typeof ResizeObserver === 'function') {
@@ -1135,11 +1366,19 @@
     sharePanel.addEventListener('toggle', () => {
       if (!sharePanel.matches(':popover-open')) closeShare();
     });
+    tagPanel?.addEventListener('toggle', () => {
+      if (!tagPanel.matches(':popover-open')) closeTagPopover();
+    });
+    window.addEventListener('blur', () => {
+      closeShare();
+      closeTagPopover();
+    });
     document.addEventListener('visibilitychange', () => {
       const wasVisible = state.visible;
       state.visible = document.visibilityState === 'visible';
       if (!state.visible) {
         closeShare();
+        closeTagPopover();
         state.batchMode=false;
         state.checkedImages.clear();
         closePreview(false);

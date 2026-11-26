@@ -163,6 +163,7 @@ contextBridge.exposeInMainWorld('suira', {
     toggle: () => ipcRenderer.invoke('clipboard-bar:toggle'),
     setPinned: pinned => ipcRenderer.invoke('clipboard-bar:set-pinned', pinned),
     copyImages: ids => ipcRenderer.invoke('clipboard-bar:copy-images', ids),
+    copyText: text => ipcRenderer.invoke('clipboard-bar:copy-text', { text }),
     saveImage: id => ipcRenderer.invoke('clipboard-bar:save-image', id),
     onShown: (callback) => subscribe('clipboard-bar:shown', callback)
   },
@@ -173,6 +174,7 @@ contextBridge.exposeInMainWorld('suira', {
     remove: (id) => ipcRenderer.invoke('content:remove', id),
     undoRemove: token => ipcRenderer.invoke('content:undo-remove', token),
     togglePin: (id) => ipcRenderer.invoke('content:toggle-pin', id),
+    setTags: (id, tags) => ipcRenderer.invoke('content:set-tags', { id, tags }),
     clearClipboard: () => ipcRenderer.invoke('content:clear-clipboard'),
     openOriginal: (id) => ipcRenderer.invoke('content:open-original', id),
     onChanged: (callback) => subscribe('content:changed', callback)
