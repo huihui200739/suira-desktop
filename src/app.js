@@ -940,13 +940,17 @@ function bindSettings() {
 
 /* ---------- 翻译设置 ---------- */
 
-/** 只显示当前引擎需要的字段：OpenAI 兼容要 Base URL/模型，微软要区域。 */
+/** 只显示当前引擎需要的字段：未配置时不展示无效密钥/测试区，OpenAI 兼容要地址与模型，微软要区域。 */
 function syncTranslateRows(provider) {
+  const active = provider && provider !== 'none';
   $$('[data-translate-row]').forEach((row) => {
     row.hidden = row.dataset.translateRow !== provider;
   });
+  $$('[data-translate-configured]').forEach((node) => {
+    node.hidden = !active;
+  });
   const keyRow = $('#setting-translate-key');
-  if (keyRow) keyRow.disabled = provider === 'none';
+  if (keyRow) keyRow.disabled = !active;
 }
 
 function applyTranslateSettings(settings) {
@@ -958,6 +962,17 @@ function applyTranslateSettings(settings) {
   $('#setting-translate-target').value = settings.translateTarget || 'zh';
   $('#setting-translate-key').value = '';
   syncTranslateRows(provider);
+  const clearTranslate = $('#setting-translate-clear');
+  if (clearTranslate) {
+    const shouldHide = !settings.translateApiKeySet;
+    const wasFocused = shouldHide && document.activeElement === clearTranslate;
+    clearTranslate.hidden = shouldHide;
+    if (wasFocused) {
+      const keyInput = $('#setting-translate-key');
+      const fallback = keyInput && !keyInput.disabled && !keyInput.closest('[hidden]') ? keyInput : $('#setting-translate-provider');
+      fallback?.focus({ preventScroll: true });
+    }
+  }
   const hint = $('#setting-translate-keyhint');
   const status = $('#setting-translate-status');
   if (settings.translateApiKeySet) {
@@ -966,7 +981,7 @@ function applyTranslateSettings(settings) {
     status.className = 'setting-hint is-ok';
   } else {
     hint.textContent = '尚未保存；粘贴后离开输入框即保存';
-    status.textContent = provider === 'none' ? '未配置引擎，翻译会提示去设置' : '还缺密钥';
+    status.textContent = provider === 'none' ? '选择引擎后即可使用翻译与 AI 动作' : '还缺密钥';
     status.className = 'setting-hint';
   }
   $('#setting-voice-provider').value = settings.voiceProvider || 'deepseek';
@@ -975,6 +990,13 @@ function applyTranslateSettings(settings) {
   $('#setting-voice-key').value = '';
   const voiceProvider = settings.voiceProvider || 'deepseek';
   $$('[data-voice-row]').forEach(row => { row.hidden = row.dataset.voiceRow !== voiceProvider; });
+  const clearVoice = $('#setting-voice-clear');
+  if (clearVoice) {
+    const shouldHide = !settings.voiceApiKeySet;
+    const wasFocused = shouldHide && document.activeElement === clearVoice;
+    clearVoice.hidden = shouldHide;
+    if (wasFocused) $('#setting-voice-key')?.focus({ preventScroll: true });
+  }
   if (settings.voiceApiKeySet) {
     $('#setting-voice-keyhint').textContent = '已单独加密保存；留空表示不修改';
     $('#setting-voice-status').textContent = 'ASR 密钥已保存';
@@ -1312,6 +1334,16 @@ async function refreshShortcuts() {
       const entry = snapshot?.status?.[name];
       input.value = prettyAccelerator(accelerator);
       input.placeholder = '点击后按下组合键';
+      const clearBtn = document.querySelector(`[data-shortcut-clear="${name}"]`);
+      if (clearBtn) {
+        const shouldHide = !accelerator;
+        const wasFocused = shouldHide && document.activeElement === clearBtn;
+        clearBtn.hidden = shouldHide;
+        if (wasFocused) {
+          const row = input.closest('.shortcut-edit');
+          if (row) { row.tabIndex = -1; row.focus({ preventScroll: true }); }
+        }
+      }
       if (!accelerator && entry?.cleared) {
         status.textContent = '未绑定，点击输入框可重新设置';
         status.className = 'shortcut-status is-warn';
@@ -1360,6 +1392,16 @@ async function refreshShortcuts() {
       const entry = snapshot?.status?.momentary;
       momentaryInput.value = prettyAccelerator(accelerator);
       momentaryInput.placeholder = '点击后按下组合键';
+      const clearMomentary = document.querySelector('[data-shortcut-clear="momentary"]');
+      if (clearMomentary) {
+        const shouldHide = !accelerator;
+        const wasFocused = shouldHide && document.activeElement === clearMomentary;
+        clearMomentary.hidden = shouldHide;
+        if (wasFocused) {
+          const row = momentaryInput.closest('.shortcut-edit');
+          if (row) { row.tabIndex = -1; row.focus({ preventScroll: true }); }
+        }
+      }
       if (!accelerator && entry?.cleared) {
         momentaryStatus.textContent = '未绑定，点击输入框可重新设置';
         momentaryStatus.className = 'shortcut-status is-warn';

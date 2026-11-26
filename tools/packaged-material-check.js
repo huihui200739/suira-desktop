@@ -29,6 +29,12 @@ async function until(fn){let last;for(let i=0;i<180;i++){try{const value=await f
     assert.equal(preferences.nativeBlur, true, `Native blur: ${surface}`);
     assert.equal(preferences.frameReady, true, `DWM frame and corners: ${surface}`);
   }
+  async function checkSolidSurface(client, surface) {
+    const preferences = await material(client);
+    assert.equal(preferences.nativeBlur, false, `Solid surface: ${surface}`);
+    assert.equal(await client.evaluate('document.documentElement.dataset.glassMode'), 'solid', `Solid glassMode: ${surface}`);
+  }
+  await checkSolidSurface(main, 'workbench');
   await main.evaluate('window.suira.quick.show()');const panel=await page('/quickpanel.html');
   assert.equal((await panel.evaluate('window.suira.app.info()')).code, 'IPC_FORBIDDEN');
   await checkNativeGlass(panel, 'panel');
@@ -66,7 +72,7 @@ async function until(fn){let last;for(let i=0;i<180;i++){try{const value=await f
     await main.evaluate(`window.suira.workspace.open(${JSON.stringify(tool)})`);
     const client=await page('tool='+tool);
     await companion(client);
-    await checkNativeGlass(client, tool);
+    await checkSolidSurface(client, tool);
     await until(()=>client.evaluate('Boolean(document.querySelector(".tool-kind .suira-art.vivid"))'));
     if(tool==='calendar')assert.equal(await client.evaluate('document.querySelector(".tool-kind .calendar-page").getBoundingClientRect().height>0'),true,'Calendar icon content must not match the hidden page selector');
     else {
@@ -80,7 +86,7 @@ async function until(fn){let last;for(let i=0;i<180;i++){try{const value=await f
     }
   }
   await main.evaluate('window.suira.clipboardBar.show()');const shelf=await page('/clipboardbar.html');
-  await checkNativeGlass(shelf, 'clipboard');
+  await checkSolidSurface(shelf, 'clipboard');
   await until(()=>shelf.evaluate('Boolean(document.querySelector(".bar-mark .suira-art.vivid"))'));
   await companion(shelf);
   console.log('PASS installed '+info.version+': packaged native module, panel/calendar/Markdown/clipboard corner-safe material and preference toggles; isolated profile');

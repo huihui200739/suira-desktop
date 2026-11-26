@@ -27,7 +27,12 @@ button { border: 0; background: transparent; color: inherit; cursor: pointer; fo
 #close:hover, #close:focus-visible { background: var(--surface-hover); color: var(--ink); }
 #notice { line-height: 1.3; padding: 0 4px; text-align: center; font-size: var(--text-1); }
 #notice:disabled { cursor: default; }
-#wave rect { fill: currentColor; transition: height 60ms linear, y 60ms linear; }
+#wave rect {
+  fill: currentColor;
+  transform-box: fill-box;
+  transform-origin: center;
+  transition: transform var(--dur-instant) var(--ease-out);
+}
 @media (prefers-reduced-motion: reduce) {
   .dictation::before, .dictation[data-phase]::before { animation: none; }
   #wave rect { transition: none; }

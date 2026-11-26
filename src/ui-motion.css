@@ -2,12 +2,15 @@
 [data-selection-group] { position: relative; isolation: isolate; }
 .shared-selection {
   position: absolute; top: 0; left: 0; z-index: -1; pointer-events: none;
+  contain: layout style;
   border-radius: inherit;
   background: var(--selection-fill, var(--accent-9));
   border: 1px solid var(--selection-edge, var(--line));
   box-shadow: inset 0 1px 0 var(--selection-light, var(--floating-edge, transparent));
 }
-.shared-selection.selection-moving { transition: transform var(--dur-fast) var(--ease-out); }
+.shared-selection.selection-moving {
+  transition: transform var(--dur-fast) var(--ease-out), width var(--dur-fast) var(--ease-out), height var(--dur-fast) var(--ease-out);
+}
 .has-shared-selection > button[aria-pressed="true"], .has-shared-selection > button.is-active { background: transparent; border-color: transparent; box-shadow: none; }
 .has-shared-selection > .shared-selection { border-radius: 9px; }
 .nav.has-shared-selection > .shared-selection { border-radius: 11px; }
@@ -24,12 +27,21 @@
   [data-glass]:hover::after { opacity: 1; }
 }
 .bar-search, .bar-actions { --glass-light: var(--shelf-accent); }
-.surface-hint { position: fixed; z-index: 20; max-width: min(260px,calc(100vw - 24px)); padding: calc(var(--space-1) * 1.75) calc(var(--space-1) * 2.5); border-radius: 9px; border: 1px solid var(--line-strong); background: var(--surface); color: var(--ink-soft); box-shadow: var(--shadow-lift); font-size: var(--text-1); line-height: 1.5; overflow-wrap: anywhere; pointer-events: none; }
+.surface-hint {
+  position: fixed; z-index: 20; max-width: min(260px,calc(100vw - 24px));
+  padding: calc(var(--space-1) * 1.75) calc(var(--space-1) * 2.5);
+  border-radius: 9px; border: 1px solid var(--line-strong);
+  background: var(--surface); color: var(--ink-soft); box-shadow: var(--shadow-lift);
+  font-size: var(--text-1); line-height: 1.5; overflow-wrap: anywhere; pointer-events: none;
+  transition: opacity var(--dur-quick) var(--ease-out), translate var(--dur-quick) var(--ease-out), scale var(--dur-quick) var(--ease-out);
+  @starting-style { opacity: 0; translate: 0 3px; scale: .98; }
+}
 .surface-hint[hidden] { display: none; }
 .modal-card { max-height: calc(100dvh - 40px); overflow-y: auto; }
 /* 反馈不阻塞操作；浮层唤起不等动画，内容直接可点。 */
 :where(button:not(.key), input[type="checkbox"]) { transition:background-color var(--dur-fast) var(--ease-out),border-color var(--dur-fast) var(--ease-out),color var(--dur-fast) var(--ease-out),transform var(--dur-quick) var(--ease-out); }
-:where(button:active:not(:disabled,.key)) { transform:translateY(1px); transition-duration:0ms; }
+:where(button:active:not(:disabled,.key)) { transform:scale(0.97); transition-duration:50ms; }
+:where([aria-busy="true"]) { animation: suira-busy-pulse 1.3s ease-in-out infinite; }
 .panel.is-revealing { animation: panel-reveal var(--dur-fast) var(--ease-out); }
 
 /* Entrance is visual only. Hidden surfaces never retain focus or hit targets. */
@@ -49,6 +61,7 @@
 .copy-check.is-drawing path { animation:copy-stroke var(--dur-base) var(--ease-out); }
 @keyframes panel-reveal { from { opacity:.72; } to { opacity:1; } }
 @keyframes copy-stroke { from { stroke-dashoffset:24; } to { stroke-dashoffset:0; } }
+@keyframes suira-busy-pulse { 0%, 100% { opacity: .68; } 50% { opacity: .44; } }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation:none!important;transition:none!important;scroll-behavior:auto!important; }
   :where(button):active:not(:disabled),.panel .key.is-key-pressed .key-card { transform:none!important;scale:none!important;translate:none!important; }

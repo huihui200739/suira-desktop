@@ -169,7 +169,7 @@
                 </select>
               </div>
               <div class="setting-row" data-translate-row="openai">
-                <span><b>Base URL</b><small>填写服务商 API 地址。只填域名会自动补 /v1；已有自定义路径会保留。</small></span>
+                <span><b>服务地址</b><small>填服务商接口地址；只填域名会自动补齐 /v1</small></span>
                 <input class="text-input" type="text" id="setting-translate-base" placeholder="https://api.openai.com/v1" spellcheck="false">
               </div>
               <div class="setting-row" data-translate-row="openai">
@@ -177,14 +177,14 @@
                 <div class="setting-field-group"><input class="text-input" type="text" id="setting-translate-model" list="translate-models" placeholder="gpt-4o-mini" spellcheck="false"><datalist id="translate-models"></datalist><button class="quiet-btn" id="setting-translate-models" type="button">获取可用模型</button></div>
               </div>
               <div class="setting-row" data-translate-row="microsoft">
-                <span><b>资源区域</b><small>Azure 翻译资源的 region，例如 eastasia</small></span>
+                <span><b>资源区域</b><small>微软翻译资源的区域标识，例如 eastasia</small></span>
                 <input class="text-input" type="text" id="setting-translate-region" placeholder="eastasia" spellcheck="false">
               </div>
-              <label class="setting-row">
+              <label class="setting-row" data-translate-configured>
                 <span><b>API 密钥</b><small id="setting-translate-keyhint">尚未保存；粘贴后离开输入框即保存</small></span>
                 <input class="text-input" type="password" id="setting-translate-key" placeholder="粘贴密钥" spellcheck="false" autocomplete="off">
               </label>
-              <div class="setting-row">
+              <div class="setting-row" data-translate-configured>
                 <span><b>目标语言</b><small>翻译结果默认翻成这个语言</small></span>
                 <select id="setting-translate-target">
                   <option value="zh">中文</option>
@@ -198,20 +198,20 @@
                 </select>
               </div>
               <div class="setting-actions">
-                <button class="quiet-btn" id="setting-translate-test" type="button" title="用一句固定短句验证密钥与网络">测试连接</button>
+                <button class="quiet-btn" id="setting-translate-test" data-translate-configured type="button" title="用一句固定短句验证密钥与网络">测试连接</button>
                 <button class="quiet-btn" id="setting-translate-clear" type="button" title="删除已保存的密钥">清除密钥</button>
                 <span class="setting-hint" id="setting-translate-status">—</span>
               </div>
             </section>
             <section class="setting-card" data-category="voice" aria-labelledby="voice-settings-title">
               <div class="setting-title"><b id="voice-settings-title">语音输入</b></div>
-              <p class="selection-settings-copy">录音仅保留在内存里，最长 120 秒；停止后上传给你配置的 ASR 服务，可能产生服务商费用。按语音快捷键开始说话，停顿约两秒或再按一次会结束录音。文字会输入原窗口。</p>
+              <p class="selection-settings-copy">录音仅保留在内存里，最长 120 秒；停止后上传给你配置的语音服务，可能产生服务商费用。按语音快捷键开始说话，停顿约两秒或再按一次结束录音，文字直接输入原窗口。</p>
               <div class="setting-row">
-                <span><b>识别接口</b><small>聊天模型和语音转写是两种能力；中转站需单独提供对应路由</small></span>
+                <span><b>识别接口</b><small>语音转写与聊天接口分开，请按服务商说明选择</small></span>
                 <select id="setting-voice-provider"><option value="deepseek">DeepSeek ASR</option><option value="openai">OpenAI 兼容转写</option></select>
               </div>
               <label class="setting-row">
-                <span><b>ASR Base URL</b><small>留空时沿用翻译服务地址。也可填写语音服务的完整接口。</small></span>
+                <span><b>语音服务地址</b><small>留空时自动沿用翻译服务地址，也可单独填写</small></span>
                 <input class="text-input" type="text" id="setting-voice-base" placeholder="留空以使用翻译服务地址" spellcheck="false" autocomplete="off">
               </label>
               <label class="setting-row" data-voice-row="openai" hidden>
@@ -219,14 +219,14 @@
                 <input class="text-input" type="text" id="setting-voice-model" placeholder="whisper-1" spellcheck="false" autocomplete="off">
               </label>
               <label class="setting-row">
-                <span><b>ASR API 密钥</b><small id="setting-voice-keyhint">单独加密保存；同一 OpenAI 兼容主机可安全复用翻译密钥</small></span>
+                <span><b>语音服务密钥</b><small id="setting-voice-keyhint">单独加密保存；同一 OpenAI 兼容地址可自动复用翻译密钥</small></span>
                 <input class="text-input" type="password" id="setting-voice-key" placeholder="可留空以复用同源翻译密钥" spellcheck="false" autocomplete="off">
               </label>
               <div class="setting-actions">
                 <button class="quiet-btn" id="setting-voice-open" type="button">试录（结果复制到剪贴板）</button>
                 <button class="quiet-btn" id="setting-voice-shortcuts" type="button">设置快捷键</button>
                 <span class="setting-hint" id="voice-shortcut-summary" role="status"></span>
-                <button class="quiet-btn" id="setting-voice-clear" type="button" title="删除单独保存的 ASR 密钥">清除 ASR 密钥</button>
+                <button class="quiet-btn" id="setting-voice-clear" type="button" title="删除单独保存的语音密钥">清除密钥</button>
                 <span class="setting-hint" id="setting-voice-status">—</span>
               </div>
             </section>
@@ -291,7 +291,7 @@
               </label>
               <p class="shortcut-status" id="status-voice"></p>
               <div class="shortcut-actions">
-                <button class="quiet-btn" data-shortcut-clear="voice" type="button">清除语音快捷键</button>
+                <button class="quiet-btn" data-shortcut-clear="voice" type="button" title="解除绑定后不再响应该快捷键">清除绑定</button>
               </div>
               <div class="setting-actions"><button class="quiet-btn" id="shortcut-restore" type="button" title="把全部快捷键改回出厂默认">恢复全部默认快捷键</button></div>
               <div class="setting-title"><b>Markdown 文件打开方式</b><span>安装版支持 .md 与 .markdown。右键文件 → 打开方式 → 选择随序，并按需设为默认应用。便携版可通过“选择电脑上的应用”选择随序.exe。</span></div>

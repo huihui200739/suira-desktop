@@ -94,19 +94,20 @@ html.notes-window {
 .note-saved { margin-inline-end:auto; white-space:nowrap; }
 .note-count { white-space:nowrap; font-variant-numeric:tabular-nums; }
 .note-saved[data-state="error"] { color:var(--note-ink); font-weight:600; }
-.note .note-index { grid-area:index; min-width:0; min-height:0; padding:12px; display:flex; flex-direction:column; gap:10px; background:var(--note-side); border:0; border-inline-end:1px solid var(--note-line); border-radius:0; box-shadow:none; }
+.note .note-index { grid-area:index; min-width:0; min-height:0; padding:12px; display:flex; flex-direction:column; gap:10px; background:var(--note-side); border:0; border-inline-end:1px solid var(--note-line); border-radius:0; box-shadow:none; transition:opacity var(--dur-fast) var(--ease-out), translate var(--dur-fast) var(--ease-out); @starting-style { opacity:.45; translate:-6px 0; } }
 .note .note-index[hidden] { display:none; }
-.note-index input { min-width:0; width:100%; height:34px; padding:0 10px; border:1px solid var(--note-line); border-radius:9px; background:var(--note-tint); color:var(--note-ink); }
+.note-index input { min-width:0; width:100%; height:34px; padding:0 10px; border:1px solid var(--note-line); border-radius:9px; background:var(--note-tint); color:var(--note-ink); transition:border-color var(--dur-fast) var(--ease-out), background-color var(--dur-fast) var(--ease-out); }
 .note-new-page { display:flex; align-items:center; gap:6px; padding:6px; border-radius:8px; color:var(--note-ink); text-align:start; }
 .note-new-page:hover { background:var(--note-tint); }
 .note-index input::placeholder { color:var(--note-muted); }
 .note-pages { flex:1; min-height:0; overflow-y:auto; scrollbar-width:thin; }
-.note .note-pages button { display:grid; gap:3px; min-width:0; width:100%; margin-block-end:6px; padding:9px 10px; border:1px solid transparent; border-radius:10px; background:transparent; color:var(--note-ink); text-align:start; }
+.note .note-pages button { display:grid; gap:3px; min-width:0; width:100%; margin-block-end:6px; padding:9px 10px; border:1px solid transparent; border-radius:10px; background:transparent; color:var(--note-ink); text-align:start; transition:background-color var(--dur-fast) var(--ease-out), border-color var(--dur-fast) var(--ease-out); }
 .note .note-pages button:hover { background:var(--note-tint); }
 .note .note-pages button[aria-current="true"] { border-color:var(--note-line); background:var(--writing-hover); color:var(--note-ink); }
 .note-pages :is(small,b,span) { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .note .note-pages :is(small,span), .note-index-empty { color:var(--note-muted); font-size:12px; }
-.note-error { position:absolute; inset:auto 16px 118px; z-index:4; padding:8px 12px; margin:0; border:1px solid var(--note-line); border-radius:8px; background:var(--note-side); color:var(--note-ink); }
+.note-error { position:absolute; inset:auto 16px 118px; z-index:4; padding:8px 12px; margin:0; border:1px solid var(--note-line); border-radius:8px; background:var(--note-side); color:var(--note-ink); transition:opacity var(--dur-fast) var(--ease-out), translate var(--dur-fast) var(--ease-out); @starting-style { opacity:0; translate:0 4px; } }
+@media (prefers-reduced-motion:reduce) { .note .note-index, .note-index input, .note .note-pages button, .note-error { transition:none !important; } }
 @media (max-width:580px) {
   .note.with-index { grid-template:"head" 46px "writing" minmax(0,1fr) "foot" auto / minmax(0,1fr); }
   .note.with-index .note-index { position:absolute; z-index:3; inset:48px 8px auto; max-height:70%; border:1px solid var(--note-line); border-radius:12px; }

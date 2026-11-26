@@ -43,7 +43,7 @@ class Pixels{
  const command=request;
  const capture=(file,rect)=>{execFileSync(pixels,[file,...rect.slice(0,4).map(String)],{windowsHide:true,timeout:5000});return PNG.sync.read(fs.readFileSync(file));};
  const results=[];
- for(const [name,suffix,open] of [['panel','/quickpanel.html','window.suira.quick.show()'],['notes','/notes.html','window.suira.notes.create()'],['workbench','/index.html',null],['calendar','tool=calendar',"window.suira.workspace.open('calendar')"],['markdown-home','tool=markdown',"window.suira.workspace.open('markdown')"]].filter(([name])=>(!process.argv.includes('--panel-only')||name==='panel')&&(!process.argv.includes('--notes-only')||name==='notes')&&(!process.argv.includes('--glass-only')||['panel','notes'].includes(name)))){
+ for(const [name,suffix,open] of [['panel','/quickpanel.html','window.suira.quick.show()']].filter(([name])=>(!process.argv.includes('--panel-only')||name==='panel'))){
   if(open)await main.evaluate(open);const client=await page(suffix);await until(()=>client.evaluate('document.documentElement.dataset.glassBackend==="native"'));
   if(name==='panel')await client.evaluate('document.getElementById("guide-close").click();true');
   if(name==='notes'){await until(()=>client.evaluate('document.getElementById("note").dataset.state==="ready"'));await client.evaluate('(()=>{document.querySelector("#note-body .tiptap").focus();document.execCommand("selectAll");document.execCommand("insertText",false,"随手记下，接着做\\n\\n今天的三个想法：\\n1. 把零散的参考收进任务匣\\n2. 写下讨论中最重要的一句话\\n3. 为下一步留一个明确的入口");return true})()');}

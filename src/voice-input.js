@@ -11,8 +11,11 @@ const state = { stream: null, context: null, source: null, processor: null, mute
 const bars = Array.from({ length: 17 }, (_, i) => {
   const bar = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
   bar.setAttribute('x', i * 6);
+  bar.setAttribute('y', 2);
   bar.setAttribute('width', 3);
+  bar.setAttribute('height', 24);
   bar.setAttribute('rx', 1.5);
+  bar.style.transform = 'scaleY(0.14)';
   $('#wave').append(bar);
   return bar;
 });
@@ -27,9 +30,8 @@ function drawWave(level) {
   levels.shift();
   bars.forEach((bar, i) => {
     const envelope = 0.45 + 0.55 * Math.sin(((i + 0.5) / bars.length) * Math.PI);
-    const height = 3 + Math.round(levels[i] * envelope * 23);
-    bar.setAttribute('height', height);
-    bar.setAttribute('y', (28 - height) / 2);
+    const ratio = Math.min(1, Math.max(0.14, 0.14 + levels[i] * envelope * 0.86));
+    bar.style.transform = `scaleY(${ratio.toFixed(3)})`;
   });
 }
 

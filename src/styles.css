@@ -154,7 +154,11 @@ svg { fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round
 
 .main-scroll { min-height: 0; overflow-y: auto; overflow-x: hidden; padding: 26px 30px 40px; }
 .page { display: none; }
-.page.is-active { display: block; }
+.page.is-active {
+  display: block;
+  transition: opacity var(--dur-fast) var(--ease-out), translate var(--dur-fast) var(--ease-out);
+  @starting-style { opacity: 0.72; translate: 0 4px; }
+}
 
 .page-head {
   display: flex;
@@ -587,8 +591,9 @@ svg { fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round
   background-repeat: no-repeat;
   box-shadow: inset 0 0 0 1px var(--line);
   cursor: pointer;
-  transition: background-color var(--dur-base) var(--ease-out), background-position var(--dur-base) var(--ease-out);
+  transition: background-color var(--dur-fast) var(--ease-out), background-position var(--dur-fast) var(--ease-spring), transform var(--dur-quick) var(--ease-out);
 }
+.setting-row input[type="checkbox"]:active { transform: scale(0.95); }
 .setting-row input[type="checkbox"]:checked {
   background-color: var(--accent);
   background-image:var(--styles-setting-row-checkbox-background-image-alt);
@@ -713,7 +718,7 @@ svg { fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round
   left: 50%;
   bottom: 26px;
   z-index: 60;
-  transform: translateX(-50%);
+  transform: translate(-50%, 8px) scale(0.97);
   max-width: 70%;
   padding: 9px 16px;
   border: 1px solid color-mix(in srgb, var(--paper) 14%, transparent);
@@ -724,13 +729,16 @@ svg { fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round
   line-height: 1.4;
   opacity: 0;
   pointer-events: none;
-  transition: opacity var(--dur-fast) var(--ease-out);
+  transition: opacity var(--dur-fast) var(--ease-out), transform var(--dur-fast) var(--ease-out);
   box-shadow: var(--shadow-float);
 }
-.global-toast.is-visible { opacity: 1; }
+.global-toast.is-visible { opacity: 1; transform: translate(-50%, 0) scale(1); }
 .global-toast.error { background: var(--danger-solid); }
 .global-toast.success { background: var(--jade-9); }
-.undo-toast:not([hidden]) { display: flex; align-items: center; gap: var(--space-3); opacity: 1; transform: translate(-50%, 0); }
+.undo-toast:not([hidden]) {
+  display: flex; align-items: center; gap: var(--space-3); opacity: 1; transform: translate(-50%, 0) scale(1);
+  @starting-style { opacity: 0; transform: translate(-50%, 8px) scale(0.97); }
+}
 .undo-toast { bottom: 74px; }
 .undo-toast button { pointer-events: auto; color: inherit; background: transparent; border: 0; text-decoration: underline; padding: var(--space-1); cursor: pointer; }
 
@@ -742,6 +750,10 @@ svg { fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round
   place-items: center;
   background: color-mix(in srgb, var(--slate-12) 34%, transparent);
   backdrop-filter: blur(3px);
+  transition: opacity var(--dur-fast) var(--ease-out);
+}
+.modal:not([hidden]) {
+  @starting-style { opacity: 0; }
 }
 .modal-card {
   width: min(420px, calc(100vw - 60px));
@@ -795,6 +807,10 @@ svg { fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round
   padding: 36px;
   background: color-mix(in srgb, var(--slate-12) 42%, transparent);
   backdrop-filter: blur(3px);
+  transition: opacity var(--dur-fast) var(--ease-out);
+}
+.preview:not([hidden]) {
+  @starting-style { opacity: 0; }
 }
 .preview-card {
   display: flex;

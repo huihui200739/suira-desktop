@@ -1455,7 +1455,8 @@ function createClipboardBarWindow() {
       spellcheck: false
     }
   });
-  prepareFloatingSurface(clipboardBarWindow, 24, true);
+  // 仅悬浮板保留原生透明磨砂，剪贴板历史条使用清晰纯色表面避免 Windows 透明发灰
+  prepareFloatingSurface(clipboardBarWindow, 24, false);
   clipboardBarWindow.setAlwaysOnTop(true, 'floating');
   clipboardBarWindow.on('will-resize',event=>event.preventDefault());
   clipboardBarWindow.__loaded = clipboardBarWindow.loadFile(path.join(__dirname, 'src', 'clipboardbar.html'));
@@ -1844,7 +1845,7 @@ function showWorkspaceWindow(type) {
   win=windowIpc.create(type,{width:Math.min(type==='markdown'?1300:1180,area.width-40),height:Math.min(860,area.height-40),minWidth:800,minHeight:600,show:false,frame:false,thickFrame:SYSTEM_GLASS,
     title:type==='markdown'?'Markdown · 随序':'日历 · 随序',transparent:true,backgroundColor:'#00000000',hasShadow:SYSTEM_GLASS,roundedCorners:true,icon:assetPath('suira-icon-runtime.png'),
     webPreferences:{preload:path.join(__dirname,'preload.js'),contextIsolation:true,nodeIntegration:false,sandbox:true,spellcheck:false}});
-  prepareFloatingSurface(win, 24, true);
+  prepareFloatingSurface(win, 24, false);
   prepareDesktopWindow(win);
   workspaceWindows.set(type,win);win.__tool=type;
 
@@ -1877,7 +1878,6 @@ function createMainWindow() {
     frame: false,
     thickFrame: SYSTEM_GLASS,
     transparent: true,
-    backgroundMaterial: SYSTEM_GLASS?'acrylic':undefined,
     backgroundColor: '#00000000',
     hasShadow: SYSTEM_GLASS,
     title: APP_NAME,
@@ -1892,7 +1892,7 @@ function createMainWindow() {
       spellcheck: false
     }
   });
-  prepareFloatingSurface(mainWindow,24,true);
+  prepareFloatingSurface(mainWindow, 24, false);
   if(saved?.physicalWidth&&saved?.physicalHeight)mainWindow.__restorePhysicalSize={width:saved.physicalWidth,height:saved.physicalHeight,scale:saved.scaleFactor};
   prepareDesktopWindow(mainWindow);
   mainWindow.loadFile(path.join(__dirname, 'src', 'index.html'));
@@ -2000,7 +2000,7 @@ async function openTextTools(mode='convert',input,operation='compact'){
   if(fresh){
     win=windowIpc.create('text',{width:960,height:680,minWidth:640,minHeight:440,show:false,frame:false,thickFrame:SYSTEM_GLASS,transparent:true,backgroundColor:'#00000000',title:mode==='translate'?'随序 · 翻译':'随序 · 文本转换',icon:assetPath('suira-icon-runtime.png'),webPreferences:{preload:path.join(__dirname,'preload.js'),contextIsolation:true,nodeIntegration:false,sandbox:true,spellcheck:false}});
     textToolWindows.set('text',win);win.__textTool={mode,text,operation,selectionPaste:Boolean(selection)};
-    prepareFloatingSurface(win,24,true);prepareDesktopWindow(win);panelNative.disableTransitions(win);
+    prepareFloatingSurface(win,24,false);prepareDesktopWindow(win);panelNative.disableTransitions(win);
     win.__loaded=win.loadFile(path.join(__dirname,'src','text-tools.html'),{query:{mode}});win.on('closed',()=>{if(textToolWindows.get('text')===win)textToolWindows.delete('text');});win.setMenuBarVisibility(false);
     await win.__loaded;
   }else{await win.__loaded;if(win.isDestroyed()||request!==textToolRequest)return {ok:true};win.__textTool={mode,text,operation,selectionPaste:Boolean(selection)};win.webContents.send('text-tools:input',{...win.__textTool,switchOnly:typeof input!=='string'&&!selection});}

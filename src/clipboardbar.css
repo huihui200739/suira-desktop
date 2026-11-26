@@ -29,6 +29,7 @@ kbd {
 .bar-search {
   display: flex; align-items: center; gap: 8px; width: clamp(160px, 19vw, 300px); height: 36px;
   padding: 0 8px; border: 1px solid var(--slate-6); border-radius: 14px; background: var(--slate-1);
+  transition: border-color var(--dur-fast) var(--ease-out), box-shadow var(--dur-fast) var(--ease-out);
 }
 .bar-search:focus-within { border-color: var(--accent-9); box-shadow: 0 0 0 1px var(--accent-9); }
 .bar-search svg { width: 16px; height: 16px; color: var(--slate-11); flex: none; }
@@ -48,6 +49,7 @@ kbd {
 .bar-tools { position: relative; display: flex; align-items: center; gap: 4px; flex: none; margin-inline-start: auto; }
 .bar-tools svg { width: 16px; height: 16px; flex: none; }
 .bar-tools .bar-icon-button, #bar-refresh-retry { width: 32px; padding: 0; }
+#bar-shelf-pin svg { transition: transform var(--dur-fast) var(--ease-spring); }
 #bar-shelf-pin[aria-pressed="true"] { color: var(--accent-11); background: var(--bar-active); }
 #bar-shelf-pin[aria-pressed="true"] svg { transform: rotate(-24deg); }
 
@@ -74,9 +76,10 @@ kbd {
   display: flex; flex-direction: column; gap: 8px; padding: 10px 12px 10px;
   border: 1px solid var(--slate-5); border-radius: 14px; background: var(--slate-1);
   cursor: pointer; overflow: hidden;
-  transition: border-color var(--dur-fast) var(--ease-out), background-color var(--dur-fast) var(--ease-out);
+  transition: border-color var(--dur-fast) var(--ease-out), background-color var(--dur-fast) var(--ease-out), transform var(--dur-quick) var(--ease-out);
 }
 .bar-card:hover { border-color: var(--accent-7); }
+.bar-card:active { transform: scale(0.992); transition-duration: 50ms; }
 .bar-track:not(.has-checked-images) .bar-card.is-selected, .bar-card.is-checked { border-color: var(--accent-8); background: var(--bar-active); }
 .card-head, .card-foot { display: flex; align-items: center; gap: 8px; min-width: 0; flex: 0 0 20px; font-size: var(--text-1); color: var(--slate-11); }
 .card-head { position: relative; flex-basis: 24px; justify-content: flex-start; gap: 6px; }
@@ -88,27 +91,30 @@ kbd {
   color: var(--slate-12); background: var(--slate-4);
 }
 .card-select svg, .card-actions :is(button, summary) > svg { width: 15px; height: 15px; }
-.card-select { opacity: 0; pointer-events: none; position: relative; z-index: 2; }
+.card-select {
+  opacity: 0; pointer-events: none; position: relative; z-index: 2;
+  transition: opacity var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out), background-color var(--dur-fast) var(--ease-out), transform var(--dur-quick) var(--ease-out);
+}
 .bar-card:is(.is-checked, :hover, :focus-visible, :has(:focus-visible)) .card-select { opacity: 1; pointer-events: auto; }
-.has-checked-images .bar-card[data-kind="image"] .card-select { opacity: 1; pointer-events: auto; }
+.bar-card.is-checked .card-select, .has-checked-images .bar-card[data-kind="image"] .card-select { opacity: 1; pointer-events: auto; transition-duration: 0ms; }
 #bar-done-selecting { white-space: nowrap; }
-.card-select .card-select-check { visibility: hidden; }
+.card-select .card-select-check { opacity: 0; transform-box: fill-box; transform-origin: center; transform: scale(0.6); transition: opacity var(--dur-quick) var(--ease-out), transform var(--dur-fast) var(--ease-spring); }
 .card-select[aria-pressed="true"] { color: var(--accent-11); }
-.card-select[aria-pressed="true"] .card-select-check { visibility: visible; }
+.card-select[aria-pressed="true"] .card-select-check { opacity: 1; transform: scale(1); }
 .card-actions {
   position: absolute; right: 0; top: 0; bottom: 0; z-index: 1;
   display: flex; justify-content: flex-end; align-items: center; gap: 1px;
   padding-inline-start: 14px;
   background: linear-gradient(to right, transparent, var(--slate-1) 14px, var(--slate-1));
-  opacity: 0; pointer-events: none;
-  transition: opacity var(--dur-fast) var(--ease-out);
+  opacity: 0; translate: 4px 0; pointer-events: none;
+  transition: opacity var(--dur-fast) var(--ease-out), translate var(--dur-fast) var(--ease-out);
 }
 .bar-track:not(.has-checked-images) .bar-card.is-selected .card-actions,
 .bar-card.is-checked .card-actions {
   background: linear-gradient(to right, transparent, var(--bar-active) 14px, var(--bar-active));
 }
 .bar-card:is(:hover,:focus-visible,:has(:focus-visible),:has(.card-actions details[open], [aria-expanded="true"])) .card-actions {
-  opacity: 1; pointer-events: auto;
+  opacity: 1; translate: 0 0; pointer-events: auto;
 }
 .card-actions > button[aria-disabled="true"] { opacity: .45; cursor: default; }
 .card-actions > button:is([aria-pressed="true"], [data-card-action="share"]) { color: var(--accent-11); }
@@ -162,6 +168,8 @@ kbd {
   border-radius: 10px; color: var(--slate-11); font-size: var(--text-1); background: var(--slate-1);
   box-shadow: var(--shadow-lift);
   overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
+  transition: opacity var(--dur-fast) var(--ease-out), translate var(--dur-fast) var(--ease-out), scale var(--dur-fast) var(--ease-out);
+  @starting-style { opacity: 0; translate: 0 -4px; scale: 0.97; }
 }
 .bar-notice.is-error { color: var(--red-11); }
 .bar .action-strip { padding: 0; border: 0; background: none; }
@@ -186,6 +194,8 @@ kbd {
 .bar-preview {
   position: absolute; inset: 0 var(--bar-gutter) 12px; z-index: 10; display: flex; flex-direction: column;
   border: 1px solid var(--slate-7); border-radius: 12px; background: var(--slate-1); overflow: hidden;
+  transition: opacity var(--dur-fast) var(--ease-out), translate var(--dur-fast) var(--ease-out), scale var(--dur-fast) var(--ease-out);
+  @starting-style { opacity: 0; translate: 0 8px; scale: 0.99; }
 }
 .bar-preview > header { display: flex; align-items: center; gap: 12px; padding: 4px 12px; min-height: 40px; border-bottom: 1px solid var(--slate-5); }
 .bar-preview > header span { flex: none; color: var(--slate-11); font-size: var(--text-1); }
@@ -231,5 +241,11 @@ kbd {
 }
 
 @media (hover: none) {
-  .bar-card.is-selected :is(.card-actions, .card-select) { opacity:1; pointer-events:auto; }
+  .bar-card.is-selected :is(.card-actions, .card-select) { opacity:1; translate: 0 0; pointer-events:auto; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .bar-card, .bar-search, .card-select, .card-select-check, .card-actions, .bar-notice, .bar-preview, #bar-shelf-pin svg {
+    transition: none !important;
+  }
+  .bar-card:active { transform: none !important; }
 }

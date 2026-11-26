@@ -101,9 +101,6 @@
     --shadow-float: 0 1px 2px var(--t3-shadow-near), 0 8px 24px var(--t3-shadow-far);
     --shadow-lift: 0 1px 2px var(--t3-shadow-near), 0 8px 24px var(--t3-shadow-far);
     --shadow-card: 0 1px 2px var(--t3-shadow-near);
-    --dur-fast: 140ms;
-    --dur-base: 180ms;
-    --ease-out: cubic-bezier(0.2, 0.7, 0.2, 1);
 
     /* Workbench surface tokens (workbench-surface.css reads these). */
     --wb-graphite: var(--t3-rail); --wb-canvas: var(--t3-canvas);
@@ -198,20 +195,20 @@
     color: var(--t3-on-accent);
     border-radius: 8px;
     box-shadow: none;
-    transition: background-color var(--dur-fast) var(--ease-out), scale var(--dur-quick) var(--ease-out);
+    transition: background-color var(--dur-fast) var(--ease-out), transform var(--dur-quick) var(--ease-out);
   }
   html:is(.workbench, .tool-window)[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) .primary-btn:hover { background: var(--t3-press); }
-  html:is(.workbench, .tool-window)[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) .primary-btn:active:not(:disabled) { transform: none; scale: .985; transition-duration: 0ms; }
+  html:is(.workbench, .tool-window)[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) .primary-btn:active:not(:disabled) { transform: scale(0.97); scale: none; transition-duration: 50ms; }
 
   html:is(.workbench, .tool-window)[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) .quiet-btn {
     background: var(--t3-card);
     border: 1px solid var(--t3-line);
     border-radius: 8px;
     color: var(--t3-secondary);
-    transition: border-color var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out), background-color var(--dur-fast) var(--ease-out), scale var(--dur-quick) var(--ease-out);
+    transition: border-color var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out), background-color var(--dur-fast) var(--ease-out), transform var(--dur-quick) var(--ease-out);
   }
   html:is(.workbench, .tool-window)[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) .quiet-btn:hover { border-color: var(--t3-strong-line); color: var(--t3-accent-ink); }
-  html:is(.workbench, .tool-window)[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) .quiet-btn:active:not(:disabled) { transform: none; scale: .985; transition-duration: 0ms; }
+  html:is(.workbench, .tool-window)[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) .quiet-btn:active:not(:disabled) { transform: scale(0.97); scale: none; transition-duration: 50ms; }
 
   html.workbench[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) :is(.chip, .view-switch button, .agenda-tabs button),
   html.tool-window[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) :is(.view-switch button, .agenda-tabs button) {
