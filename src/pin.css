@@ -29,7 +29,7 @@ button { font:inherit;font-variant-numeric:tabular-nums;color:inherit;cursor:poi
 .pin-menu kbd { font:inherit;font-variant-numeric:tabular-nums;color:var(--ink-muted); }
 .pin-menu hr { border:0;border-top:1px solid var(--line);margin:4px 5px; }
 #top-item[aria-checked="false"] span { visibility:hidden; }
-.pin-notice { position:absolute;left:50%;top:12px;transform:translateX(-50%);max-width:calc(100% - 20px);padding:6px 11px;border:1px solid var(--floating-edge);border-radius:9px;background:var(--surface);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;pointer-events:none; }
+.pin-notice { position:absolute;left:50%;top:12px;transform:translateX(-50%);max-width:calc(100% - 20px);padding:6px 12px;border:1px solid var(--floating-edge);border-radius:10px;background:var(--surface);box-shadow:var(--shadow-lift);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;pointer-events:none; }
 #restore { width:100%;height:100%;color:var(--accent-deep); }
 #restore { touch-action:none;cursor:grab; }
 #restore:active { cursor:grabbing;scale:none; }

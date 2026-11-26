@@ -24,20 +24,20 @@ html.notes-window {
   --note-tint: var(--writing-hover);
   --note-accent: var(--writing-focus);
   display:grid; position:relative; isolation:isolate; height:100%; overflow:hidden;
-  grid-template: "head" 52px "writing" minmax(0,1fr) "foot" auto / minmax(0,1fr);
+  grid-template: "head" 46px "writing" minmax(0,1fr) "foot" auto / minmax(0,1fr);
   border:1px solid var(--note-line); border-radius:22px;
   background:var(--note-paper); color:var(--note-ink);
 }
 .note :where(button,input,textarea) { font-family:inherit; }
 .note button { border:0; background:transparent; cursor:pointer; }
-.note.with-index { grid-template:". head" 52px "index writing" minmax(0,1fr) "index foot" auto / minmax(150px,26%) minmax(0,1fr); }
+.note.with-index { grid-template:". head" 46px "index writing" minmax(0,1fr) "index foot" auto / minmax(150px,26%) minmax(0,1fr); }
 @media (min-width:581px) {
   .note.with-index .note-head { padding-inline-start:var(--note-inset); }
   .note.with-index .note-mark { display:none; }
-  .note.with-index::before { content:""; position:absolute; z-index:-1; inset:0 auto auto 0; width:max(150px,26%); height:52px; background:var(--note-side); border-inline-end:1px solid var(--note-line); box-sizing:border-box; }
+  .note.with-index::before { content:""; position:absolute; z-index:-1; inset:0 auto auto 0; width:max(150px,26%); height:46px; background:var(--note-side); border-inline-end:1px solid var(--note-line); box-sizing:border-box; }
 }
 .note.with-index #note-new { display:none; }
-.note .note-head { grid-area:head; display:flex; align-items:center; gap:8px; min-width:0; padding:0 25px 0 25px; border-block-end:1px solid var(--note-line); background:var(--note-side); -webkit-app-region:drag; user-select:none; }
+.note .note-head { grid-area:head; display:flex; align-items:center; gap:8px; min-width:0; padding:0 14px 0 18px; border-block-end:1px solid var(--note-line); background:var(--note-side); -webkit-app-region:drag; user-select:none; }
 .note-mark { color:var(--note-accent); }
 .note svg { display:block; width:18px; height:18px; fill:none; stroke:currentColor; stroke-width:1.6; stroke-linecap:round; stroke-linejoin:round; }
 .note .note-title { flex:1; min-width:0; margin:0; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; font-size:15px; font-weight:600; }
@@ -66,10 +66,10 @@ html.notes-window {
 .note .note-file:hover { background:var(--note-tint); }
 .note :is(.note-page-title,.note-body)::placeholder { color:var(--note-muted); opacity:1; }
 .note .note-foot { grid-area:foot; display:grid; gap:4px; min-width:0; padding:0 var(--note-inset) 7px; color:var(--note-muted); font-size:12px; container-type:inline-size; }
-.note-format { display:flex; flex-wrap:wrap; align-items:center; gap:3px; width:fit-content; max-width:100%; padding:4px; border:1px solid var(--note-line); border-radius:12px; background:var(--note-side); }
+.note-format { display:flex; flex-wrap:wrap; align-items:center; gap:3px; width:fit-content; max-width:100%; padding:4px; border:1px solid var(--note-line); border-radius:12px; background:var(--note-side); box-shadow:var(--shadow-card); }
 .note-format-group { display:flex; align-items:center; gap:2px; }
 .note-format-group + .note-format-group { padding-inline-start:3px; border-inline-start:1px solid var(--note-line); }
-.note-format .note-format-group button { color:var(--note-ink); min-width:28px; padding:0 5px; white-space:nowrap; }
+.note-format .note-format-group button { color:var(--note-ink); min-width:28px; padding:0 5px; white-space:nowrap; transition:background-color var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out); }
 .note-format button[aria-pressed="true"] { background:var(--writing-selected); }
 .note-marks button { font-size:14px; }
 .note-format #note-ledger { border:1px solid var(--note-line); margin-inline-start:3px; }

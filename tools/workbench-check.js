@@ -138,7 +138,7 @@ async function until(fn, label = 'state') {
   assert.equal((await readStyle(page, '#task-search', ['border-top-width']))['border-top-width'], '0px');
   await polishShot(page, 'task');
   await click('[data-page="library"]');
-  const libraryStyle = (filter, background = neutral) => page.evaluate(`new Promise(resolve => {
+  const libraryStyle = (filter, background = neutral, ink = white) => page.evaluate(`new Promise(resolve => {
     const group = document.getElementById('library-filters');
     const active = group.querySelector('.is-active');
     const samples = [];
@@ -156,7 +156,7 @@ async function until(fn, label = 'state') {
       assert.equal(sample.filter, filter);
       assert.equal(sample.pressed, 'true');
       assert.equal(sample.background, background, 'Filter is already neutral on the first frame');
-      assert.equal(sample.ink, white);
+      assert.equal(sample.ink, ink);
       assert.equal(sample.indicator, 'none');
       assert.equal(sample.animations, 0);
     }
@@ -350,8 +350,8 @@ async function until(fn, label = 'state') {
       }, 'theme switch across open windows');
     }
   };
-  const darkFill = 'rgb(59, 59, 62)', darkInk = 'rgb(245, 245, 245)';
-  const darkButton = { 'background-color': darkFill, color: white };
+  const darkFill = 'rgb(244, 244, 245)', darkInk = 'rgb(245, 245, 245)', darkOnAccent = 'rgb(19, 19, 21)';
+  const darkButton = { 'background-color': darkFill, color: darkOnAccent };
   await toggleCalendarTheme(true, darkBackground);
   await click('[data-page="shelf"]');
   await click(`.task-row[data-id="${task.id}"]`);
@@ -368,11 +368,11 @@ async function until(fn, label = 'state') {
   await click('[data-page="library"]');
   for (const kind of ['text', 'link', 'all']) {
     await click(`[data-filter="${kind}"]`);
-    await libraryStyle(kind, darkFill);
+    await libraryStyle(kind, darkFill, darkOnAccent);
   }
   await page.evaluate('document.querySelector("[data-filter=link]").focus();true');
   for (const type of ['keyDown', 'keyUp']) await page.send('Input.dispatchKeyEvent', { type, key: ' ', code: 'Space', windowsVirtualKeyCode: 32 });
-  await libraryStyle('link', darkFill);
+  await libraryStyle('link', darkFill, darkOnAccent);
   await polishShot(page, 'library-dark');
   await click('[data-page="settings"]');
   assert.equal((await readStyle(page, '[data-preset=mist] .theme-swatch', ['background-color'], '::after'))['background-color'], darkFill);

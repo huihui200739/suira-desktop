@@ -149,8 +149,13 @@
             <section class="setting-card"><div class="setting-title"><b>最近取色</b><button id="color-refresh" class="quiet-btn" type="button">刷新</button></div><div id="color-history" class="color-history"></div><p id="color-status" role="status"></p></section>
             <section class="setting-card" id="selection-settings"><div class="setting-title"><b>划词</b></div>
               <label class="setting-row"><span><b>唤起面板时读取选中文字</b><small>默认关闭。英文选区可按 T 翻译，结果就绪后按 Enter 粘回选区</small></span><input id="setting-selection" type="checkbox"></label>
-              <p class="selection-settings-copy">开启后，随序先保存当前剪贴板的全部可读取格式，向前台应用发送一次 Ctrl+C，最多等待 250ms 读取选中文字，再还原剪贴板。临时复制不会进入随序的历史；只在你执行下一步动作后才保存内容。管理员窗口、不支持复制或超时的应用会安静跳过。</p>
-              <p class="selection-settings-copy">风险：Ctrl+C 可能触发应用自身命令，因此默认跳过终端和密码管理器。其他剪贴板工具、Windows 剪贴板历史或云同步仍可能看到临时复制；特别慢的应用也可能延迟更新剪贴板。请按需要调整名单，处理敏感内容时保持关闭。</p>
+              <details class="setting-disclosure">
+                <summary>查看工作原理与注意事项</summary>
+                <div class="setting-disclosure-body">
+                  <p class="selection-settings-copy">开启后，随序先保存当前剪贴板的全部可读取格式，向前台应用发送一次 Ctrl+C，最多等待 250ms 读取选中文字，再还原剪贴板。临时复制不会进入随序的历史；只在你执行下一步动作后才保存内容。管理员窗口、不支持复制或超时的应用会安静跳过。</p>
+                  <p class="selection-settings-copy">风险：Ctrl+C 可能触发应用自身命令，因此默认跳过终端和密码管理器。其他剪贴板工具、Windows 剪贴板历史或云同步仍可能看到临时复制；特别慢的应用也可能延迟更新剪贴板。请按需要调整名单，处理敏感内容时保持关闭。</p>
+                </div>
+              </details>
               <label for="setting-selection-exclusions">不读取的应用（进程名，每行一个，可增加或删除）</label><textarea id="setting-selection-exclusions" class="selection-settings-list" spellcheck="false" maxlength="12000"></textarea><button id="save-selection-exclusions" class="quiet-btn" type="button">保存跳过名单</button><p id="selection-settings-status" role="status" class="selection-settings-copy"></p>
             </section>
             <section class="setting-card">
@@ -238,7 +243,12 @@
               <p id="shortcut-policy-status" class="setting-hint"></p>
               <button class="quiet-btn" id="shortcut-check" type="button">检查本软件的快捷键</button>
               <div id="shortcut-check-result" class="shortcut-matrix" aria-live="polite"></div>
-              <p class="setting-hint">面板内：输入框与输入法优先，其次是面板按键。全局：面板唤起等专用组合键优先，派生的 Alt+字母遇到重复就停用，不会偷偷更换唤起键。仅能检查运行中全局热键的注册占用，不能扫描所有软件的内部快捷键；没有统一的“最高优先级”。冲突时不会强制抢占，请换键或在另一软件中手动取消绑定。</p>
+              <details class="setting-disclosure">
+                <summary>查看优先级与冲突处理说明</summary>
+                <div class="setting-disclosure-body">
+                  <p class="setting-hint">面板内：输入框与输入法优先，其次是面板按键。全局：面板唤起等专用组合键优先，派生的 Alt+字母遇到重复就停用，不会偷偷更换唤起键。仅能检查运行中全局热键的注册占用，不能扫描所有软件的内部快捷键；没有统一的“最高优先级”。冲突时不会强制抢占，请换键或在另一软件中手动取消绑定。</p>
+                </div>
+              </details>
               <div class="setting-title"><b>快捷键</b><span>点击输入框录制组合键；冲突时保留原绑定。</span></div><label class="setting-row shortcut-edit"><span><b>长截图</b><small>选区后滚动拼接，回车完成并复制</small></span><input class="shortcut-input" id="setting-key-longCapture" readonly placeholder="点击后按下组合键"></label><p class="shortcut-status" id="status-longCapture"></p><div class="shortcut-actions"><button class="quiet-btn" data-shortcut-clear="longCapture">清除绑定</button></div>
               <label class="setting-row shortcut-edit">
                 <span><b>随手面板</b><small>打开搜索与当前内容动作</small></span>

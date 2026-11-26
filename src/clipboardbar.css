@@ -59,17 +59,27 @@ kbd {
   overflow-x: auto; overflow-y: hidden; scroll-padding-inline: var(--bar-gutter);
   scrollbar-width: none; overscroll-behavior-x: contain;
 }
+.bar-track[data-fade-right="true"] {
+  mask-image: linear-gradient(to right, currentColor 0, currentColor calc(100% - 28px), transparent 100%);
+}
+.bar-track[data-fade-left="true"] {
+  mask-image: linear-gradient(to right, transparent 0, currentColor 28px, currentColor 100%);
+}
+.bar-track[data-fade-left="true"][data-fade-right="true"] {
+  mask-image: linear-gradient(to right, transparent 0, currentColor 28px, currentColor calc(100% - 28px), transparent 100%);
+}
 .bar-track::-webkit-scrollbar, .bar-filters::-webkit-scrollbar { display: none; }
 .bar-card {
   position: relative; flex: none; width: 220px; height: 100%; min-height: 0;
-  display: flex; flex-direction: column; gap: 6px; padding: 20px 12px 9px;
+  display: flex; flex-direction: column; gap: 8px; padding: 10px 12px 10px;
   border: 1px solid var(--slate-5); border-radius: 14px; background: var(--slate-1);
   cursor: pointer; overflow: hidden;
+  transition: border-color var(--dur-fast) var(--ease-out), background-color var(--dur-fast) var(--ease-out);
 }
 .bar-card:hover { border-color: var(--accent-7); }
 .bar-track:not(.has-checked-images) .bar-card.is-selected, .bar-card.is-checked { border-color: var(--accent-8); background: var(--bar-active); }
 .card-head, .card-foot { display: flex; align-items: center; gap: 8px; min-width: 0; flex: 0 0 20px; font-size: var(--text-1); color: var(--slate-11); }
-.card-head { flex-basis: 24px; justify-content: space-between; gap: 4px; }
+.card-head { position: relative; flex-basis: 24px; justify-content: flex-start; gap: 6px; }
 .card-select, .card-actions > button, .card-actions .action-strip summary {
   display: grid; flex: none; place-items: center; width: 23px; height: 24px; padding: 0; border: 0;
   border-radius: 6px; color: var(--slate-11); background: transparent;
@@ -78,14 +88,25 @@ kbd {
   color: var(--slate-12); background: var(--slate-4);
 }
 .card-select svg, .card-actions :is(button, summary) > svg { width: 15px; height: 15px; }
-.card-select { opacity: 0; pointer-events: none; }
+.card-select { opacity: 0; pointer-events: none; position: relative; z-index: 2; }
 .bar-card:is(.is-checked, :hover, :focus-visible, :has(:focus-visible)) .card-select { opacity: 1; pointer-events: auto; }
 .has-checked-images .bar-card[data-kind="image"] .card-select { opacity: 1; pointer-events: auto; }
 #bar-done-selecting { white-space: nowrap; }
 .card-select .card-select-check { visibility: hidden; }
 .card-select[aria-pressed="true"] { color: var(--accent-11); }
 .card-select[aria-pressed="true"] .card-select-check { visibility: visible; }
-.card-actions { display: flex; justify-content: flex-end; align-items: center; gap: 1px; opacity: 0; pointer-events: none; }
+.card-actions {
+  position: absolute; right: 0; top: 0; bottom: 0; z-index: 1;
+  display: flex; justify-content: flex-end; align-items: center; gap: 1px;
+  padding-inline-start: 14px;
+  background: linear-gradient(to right, transparent, var(--slate-1) 14px, var(--slate-1));
+  opacity: 0; pointer-events: none;
+  transition: opacity var(--dur-fast) var(--ease-out);
+}
+.bar-track:not(.has-checked-images) .bar-card.is-selected .card-actions,
+.bar-card.is-checked .card-actions {
+  background: linear-gradient(to right, transparent, var(--bar-active) 14px, var(--bar-active));
+}
 .bar-card:is(:hover,:focus-visible,:has(:focus-visible),:has(.card-actions details[open], [aria-expanded="true"])) .card-actions {
   opacity: 1; pointer-events: auto;
 }
@@ -99,15 +120,22 @@ kbd {
 .bar-filters [data-filter="link"] { --filter-dot:var(--blue-9); }
 .bar-filters [data-filter="files"] { --filter-dot:var(--amber-9); }
 .card-type {
-  position: absolute; inset: 0 auto auto 50%; transform:translateX(-50%); padding: 0 8px;
-  border-radius: 0 0 6px 6px; color: var(--accent-11); background: var(--accent-3);
-  white-space: nowrap; line-height: 20px;
+  position: static; transform: none; display: inline-flex; align-items: center; gap: 5px;
+  padding: 0 7px; border-radius: var(--radius-pill); color: var(--accent-11); background: var(--accent-3);
+  white-space: nowrap; line-height: 20px; font-weight: 500; flex: none;
 }
+.card-type::before { content: ""; width: 5px; height: 5px; border-radius: 50%; background: currentColor; flex: none; }
 .bar-card[data-kind="image"] .card-type { color: var(--jade-11); background: var(--jade-3); }
 .bar-card[data-kind="link"] .card-type { color: var(--blue-11); background: var(--blue-3); }
 .bar-card[data-kind="files"] .card-type { color: var(--amber-11); background: var(--amber-3); }
 .card-favorite { color: inherit; }
-.card-metadata { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.card-metadata { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.card-hotkey {
+  flex: none; min-width: 18px; height: 18px; padding: 0 4px; text-align: center;
+  border-color: var(--slate-5); background: var(--slate-2); color: var(--slate-11);
+  transition: border-color var(--dur-fast) var(--ease-out), background-color var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out);
+}
+.bar-card:is(.is-selected, :hover) .card-hotkey { border-color: var(--slate-7); background: var(--slate-3); color: var(--slate-12); }
 .card-source-icon { flex: none; display: grid; place-items: center; width: 16px; height: 16px; overflow: hidden; border-radius: 4px; background: var(--slate-4); font-size: var(--text-1); }
 .card-source-icon img { width: 100%; height: 100%; object-fit: contain; }
 .card-visual { min-height: 0; min-width: 0; flex: 1; overflow: hidden; }
@@ -130,8 +158,9 @@ kbd {
 .bar-retry:hover { background: var(--bar-active); }
 .bar-notice {
   position: absolute; z-index: 14; inset: calc(100% + 12px) 0 auto auto; width: max-content;
-  max-width: min(360px, 85vw); padding: 6px 10px; border: 1px solid var(--slate-6);
-  border-radius: 8px; color: var(--slate-11); font-size: var(--text-1); background: var(--slate-1);
+  max-width: min(360px, 85vw); padding: 6px 12px; border: 1px solid var(--slate-6);
+  border-radius: 10px; color: var(--slate-11); font-size: var(--text-1); background: var(--slate-1);
+  box-shadow: var(--shadow-lift);
   overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
 }
 .bar-notice.is-error { color: var(--red-11); }

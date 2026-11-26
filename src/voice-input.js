@@ -17,14 +17,17 @@ const bars = Array.from({ length: 17 }, (_, i) => {
   return bar;
 });
 const levels = bars.map(() => 0);
+let smoothed = 0;
 let closeTimer;
 let lastWave = 0;
 
 function drawWave(level) {
-  levels.push(level);
+  smoothed = level > smoothed ? smoothed * 0.35 + level * 0.65 : smoothed * 0.72 + level * 0.28;
+  levels.push(smoothed);
   levels.shift();
   bars.forEach((bar, i) => {
-    const height = 3 + Math.round(levels[i] * 23);
+    const envelope = 0.45 + 0.55 * Math.sin(((i + 0.5) / bars.length) * Math.PI);
+    const height = 3 + Math.round(levels[i] * envelope * 23);
     bar.setAttribute('height', height);
     bar.setAttribute('y', (28 - height) / 2);
   });

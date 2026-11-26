@@ -160,8 +160,51 @@ async function refreshShelf() {
   renderTaskDetail();
 }
 
+function ensureTaskListDelegation(list) {
+  if (list.dataset.delegated) return;
+  list.dataset.delegated = '1';
+  list.addEventListener('click', (event) => {
+    const row = event.target.closest('.task-row');
+    if (!row || !list.contains(row)) return;
+    state.selectedTaskId = row.dataset.id;
+    renderTaskList();
+    renderTaskDetail();
+  });
+}
+
+function createTaskRow(task) {
+  const row = document.createElement('button');
+  row.className = 'task-row';
+  row.type = 'button';
+  row.dataset.id = task.id;
+  const mark = document.createElement('span');
+  mark.className = 'task-row-mark';
+  const body = document.createElement('span');
+  body.className = 'task-row-body';
+  const title = document.createElement('b');
+  const meta = document.createElement('small');
+  body.append(title, meta);
+  row.append(mark, body);
+  return row;
+}
+
+function syncTaskRow(row, task, isActive) {
+  const isDone = task.progress === 'done';
+  row.classList.toggle('is-active', isActive);
+  const mark = row.firstElementChild;
+  mark.classList.toggle('is-done', isDone);
+  mark.setAttribute('aria-label', isDone ? '已完成' : '进行中');
+  const body = mark.nextElementSibling;
+  const titleEl = body.firstElementChild;
+  const metaEl = titleEl.nextElementSibling;
+  if (titleEl.textContent !== task.title) titleEl.textContent = task.title;
+  const metaText = `${isDone ? '已完成 · ' : ''}${task.items.length} 项 · ${relativeTime(task.updatedAt)}`;
+  if (metaEl.textContent !== metaText) metaEl.textContent = metaText;
+}
+
 function renderTaskList() {
   const list = $('#task-list');
+  ensureTaskListDelegation(list);
   $('#task-count').textContent = `${state.tasks.length} 个`;
   const doneCount = state.tasks.filter((task) => task.progress === 'done').length;
   const activeCount = state.tasks.length - doneCount;
@@ -169,27 +212,35 @@ function renderTaskList() {
     const label = { all: '全部', active: '进行中', done: '已完成' }[button.dataset.taskFilter];
     if (!label) return;
     const count = button.dataset.taskFilter === 'all' ? state.tasks.length : button.dataset.taskFilter === 'done' ? doneCount : activeCount;
-    button.innerHTML = `${label} <span class="filter-count">${count}</span>`;
+    const existingCount = button.querySelector('.filter-count');
+    if (existingCount) existingCount.textContent = String(count);
+    else button.innerHTML = `${label} <span class="filter-count">${count}</span>`;
   });
-  const visible=state.tasks.filter(task=>(state.taskFilter==='all'||(task.progress==='done')===(state.taskFilter==='done'))&&task.title.toLowerCase().includes(state.taskQuery.toLowerCase()));
-  if(!visible.some(task=>task.id===state.selectedTaskId))state.selectedTaskId=visible[0]?.id||'';
+  const visible = state.tasks.filter((task) => (state.taskFilter === 'all' || (task.progress === 'done') === (state.taskFilter === 'done')) && task.title.toLowerCase().includes(state.taskQuery.toLowerCase()));
+  if (!visible.some((task) => task.id === state.selectedTaskId)) state.selectedTaskId = visible[0]?.id || '';
   if (!state.tasks.length) {
     list.innerHTML = '<div class="task-list-empty">还没有任务，点「新建任务」开始收集。</div>';
     return;
   }
-  if(!visible.length){list.innerHTML='<div class="task-list-empty">没有匹配的任务</div>';return;}
-  list.innerHTML = visible.map((task) => `
-    <button class="task-row ${task.id === state.selectedTaskId ? 'is-active' : ''}" type="button" data-id="${escapeHtml(task.id)}">
-      <span class="task-row-mark ${task.progress==='done'?'is-done':''}" aria-label="${task.progress==='done'?'已完成':'进行中'}"></span>
-      <span class="task-row-body"><b>${escapeHtml(task.title)}</b><small>${task.progress==='done'?'已完成 · ':''}${task.items.length} 项 · ${relativeTime(task.updatedAt)}</small></span>
-    </button>
-  `).join('');
-  $$('.task-row', list).forEach((row) => {
-    row.addEventListener('click', () => {
-      state.selectedTaskId = row.dataset.id;
-      renderTaskList();
-      renderTaskDetail();
-    });
+  if (!visible.length) {
+    list.innerHTML = '<div class="task-list-empty">没有匹配的任务</div>';
+    return;
+  }
+  const existing = new Map();
+  for (const node of [...list.children]) {
+    if (node.classList.contains('task-row') && node.dataset.id) existing.set(node.dataset.id, node);
+    else node.remove();
+  }
+  const desired = visible.map((task) => {
+    const row = existing.get(task.id) || createTaskRow(task);
+    existing.delete(task.id);
+    syncTaskRow(row, task, task.id === state.selectedTaskId);
+    return row;
+  });
+  for (const stale of existing.values()) stale.remove();
+  desired.forEach((row, index) => {
+    const current = list.children[index];
+    if (current !== row) list.insertBefore(row, current || null);
   });
 }
 
@@ -269,7 +320,7 @@ function taskItemCard(item) {
       <footer class="shelf-card-actions"><button type="button" data-preview-item="${escapeHtml(item.id)}">查看详情</button>
         <button type="button" data-copy="${escapeHtml(item.id)}">复制</button>
         ${item.kind === 'image' ? `<button type="button" data-edit-image="${escapeHtml(item.id)}">编辑图片</button>` : ''}
-        ${item.kind === 'image' && !children.length ? `<button type="button" data-ocr="${escapeHtml(item.id)}">${state.ocrBusy.has(item.id) ? '识别中…' : '提取文字'}</button>` : ''}
+        ${item.kind === 'image' && !children.length ? `<button type="button" data-ocr="${escapeHtml(item.id)}"${state.ocrBusy.has(item.id) ? ' disabled' : ''}>${state.ocrBusy.has(item.id) ? '识别中…' : '提取文字'}</button>` : ''}
         ${item.kind === 'image' && children.length ? `<button type="button" data-recipe="clean-text" data-recipe-item="${escapeHtml(children[children.length - 1].id)}">整理文字</button>` : ''}
         ${(item.kind === 'text' || item.kind === 'link') ? `<button type="button" data-recipe="clean-text" data-recipe-item="${escapeHtml(item.id)}">整理文字</button>` : ''}
         ${item.kind === 'files' || item.kind === 'link' ? `<button type="button" data-open="${escapeHtml(item.id)}">打开</button>` : ''}
@@ -301,8 +352,10 @@ function bindItemCardActions(root, task) {
   $$('[data-ocr]', root).forEach((button) => {
     button.addEventListener('click', async () => {
       const id = button.dataset.ocr;
+      if (state.ocrBusy.has(id)) return;
       state.ocrBusy.add(id);
-      button.textContent = '识别中…';
+      renderTaskDetail();
+      if (state.page === 'library') renderLibrary();
       try {
         const result = await window.suira.ocr.recognizeItem(id);
         if (!result?.ok) throw new Error(result?.error || '识别失败');
@@ -311,7 +364,9 @@ function bindItemCardActions(root, task) {
         showGlobalToast(error.message || '识别失败', 'error');
       } finally {
         state.ocrBusy.delete(id);
-        await refreshShelf();
+        renderTaskDetail();
+        if (state.page === 'library') renderLibrary();
+        await refreshShelf().catch(() => {});
       }
     });
   });
@@ -407,21 +462,129 @@ function getVisibleItems() {
   });
 }
 
-function renderLibrary() {
-  const grid = $('#library-grid');
-  const active = document.activeElement;
-  const focusedCard = grid.contains(active) ? active.closest('.library-card')?.dataset.id : null;
-  const focusIndex = focusedCard ? [...grid.children].findIndex(card => card.dataset.id === focusedCard) : -1;
-  const items = getVisibleItems();
-  $('#page-library .lib-count').textContent = `${items.length} 项`;
-  if (!items.length) {
-    grid.innerHTML = `<div class="library-empty">${state.query || state.filter !== 'all' ? '没有找到匹配的内容' : '还没有内容。截图、复制文字，或从随手面板开始。'}</div>`;
-    if (focusedCard) $('#library-search').focus({ preventScroll: true });
-    return;
+function toggleLibraryMenu(toggle) {
+  const menu = toggle.nextElementSibling;
+  if (!menu) return;
+  const opening = menu.hidden;
+  closeLibraryMenu();
+  if (opening) {
+    menu.hidden = false;
+    menu.showPopover();
+    const rect = toggle.getBoundingClientRect();
+    menu.style.maxHeight = `${Math.max(72, Math.max(rect.top, innerHeight - rect.bottom) - 12)}px`;
+    menu.style.left = `${Math.max(8, Math.min(rect.right - menu.offsetWidth, innerWidth - menu.offsetWidth - 8))}px`;
+    menu.style.top = `${innerHeight - rect.bottom >= menu.offsetHeight + 8 ? rect.bottom + 4 : Math.max(8, rect.top - menu.offsetHeight - 4)}px`;
+    toggle.setAttribute('aria-expanded', 'true');
+    menu.querySelector('button:not(:disabled)')?.focus({ preventScroll: true });
   }
-  grid.innerHTML = items.map((item) => {
-    const derived = derivedChildren(item.id);
-    return `
+}
+
+function ensureLibraryGridDelegation(grid) {
+  if (grid.dataset.delegated) return;
+  grid.dataset.delegated = '1';
+  grid.addEventListener('click', async (event) => {
+    const toggle = event.target.closest('.lib-menu-toggle');
+    if (toggle && grid.contains(toggle)) {
+      toggleLibraryMenu(toggle);
+      return;
+    }
+    const button = event.target.closest('button');
+    if (button && grid.contains(button)) {
+      const inMenu = Boolean(button.closest('.lib-menu'));
+      if (inMenu) closeLibraryMenu(true);
+      if (button.dataset.editImage) {
+        try {
+          const result = await window.suira.imageEditor.open({ itemId: button.dataset.editImage });
+          if (!result?.ok) showGlobalToast(result?.error || '打开图片失败', 'error');
+        } catch (error) { showGlobalToast(error.message || '打开图片失败', 'error'); }
+        return;
+      }
+      if (button.dataset.paste) { pasteItemToTarget(button.dataset.paste); return; }
+      if (button.dataset.reveal) {
+        const result = await window.suira.actions.run(button.dataset.reveal, 'files.reveal');
+        if (result?.ok) showGlobalToast(result.message || '已在资源管理器中定位', 'success');
+        else showGlobalToast(result?.error || '定位失败', 'error');
+        return;
+      }
+      if (button.dataset.copy) {
+        const result = await window.suira.actions.run(button.dataset.copy, 'output.copy');
+        if (result?.ok) showGlobalToast('已复制', 'copied');
+        else showGlobalToast(result?.error || '复制失败', 'error');
+        return;
+      }
+      if (button.dataset.ocr) {
+        const id = button.dataset.ocr;
+        if (state.ocrBusy.has(id)) return;
+        state.ocrBusy.add(id);
+        renderLibrary();
+        if (state.page === 'shelf') renderTaskDetail();
+        try {
+          const result = await window.suira.ocr.recognizeItem(id);
+          if (!result?.ok) throw new Error(result?.error || '识别失败');
+          showGlobalToast('识别完成', 'success');
+        } catch (error) {
+          showGlobalToast(error.message || '识别失败', 'error');
+        } finally {
+          state.ocrBusy.delete(id);
+          renderLibrary();
+          if (state.page === 'shelf') renderTaskDetail();
+          await refreshLibrary().catch(() => {});
+        }
+        return;
+      }
+      if (button.dataset.pin) {
+        const result = await window.suira.actions.run(button.dataset.pin, 'image.pin');
+        if (result?.ok) showGlobalToast('已钉在桌面', 'success');
+        else showGlobalToast(result?.error || '钉图失败', 'error');
+        return;
+      }
+      if (button.dataset.open) {
+        const result = await window.suira.actions.run(button.dataset.open, 'output.open');
+        if (!result?.ok) showGlobalToast(result?.error || '打开失败', 'error');
+        return;
+      }
+      if (button.dataset.shelf) {
+        const result = await window.suira.actions.run(button.dataset.shelf, 'output.shelf');
+        if (result?.ok) showGlobalToast('已加入任务匣', 'success');
+        else showGlobalToast(result?.error || '加入失败', 'error');
+        return;
+      }
+      if (button.dataset.fix) {
+        const result = await window.suira.content.togglePin(button.dataset.fix);
+        if (result?.ok) {
+          showGlobalToast(result.pinned ? '已固定，不会被自动清理' : '已取消固定', 'success');
+          await refreshLibrary();
+        } else {
+          showGlobalToast(result?.error || '操作失败', 'error');
+        }
+        return;
+      }
+      if (button.dataset.delete) {
+        const deleteId = button.dataset.delete;
+        button.disabled = true;
+        try {
+          const result = await window.suira.content.remove(deleteId);
+          if (!result?.ok) throw Error(result?.error || '删除失败');
+          const message = result.taskCount ? `已删除内容，并从 ${result.taskCount} 个任务移除` : '已删除内容';
+          showRemoveFeedback(message, result, refreshLibrary, () => {
+            const restored = document.getElementById(`library-actions-${deleteId}`)?.previousElementSibling;
+            return $('#page-library.is-active') && (restored || $('#library-grid .lib-menu-toggle') || $('#library-capture'));
+          });
+        } catch (error) {
+          showGlobalToast(error.message || '删除失败', 'error');
+        } finally { button.disabled = false; }
+        return;
+      }
+      return;
+    }
+    const card = event.target.closest('[data-preview]');
+    if (card && grid.contains(card)) openPreview(card.dataset.preview);
+  });
+}
+
+function createLibraryCard(item, derivedCount, sig) {
+  const tpl = document.createElement('template');
+  tpl.innerHTML = `
     <article class="library-card" data-id="${escapeHtml(item.id)}" data-preview="${escapeHtml(item.id)}">
       <header class="shelf-card-head">
         <span class="kind-tag ${escapeHtml(item.kind)}">${KIND_LABELS[item.kind] || '内容'}</span>
@@ -432,12 +595,12 @@ function renderLibrary() {
       ${item.kind === 'image' && item.thumbnail
         ? `<img class="shelf-thumb" src="${escapeHtml(item.thumbnail)}" alt="">`
         : `<p class="shelf-text">${escapeHtml(SuiraTextSpacing.compactCapture(item.text || item.filePath || '').slice(0, 220) || '（无文字内容）')}</p>`}
-      ${derived.length ? `<div class="derived-note">${derived.length} 个处理结果</div>` : ''}
+      ${derivedCount ? `<div class="derived-note">${derivedCount} 个处理结果</div>` : ''}
       <footer class="shelf-card-actions">
         <button type="button" data-copy="${escapeHtml(item.id)}">复制</button>
         <button type="button" data-paste="${escapeHtml(item.id)}">粘贴</button>
         ${item.kind === 'image' ? `<button type="button" data-edit-image="${escapeHtml(item.id)}">编辑图片</button>` : ''}
-        ${item.kind === 'image' ? `<button type="button" data-ocr="${escapeHtml(item.id)}">${state.ocrBusy.has(item.id) ? '识别中…' : '提取文字'}</button>` : ''}
+        ${item.kind === 'image' ? `<button type="button" data-ocr="${escapeHtml(item.id)}"${state.ocrBusy.has(item.id) ? ' disabled' : ''}>${state.ocrBusy.has(item.id) ? '识别中…' : '提取文字'}</button>` : ''}
         ${item.kind === 'image' ? `<button type="button" data-pin="${escapeHtml(item.id)}">钉住</button>` : ''}
         ${item.kind === 'files' || item.kind === 'link' ? `<button type="button" data-open="${escapeHtml(item.id)}">打开</button>` : ''}
         ${item.kind === 'files' ? `<button type="button" data-reveal="${escapeHtml(item.id)}">所在文件夹</button>` : ''}
@@ -445,120 +608,81 @@ function renderLibrary() {
         <button type="button" data-fix="${escapeHtml(item.id)}">${item.pinned ? '取消固定' : '固定'}</button>
         <button type="button" class="is-danger" data-delete="${escapeHtml(item.id)}">删除</button>
       </footer>
-    </article>`;
-  }).join('');
+    </article>`.trim();
+  const card = tpl.content.firstElementChild;
+  const footer = card.querySelector('.shelf-card-actions');
+  const primary = footer.querySelector('[data-open]') || footer.querySelector('[data-copy]');
+  const controls = [...footer.children].filter((btn) => btn !== primary);
+  const menu = document.createElement('div');
+  menu.className = 'lib-menu';
+  menu.id = `library-actions-${card.dataset.id}`;
+  menu.setAttribute('popover', 'manual');
+  menu.hidden = true;
+  const toggle = document.createElement('button');
+  toggle.type = 'button';
+  toggle.className = 'lib-menu-toggle';
+  toggle.innerHTML = window.suiraIcons.svg('more');
+  toggle.setAttribute('aria-label', '更多操作');
+  toggle.setAttribute('aria-controls', menu.id);
+  toggle.setAttribute('aria-expanded', 'false');
+  menu.append(...controls);
+  footer.append(toggle, menu);
+  card._suiraSig = sig;
+  return card;
+}
 
-  for (const card of grid.children) {
-    const footer = card.querySelector('.shelf-card-actions');
-    const primary = footer.querySelector('[data-open]') || footer.querySelector('[data-copy]');
-    const controls = [...footer.children].filter(button => button !== primary);
-    const menu = document.createElement('div');
-    menu.className = 'lib-menu';
-    menu.id = `library-actions-${card.dataset.id}`;
-    menu.setAttribute('popover', 'manual');
-    menu.hidden = true;
-    const toggle = document.createElement('button');
-    toggle.type = 'button';
-    toggle.className = 'lib-menu-toggle';
-    toggle.innerHTML = window.suiraIcons.svg('more');
-    toggle.setAttribute('aria-label', '更多操作');
-    toggle.setAttribute('aria-controls', menu.id);
-    toggle.setAttribute('aria-expanded', 'false');
-    menu.append(...controls);
-    footer.append(toggle, menu);
-    toggle.onclick = () => {
-      const opening = menu.hidden;
-      closeLibraryMenu();
-      if (opening) {
-        menu.hidden = false;
-        menu.showPopover();
-        const rect = toggle.getBoundingClientRect();
-        menu.style.maxHeight = `${Math.max(72, Math.max(rect.top, innerHeight - rect.bottom) - 12)}px`;
-        menu.style.left = `${Math.max(8, Math.min(rect.right - menu.offsetWidth, innerWidth - menu.offsetWidth - 8))}px`;
-        menu.style.top = `${innerHeight - rect.bottom >= menu.offsetHeight + 8 ? rect.bottom + 4 : Math.max(8, rect.top - menu.offsetHeight - 4)}px`;
-        toggle.setAttribute('aria-expanded', 'true');
-        menu.querySelector('button:not(:disabled)')?.focus({ preventScroll: true });
-      }
-    };
-    menu.addEventListener('click', event => {
-      if (event.target.closest('button')) closeLibraryMenu(true);
-    });
+function renderLibrary() {
+  const grid = $('#library-grid');
+  ensureLibraryGridDelegation(grid);
+  const active = document.activeElement;
+  const focusedCard = grid.contains(active) ? active.closest('.library-card')?.dataset.id : null;
+  const focusIndex = focusedCard ? [...grid.children].findIndex((card) => card.dataset.id === focusedCard) : -1;
+  const items = getVisibleItems();
+  $('#page-library .lib-count').textContent = `${items.length} 项`;
+  if (!items.length) {
+    closeLibraryMenu();
+    grid.innerHTML = `<div class="library-empty">${state.query || state.filter !== 'all' ? '没有找到匹配的内容' : '还没有内容。截图、复制文字，或从随手面板开始。'}</div>`;
+    if (focusedCard) $('#library-search').focus({ preventScroll: true });
+    return;
   }
-  if (focusedCard) {
-    const next = [...grid.children].find(card => card.dataset.id === focusedCard) || grid.children[Math.min(focusIndex, grid.children.length - 1)];
+  const derivedCounts = new Map();
+  for (const item of state.items) {
+    for (const parentId of item.parentIds || []) {
+      derivedCounts.set(parentId, (derivedCounts.get(parentId) || 0) + 1);
+    }
+  }
+  const existing = new Map();
+  for (const node of [...grid.children]) {
+    if (node.classList.contains('library-card') && node.dataset.id) existing.set(node.dataset.id, node);
+    else node.remove();
+  }
+  const desired = items.map((item) => {
+    const derivedCount = derivedCounts.get(item.id) || 0;
+    const relTime = relativeTime(item.createdAt);
+    const sig = `${item.kind}\0${item.title}\0${item.pinned ? 1 : 0}\0${relTime}\0${item.thumbnail || ''}\0${item.text || ''}\0${item.filePath || ''}\0${derivedCount}\0${state.ocrBusy.has(item.id) ? 1 : 0}`;
+    const prev = existing.get(item.id);
+    if (prev && prev._suiraSig === sig) {
+      existing.delete(item.id);
+      return prev;
+    }
+    if (prev) {
+      const openToggle = prev.querySelector('.lib-menu-toggle[aria-expanded="true"]');
+      if (openToggle) closeLibraryMenu();
+    }
+    return createLibraryCard(item, derivedCount, sig);
+  });
+  for (const stale of existing.values()) {
+    if (stale.querySelector('.lib-menu-toggle[aria-expanded="true"]')) closeLibraryMenu();
+    stale.remove();
+  }
+  desired.forEach((card, index) => {
+    const current = grid.children[index];
+    if (current !== card) grid.insertBefore(card, current || null);
+  });
+  if (focusedCard && !grid.contains(document.activeElement)) {
+    const next = [...grid.children].find((card) => card.dataset.id === focusedCard) || grid.children[Math.min(focusIndex, grid.children.length - 1)];
     next?.querySelector('.lib-menu-toggle')?.focus({ preventScroll: true });
   }
-
-  $$('[data-preview]', grid).forEach((card) => card.addEventListener('click', (event) => {
-    // 卡片主体打开预览；底部动作按钮有自己的语义，不触发预览
-    if (event.target.closest('button')) return;
-    openPreview(card.dataset.preview);
-  }));
-  bindImageEditorButtons(grid);
-  $$('[data-paste]', grid).forEach((button) => button.addEventListener('click', () => pasteItemToTarget(button.dataset.paste)));
-  $$('[data-reveal]', grid).forEach((button) => button.addEventListener('click', async () => {
-    const result = await window.suira.actions.run(button.dataset.reveal, 'files.reveal');
-    if (result?.ok) showGlobalToast(result.message || '已在资源管理器中定位', 'success');
-    else showGlobalToast(result?.error || '定位失败', 'error');
-  }));
-
-  $$('[data-copy]', grid).forEach((button) => button.addEventListener('click', async () => {
-    const result = await window.suira.actions.run(button.dataset.copy, 'output.copy');
-    if (result?.ok) showGlobalToast('已复制', 'copied');
-    else showGlobalToast(result?.error || '复制失败', 'error');
-  }));
-  $$('[data-ocr]', grid).forEach((button) => button.addEventListener('click', async () => {
-    const id = button.dataset.ocr;
-    state.ocrBusy.add(id);
-    button.textContent = '识别中…';
-    try {
-      const result = await window.suira.ocr.recognizeItem(id);
-      if (!result?.ok) throw new Error(result?.error || '识别失败');
-      showGlobalToast('识别完成', 'success');
-    } catch (error) {
-      showGlobalToast(error.message || '识别失败', 'error');
-    } finally {
-      state.ocrBusy.delete(id);
-      await refreshLibrary();
-    }
-  }));
-  $$('[data-pin]', grid).forEach((button) => button.addEventListener('click', async () => {
-    const result = await window.suira.actions.run(button.dataset.pin, 'image.pin');
-    if (result?.ok) showGlobalToast('已钉在桌面', 'success');
-    else showGlobalToast(result?.error || '钉图失败', 'error');
-  }));
-  $$('[data-open]', grid).forEach((button) => button.addEventListener('click', async () => {
-    const result = await window.suira.actions.run(button.dataset.open, 'output.open');
-    if (!result?.ok) showGlobalToast(result?.error || '打开失败', 'error');
-  }));
-  $$('[data-shelf]', grid).forEach((button) => button.addEventListener('click', async () => {
-    const result = await window.suira.actions.run(button.dataset.shelf, 'output.shelf');
-    if (result?.ok) showGlobalToast('已加入任务匣', 'success');
-    else showGlobalToast(result?.error || '加入失败', 'error');
-  }));
-  $$('[data-fix]', grid).forEach((button) => button.addEventListener('click', async () => {
-    const result = await window.suira.content.togglePin(button.dataset.fix);
-    if (result?.ok) {
-      showGlobalToast(result.pinned ? '已固定，不会被自动清理' : '已取消固定', 'success');
-      await refreshLibrary();
-    } else {
-      showGlobalToast(result?.error || '操作失败', 'error');
-    }
-  }));
-  $$('[data-delete]', grid).forEach((button) => button.addEventListener('click', async () => {
-    button.disabled = true;
-    try {
-      const result = await window.suira.content.remove(button.dataset.delete);
-      if (!result?.ok) throw Error(result?.error || '删除失败');
-      const message=result.taskCount?`已删除内容，并从 ${result.taskCount} 个任务移除`:'已删除内容';
-      showRemoveFeedback(message, result, refreshLibrary, ()=>{
-        const restored=document.getElementById(`library-actions-${button.dataset.delete}`)?.previousElementSibling;
-        return $('#page-library.is-active')&&(restored||$('#library-grid .lib-menu-toggle')||$('#library-capture'));
-      });
-    } catch (error) {
-      showGlobalToast(error.message || '删除失败', 'error');
-    } finally { button.disabled = false; }
-  }));
 }
 
 function closeLibraryMenu(restoreFocus = false) {

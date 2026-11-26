@@ -37,12 +37,12 @@
   .panel :is(.binding-card,.panel-more-menu,.panel-more-submenu,.ocr-panel,.translate-panel,.panel-guide):not([hidden]),
   .ocr-result:not([hidden]), .tool-dock:not([hidden]), .color-popover:not([hidden]), .text-editor:not([hidden]),
   dialog[open]) {
-  transition: opacity var(--dur-fast) var(--ease-out);
-  @starting-style { opacity: .45; }
+  transition: opacity var(--dur-fast) var(--ease-out), translate var(--dur-fast) var(--ease-out), scale var(--dur-fast) var(--ease-out);
+  @starting-style { opacity: .45; translate: 0 4px; scale: .985; }
 }
 .modal:not([hidden]) > .modal-card, .preview:not([hidden]) > .preview-card, .update-dialog:not([hidden]) > .update-card {
-  transition: opacity var(--dur-fast) var(--ease-out);
-  @starting-style { opacity: .65; }
+  transition: opacity var(--dur-fast) var(--ease-out), translate var(--dur-fast) var(--ease-out), scale var(--dur-fast) var(--ease-out);
+  @starting-style { opacity: .6; translate: 0 6px; scale: .985; }
 }
 .copy-check { display:inline-block;width:var(--space-4);height:var(--space-4);margin-right:var(--space-2);vertical-align:middle;fill:none;stroke:currentColor;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round; }
 .copy-check path { stroke-dasharray:24;stroke-dashoffset:0; }

@@ -343,6 +343,8 @@ svg { fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round
   border-radius: var(--radius-card);
   background: var(--paper-raised);
   padding: 12px 13px;
+  content-visibility: auto;
+  contain-intrinsic-size: auto 168px;
   transition: border-color var(--dur-base) var(--ease-out);
 }
 .shelf-card:hover,
@@ -713,15 +715,17 @@ svg { fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round
   z-index: 60;
   transform: translateX(-50%);
   max-width: 70%;
-  padding: 9px 15px;
-  border-radius: var(--radius-inner);
+  padding: 9px 16px;
+  border: 1px solid color-mix(in srgb, var(--paper) 14%, transparent);
+  border-radius: 10px;
   background: var(--ink);
   color: var(--paper);
   font-size: var(--text-2);
+  line-height: 1.4;
   opacity: 0;
   pointer-events: none;
   transition: opacity var(--dur-fast) var(--ease-out);
-  box-shadow: var(--shadow-lift);
+  box-shadow: var(--shadow-float);
 }
 .global-toast.is-visible { opacity: 1; }
 .global-toast.error { background: var(--danger-solid); }

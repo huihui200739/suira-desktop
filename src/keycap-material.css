@@ -3,17 +3,14 @@
  * Design method: unslop by Damir Sokolovsky / @heydamir, CC BY 4.0.
  * Surface is quiet; color and material belong to the actual tool objects.
  */
-.panel,.key-drag-preview {
-
-
-
-}
-.panel .key { perspective:650px; isolation:isolate; --key-lift:2.8px;  }
-.panel .key.is-unbound { --key-lift:1.5px; }
+.panel .key { perspective:650px; isolation:isolate; --key-lift:2.8px; }
+.panel .key.is-unbound { --key-lift:1.2px; }
 .liquid-ui .panel[data-presentation] .key:is(.is-unbound,.is-unimplemented) .key-card { background:transparent;box-shadow:none; }
-.liquid-ui .panel[data-presentation] .key:is(.is-unbound,.is-unimplemented) .key-face { inset:0;border:1px solid var(--line-strong);background:var(--floating-key);box-shadow:none; }
+.liquid-ui .panel[data-presentation] .key:is(.is-unbound,.is-unimplemented) .key-face { inset:0;border:1px solid var(--line);background:color-mix(in srgb,var(--floating-key) 76%,transparent);box-shadow:inset 0 1px 2px var(--cap-shadow);opacity:.78;transition:opacity var(--dur-fast) var(--ease-out),border-color var(--dur-fast) var(--ease-out),background var(--dur-fast) var(--ease-out); }
+.liquid-ui .panel[data-presentation] .key:is(.is-unbound,.is-unimplemented):is(:hover,:focus-visible) .key-face { opacity:1;border-color:var(--line-strong);background:var(--floating-key); }
 .liquid-ui .panel[data-presentation] .key:is(.is-unbound,.is-unimplemented) .key-contact { opacity:0; }
-.liquid-ui .panel[data-presentation] .key:is(.is-unbound,.is-unimplemented) .key-letter { color:var(--ink-soft); }
+.liquid-ui .panel[data-presentation] .key:is(.is-unbound,.is-unimplemented) .key-letter { color:var(--ink-muted);transition:color var(--dur-fast) var(--ease-out); }
+.liquid-ui .panel[data-presentation] .key:is(.is-unbound,.is-unimplemented):is(:hover,:focus-visible) .key-letter { color:var(--ink); }
 .panel[data-presentation] .key .key-badge { opacity:0;transition:opacity var(--dur-fast) var(--ease-out); }
 .panel[data-presentation] .key.is-bound .key-badge { opacity:.72; }
 .panel[data-presentation] .key:is(:hover,:focus-visible) .key-badge { opacity:1; }
@@ -61,6 +58,7 @@
 .panel .key .key-badge {
   top:auto; right:var(--space-1); bottom:calc(var(--space-1) * 0.5); padding:0; min-width:12px; height:14px;
   color:var(--ink-soft); background:transparent; box-shadow:none; font-style:normal;
+  font-size:var(--text-1); font-weight:600; letter-spacing:.02em; line-height:1;
   transform:translateZ(1px); pointer-events:none;
 }
 .panel .key .key-name { color:var(--ink); font-weight:400; }
@@ -96,24 +94,17 @@
 .panel .brand-symbol,.panel .brand-symbol img { width:36px; height:36px; }
 .panel[data-presentation="window"] { background:var(--cap-panel-window-surface); border-color:var(--cap-panel-window-edge); box-shadow:var(--cap-panel-window-shadow); }
 .panel[data-mode="actions"] .keyboard { gap:calc(var(--space-1) * 5); }
-.panel .key[data-action="translate"],.panel .key[data-action="calendar"] {  }
-.panel .key[data-action="markdown"],.panel .key[data-action="clipboard"],.panel .key[data-action="note"] {  }
-.panel .key[data-action="edit-image"],.panel .key[data-action="desktop"],.panel .key[data-action="lock"] {  }
-.panel .key[data-action="text-clean"],.panel .key[data-action="annotate"] {  }
 .panel .key-reflection { position:absolute; inset:calc(var(--space-1) * 0.25); overflow:hidden; border-radius:inherit; z-index:3; pointer-events:none; transform:translateZ(10px); }
 .panel .key-reflection::after { content:""; position:absolute; inset:0; border-radius:inherit; background:linear-gradient(145deg,color-mix(in srgb,var(--key-glint) 12%,transparent),transparent 65%); opacity:0; transition:opacity 80ms var(--ease-out); }
 .panel .is-key-near .key-reflection::after { opacity:1; }
 .panel .key-sheen { position:absolute; width:24%; height:150%; left:-30%; top:-25%; background:var(--cap-panel-key-sheen-surface); opacity:0; transform:translateX(0) skewX(-18deg); }
 .panel .is-key-sheen .key-sheen { animation:keycap-sweep var(--dur-base) var(--ease-out) 1 both; }
 @keyframes keycap-sweep { 0% { opacity:0; transform:translateX(0) skewX(-18deg); } 20% { opacity:.9; } 65% { opacity:.75; } 100% { opacity:0; transform:translateX(620%) skewX(-18deg); } }
-.panel[data-presentation="fullscreen"] {   }
 .panel[data-presentation="fullscreen"] .key.is-bound .key-badge,
 .panel[data-presentation="fullscreen"] .key.is-custom .key-badge { color:var(--cap-key-is-custom-key-badge-ink); }
 @media(prefers-color-scheme:dark) {
-  .panel,.key-drag-preview {        }
   .panel[data-presentation="window"] { background:var(--cap-panel-window-surface); border-color:var(--cap-panel-window-edge); }
   .panel .key.is-unbound .key-face { border-color:var(--cap-key-is-unbound-key-face-edge); }
-  .panel[data-presentation="fullscreen"] {   }
   .panel[data-presentation="fullscreen"] .key.is-bound .key-badge,
   .panel[data-presentation="fullscreen"] .key.is-custom .key-badge { color:var(--ink-soft); }
 }

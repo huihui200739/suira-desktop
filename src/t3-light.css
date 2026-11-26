@@ -42,6 +42,10 @@
     --accent-soft: var(--t3-wash);
     --accent-glow: transparent;
     --on-accent: var(--t3-on-accent);
+    --checkbox-check: var(--t3-checkbox-check);
+    --checkbox-mixed: var(--t3-checkbox-mixed);
+    --switch-thumb-on: var(--t3-switch-thumb);
+    --switch-thumb-off: var(--t3-switch-thumb-off);
     --focus-ring: var(--t3-accent-ink);
     --action-blue: var(--t3-accent);
     --wb-liquid-ui-workbench-selection-surface: var(--t3-line);
@@ -116,7 +120,7 @@
     /* Calendar badge surfaces (workspace-tools.css reads these vars). */
     --workspace-tools-work-badge-work-surface: var(--t3-badge-work);
     --workspace-tools-work-badge-rest-surface: var(--t3-badge-rest);
-    --workspace-tools-work-badge-ink: var(--t3-on-accent);
+    --workspace-tools-work-badge-ink: var(--t3-badge-ink);
     --workspace-tools-date-badge-term-ink: var(--t3-gold-ink);
     --workspace-tools-date-badge-term-surface: var(--t3-gold-wash);
     --workspace-tools-date-badge-holiday-ink: var(--t3-cinnabar-ink);
@@ -194,19 +198,20 @@
     color: var(--t3-on-accent);
     border-radius: 8px;
     box-shadow: none;
-    transition: background 0.18s ease;
+    transition: background-color var(--dur-fast) var(--ease-out), scale var(--dur-quick) var(--ease-out);
   }
   html:is(.workbench, .tool-window)[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) .primary-btn:hover { background: var(--t3-press); }
-  html:is(.workbench, .tool-window)[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) .primary-btn:active { transform: none; }
+  html:is(.workbench, .tool-window)[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) .primary-btn:active:not(:disabled) { transform: none; scale: .985; transition-duration: 0ms; }
 
   html:is(.workbench, .tool-window)[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) .quiet-btn {
     background: var(--t3-card);
     border: 1px solid var(--t3-line);
     border-radius: 8px;
     color: var(--t3-secondary);
-    transition: border-color 0.18s ease, color 0.18s ease;
+    transition: border-color var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out), background-color var(--dur-fast) var(--ease-out), scale var(--dur-quick) var(--ease-out);
   }
   html:is(.workbench, .tool-window)[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) .quiet-btn:hover { border-color: var(--t3-strong-line); color: var(--t3-accent-ink); }
+  html:is(.workbench, .tool-window)[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) .quiet-btn:active:not(:disabled) { transform: none; scale: .985; transition-duration: 0ms; }
 
   html.workbench[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) :is(.chip, .view-switch button, .agenda-tabs button),
   html.tool-window[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) :is(.view-switch button, .agenda-tabs button) {
@@ -314,7 +319,7 @@
     border: 0;
     border-radius: 0;
     background: var(--t3-card);
-    transition: none;
+    transition: background-color var(--dur-quick) var(--ease-out);
   }
   html:is(.workbench, .tool-window)[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) #page-calendar .calendar-day:focus-visible { outline-offset: -3px; }
   html:is(.workbench, .tool-window)[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) #page-calendar .calendar-day.outside { opacity: 1; }
@@ -364,8 +369,8 @@
   /* 班 / 休: the badge carries the colour; the cell gets a pale tint. */
   html:is(.workbench, .tool-window)[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) #page-calendar .calendar-day:has(.work-badge.work):not(.selected):not(:hover) { background: var(--t3-stone-wash); }
   html:is(.workbench, .tool-window)[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) #page-calendar .calendar-day:has(.work-badge.rest):not(.selected):not(:hover) { background: var(--t3-pine-wash); }
-  html:is(.workbench, .tool-window)[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) #page-calendar .work-badge.work { background: var(--t3-badge-work); color: var(--t3-on-accent); }
-  html:is(.workbench, .tool-window)[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) #page-calendar .work-badge.rest { background: var(--t3-badge-rest); color: var(--t3-on-accent); }
+  html:is(.workbench, .tool-window)[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) #page-calendar .work-badge.work { background: var(--t3-badge-work); color: var(--t3-badge-ink); }
+  html:is(.workbench, .tool-window)[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) #page-calendar .work-badge.rest { background: var(--t3-badge-rest); color: var(--t3-badge-ink); }
   /* Weekend cells fall back to the pale pine tint. */
   html:is(.workbench, .tool-window)[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) #page-calendar .calendar-day.weekend:not(.outside):not(.selected):not(:hover):not(:has(.work-badge)) { background: var(--t3-pine-wash); }
 
@@ -463,37 +468,197 @@
   }
 }
 
-/* ---------- §5 · Preview v9–v14 refinements (redesign/five-pages-20261123) ----------
-   Ported from the v14 preview. Scoped to Mist with the preset accent. */
-html:is(.workbench, .tool-window)[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) {
-  font-family: "Inter", "Microsoft YaHei UI", "Microsoft YaHei", "PingFang SC", "Segoe UI", system-ui, -apple-system, sans-serif;
+/* ---------- §5 · Shared modern workbench & calendar geometry (all presets) ----------
+   Promotes clean window chrome, uniform control heights, equal-height library cards,
+   settings column rhythm, Markdown wrapping, and traditional-color calendar semantics
+   to every preset while keeping each preset's own canvas and accent tokens intact. */
+@media (forced-colors: none) {
+  html:is(.workbench, .tool-window) {
+    font-family: var(--font-ui);
+  }
+  /* Window: flush with native Win11 DWM corners, zero nested-frame inset. */
+  html.workbench body {
+    padding: 0;
+    box-sizing: border-box;
+    background: var(--wb-canvas);
+  }
+  html.workbench .app-shell {
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    height: 100dvh;
+    overflow: hidden;
+  }
+  html.workbench[data-window-maximized="true"] .app-shell {
+    border: 0;
+    border-radius: 0;
+  }
+  /* Buttons: one height everywhere in the five pages and dialogs. */
+  html:is(.workbench, .tool-window) :is(.detail-actions, .preview-actions, .page-actions, .document-heading, .workspace-toolbar) :is(.primary-btn, .quiet-btn) {
+    height: 36px;
+    min-height: 36px;
+    border-radius: 8px;
+    font-size: var(--text-2);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+  html:is(.workbench, .tool-window) .detail-actions .icon-btn {
+    height: 36px;
+    min-height: 36px;
+    width: 36px;
+    border-radius: 8px;
+  }
+  html:is(.workbench, .tool-window) :is(.modal-foot, .md-delete-actions) {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 8px;
+  }
+  html:is(.workbench, .tool-window) :is(.modal-foot, .md-delete-actions) button {
+    height: 36px;
+    min-height: 36px;
+    border-radius: 8px;
+    font-size: var(--text-2);
+  }
+  html:is(.workbench, .tool-window) .dialog-foot { align-items: center; }
+
+  /* Task shelf & Library: uniform metadata scale, equal-height cards, crisp menu. */
+  html.workbench #page-shelf .detail-head h2 { font-size: 20px; line-height: 1.3; }
+  html.workbench #page-shelf .task-detail .shelf-card { padding-top: 12px; padding-bottom: 12px; }
+  html.workbench .side-status,
+  html.workbench .side-status b { font-size: var(--text-1); }
+  html.workbench .task-filters button .filter-count { margin-left: 4px; font-size: var(--text-1); font-weight: 400; color: var(--ink-muted); }
+  html.workbench #page-library .library-grid { align-items: stretch; }
+  html.workbench #page-library .library-card { display: flex; flex-direction: column; position: relative; }
+  html.workbench #page-library .library-card .shelf-text { flex: 1 1 auto; }
+  html.workbench #page-library .lib-menu-toggle {
+    min-height: 28px; height: 28px; min-width: 36px; padding: 0 10px; border: 0; border-radius: 6px;
+    background: transparent; color: var(--ink-muted); font-size: var(--text-2); cursor: pointer;
+  }
+  html.workbench #page-library .lib-menu-toggle:hover { background: var(--surface-hover); color: var(--ink); }
+  html.workbench #page-library .lib-menu {
+    background: var(--paper-raised); border: 1px solid var(--line); border-radius: 12px;
+    box-shadow: var(--shadow-float);
+  }
+  html.workbench #page-library .lib-menu button {
+    display: block; width: 100%; text-align: left; border: 0; background: transparent;
+    padding: 8px 10px; border-radius: 8px; color: var(--ink); font-size: var(--text-2); cursor: pointer;
+  }
+  html.workbench #page-library .lib-menu button:hover { background: var(--surface-hover); }
+  html.workbench #page-library .lib-menu button.is-danger { color: var(--danger); }
+
+  /* Settings: 3+3 preset cards, 720px column, 32px nav rows. */
+  html.workbench #page-settings .theme-presets { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  html.workbench #page-settings .settings-grid { max-width: 720px; }
+  html.workbench #page-settings .settings-nav button { min-height: 32px; }
+  html.workbench #page-settings .setting-row .theme-status { display: block; margin: 2px 0 0; font-size: var(--text-1); color: var(--ink-muted); }
+
+  /* Calendar: clean grid rules and traditional-color semantics across all presets. */
+  html:is(.workbench, .tool-window) #page-calendar .calendar-stats > div { border-top: 3px solid var(--line); }
+  html:is(.workbench, .tool-window) #page-calendar .calendar-stats > div:nth-child(1) { border-top-color: var(--t3-stone); }
+  html:is(.workbench, .tool-window) #page-calendar .calendar-stats > div:nth-child(2) { border-top-color: var(--t3-cinnabar); }
+  html:is(.workbench, .tool-window) #page-calendar .calendar-stats > div:nth-child(3) { border-top-color: var(--t3-pine-ink); }
+  html.tool-window #page-calendar .calendar-layout { gap: var(--space-4); }
+  html.tool-window #page-calendar .calendar-card { padding: 0; border-radius: 0; }
+  html.tool-window #page-calendar .agenda-card { padding: 0 8px 12px 16px; }
+  html.tool-window #page-calendar .calendar-month { padding-bottom: 12px; }
+  html.tool-window #page-calendar .calendar-week { border-bottom: 0; }
+  html:is(.workbench, .tool-window) #page-calendar .calendar-grid {
+    gap: 1px; border: 1px solid var(--line); background: var(--line);
+  }
+  html:is(.workbench, .tool-window) #page-calendar .calendar-day {
+    min-height: 96px; border: 0; border-radius: 0; background: var(--paper-raised);
+    transition: background-color var(--dur-quick) var(--ease-out);
+  }
+  html:is(.workbench, .tool-window) #page-calendar .calendar-day:hover { background: var(--surface-hover); }
+  html:is(.workbench, .tool-window) #page-calendar .calendar-day:focus-visible { outline-offset: -3px; }
+  html:is(.workbench, .tool-window) #page-calendar .calendar-day.outside { opacity: 1; background: var(--paper-soft); color: var(--ink-muted); }
+  html:is(.workbench, .tool-window) #page-calendar .calendar-day.outside :is(.day-number, .lunar-day) { color: var(--ink-muted); }
+  html:is(.workbench, .tool-window) #page-calendar .calendar-day.selected { background: var(--accent-soft); box-shadow: inset 0 0 0 1px var(--accent-9); }
+  html:is(.workbench, .tool-window) #page-calendar .calendar-day:has(.work-badge.work):not(.selected):not(:hover) { background: var(--t3-stone-wash); }
+  html:is(.workbench, .tool-window) #page-calendar .calendar-day:has(.work-badge.rest):not(.selected):not(:hover) { background: var(--t3-pine-wash); }
+  html:is(.workbench, .tool-window) #page-calendar .work-badge.work { background: var(--t3-badge-work); color: var(--t3-badge-ink); }
+  html:is(.workbench, .tool-window) #page-calendar .work-badge.rest { background: var(--t3-badge-rest); color: var(--t3-badge-ink); }
+  html:is(.workbench, .tool-window) #page-calendar .calendar-day.weekend:not(.outside):not(.selected):not(:hover):not(:has(.work-badge)) { background: var(--t3-pine-wash); }
+  html:is(.workbench, .tool-window) #page-calendar .date-badge.term { color: var(--t3-gold-ink); background: var(--t3-gold-wash); border-color: var(--t3-gold); }
+  html:is(.workbench, .tool-window) #page-calendar .date-badge.holiday { color: var(--t3-cinnabar-ink); background: var(--t3-cinnabar-wash); border-color: var(--t3-cinnabar); }
+  html:is(.workbench, .tool-window) #page-calendar .calendar-day small {
+    border-radius: 4px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+  }
+  html:is(.workbench, .tool-window) #page-calendar .calendar-day small.category-work { background: var(--t3-stone-wash); color: var(--t3-stone); }
+  html:is(.workbench, .tool-window) #page-calendar .calendar-day small.category-personal { background: var(--t3-pine-wash); color: var(--t3-pine-ink); }
+  html:is(.workbench, .tool-window) #page-calendar .calendar-day small.category-study { background: var(--t3-gold-wash); color: var(--t3-gold-ink); }
+  html:is(.workbench, .tool-window) #page-calendar .calendar-legend span:nth-child(1) { color: var(--t3-stone); }
+  html:is(.workbench, .tool-window) #page-calendar .calendar-legend span:nth-child(2) { color: var(--t3-pine-ink); }
+  html:is(.workbench, .tool-window) #page-calendar .calendar-legend span:nth-child(3) { color: var(--t3-gold-ink); }
+  html:is(.workbench, .tool-window) #page-calendar .calendar-agenda-row { border-left: 3px solid var(--line); }
+  html:is(.workbench, .tool-window) #page-calendar .calendar-agenda-row.category-work { border-left-color: var(--t3-stone); }
+  html:is(.workbench, .tool-window) #page-calendar .calendar-agenda-row.category-work time { color: var(--t3-stone); }
+  html:is(.workbench, .tool-window) #page-calendar .calendar-agenda-row.category-personal { border-left-color: var(--t3-pine-ink); }
+  html:is(.workbench, .tool-window) #page-calendar .calendar-agenda-row.category-personal time { color: var(--t3-pine-ink); }
+  html:is(.workbench, .tool-window) #page-calendar .calendar-agenda-row.category-study { border-left-color: var(--t3-gold); }
+  html:is(.workbench, .tool-window) #page-calendar .calendar-agenda-row.category-study time { color: var(--t3-gold-ink); }
+  html:is(.workbench, .tool-window) #page-calendar .agenda-item { border-left: 3px solid transparent; }
+  html:is(.workbench, .tool-window) #page-calendar .agenda-item.category-work { border-left-color: var(--t3-stone); }
+  html:is(.workbench, .tool-window) #page-calendar .agenda-item.category-personal { border-left-color: var(--t3-pine-ink); }
+  html:is(.workbench, .tool-window) #page-calendar .agenda-item.category-study { border-left-color: var(--t3-gold); }
+  html:is(.workbench, .tool-window) #page-calendar .countdown-row {
+    --countdown-marker: var(--line-strong);
+    display: grid; grid-template-columns: 8px minmax(0, 1fr) auto auto; column-gap: 8px;
+    border-left: 0; padding: 12px 8px;
+  }
+  html:is(.workbench, .tool-window) #page-calendar .countdown-row::before {
+    content: ''; width: 6px; height: 6px; border-radius: 50%; background: var(--countdown-marker);
+  }
+  html:is(.workbench, .tool-window) #page-calendar .countdown-row:hover { background: var(--surface-hover); }
+  html:is(.workbench, .tool-window) #page-calendar .countdown-row[data-kind="term"] { --countdown-marker: var(--t3-gold); }
+  html:is(.workbench, .tool-window) #page-calendar .countdown-row[data-kind="holiday"] { --countdown-marker: var(--t3-cinnabar); }
+  html:is(.workbench, .tool-window) #page-calendar .countdown-row[data-kind="custom"] { --countdown-marker: var(--t3-ochre); }
+  html.tool-window #page-calendar .agenda-tabs { width: 100%; margin-bottom: 12px; }
+  html.tool-window #page-calendar .agenda-tabs button { flex: 1; }
+  html.tool-window #page-calendar #countdown-filters { justify-content: stretch; gap: 4px; margin-bottom: 12px; }
+  html.tool-window #page-calendar #countdown-filters button {
+    flex: 1; min-height: 32px; padding: 4px 0; white-space: nowrap; border-radius: 0;
+  }
+  html:is(.workbench, .tool-window) .tomorrow-preview {
+    margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--line);
+  }
+  html:is(.workbench, .tool-window) .tomorrow-row {
+    display: block; width: 100%; border: 0; background: transparent; color: var(--ink);
+    font-size: var(--text-2); text-align: left; padding: 6px 0; cursor: pointer;
+  }
+  html:is(.workbench, .tool-window) .tomorrow-row:hover { text-decoration: underline; }
+
+  /* Markdown: let each pane fill its grid track, including narrow and focus modes. */
+  @media (min-width:851px) {
+    html.tool-window .mia-shell:not(.mia-hide-library,.mia-focus) {
+      grid-template-columns: clamp(112px, 13%, 164px) 200px minmax(0, 1fr);
+    }
+  }
+  html:is(.workbench, .tool-window) #page-markdown #md-editor,
+  html:is(.workbench, .tool-window) #page-markdown #md-source-highlight {
+    white-space: pre-wrap; overflow-wrap: break-word; overflow-x: hidden;
+  }
+  html:is(.workbench, .tool-window) #page-markdown .document-heading { align-items: center; }
+
+  /* Preview dialog: 640px across all presets. */
+  html:is(.workbench, .tool-window) .preview-card {
+    max-width: 640px; width: min(640px, calc(100vw - 32px));
+  }
+  html:is(.workbench, .tool-window) .preview-actions #preview-copy {
+    background: var(--accent-9); color: var(--on-accent); border-color: var(--accent-9);
+  }
 }
-/* Window: 8px breathing room, 1px edge, 14px corners (workbench only). */
+
+/* ---------- §6 · Mist-only monochrome refinements ---------- */
 html.workbench[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) body {
-  padding: 8px; box-sizing: border-box; background: var(--t3-canvas);
+  background: var(--t3-canvas);
 }
 html.workbench[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) .app-shell {
-  border: 1px solid var(--t3-line); border-radius: 14px; height: calc(100dvh - 16px); overflow: hidden;
+  border-color: var(--t3-line);
 }
-/* Buttons: one height everywhere in the five pages and dialogs. */
-html:is(.workbench, .tool-window)[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) :is(.detail-actions, .preview-actions, .page-actions, .document-heading, .workspace-toolbar) :is(.primary-btn, .quiet-btn) {
-  height: 36px; min-height: 36px; border-radius: 8px; font-size: 13.5px;
-  display: inline-flex; align-items: center; justify-content: center;
-}
-html:is(.workbench, .tool-window)[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) .detail-actions .icon-btn {
-  height: 36px; min-height: 36px; width: 36px; border-radius: 8px;
-}
-html:is(.workbench, .tool-window)[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) :is(.modal-foot, .md-delete-actions) {
-  display: flex; align-items: center; justify-content: flex-end; gap: 8px;
-}
-html:is(.workbench, .tool-window)[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) :is(.modal-foot, .md-delete-actions) button {
-  height: 36px; min-height: 36px; border-radius: 8px; font-size: 13.5px;
-}
-html:is(.workbench, .tool-window)[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) .dialog-foot { align-items: center; }
-/* Task shelf: 20px title, 24px item rhythm, ink kind tags, stone/pine states. */
-html.workbench[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) #page-shelf .detail-head h2 { font-size: 20px; line-height: 1.3; }
 html.workbench[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) #page-shelf .task-detail .shelf-card {
-  padding-top: 12px; padding-bottom: 12px; border-bottom-color: var(--t3-strong-line);
+  border-bottom-color: var(--t3-strong-line);
 }
 html.workbench[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) #page-shelf .task-content-heading { border-top-color: var(--t3-strong-line); }
 html.workbench[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) #page-shelf .kind-tag { color: var(--t3-ink); background: var(--t3-wash); }
@@ -502,71 +667,24 @@ html.workbench[data-theme="mist"]:where(:not([data-accent-source]), [data-accent
 html.workbench[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) #page-shelf .task-state.is-done { background: var(--t3-pine-wash); color: var(--t3-pine); }
 html.workbench[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) #page-shelf .task-row-mark { border-color: var(--t3-stone); background: transparent; }
 html.workbench[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) #page-shelf .task-row-mark.is-done { background: var(--t3-pine); border-color: var(--t3-pine); }
-html.workbench[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) .side-status { font-size: 10.5px; color: var(--t3-muted); }
-html.workbench[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) .side-status b { font-size: 10px; color: var(--t3-muted); }
-html.workbench[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) .task-filters button .filter-count { margin-left: 4px; font-size: 11px; font-weight: 400; color: var(--t3-muted); }
+html.workbench[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) .side-status,
+html.workbench[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) .side-status b,
+html.workbench[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) .task-filters button .filter-count,
 html.workbench[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) .task-filters button[aria-pressed="true"] .filter-count { color: var(--t3-muted); }
-/* Library: equal-height cards, ink kind tags, hover/selected reveal, "···" menu. */
-html.workbench[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) #page-library .library-grid { align-items: stretch; }
-html.workbench[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) #page-library .library-card { display: flex; flex-direction: column; position: relative; }
-html.workbench[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) #page-library .library-card .shelf-text { flex: 1 1 auto; }
 html.workbench[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) #page-library .kind-tag { color: var(--t3-ink); background: var(--t3-wash); }
 html.workbench[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) #page-library .kind-tag::before { background: var(--t3-ink); }
-html.workbench[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) #page-library .lib-menu-toggle {
-  min-height: 28px; height: 28px; min-width: 36px; padding: 0 10px; border: 0; border-radius: 6px;
-  background: transparent; color: var(--t3-muted); font-size: 13px; cursor: pointer;
-}
-html.workbench[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) #page-library .lib-menu-toggle:hover { background: var(--t3-wash); color: var(--t3-ink); }
 html.workbench[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) #page-library .lib-menu {
-  background: var(--t3-card); border: 1px solid var(--t3-line); border-radius: 12px;
+  background: var(--t3-card); border-color: var(--t3-line);
   box-shadow: 0 1px 2px var(--t3-shadow-near), 0 8px 24px var(--t3-shadow-far);
 }
-html.workbench[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) #page-library .lib-menu button {
-  display: block; width: 100%; text-align: left; border: 0; background: transparent;
-  padding: 8px 10px; border-radius: 8px; color: var(--t3-ink); font-size: 13px; cursor: pointer;
-}
-html.workbench[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) #page-library .lib-menu button:hover { background: var(--t3-wash); }
 html.workbench[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) #page-library .lib-menu button.is-danger { color: var(--t3-cinnabar); }
-/* Settings: 3+3 preset cards, 720px column, 32px nav rows. */
-html.workbench[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) #page-settings .theme-presets { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-html.workbench[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) #page-settings .settings-grid { max-width: 720px; }
-html.workbench[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) #page-settings .settings-nav button { min-height: 32px; }
-/* Calendar: shorter rows, two-line event pills with a hover title. */
-html:is(.workbench, .tool-window)[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) #page-calendar .calendar-day { min-height: 96px; }
-html:is(.workbench, .tool-window)[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) #page-calendar .calendar-day small {
-  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
-}
-/* Markdown: let each pane fill its grid track, including narrow and focus modes. */
-@media (min-width:851px) {
-  html.tool-window[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) .mia-shell:not(.mia-hide-library,.mia-focus) {
-    grid-template-columns:clamp(112px, 13%, 164px) 200px minmax(0, 1fr);
-  }
-}
-html:is(.workbench, .tool-window)[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) #page-markdown #md-editor,
-html:is(.workbench, .tool-window)[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) #page-markdown #md-source-highlight {
-  white-space: pre; overflow-x: auto;
-}
-html:is(.workbench, .tool-window)[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) #page-markdown .document-heading { align-items: center; }
-/* Preview dialog: 640px, black primary copy, compact-copy as a small row below the body. */
-html:is(.workbench, .tool-window)[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) .preview-card {
-  max-width: 640px; width: min(640px, calc(100vw - 32px));
-}
 html:is(.workbench, .tool-window)[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) .preview-actions #preview-copy {
   background: var(--t3-accent); color: var(--t3-on-accent); border-color: var(--t3-accent);
 }
 .pv-compact-row {
   display: flex; align-items: center; gap: 12px; margin: 12px 0 4px;
 }
-.pv-compact-note { font-size: 12px; color: var(--t3-muted); }
-/* §6 — the five remaining items (v15). */
-/* Settings: #theme-status is now a small hint inside the accent-source row. */
-html.workbench[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) #page-settings .setting-row .theme-status { display: block; margin: 2px 0 0; font-size: 12px; color: var(--t3-muted); }
-/* Calendar: tomorrow preview under the side-panel list. */
-html:is(.workbench, .tool-window)[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) .tomorrow-preview {
-  margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--t3-line);
-}
-html:is(.workbench, .tool-window)[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) .tomorrow-row {
-  display: block; width: 100%; border: 0; background: transparent; color: var(--t3-ink);
-  font-size: 13px; text-align: left; padding: 6px 0; cursor: pointer;
-}
-html:is(.workbench, .tool-window)[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) .tomorrow-row:hover { text-decoration: underline; }
+.pv-compact-note { font-size: var(--text-1); color: var(--ink-muted); }
+html.workbench[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) #page-settings .setting-row .theme-status { color: var(--t3-muted); }
+html:is(.workbench, .tool-window)[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) .tomorrow-preview { border-top-color: var(--t3-line); }
+html:is(.workbench, .tool-window)[data-theme="mist"]:where(:not([data-accent-source]), [data-accent-source="preset"]) .tomorrow-row { color: var(--t3-ink); }

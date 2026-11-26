@@ -281,7 +281,7 @@
         <div class="card-actions" role="group" aria-label="卡片操作">${actions.map(action => cardButton(action, item)).join('')}<span class="card-more-slot"></span></div>
       </div>
       <div class="${visualClass}">${visual}</div>
-      <div class="card-foot">${source}<span class="card-metadata" title="${escapeHtml(metadata)}">${escapeHtml(metadata)}</span></div>
+      <div class="card-foot">${source}<span class="card-metadata" title="${escapeHtml(metadata)}">${escapeHtml(metadata)}</span>${index < 9 ? `<kbd class="card-hotkey" aria-hidden="true" title="Alt+${index + 1} 快速粘贴">${index + 1}</kbd>` : ''}</div>
     </article>`;
   }
 
@@ -443,6 +443,11 @@
             const nextFooter = next.querySelector('.card-metadata');
             footer.textContent = nextFooter.textContent;
             footer.title = nextFooter.title;
+            const prevKey = card.querySelector('.card-hotkey');
+            const nextKey = next.querySelector('.card-hotkey');
+            if (prevKey && nextKey) prevKey.replaceWith(nextKey);
+            else if (prevKey && !nextKey) prevKey.remove();
+            else if (!prevKey && nextKey) card.querySelector('.card-foot')?.append(nextKey);
           }
           card.id = next.id;
           card.dataset.index = String(index);
@@ -473,6 +478,15 @@
     $$('[data-filter]').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.filter === state.filter)));
     configureEmpty();
     syncSelection();
+    syncTrackFades();
+  }
+
+  function syncTrackFades() {
+    const track = $('#bar-track');
+    if (!track || track.hidden) return;
+    const overflow = track.scrollWidth - track.clientWidth;
+    track.dataset.fadeLeft = String(overflow > 4 && track.scrollLeft > 4);
+    track.dataset.fadeRight = String(overflow > 4 && track.scrollLeft < overflow - 4);
   }
 
   function scrollCardIntoView(index, behavior = 'smooth') {
@@ -892,6 +906,17 @@
       }
       if (key !== 'Enter') return;
     }
+    if (event.altKey && !event.ctrlKey && !event.metaKey) {
+      const codeMatch = /^Digit([1-9])$/.exec(event.code || '');
+      const keyMatch = !event.shiftKey ? /^[1-9]$/.exec(key) : null;
+      const digit = codeMatch ? Number(codeMatch[1]) : keyMatch ? Number(keyMatch[0]) : 0;
+      if (digit >= 1 && digit <= state.items.length && !state.batchMode) {
+        event.preventDefault();
+        selectIndex(digit - 1, { behavior: 'instant' });
+        if (!event.repeat) submitSelected();
+        return;
+      }
+    }
     if((event.ctrlKey||event.metaKey)&&key.toLowerCase()==='c'&&!window.getSelection()?.toString()){event.preventDefault();copySelected();return;}
     if(key===' '){event.preventDefault();previewSelected();return;}
     if (key === 'ArrowLeft' || key === 'ArrowRight' || key === 'Home' || key === 'End') {
@@ -1078,7 +1103,11 @@
     if (track) {
       track.addEventListener('scroll', () => {
         if (shareAnchor?.closest('.bar-card')) closeShare();
+        syncTrackFades();
       }, { passive: true });
+      if (typeof ResizeObserver === 'function') {
+        new ResizeObserver(() => syncTrackFades()).observe(track);
+      }
       track.addEventListener('click', onTrackClick);
       track.addEventListener('wheel', onWheel, { passive: false });
     }

@@ -58,7 +58,7 @@ button { color: inherit; }
   display: none;
   pointer-events: none;
   background:var(--overlay-dim-surface);
-  will-change: left, top, width, height;
+  contain: layout style;
 }
 
 #capture-root.has-selection .dim { display: block; }
@@ -72,7 +72,7 @@ button { color: inherit; }
   box-shadow:var(--overlay-selection-shadow);
   cursor: move;
   pointer-events: none;
-  will-change: left, top, width, height;
+  container-type: size;
 }
 
 #capture-root[data-tool="select"] .selection {
@@ -97,6 +97,15 @@ button { color: inherit; }
   box-shadow:var(--overlay-handle-shadow);
   z-index: 3;
   pointer-events: auto;
+  transition: scale var(--dur-quick) var(--ease-out);
+}
+.handle::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+}
+.handle:hover {
+  scale: 1.22;
 }
 .handle.nw { left: calc(var(--space-1) * -1.5); top: calc(var(--space-1) * -1.5); cursor: nwse-resize; }
 .handle.n { left: 50%; top: calc(var(--space-1) * -1.5); transform: translateX(-50%); cursor: ns-resize; }
@@ -106,6 +115,31 @@ button { color: inherit; }
 .handle.s { left: 50%; bottom: calc(var(--space-1) * -1.5); transform: translateX(-50%); cursor: ns-resize; }
 .handle.sw { left: calc(var(--space-1) * -1.5); bottom: calc(var(--space-1) * -1.5); cursor: nesw-resize; }
 .handle.w { left: calc(var(--space-1) * -1.5); top: 50%; transform: translateY(-50%); cursor: ew-resize; }
+@container (min-width: 64px) and (min-height: 64px) {
+  .handle::after {
+    inset: -6px;
+  }
+}
+@container (max-width: 44px) {
+  .handle.n, .handle.s {
+    display: none;
+  }
+}
+@container (max-height: 44px) {
+  .handle.e, .handle.w {
+    display: none;
+  }
+}
+@container (max-width: 24px) {
+  .handle { width: 6px; height: 6px; }
+  .handle.nw, .handle.sw, .handle.w { left: -4px; }
+  .handle.ne, .handle.se, .handle.e { right: -4px; }
+}
+@container (max-height: 24px) {
+  .handle { width: 6px; height: 6px; }
+  .handle.nw, .handle.ne, .handle.n { top: -4px; }
+  .handle.sw, .handle.se, .handle.s { bottom: -4px; }
+}
 
 .size-badge {
   position: absolute;

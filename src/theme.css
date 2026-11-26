@@ -23,7 +23,7 @@
   font-family: "MiSans VF";
   src: url(../assets/fonts/MiSansVF.ttf);
   font-weight: 150 700;
-  font-display: block;
+  font-display: swap;
 }
 
 :root {
@@ -189,7 +189,8 @@
   --text-4: 20px;
 
   --font-system: "Segoe UI Variable Text", "Microsoft YaHei UI", sans-serif;
-  --font-ui: "MiSans VF", "Segoe UI Variable Text", "Microsoft YaHei UI", sans-serif;
+  --font-ui: "Segoe UI Variable Text", "Inter", "MiSans VF", "Microsoft YaHei UI", system-ui, sans-serif;
+  --font-mono: "Cascadia Mono", "Cascadia Code", Consolas, "MiSans VF", monospace;
 
   /* Shared restrained surfaces: desktop color stays outside readable content. */
   --tool-surface: color-mix(in srgb,var(--slate-2) 94%,transparent);
@@ -1072,10 +1073,10 @@ html, body {
   --styles-trail-retry-border: 0.5px solid var(--red-7);
 }
 .setting-row input[type="checkbox"] {
-  --styles-setting-row-checkbox-background-image: radial-gradient(circle 8.5px at 10.5px 50%, #fff 99%, transparent 100%);
+  --styles-setting-row-checkbox-background-image: radial-gradient(circle 8.5px at 10.5px 50%, var(--switch-thumb-off, #fff) 99%, transparent 100%);
 }
 .setting-row input[type="checkbox"]:checked {
-  --styles-setting-row-checkbox-background-image-alt: radial-gradient(circle 8.5px at 27.5px 50%, #fff 99%, transparent 100%);
+  --styles-setting-row-checkbox-background-image-alt: radial-gradient(circle 8.5px at 27.5px 50%, var(--switch-thumb-on, #fff) 99%, transparent 100%);
 }
 .tool-window[data-tool="calendar"] {
   --window-marker: #d55348;
@@ -1494,6 +1495,11 @@ html,body {
   --t3-press: #000000;
   --t3-accent-ink: var(--t3-accent);
   --t3-on-accent: var(--t3-card);
+  --t3-badge-ink: #ffffff;
+  --t3-checkbox-check: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='m3 8 3 3 7-7' fill='none' stroke='white' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  --t3-checkbox-mixed: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M3 8h10' stroke='white' stroke-width='2' stroke-linecap='round'/%3E%3C/svg%3E");
+  --t3-switch-thumb: #ffffff;
+  --t3-switch-thumb-off: #ffffff;
   --t3-badge-work: var(--t3-stone);
   --t3-badge-rest: var(--t3-pine);
   --t3-today-surface: var(--t3-cinnabar-wash);
@@ -1526,10 +1532,15 @@ html,body {
     --t3-muted: #a3a3a3;
     --t3-line: #353538;
     --t3-strong-line: #565659;
-    --t3-accent: #3b3b3e;
-    --t3-press: #4a4a4d;
+    --t3-accent: #f4f4f5;
+    --t3-press: #e4e4e7;
     --t3-accent-ink: var(--t3-ink);
-    --t3-on-accent: #ffffff;
+    --t3-on-accent: #131315;
+    --t3-badge-ink: #ffffff;
+    --t3-checkbox-check: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='m3 8 3 3 7-7' fill='none' stroke='%23131315' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+    --t3-checkbox-mixed: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M3 8h10' stroke='%23131315' stroke-width='2' stroke-linecap='round'/%3E%3C/svg%3E");
+    --t3-switch-thumb: #131315;
+    --t3-switch-thumb-off: #d4d4d4;
     --t3-stone-wash: #202f3a;
     --t3-stone: #9ac2dc;
     --t3-pine-wash: #222f26;
