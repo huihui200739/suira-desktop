@@ -41,6 +41,7 @@ const { registerContentIpc } = require('./lib/content-ipc');
 const { registerTranslationIpc } = require('./lib/translation-ipc');
 const { createRemovalUndo } = require('./lib/removal-undo');
 const { createQuitCoordinator } = require('./lib/quit-coordinator');
+const { flushRendererDrafts, runRendererScript } = require('./lib/renderer-flush');
 const { recordDiagnostic } = require('./lib/diagnostic-log');
 const windowIpc = createWindowBoundary({ ipcMain, BrowserWindow, srcDir: path.join(__dirname, 'src') });
 const os = require('node:os');
@@ -58,28 +59,30 @@ function updates(){
     factory:()=>require('electron-updater').autoUpdater,
     beforeInstall:async()=>{
       if(captureBusy||longCapture)throw Error('请先完成截图');
-      const windows=[mainWindow,...workspaceWindows.values(),...noteWindows.values()].filter(win=>win&&!win.isDestroyed());
-      await Promise.all(windows.map(win=>win.webContents.executeJavaScript('Promise.resolve(window.WorkspaceUI?.flush()).then(()=>window.NoteUI?.flush())')));
+      const windows=[mainWindow,...workspaceWindows.values(),...noteDomain.activeWindows()].filter(win=>win&&!win.isDestroyed());
+      await Promise.all(windows.map(win => flushRendererDrafts(win)));
       await flushNotes();
       const calendar=workspaceWindows.get('calendar');
-      if(calendar&&!calendar.isDestroyed()&&(await calendar.webContents.executeJavaScript('window.WorkspaceUI?.calendarBlocksUpdate()')||calendarDrafts.has(calendar.webContents.id))) {
+      if(calendar&&!calendar.isDestroyed()&&(await runRendererScript(calendar, 'window.WorkspaceUI?.calendarBlocksUpdate()')||calendarDrafts.has(calendar.webContents.id))) {
         throw Object.assign(Error('请先处理日历中未保存的日程，再重启更新。'),{code:'CALENDAR_DRAFT_PENDING'});
       }
       for(const win of workspaceWindows.values())win.__allowClose=true;isQuitting=true;updateInstallPrepared=true;
     }});
   updateController.on('state',state=>{if(state.phase==='error'&&updateInstallPrepared){isQuitting=false;updateInstallPrepared=false;for(const win of workspaceWindows.values())win.__allowClose=false;}broadcast('updates:state',state);});return updateController;
 }
-const { pathToFileURL, fileURLToPath } = require('node:url');
+const { pathToFileURL } = require('node:url');
+const { createPinWindows } = require('./lib/pin-windows');
 const { SuiraStore, makeId } = require('./lib/store');
 const { createManagedImages } = require('./lib/managed-images');
 const { serviceEndpoint } = require('./lib/service-endpoint');
 const { OcrService } = require('./lib/ocr');
 const translateLib = require('./lib/translate');
-const voiceInput = require('./lib/voice-input');
+const { validateEndpoint: validateVoiceEndpoint } = require('./lib/voice-input');
+const { createVoiceWindow, voiceSettingsSummary, VOICE_KEY_AAD } = require('./lib/voice-window');
 const { createActionRegistry, mergeLines, cleanText } = require('./lib/actions');
 const { RECIPES, getRecipe, listRecipes, runRecipe } = require('./lib/recipes');
 const { searchCandidates, searchAppCandidates, COMMANDS } = require('./lib/search');
-const { readWithRetry, shouldExcludeCapture, summarizeLargeText, sameBytes } = require('./lib/clipboard-guard');
+const { shouldExcludeCapture, summarizeLargeText } = require('./lib/clipboard-guard');
 const { captureTarget, validateTarget, decideCommit, normalizeHwnd, ClipboardWriteLedger } = require('./lib/return-target');
 const { AppIndex } = require('./lib/app-index');
 const { createAppIconLoader, extractResourceBatch } = require('./lib/app-icons');
@@ -102,7 +105,8 @@ const { KeyWatchProbe } = require('./lib/key-watch');
 const { appNativeHost } = require('./lib/native-hosts');
 const islandModel = require('./lib/island-model');
 // 第三批第 4 项：速记的纯模型（标题推导 / 容量 / 位置校验）
-const notesLib = require('./lib/notes');
+const { summarizeNotes } = require('./lib/notes');
+const { createNoteWindows } = require('./lib/note-windows');
 const imageEditor = require('./lib/image-editor');
 const {shortcutAdapter,shortcutReport}=require('./lib/shortcut-policy');
 const {markdownPaths,createMarkdownFiles}=require('./lib/markdown-files');
@@ -113,6 +117,7 @@ const {longCaptureTarget,settledFirstFrame,sourceProbePoint}=require('./lib/long
 const { contains, receiverBounds, receiverDisplay, edgeWindowShape, IslandPointerProbe } = require('./lib/island-wake');
 // 核心框架：剪贴板捕获（文件引用/去重比较）的纯模型，便于单元测试
 const clipboardCapture = require('./lib/clipboard-capture');
+const { createClipboardHistory } = require('./lib/clipboard-history');
 const { execFile } = require('node:child_process');
 
 const APP_NAME = '随序 SUIRA';
@@ -148,39 +153,22 @@ let longPickerWorker = null;
 
 let store = null;
 let themeController = null;
-windowIpc.on('theme:initial', event => { event.returnValue = themeController?.snapshot() || null; });
+windowIpc.handleSync('theme:initial', () => themeController?.snapshot());
 windowIpc.handle('theme:state', () => themeController?.snapshot() || null);
 let ocr = null;
 let actions = null;
 let mainWindow = null;
 let quickWindow = null;
-let voiceWindow = null;
-let voiceSessionTarget = null;
-let voiceRequestController = null;
-let voicePermissionSession = null;
 let panelBindingPickerOpen = false;
 let overlayWindow = null;
 let tray = null;
 let capturePayload = null;
-let stopClipboardWatcher = null;
-let clipboardWatcherError = '';
 let clipboardWatcherReady = Promise.resolve();
-let lastClipboardText = '';
-let lastClipboardImageHash = '';
-// 重复通知时按原始字节复用解码结果。
-let lastClipboardImageRaw = null;
-let lastClipboardImageKey = '';
-let lastClipboardImageType = '';
-let lastClipboardFilesKey = '';
-let clipboardWriteGuard = '';
 let isQuitting = false;
 let quickReady = false;
 let captureBusy = false;
 let regionCaptureRevision = 0;
-let captureGeneration = 0;
-let lastClipboardSequence = null;
 let mainWasVisible = false;
-const pinWindows = new Set();
 const editorWindows = new Map();
 // 浮引岛（文件中转）与按住型唤起的状态
 let islandWindow = null;
@@ -267,7 +255,6 @@ const RETURN_FOCUS_DELAY = 120;
 /* ---------- 翻译引擎（图片取词翻译） ---------- */
 
 const TRANSLATE_KEY_AAD = 'settings:translateApiKey';
-const VOICE_KEY_AAD = 'settings:voiceApiKey';
 
 /** 密钥明文只在主进程内存里存在，落盘一律走数据密钥加密。 */
 function encryptSecret(plaintext, aad = TRANSLATE_KEY_AAD) {
@@ -284,35 +271,7 @@ function decryptSecret(envelope, aad = TRANSLATE_KEY_AAD) {
 function publicSettings() {
   const settings = store ? store.getSettings() : {};
   const { translateApiKeyEnc, voiceApiKeyEnc, ...rest } = settings;
-  const voiceUrl = settings.voiceBaseUrl || settings.translateBaseUrl || '';
-  const voiceCanReuseTranslateKey = voiceInput.canReuseApiKey({ targetUrl: voiceUrl, sourceUrl: settings.translateBaseUrl,
-    sourceProvider: settings.translateProvider, hasSourceKey: Boolean(translateApiKeyEnc) });
-  return { ...rest, translateApiKeySet: Boolean(translateApiKeyEnc), voiceApiKeySet: Boolean(voiceApiKeyEnc), voiceCanReuseTranslateKey };
-}
-
-function voiceConfig() {
-  const settings = store ? store.getSettings() : {};
-  const format = settings.voiceProvider === 'openai' ? 'openai' : 'deepseek';
-  const baseUrl = String(settings.voiceBaseUrl || settings.translateBaseUrl || (format === 'deepseek' ? 'https://api.deepseek.com/v1' : '')).trim();
-  let apiKey = decryptSecret(settings.voiceApiKeyEnc, VOICE_KEY_AAD);
-  if (!apiKey && settings.translateProvider === 'openai' && settings.translateApiKeyEnc) {
-    const share = voiceInput.canReuseApiKey({ targetUrl: baseUrl, sourceUrl: settings.translateBaseUrl,
-      sourceProvider: settings.translateProvider, hasSourceKey: true });
-    if (share) apiKey = decryptSecret(settings.translateApiKeyEnc);
-  }
-  return { format, baseUrl,
-    model: String(settings.voiceModel || '').trim(), apiKey };
-}
-
-function voiceStatus() {
-  const settings = store ? store.getSettings() : {};
-  const config = voiceConfig();
-  const hasVoiceKey = Boolean(settings.voiceApiKeyEnc);
-  const canReuseTranslateKey = voiceInput.canReuseApiKey({ targetUrl: config.baseUrl, sourceUrl: settings.translateBaseUrl,
-    sourceProvider: settings.translateProvider, hasSourceKey: Boolean(settings.translateApiKeyEnc) });
-  const endpoint = voiceInput.buildEndpoint(config.baseUrl, config.format);
-  return { ok: true, provider: config.format, model: config.model,
-    hasVoiceKey, canReuseTranslateKey, configured: Boolean(config.apiKey && endpoint.ok && (config.format !== 'openai' || config.model)) };
+  return { ...rest, translateApiKeySet: Boolean(translateApiKeyEnc), ...voiceSettingsSummary(settings) };
 }
 
 /** 当前生效的翻译配置（含解密后的密钥）。 */
@@ -711,7 +670,6 @@ async function rememberClipboardText(text, source = {}) {
     return duplicate;
   }
 
-  clipboardWriteGuard = value;
   const item = store.addItem({
     kind: candidate.kind,
     title: value.trim().slice(0, 42) || '文字',
@@ -792,286 +750,24 @@ async function clipboardSourceSnapshot(method = 'clipboard-update') {
   }
 }
 
-async function readClipboardText() {
-  const result = await readWithRetry(
-    async () => String(await clipboard.readText() || ''),
-    (value) => !String(value || '').length
-  );
-  return result.value || '';
-}
+const clipboardHistory = createClipboardHistory({
+  clipboard, ClipboardItem, nativeImage, hashBuffer, clipboardLedger,
+  isEnabled: () => Boolean(store?.getSettings().recordClipboard),
+  sequenceNumber: () => inputInjector.clipboardSequence(),
+  copyFileList: (...args) => require('./lib/clipboard-file-list').copyFileList(...args),
+  createListenerWindow: () => windowIpc.create('clipboardListener', { show: false, skipTaskbar: true, focusable: false }),
+  watchNative: (...args) => require('./lib/windows-clipboard-events').watchWindowsClipboard(...args),
+  clipboardSourceSnapshot, rememberClipboardText, rememberClipboardFiles, addImageToStore,
+  onDiagnostic: (area, error) => reportDiagnostic('warn', area, error)
+});
+const { pollClipboard, readClipboardText, writeClipboardText, writeClipboardImage, writeClipboardFileList } = clipboardHistory;
 
-async function readClipboardImage() {
-  const result = await readWithRetry(
-    async () => {
-      const items = await clipboard.read();
-      const imageItem = items.find((item) => item.types?.some((type) => type.startsWith('image/')));
-      if (!imageItem) return null;
-      const type = imageItem.types.find((value) => value.startsWith('image/'));
-      const blob = await imageItem.getType(type);
-      const buffer = Buffer.from(await blob.arrayBuffer());
-      const image = nativeImage.createFromBuffer(buffer);
-      return image.isEmpty() ? null : image;
-    },
-    (value) => value == null
-  );
-  if (result.error) console.warn('剪贴板图片读取重试后仍失败:', result.error.message);
-  return result.value || null;
-}
-
-/**
- * 一次读取剪贴板的完整快照（文字 / 文件引用 / 图片）。
- *
- * 为什么要一次读完：Electron 45 的 clipboard.read() 每次都会打开系统剪贴板，
- * 分三次读既慢又容易在锁竞争时读到不一致的状态。
- * 平台格式优先级：text/plain 可靠；复制文件时只有 text/uri-list（没有 text/plain）。
- */
-/** 只读 5 个 64 字节片段做指纹：剪贴板没变时就不必把整张 4K PNG 读进 JS 堆。 */
-async function imageBlobFingerprint(blob) {
-  const size = blob.size;
-  if (!size) return '';
-  const positions = [0, Math.floor(size / 4), Math.floor(size / 2), Math.floor(size * 3 / 4), Math.max(0, size - 64)];
-  const chunks = [];
-  for (const start of positions) {
-    chunks.push(Buffer.from(await blob.slice(start, Math.min(size, start + 64)).arrayBuffer()).toString('base64'));
-  }
-  return `${size}:${chunks.join('|')}`;
-}
-
-async function readClipboardSnapshot() {
-  const empty = { text: '', files: [], imageBuffer: null, imageType: '', imageKey: '' };
-  const result = await readWithRetry(async () => {
-    const items = await clipboard.read();
-    if (!Array.isArray(items) || !items.length) return empty;
-    const snapshot = { text: '', files: [], imageBuffer: null, imageType: '', imageKey: '' };
-
-    const textItem = items.find((item) => item.types?.includes('text/plain'));
-    if (textItem) {
-      try {
-        const blob = await textItem.getType('text/plain');
-        snapshot.text = String(typeof blob === 'string' ? blob : await blob.text());
-      } catch { /* 文本读取失败不影响图片/文件 */ }
-    }
-
-    const uriItem = items.find((item) => item.types?.includes('text/uri-list'));
-    if (uriItem) {
-      try {
-        const blob = await uriItem.getType('text/uri-list');
-        const uriText = String(typeof blob === 'string' ? blob : await blob.text());
-        snapshot.files = clipboardCapture.parseClipboardFileUris(uriText);
-      } catch { /* 文件列表格式异常时当作没有文件 */ }
-    }
-
-    const imageItem = items.find((item) => item.types?.some((type) => type.startsWith('image/')));
-    if (imageItem) {
-      try {
-        const type = imageItem.types.find((value) => value.startsWith('image/'));
-        const blob = await imageItem.getType(type);
-        const imageKey = await imageBlobFingerprint(blob);
-        snapshot.imageKey = imageKey;
-        if (imageKey && imageKey === lastClipboardImageKey && lastClipboardImageRaw) {
-          // 指纹一致：直接沿用上一次的原始字节，不再分配一整块 PNG Buffer
-          snapshot.imageBuffer = lastClipboardImageRaw;
-          snapshot.imageType = lastClipboardImageType;
-        } else {
-          const buffer = Buffer.from(await blob.arrayBuffer());
-          // 这里只留原始字节，不在轮询里解码：解码 4K 截图要几十毫秒
-          if (buffer.length) {
-            snapshot.imageBuffer = buffer;
-            snapshot.imageType = type;
-          }
-        }
-      } catch { /* 图片读取失败时忽略这一项 */ }
-    }
-    // 兜底：read() 没暴露出图片项、但系统明确说有图片格式时，退回 readImage()。
-    // 宁可多解一次图，也不能因为读法差异漏掉用户的截图。
-    if (!snapshot.imageBuffer) {
-      try {
-        const hasImageFormat = clipboard.availableFormats().some((format) => String(format).startsWith('image/'));
-        if (hasImageFormat) {
-          const fallback = clipboard.readImage();
-          if (fallback && !fallback.isEmpty()) {
-            snapshot.imageBuffer = fallback.toPNG();
-            snapshot.imageType = 'image/png';
-          }
-        }
-      } catch { /* 读不到就当作没有图片 */ }
-    }
-    return snapshot;
-  }, (value) => value == null);
-
-  if (result.error) throw result.error;
-  return result.value || empty;
-}
-
-async function writeClipboardText(text) {
-  const value = String(text || '');
-  clipboardWriteGuard = value;
-  await clipboard.writeText(value);
-  // 记录序号与内容，供自写回环判定（第 7 节）
-  clipboardLedger.record(value);
-  lastClipboardText = value;
-  lastClipboardImageRaw = null;
-  lastClipboardImageHash = '';
-  lastClipboardImageKey = '';
-  lastClipboardImageType = '';
-  lastClipboardFilesKey = '';
-  clipboardWriteGuard = '';
-}
-
-async function writeClipboardImage(image) {
-  const png = image.toPNG();
-  clipboardWriteGuard = await readClipboardText();
-  const recording = store.getSettings().recordClipboard;
-  lastClipboardImageHash = recording ? hashBuffer(png) : '';
-  // 自己的写入也记进字节缓存，下一趟轮询就不会再解一次
-  lastClipboardImageRaw = recording ? png : null;
-  lastClipboardImageKey = ''; // 让下一趟重新取一次指纹，不与上一张图混淆
-  lastClipboardImageType = recording ? 'image/png' : '';
-  await clipboard.write([new ClipboardItem({ 'image/png': png })]);
-  lastClipboardText = await readClipboardText();
-  lastClipboardFilesKey = '';
-  clipboardLedger.record(lastClipboardText);
-  clipboardWriteGuard = '';
-}
-
-function writeClipboardFileList(win, paths) {
-  require('./lib/clipboard-file-list').copyFileList(win.getNativeWindowHandle(), paths);
-  // Suppress recapture of our own file list.
-  ++captureGeneration;
-  lastClipboardSequence = inputInjector.clipboardSequence();
-  lastClipboardFilesKey = paths.join('\n').toLowerCase();
-  lastClipboardText = lastClipboardImageHash = lastClipboardImageKey = lastClipboardImageType = '';
-  lastClipboardImageRaw = null;
-}
-
-let clipboardPollBusy = false;
-let clipboardUpdatePending = false;
-let clipboardUpdateScheduled = false;
-function scheduleClipboardUpdate() {
-  if (!stopClipboardWatcher || !store.getSettings().recordClipboard) return;
-  clipboardUpdatePending = true;
-  if (clipboardUpdateScheduled || clipboardPollBusy || clipboardSeeding || selectionPollingPaused || clipboardLedger.transientDepth) return;
-  clipboardUpdateScheduled = true;
-  setImmediate(() => {
-    clipboardUpdateScheduled = false;
-    if (!clipboardUpdatePending || !stopClipboardWatcher || selectionPollingPaused || clipboardLedger.transientDepth) return;
-    clipboardUpdatePending = false;
-    void pollClipboard();
-  });
-}
-let selectionPollingPaused=false,panelSelection=null;
+let panelSelection = null;
 const selectionReader=require('./lib/selection').createSelectionReader({
   clipboard,ClipboardItem,ledger:clipboardLedger,sequence:()=>inputInjector.clipboardSequence(),sendCopy:target=>inputInjector.sendCopy(target),
   isCurrent:target=>{const current=panelNative.foreground();return Boolean(current&&String(current.hwnd)===String(target.hwnd)&&Number(current.pid)===Number(target.pid)&&Number(current.processStartedAt)===Number(target.processStartedAt));},
-  pause:()=>{selectionPollingPaused=true;++captureGeneration;return ()=>{++captureGeneration;selectionPollingPaused=false;if(clipboardUpdatePending)scheduleClipboardUpdate();};}
+  pause: clipboardHistory.pause
 });
-async function pollClipboard() {
-  if (!store.getSettings().recordClipboard || clipboardPollBusy || clipboardSeeding || selectionPollingPaused || clipboardLedger.transientDepth) return;
-  const sequence = inputInjector.clipboardSequence();
-  if (sequence !== null && sequence === lastClipboardSequence) return;
-  clipboardPollBusy = true;
-  const sourceAtUpdate = clipboardSourceSnapshot('clipboard-update');
-  try {
-    const generation = ++captureGeneration;
-    const snapshot = await readClipboardSnapshot();
-    if (generation !== captureGeneration||selectionPollingPaused||clipboardLedger.transientDepth) return;
-    if (sequence !== null && inputInjector.clipboardSequence() !== sequence) return;
-
-    const text = snapshot.text || '';
-    const filesKey = snapshot.files.length ? snapshot.files.join('\n').toLowerCase() : '';
-    const rawImage = snapshot.imageBuffer;
-    // 字节相同 = 图片没变：这一趟不解码、不编码、不算哈希
-    // 命中指纹时复用的就是同一个 Buffer 引用，连逐字节比较都不必做
-    const imageBytesChanged = Boolean(rawImage) && rawImage !== lastClipboardImageRaw && !sameBytes(lastClipboardImageRaw, rawImage);
-
-    let image = null;
-    let imageHash = lastClipboardImageHash;
-    if (imageBytesChanged) {
-      const decoded = nativeImage.createFromBuffer(rawImage);
-      if (!decoded.isEmpty()) {
-        image = decoded;
-        imageHash = hashBuffer(decoded.toPNG());
-      }
-    }
-
-    const textChanged = Boolean(text && text !== lastClipboardText);
-    const filesChanged = Boolean(filesKey && filesKey !== lastClipboardFilesKey);
-    const imageChanged = Boolean(image && imageHash !== lastClipboardImageHash);
-    // 自写回环：本次变化若仍是我们刚写入的内容，不重复入库
-    const ownWrite = clipboardLedger.shouldIgnore(text);
-    const stillCurrent = () => generation === captureGeneration &&
-      (sequence === null || inputInjector.clipboardSequence() === sequence);
-
-    if (textChanged && !ownWrite && text !== clipboardWriteGuard) {
-      const source = await sourceAtUpdate;
-      if (stillCurrent()) await rememberClipboardText(text, source);
-    } else if (filesChanged) {
-      const source = await sourceAtUpdate;
-      if (stillCurrent()) await rememberClipboardFiles(snapshot.files, { ...source, acquisitionMethod: 'clipboard-file-update' });
-    } else if (imageChanged && !text && !filesKey) {
-      const source = await sourceAtUpdate;
-      if (stillCurrent()) await addImageToStore(image, { ...source, acquisitionMethod: 'clipboard-image-update' });
-    }
-
-    if (!stillCurrent()) return;
-    lastClipboardSequence = sequence;
-    lastClipboardText = text;
-    lastClipboardFilesKey = filesKey;
-    // 图片被清空时同步清掉缓存，下次再遇到图片会重新解码
-    lastClipboardImageRaw = rawImage || null;
-    lastClipboardImageKey = rawImage ? (snapshot.imageKey || '') : '';
-    lastClipboardImageType = rawImage ? snapshot.imageType : '';
-    lastClipboardImageHash = rawImage ? imageHash : '';
-    if (clipboardWriteGuard && text === clipboardWriteGuard) clipboardWriteGuard = '';
-  } catch (error) {
-    console.warn('剪贴板读取失败:', error.message);
-  } finally {
-    clipboardPollBusy = false;
-    if (clipboardUpdatePending) scheduleClipboardUpdate();
-  }
-}
-
-async function startClipboardWatcher() {
-  stopClipboardWatcher?.();
-  stopClipboardWatcher = null;
-  clipboardUpdatePending = false;
-  if (!store.getSettings().recordClipboard) return;
-  const win = windowIpc.create('clipboardListener', { show: false, skipTaskbar: true, focusable: false });
-  try {
-    const dispose = require('./lib/windows-clipboard-events').watchWindowsClipboard(win, scheduleClipboardUpdate);
-    stopClipboardWatcher = () => { dispose(); if (!win.isDestroyed()) win.destroy(); };
-    await seedClipboardWatcher();
-    clipboardWatcherError = '';
-  } catch (error) {
-    stopClipboardWatcher?.();
-    stopClipboardWatcher = null;
-    if (!win.isDestroyed()) win.destroy();
-    throw error;
-  }
-}
-
-let clipboardSeeding = null;
-async function seedClipboardWatcher() {
-  const generation = ++captureGeneration;
-  const sequence = inputInjector.clipboardSequence();
-  const read = readClipboardSnapshot();
-  clipboardSeeding = read;
-  let initial;
-  try { initial = await read; }
-  finally {
-    if (clipboardSeeding === read) clipboardSeeding = null;
-    if (clipboardUpdatePending) scheduleClipboardUpdate();
-  }
-  if (generation !== captureGeneration) return;
-  if (sequence !== null && inputInjector.clipboardSequence() !== sequence) return;
-  lastClipboardSequence = sequence;
-  lastClipboardText = initial.text || '';
-  lastClipboardFilesKey = initial.files.length ? initial.files.join('\n').toLowerCase() : '';
-  lastClipboardImageRaw = initial.imageBuffer || null;
-  lastClipboardImageKey = initial.imageKey || '';
-  lastClipboardImageType = initial.imageType || '';
-  lastClipboardImageHash = initial.imageBuffer ? hashBuffer(nativeImage.createFromBuffer(initial.imageBuffer).toPNG()) : '';
-}
 
 async function migrateLegacyHistory() {
   if (store.data.items.length) return;
@@ -1325,9 +1021,9 @@ function scheduleIdleTeardown(win, label, delay = HOT_WINDOW_IDLE_MS) {
     if (win.isDestroyed() || win.isVisible()) return;
     if (win === mainWindow) {
       try {
-        await win.webContents.executeJavaScript('Promise.resolve(window.WorkspaceUI?.flush()).then(()=>window.NoteUI?.flush())');
+        await flushRendererDrafts(win);
       } catch (error) {
-        console.warn('主窗口草稿未保存，保留窗口:', error.message);
+        reportDiagnostic('warn', 'idle-renderer-flush', error);
         return;
       }
       if (win.isDestroyed() || win.isVisible() || win.__teardownTimer) return;
@@ -1397,74 +1093,6 @@ function hideQuickPanel() {
     // Keep the panel warm briefly, then release its renderer with other overlays.
     primeQuickFrame(quickWindow);
     scheduleIdleTeardown(quickWindow, '动作面板', HOT_WINDOW_IDLE_MS);
-  }
-}
-
-function installVoicePermissionHandlers() {
-  const voiceSession = session.fromPartition('suira-voice');
-  if (voicePermissionSession === voiceSession) return;
-  const isVoiceFrame = (contents, permission, details) => contents === voiceWindow?.webContents
-    && permission === 'media' && details.isMainFrame === true;
-  voiceSession.setPermissionRequestHandler((contents, permission, callback, details) => {
-    callback(isVoiceFrame(contents, permission, details) && details.mediaTypes?.length === 1 && details.mediaTypes[0] === 'audio');
-  });
-  voiceSession.setPermissionCheckHandler((contents, permission, _origin, details) => {
-    return isVoiceFrame(contents, permission, details) && details.mediaType === 'audio';
-  });
-  voicePermissionSession = voiceSession;
-}
-
-/** Keep dictation beside the active input without activating its overlay. */
-async function openVoiceInput({ preview = false } = {}) {
-  if (!store) return { ok: false, error: '数据未就绪' };
-  if (voiceWindow && !voiceWindow.isDestroyed()) {
-    if (!voiceWindow.__stopping && Date.now() - voiceWindow.__openedAt > 450) {
-      voiceWindow.__stopping = true;
-      voiceWindow.webContents.send('voice:stop');
-    }
-    return { ok: true };
-  }
-  const fromPanel = quickWindow?.isFocused();
-  const foreground = fromPanel ? quickInvocationTarget : panelNative.foreground({ withFocus: true });
-  voiceSessionTarget = preview ? null : captureTarget(foreground, { selectionMethod: 'voice' });
-  voiceSessionTarget = voiceSessionTarget && { ...voiceSessionTarget, focusHwnd: foreground?.focusHwnd };
-  if (quickWindow?.isVisible()) hideQuickPanel();
-  installVoicePermissionHandlers();
-  const win = voiceWindow = windowIpc.create('voice', {
-    width: 208, height: 48, show: false, frame: false, thickFrame: false, transparent: true,
-    focusable: false, alwaysOnTop: true, skipTaskbar: true,
-    resizable: false, movable: false, hasShadow: false,
-    backgroundColor: '#00000000', title: '随序 · 语音输入',
-    webPreferences: {
-      preload: path.join(__dirname, 'voice-preload.js'),
-      contextIsolation: true, nodeIntegration: false, sandbox: true,
-      autoplayPolicy: 'no-user-gesture-required', spellcheck: false, partition: 'suira-voice'
-    }
-  });
-  win.__openedAt = Date.now();
-  const area = screen.getDisplayNearestPoint(screen.getCursorScreenPoint()).workArea;
-  win.setPosition(Math.round(area.x + (area.width - 208) / 2), area.y + area.height - 72);
-  win.setMenuBarVisibility(false);
-
-
-
-  win.on('closed', () => {
-    if (voiceWindow === win) {
-      voiceRequestController?.abort();
-      voiceRequestController = null;
-      voiceSessionTarget = null;
-      voiceWindow = null;
-    }
-  });
-  try {
-    await win.loadFile(path.join(__dirname, 'src', 'voice-input.html'));
-    if (!win.isDestroyed()) win.showInactive();
-    return { ok: true };
-  } catch (error) {
-    if (win.isDestroyed()) return { ok: true };
-    console.warn('语音窗口加载失败:', error.message);
-    win.close();
-    return { ok: false, error: '语音窗口加载失败，请重试' };
   }
 }
 
@@ -1924,22 +1552,6 @@ function cyclePanelMode() {
  * 钉图显隐（原产品 onPinnedImageVisibilityShortcut）：
  * 有可见的钉图就全部隐藏，全部隐藏时再按一次全部恢复。
  */
-function togglePinnedVisibility() {
-  const windows = [...pinWindows].filter((win) => win && !win.isDestroyed());
-  if (!windows.length) {
-    toastToUser('还没有钉图窗口，先按 P 钉一张', 'warn');
-    return { ok: false, error: '还没有钉图窗口' };
-  }
-  const visibleCount = windows.filter((win) => win.isVisible()).length;
-  const shouldHide = visibleCount > 0;
-  for (const win of windows) {
-    if (shouldHide) win.hide();
-    else win.showInactive();
-  }
-  toastToUser(shouldHide ? `已隐藏 ${windows.length} 张钉图` : `已恢复 ${windows.length} 张钉图`, 'info');
-  return { ok: true, hidden: shouldHide, count: windows.length };
-}
-
 /** 按住型唤起的下发给设置页的状态。 */
 function momentaryStatus() {
   const accelerator = momentaryAccelerator();
@@ -2312,8 +1924,8 @@ function createMainWindow() {
   }, 2500);
   if (revealTimer.unref) revealTimer.unref();
   mainWindow.on('close', (event) => {
-    rememberMainWindowState();
     if (!isQuitting) {
+      void rememberMainWindowState();
       event.preventDefault();
       mainWindow.hide();
       scheduleIdleTeardown(mainWindow, '主窗口', MAIN_WINDOW_IDLE_MS);
@@ -2331,7 +1943,6 @@ function createMainWindow() {
   // 移动/缩放结束后记忆窗口状态（500ms 防抖，避免拖动过程中频繁写盘）
   let saveTimer = null;
   const flushWindowState = mainWindow.__flushWindowState = () => {
-    if (!saveTimer) return;
     clearTimeout(saveTimer);
     saveTimer = null;
     return rememberMainWindowState();
@@ -3218,7 +2829,7 @@ function getPanelActions() {
       switchToDesktop,
       lockWorkstation,
       // 速记：接着最近一条写，没有才新建
-      openNote: () => openLatestNote(),
+      openNote: noteDomain.openLatest,
       openVoiceInput,
       openTextTools,
       openImageEditor: () => openImageEditor()
@@ -3323,204 +2934,53 @@ function getAppIconLoader() {
   return appIconLoader;
 }
 
-// 每个钉图窗口的期望尺寸：透明窗在 Windows 上被拖动时可能被系统悄悄改大，
-// 移动/缩放后按这里记录的期望值核对，发现漂移立即拉回。
-const pinExpectedSize = new WeakMap();
-const PIN_COLLAPSED_HEIGHT = 60;
-
-function createPinWindow(dataUrl, size = {}, content = null) {
-  if(!content&&String(dataUrl||'').startsWith('file:')){try{content=store.data.items.find(item=>item.kind==='image'&&item.filePath===fileURLToPath(dataUrl));}catch{}}
-  const display=screen.getDisplayNearestPoint(screen.getCursorScreenPoint());
-  const ratio=(size.height||600)/Math.max(1,size.width||800);
-  const width=Math.max(100,Math.min(560,size.width||800,display.workArea.width-40,(display.workArea.height-60)/ratio));
-  const height=Math.max(60,Math.round(width*ratio));
-  const pin=windowIpc.create('pin',{
-    // resizable 必须关：Windows 下 transparent + resizable 的无边框窗带 WS_THICKFRAME，
-    // 程序化移动时系统会反复改写窗口尺寸，表现为「一拖就越来越大」。
-    // 缩放一律走 zoom() → pin:resize 的 setBounds，不依赖原生边缘拖拽。
-    width:Math.round(width),height,frame:false,alwaysOnTop:true,resizable:false,skipTaskbar:false,
-    transparent:true,thickFrame:false,hasShadow:false,backgroundColor:'#00000000',title:'随序 · 钉图',
-    webPreferences:{contextIsolation:true,nodeIntegration:false,sandbox:true,spellcheck:false,preload: path.join(__dirname, 'pin-preload.js')}
-  });
-  pin.__pinData={url:String(dataUrl||''),width:Math.round(width),height,kind:content?.kind||'image',text:content?.text||'',itemId:content?.id||''};
-  pinExpectedSize.set(pin,{width:Math.round(width),height});
-  prepareFloatingSurface(pin);
-  pin.loadFile(path.join(__dirname,'src','pin.html'));
-  pinWindows.add(pin);
-  pin.on('closed', () => {
-    pinWindows.delete(pin);
-    if (!isQuitting && store?.hasPendingImageCleanup()) store.save().catch(logSaveFailure);
-  });
-  return pin;
-}
-
-/* ---------- 速记（Quick Note） ---------- */
-
-const NOTE_SIZE = { width: 760, height: 550 };
-/** 速记写盘防抖：逐字落盘会让每次敲键都重写整个数据文件。 */
-const NOTE_SAVE_DEBOUNCE_MS = 700;
-/** noteId → BrowserWindow。多页 = 多窗口，与「每个窗口一条笔记」一一对应。 */
-const noteWindows = new Map();
-let noteSaveTimer = null;
-
-/** 防抖落盘 + 广播变更（列表页与已开窗口都要看到最新正文）。 */
-function scheduleNoteSave() {
-  if (noteSaveTimer) clearTimeout(noteSaveTimer);
-  noteSaveTimer = setTimeout(() => {
-    noteSaveTimer = null;
-    if (!store) return;
-    store.save().catch(logSaveFailure);
-  }, NOTE_SAVE_DEBOUNCE_MS);
-  if (noteSaveTimer.unref) noteSaveTimer.unref();
-}
-
 function logSaveFailure(error) {
   console.warn('保存本地数据失败:', error.code || error.name);
   reportDiagnostic('error', 'data-save', error);
 }
 
-/** 立刻把速记落盘（关窗、退出、切笔记时调用，避免丢最后一次输入）。 */
 async function flushNotes() {
-  if (noteSaveTimer) { clearTimeout(noteSaveTimer); noteSaveTimer = null; }
-  for (const win of noteWindows.values()) win.__flushNoteBounds?.();
+  noteDomain.flushBounds();
   await mainWindow?.__flushWindowState?.();
   if (store) await store.save();
 }
 
-function broadcastNotes() {
-  broadcast('notes:changed', store ? store.listNotes() : []);
-}
+const noteDomain = createNoteWindows({
+  windowIpc, BrowserWindow, screen, dialog, shell,
+  getStore: () => store,
+  isQuitting: () => isQuitting,
+  prepareFloatingSurface, broadcast, assetPath,
+  onSaveError: logSaveFailure
+});
 
-/** 速记窗口的位置：先取笔记自己记住的位置，再校验它是否还在某个显示器上。 */
-function noteWindowBounds(note) {
-  const displays = screen.getAllDisplays();
-  const fallback = {
-    width: NOTE_SIZE.width,
-    height: NOTE_SIZE.height,
-    minVisibleWidth: 160,
-    minVisibleHeight: 120
-  };
-  return sanitizeWindowBounds(note?.bounds || null, displays, fallback);
-}
+const voice = createVoiceWindow({
+  windowIpc, BrowserWindow, screen, session,
+  getSettings: () => store?.getSettings(),
+  decryptSecret,
+  getMainWindow: () => mainWindow,
+  getPanelWindow: () => quickWindow,
+  getForeground: () => quickWindow?.isFocused() ? quickInvocationTarget : panelNative.foreground({ withFocus: true }),
+  captureTarget, hideQuickPanel,
+  showSettings: () => showMain('settings:voice'),
+  writeClipboardText,
+  pasteTo: (target, options) => foregroundProbe.pasteTo(target, options),
+  fetchImpl: (...args) => electron.net.fetch(...args)
+});
+const openVoiceInput = voice.open;
 
-function createNoteWindow(noteId) {
-  const note = store ? store.getNote(noteId) : null;
-  if (!note) return null;
-  const bounds = noteWindowBounds(note);
-  const win = windowIpc.create('notes', {
-    x: bounds.x,
-    y: bounds.y,
-    width: bounds.width,
-    height: bounds.height,
-    minWidth: 240,
-    minHeight: 200,
-    show: false,
-    frame: false,
-    thickFrame: false,
-    hasShadow: false,
-    // 钉住的速记浮在其它窗口之上；未钉住就是普通窗口，不抢屏幕
-    alwaysOnTop: Boolean(note.pinned),
-    transparent: true,
-    backgroundColor: '#00000000',
-    title: '随序 · 速记',
-    icon: assetPath('suira-icon-runtime.png'),
-    roundedCorners: true,
-    skipTaskbar: false,
-    webPreferences: {
-      preload: path.join(__dirname, 'preload.js'),
-      contextIsolation: true,
-      nodeIntegration: false,
-      sandbox: true,
-      spellcheck: false
-    }
-  });
-  prepareFloatingSurface(win, 22);
-  noteWindows.set(noteId, win);
-  win.loadFile(path.join(__dirname, 'src', 'notes.html'));
-  win.setMenuBarVisibility(false);
-  win.webContents.once('did-finish-load', () => {
-    win.webContents.send('notes:opened', { id: noteId });
-  });
-  // 位置记忆：拖动/缩放结束后写回 store（500ms 防抖）
-  let boundsTimer = null;
-  win.__flushNoteBounds = () => {
-    clearTimeout(boundsTimer);
-    boundsTimer = null;
-    if (!win.isDestroyed() && store) store.setNoteBounds(noteId, win.getBounds());
-  };
-  const rememberBounds = () => {
-    clearTimeout(boundsTimer);
-    boundsTimer = setTimeout(() => {
-      if (win.isDestroyed() || !store || isQuitting) return;
-      win.__flushNoteBounds();
-      scheduleNoteSave();
-    }, 500);
-    if (boundsTimer.unref) boundsTimer.unref();
-  };
-  win.on('resize', rememberBounds);
-  win.on('move', rememberBounds);
-  win.on('close', () => {
-    if (!store || win.isDestroyed()) return;
-    if (isQuitting) return; // Already captured by the quit/update preflight.
-    win.__flushNoteBounds();
-    // 关窗是低频动作：立刻落盘，不等防抖（否则退出时最后的位置会丢）
-    store.save().catch(logSaveFailure);
-  });
-  win.on('closed', () => {
-    noteWindows.delete(noteId);
-    if (!isQuitting) scheduleNoteSave();
-    broadcastNotes();
-  });
-  let revealed = false;
-  const reveal = () => {
-    if (revealed || win.isDestroyed()) return;
-    revealed = true;
-    win.show();
-    win.focus();
-  };
-  win.once('ready-to-show', reveal);
-  const revealTimer = setTimeout(reveal, 2500);
-  if (revealTimer.unref) revealTimer.unref();
-  return win;
-}
-
-/** 打开一条速记（已开就置前）。 */
-async function openNoteWindow(noteId) {
-  if (!store) return { ok: false, error: '数据未就绪' };
-  const note = store.getNote(noteId);
-  if (!note) return { ok: false, error: '这条速记已不存在' };
-  const existing = noteWindows.get(noteId);
-  if (existing && !existing.isDestroyed()) {
-    if (existing.isMinimized()) existing.restore();
-    existing.show();
-    existing.focus();
-    return { ok: true, id: noteId };
-  }
-  return createNoteWindow(noteId) ? { ok: true, id: noteId } : { ok: false, error: '速记窗口创建失败' };
-}
-
-/**
- * 面板 N 键 / 工具箱入口：接着最近一条写，没有才新建。
- * 每次都新建会留下一堆空笔记 —— 那不是顺手，是制造垃圾。
- */
-async function openLatestNote() {
-  if (!store) return { ok: false, error: '数据未就绪' };
-  const latest = store.latestNote();
-  if (latest) return openNoteWindow(latest.id);
-  const note = store.createNote({ text: '' });
-  if (!note) return { ok: false, error: '速记创建失败' };
-  await store.save();
-  broadcastNotes();
-  return openNoteWindow(note.id);
-}
-
-function closeNoteWindow(noteId) {
-  const win = noteWindows.get(noteId);
-  if (win && !win.isDestroyed()) win.close();
-  else noteWindows.delete(noteId);
-}
+const pins = createPinWindows({
+  windowIpc, BrowserWindow, screen, nativeImage, dialog, app,
+  findImage: filePath => store?.data.items.find(item => item.kind === 'image' && item.filePath === filePath),
+  onClosed: () => { if (!isQuitting && store?.hasPendingImageCleanup()) store.save().catch(logSaveFailure); },
+  prepareFloatingSurface, toastToUser, writeClipboardText, writeClipboardImage
+});
+const createPinWindow = pins.create;
+const togglePinnedVisibility = pins.toggleVisibility;
 
 function registerIpc() {
+  voice.registerIpc();
+  pins.registerIpc();
+  noteDomain.registerIpc();
   registerTranslationIpc({
     handle: windowIpc.handle,
     translateConfig,
@@ -3537,167 +2997,11 @@ function registerIpc() {
     handle: windowIpc.handle, store, removalUndo, broadcast,
     classifyText, thumbnailFor, nativeImage, shell
   });
-  windowIpc.handle('voice:open', event => {
-    const caller = BrowserWindow.fromWebContents(event.sender);
-    if (caller !== quickWindow && caller !== mainWindow) return { ok: false, error: '语音输入入口无效' };
-    return openVoiceInput({ preview: caller === mainWindow });
-  });
-  windowIpc.handle('voice:status', event => {
-    if (BrowserWindow.fromWebContents(event.sender) !== voiceWindow) return { ok: false, error: '语音窗口无效' };
-    return voiceStatus();
-  });
-  windowIpc.handle('voice:open-settings', event => {
-    if (BrowserWindow.fromWebContents(event.sender) !== voiceWindow) return { ok: false, error: '语音窗口无效' };
-    const win = voiceWindow;
-    win?.close();
-    showMain('settings:voice');
-    return { ok: true };
-  });
-  windowIpc.handle('voice:transcribe', async (event, payload) => {
-    const win = BrowserWindow.fromWebContents(event.sender);
-    if (win !== voiceWindow || !win) return { ok: false, error: '语音窗口无效' };
-    if (voiceRequestController) return { ok: false, error: '正在识别上一段录音' };
-    const config = voiceConfig();
-    const target = voiceSessionTarget;
-    const controller = voiceRequestController = new AbortController();
-    try {
-      const result = await voiceInput.transcribe({ pcm: payload?.pcm, format: config.format, baseUrl: config.baseUrl,
-        model: config.model, apiKey: config.apiKey, fetchImpl: electron.net.fetch, signal: controller.signal });
-      if (controller.signal.aborted || voiceWindow !== win) return { ok: false, cancelled: true };
-      if (!result.ok) return result;
-      if (!result.text?.trim()) return { ok: false, error: '没有识别到语音' };
-      await writeClipboardText(result.text);
-      // Check the same foreground window and native focused control immediately
-      // before sending Ctrl+V. Dictation never activates a window behind the user.
-      if (!target?.focusHwnd || controller.signal.aborted || voiceWindow !== win) return { ok: true, pasted: false };
-      const pasted = await foregroundProbe.pasteTo(target, { stayInForeground: true });
-      return { ok: true, pasted: pasted.ok };
-    } finally {
-      if (voiceRequestController === controller) voiceRequestController = null;
-    }
-  });
-  windowIpc.handle('voice:close', event => {
-    if (BrowserWindow.fromWebContents(event.sender) !== voiceWindow) return { ok: false };
-    voiceWindow.close();
-    return { ok: true };
-  });
-
-  /* ---- 钉图窗口控制 ---- */
-  // 每个钉图窗口独立保存收起前的边界，便于恢复
-  const pinState = new WeakMap();
-
-  const pinFromEvent = (event) => {
-    const win = BrowserWindow.fromWebContents(event.sender);
-    return win && pinWindows.has(win) ? win : null;
-  };
-
-  const pinOnly = handler => async(event,payload)=>{
-    const win=pinFromEvent(event);if(!win||win.isDestroyed())return {ok:false,error:'钉图已关闭'};
-    try{return await handler(win,payload);}catch(error){return {ok:false,error:error.message};}
-  };
-  const pinImage = win => {
-    const url=win.__pinData?.url||'';
-    const image=url.startsWith('file:')?nativeImage.createFromPath(fileURLToPath(url)):nativeImage.createFromDataURL(url);
-    if(image.isEmpty())throw Error('图片无法读取');return image;
-  };
-  windowIpc.handle('pin:data',pinOnly(win=>({ok:true,data:win.__pinData})));
-  windowIpc.handle('pin:copy',pinOnly(async win=>{if(win.__pinData?.kind==='text')await writeClipboardText(win.__pinData.text);else await writeClipboardImage(pinImage(win));return {ok:true};}));
-  windowIpc.handle('pin:save',pinOnly(async win=>{
-    if(win.__pinData?.kind==='text'){
-      const result=await dialog.showSaveDialog(win,{title:'保存文字',defaultPath:path.join(app.getPath('documents'),'随序文字.txt'),filters:[{name:'文字',extensions:['txt']}]});
-      if(result.canceled||!result.filePath)return {ok:false,canceled:true};await fsp.writeFile(result.filePath,win.__pinData.text,'utf8');return {ok:true};
-    }
-    const image=pinImage(win);
-    const result=await dialog.showSaveDialog(win,{title:'保存钉图',defaultPath:path.join(app.getPath('pictures'),'随序钉图.png'),filters:[{name:'PNG 图片',extensions:['png']}]});
-    if(result.canceled||!result.filePath)return {ok:false,canceled:true};
-    await fsp.writeFile(result.filePath,image.toPNG());return {ok:true,filePath:result.filePath};
-  }));
-  windowIpc.handle('pin:top',pinOnly(win=>{const value=!win.isAlwaysOnTop();win.setAlwaysOnTop(value);return {ok:true,alwaysOnTop:value};}));
-  windowIpc.on('pin:move',(event,point)=>{
-    const win=pinFromEvent(event);if(!win||win.isDestroyed()||![point?.x,point?.y].every(Number.isFinite))return;
-    const x=Math.round(point.x),y=Math.round(point.y),area=screen.getDisplayNearestPoint({x,y}).workArea;
-    const bounds=win.getBounds();
-    win.setPosition(Math.max(area.x-bounds.width+40,Math.min(area.x+area.width-40,x)),Math.max(area.y,Math.min(area.y+area.height-40,y)));
-    // 拖动后被系统改了尺寸（透明窗在部分环境下会这样）：立即按期望尺寸纠正
-    const expected=pinExpectedSize.get(win);
-    if(expected){
-      const current=win.getBounds();
-      if(current.width!==expected.width||current.height!==expected.height){
-        win.setBounds({x:current.x,y:current.y,width:expected.width,height:expected.height});
-      }
-    }
-  });
-
-  windowIpc.on('pin:resize', (event, payload) => {
-    const win = pinFromEvent(event);
-    if (!win || win.isDestroyed()) return;
-    if (pinState.get(win)?.collapsed) return;
-    const width = Math.max(80, Math.min(4000, Math.round(Number(payload?.width) || 0)));
-    const height = Math.max(60, Math.min(4000, Math.round(Number(payload?.height) || 0)));
-    if (!width || !height) return;
-    const bounds = win.getBounds();
-    // 以左上角为锚点缩放，避免窗口跑到屏幕外
-    win.setBounds({ x: bounds.x, y: bounds.y, width, height });
-    pinExpectedSize.set(win, { width, height });
-  });
-
-  windowIpc.on('pin:opacity', (event, value) => {
-    const win = pinFromEvent(event);
-    if (!win || win.isDestroyed()) return;
-    const opacity = Math.max(0.25, Math.min(1, Number(value) || 1));
-    win.setOpacity(opacity);
-  });
-
-  windowIpc.on('pin:collapse', (event, collapsed) => {
-    const win = pinFromEvent(event);
-    if (!win || win.isDestroyed()) return;
-    const state = pinState.get(win) || {};
-    if (collapsed) {
-      if (state.collapsed) return;
-      state.savedBounds = win.getBounds();
-      state.savedSize = pinExpectedSize.get(win) || { width: state.savedBounds.width, height: state.savedBounds.height };
-      state.savedOpacity = win.getOpacity();
-      state.collapsed = true;
-      pinState.set(win, state);
-      const b = state.savedBounds;
-      // 收成一条细窄条，仍可见可点回
-      const collapsedWidth = Math.max(72, Math.min(b.width, 120));
-      win.setBounds({ x: b.x, y: b.y, width: collapsedWidth, height: PIN_COLLAPSED_HEIGHT });
-      pinExpectedSize.set(win, { width: collapsedWidth, height: PIN_COLLAPSED_HEIGHT });
-      win.setOpacity(0.85);
-    } else {
-      if (!state.collapsed) return;
-      state.collapsed = false;
-      pinState.set(win, state);
-      if (state.savedBounds) {
-        // 收起后的位置可以改变：展开时保留当前位置，只恢复原来的尺寸。
-        const current = win.getBounds();
-        const area = screen.getDisplayNearestPoint({ x: current.x, y: current.y }).workArea;
-        const size = state.savedSize || state.savedBounds;
-        win.setBounds({ width: size.width, height: size.height,
-          x: Math.max(area.x, Math.min(current.x, area.x + area.width - size.width)),
-          y: Math.max(area.y, Math.min(current.y, area.y + area.height - size.height)) });
-        pinExpectedSize.set(win, { width: size.width, height: size.height });
-      }
-      win.setOpacity(state.savedOpacity || 1);
-    }
-  });
-
-  windowIpc.on('pin:bounds', (event) => {
-    const win = pinFromEvent(event);
-    event.returnValue = win && !win.isDestroyed() ? win.getBounds() : null;
-  });
-
-  windowIpc.on('pin:close', (event) => {
-    const win = pinFromEvent(event);
-    if (win && !win.isDestroyed()) win.close();
-  });
-
   const senderWindow = event => BrowserWindow.fromWebContents(event.sender);
   const resizingWindows = new WeakMap();
   windowIpc.on('window:resize-start', (event, edge) => {
     const win = senderWindow(event);
-    if (!win || (!win.__surfaceRadius && ![...noteWindows.values()].includes(win)) || !win.isResizable() || win.isMaximized() || !WINDOW_EDGES.has(edge)) return;
+    if (!win || (!win.__surfaceRadius && !noteDomain.activeWindows().includes(win)) || !win.isResizable() || win.isMaximized() || !WINDOW_EDGES.has(edge)) return;
     resizingWindows.set(win, { edge, bounds: win.getBounds(), cursor: screen.getCursorScreenPoint() });
   });
   windowIpc.on('window:resize-step', event => {
@@ -4111,83 +3415,6 @@ function registerIpc() {
     }
   });
 
-  /* ---- 速记（Quick Note） ---- */
-  windowIpc.handle('notes:list', () => (store ? store.listNotes() : []));
-  windowIpc.handle('notes:get', (_event, id) => (store ? store.getNote(String(id || '')) : null));
-  windowIpc.handle('notes:open', async (_event, id) => openNoteWindow(String(id || '')));
-  windowIpc.handle('notes:open-latest', () => openLatestNote());
-  windowIpc.handle('notes:create', async () => {
-    if (!store) return { ok: false, error: '数据未就绪' };
-    const note = store.createNote({ text: '' });
-    if (!note) return { ok: false, error: '速记创建失败' };
-    await store.save();
-    broadcastNotes();
-    return openNoteWindow(note.id);
-  });
-  windowIpc.handle('notes:update', async (_event, payload) => {
-    const id = String(payload?.id || '');
-    if (!store || !id) return { ok: false, error: '参数不完整' };
-    if (typeof payload?.richText === 'string' && payload.richText.length > notesLib.RICH_TEXT_LIMIT) {
-      return {ok:false, error:'格式内容超过速记容量，请删减后保存。'};
-    }
-    const note = store.updateNoteText(id, payload?.text, payload?.title, payload?.richText);
-    if (!note) return { ok: false, error: '这条速记已不存在' };
-    scheduleNoteSave();
-    // 同屏开着多个速记窗口时，列表与其它窗口也要看到最新正文
-    broadcastNotes();
-    return { ok: true, note };
-  });
-  windowIpc.handle('notes:pick-file', async (event) => {
-    const win = BrowserWindow.fromWebContents(event.sender);
-    if (!win || ![...noteWindows.values()].includes(win)) return null;
-    const result = await dialog.showOpenDialog(win, {title:'引用本地文件', properties:['openFile']});
-    return result.canceled ? null : result.filePaths[0];
-  });
-  windowIpc.handle('notes:reveal-file', async (event, file) => {
-    const win = BrowserWindow.fromWebContents(event.sender);
-    // Only reveal local drive paths. Network shares and device paths are excluded.
-    if (!win || ![...noteWindows.values()].includes(win) || typeof file !== 'string' || !/^[a-z]:[\\/]/i.test(file)) {
-      return {ok:false, error:'无法定位该本地文件。'};
-    }
-    const stat = await fs.promises.stat(file).catch(() => null);
-    if (!stat?.isFile()) return {ok:false, error:'找不到原文件，它可能已被移动。'};
-    shell.showItemInFolder(file);
-    return {ok:true};
-  });
-  windowIpc.handle('notes:toggle-pin', async (_event, id) => {
-    const noteId = String(id || '');
-    if (!store) return { ok: false, error: '数据未就绪' };
-    const note = store.toggleNotePin(noteId);
-    if (!note) return { ok: false, error: '这条速记已不存在' };
-    const win = noteWindows.get(noteId);
-    if (win && !win.isDestroyed()) {
-      win.setAlwaysOnTop(Boolean(note.pinned), 'floating');
-      if (note.pinned) { win.show(); win.focus(); }
-    }
-    await store.save();
-    broadcastNotes();
-    return { ok: true, note };
-  });
-  windowIpc.handle('notes:delete', async (_event, id) => {
-    const noteId = String(id || '');
-    if (!store) return { ok: false, error: '数据未就绪' };
-    closeNoteWindow(noteId);
-    const removed = store.deleteNote(noteId);
-    await store.save();
-    broadcastNotes();
-    return { ok: Boolean(removed) };
-  });
-  windowIpc.handle('notes:hide-window', (event) => {
-    const win = BrowserWindow.fromWebContents(event.sender);
-    if (win && !win.isDestroyed()) win.close();
-    return { ok: true };
-  });
-  windowIpc.handle('notes:minimize-window', (event) => {
-    const win = BrowserWindow.fromWebContents(event.sender);
-    if (win && !win.isDestroyed()) win.minimize();
-    return { ok: true };
-  });
-
   /* ---- 38 键动作面板 ---- */
   windowIpc.handle('panel:state', panelState);
   windowIpc.handle('panel:run', async (_event, actionId) => {
@@ -4561,7 +3788,7 @@ function registerIpc() {
       catch (error) { return { ok: false, error: error.message }; }
     }
     if (typeof incoming.voiceBaseUrl === 'string' && incoming.voiceBaseUrl.trim()) {
-      const checked = voiceInput.validateEndpoint(incoming.voiceBaseUrl);
+      const checked = validateVoiceEndpoint(incoming.voiceBaseUrl);
       if (!checked.ok) return { ok: false, error: checked.error };
       incoming.voiceBaseUrl = checked.url;
     }
@@ -4614,14 +3841,8 @@ function registerIpc() {
     const recordedClipboard = store.getSettings().recordClipboard;
     const settings = await store.updateSettings(incoming);
     if (settings.recordClipboard !== recordedClipboard) {
-      ++captureGeneration;
-      lastClipboardSequence = null;
-      lastClipboardText = lastClipboardFilesKey = '';
-      lastClipboardImageRaw = null;
-      lastClipboardImageKey = lastClipboardImageType = lastClipboardImageHash = '';
-      try { await startClipboardWatcher(); }
+      try { await clipboardHistory.start(); }
       catch (error) {
-        clipboardWatcherError = error.message;
         return { ok: false, error: `剪贴板监听未启动：${error.message}` };
       }
     }
@@ -4662,7 +3883,7 @@ function createTray() {
     { label: `随手面板  ${prettyAcceleratorLabel(bindings.quick)}`, click: showQuickPanel },
     { label: `剪贴板历史  ${prettyAcceleratorLabel(bindings.clipboardBar)}`, click: () => toggleClipboardBar() },
     { label: '浮引岛 · 文件暂存（临时打开）', click: () => toggleIsland() },
-    { label: '速记（接着上一条写）', click: () => openLatestNote() },
+    { label: '速记（接着上一条写）', click: noteDomain.openLatest },
     { label: '重启并应用更新', click: () => restartApplication() },
     { type: 'separator' },
     { label: '任务匣', click: () => showMain('shelf') },
@@ -4795,10 +4016,7 @@ async function initialize() {
     getEncryptionKey: () => keyVault.key,
     managedImages: createManagedImages({
       captures: capturesDir(), clipboard: clipboardImageDir(),
-      references: () => [...pinWindows].flatMap(win => {
-        const url = win.__pinData?.url;
-        return url?.startsWith('file:') ? [fileURLToPath(url)] : [];
-      })
+      references: pins.referencedFiles
     }),
     codec: keyVault.isReady() ? {
       isReady: () => keyVault.isReady(),
@@ -4849,7 +4067,7 @@ async function initialize() {
   session.defaultSession.setSpellCheckerEnabled(false);
   const themePreload = { type: 'frame', filePath: path.join(__dirname, 'lib', 'theme-preload.js') };
   session.defaultSession.registerPreloadScript(themePreload);
-  session.fromPartition('suira-voice').registerPreloadScript(themePreload);
+  voice.registerPreload(themePreload);
   await migrateLegacyHistory();  // 按保留策略启动清理一次：过期内容不该等到下一次复制才消失
   store.prune();
   await store.save();
@@ -4877,7 +4095,11 @@ async function initialize() {
     pinText: (text,item) => createPinWindow('',{width:420,height:300},{...item,kind:'text',text}),
     appendMarkdown:appendRelayMarkdown,
     openCalendarDraft:openRelayCalendar,
-    prepareNotes:async()=>{for(const win of noteWindows.values())if(!win.isDestroyed())await requestRelay(win,{kind:'notes.flush'});},
+    async prepareNotes() {
+      for (const win of noteDomain.activeWindows()) {
+        if (!win.isDestroyed()) await requestRelay(win, { kind: 'notes.flush' });
+      }
+    },
     broadcast,
     assetPath,
     capturesDir,
@@ -4910,10 +4132,9 @@ async function initialize() {
     return { ok: false, error: momentaryError };
   });
   // 剪贴板监听失败时不能只写日志：剪贴板历史会完全失效，用户必须知道
-  clipboardWatcherReady = startClipboardWatcher().catch((error) => {
-    clipboardWatcherError = error && error.message ? error.message : String(error);
-    console.warn('剪贴板监听启动失败:', clipboardWatcherError);
-    const message = `剪贴板监听未启动：${clipboardWatcherError || '未知错误'}`;
+  clipboardWatcherReady = clipboardHistory.start().catch((error) => {
+    reportDiagnostic('warn', 'clipboard-listener-start', error);
+    const message = `剪贴板监听未启动：${error.message || '未知错误'}`;
     if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.webContents.send('app:toast', { message, type: 'error' });
     }
@@ -4941,7 +4162,7 @@ app.whenReady().then(initialize).then(async () => {
   if (process.argv.includes('--diag')) {
     // 剪贴板监听是异步启动的：不等它完成，报告会把「正在启动」误报成「未运行」。
     // 这类误报会直接误导排查，必须等；但每个最多等 8 秒，卡住也要出报告。
-    try { await waitWithTimeout(clipboardWatcherReady); } catch { /* 错误已记录在 clipboardWatcherError */ }
+    await waitWithTimeout(clipboardWatcherReady);
     try { await waitWithTimeout(momentaryReady); } catch { /* 错误已记录在 momentaryError */ }
     try { await waitWithTimeout(islandWakeReady); } catch { /* 错误已记录在 islandWakeError */ }
     let exitCode = 0;
@@ -5039,10 +4260,10 @@ async function collectDiagnostics() {
   add('拖入策略', islandInfo.policy === 'move' ? '移动' : '复制');
 
   section('速记');
-  const noteSummary = notesLib.summarizeNotes(store ? store.listNotes() : []);
+  const noteSummary = summarizeNotes(store ? store.listNotes() : []);
   add('速记条数', `${noteSummary.count} / ${noteSummary.limit}`);
   add('钉在桌面', String(noteSummary.pinned));
-  add('已开窗口', String([...noteWindows.values()].filter((win) => win && !win.isDestroyed()).length));
+  add('已开窗口', String(noteDomain.activeWindows().length));
 
   section('能力');
   add('屏幕数量', String(screen.getAllDisplays().length));
@@ -5058,7 +4279,9 @@ async function collectDiagnostics() {
     : translateInfo.provider === 'none'
       ? '未配置（设置 → 翻译里选择引擎）'
       : `${translateInfo.providerLabel} 缺少密钥（设置 → 翻译）`);
-  add('剪贴板监听', stopClipboardWatcher ? '运行中' : ('未运行' + (clipboardWatcherError ? '：' + clipboardWatcherError : '')));
+  const clipboardStatus = clipboardHistory.status();
+  const clipboardModes = { native: '运行中（Windows 通知）', polling: '运行中（低频轮询）', off: '已停用', failed: '启动失败' };
+  add('剪贴板监听', clipboardModes[clipboardStatus.mode] + (clipboardStatus.error ? `：${clipboardStatus.error}` : ''));
   add('剪贴板采集范围', '文本 / 文件引用 / 图片');
   add('托盘', tray ? '已创建' : '未创建');
   const mainWindowState = store ? store.getWindowState() : null;
@@ -5111,10 +4334,13 @@ app.on('before-quit', createQuitCoordinator({
     isQuitting = false;
     for (const win of windows) requestWorkspaceClose(win);
   },
-  needsFlush: () => Boolean(store && !updateInstallPrepared),
+  needsFlush: () => Boolean(store && !updateInstallPrepared && !storeShutdownComplete),
   async flush() {
-    const windows = [mainWindow, ...noteWindows.values()].filter(win => win && !win.isDestroyed() && !win.webContents.isLoading());
-    await Promise.all(windows.map(win => win.webContents.executeJavaScript('Promise.resolve(window.WorkspaceUI?.flush()).then(()=>window.NoteUI?.flush())')));
+    const windows = [mainWindow, ...noteDomain.activeWindows()].filter(win => win && !win.isDestroyed() && !win.webContents.isLoading());
+    const results = await Promise.allSettled(windows.map(win => flushRendererDrafts(win)));
+    for (const result of results) {
+      if (result.status === 'rejected') reportDiagnostic('warn', 'quit-renderer-flush', result.reason);
+    }
     await flushNotes();
   },
   quit: () => app.quit(),
@@ -5124,12 +4350,6 @@ app.on('before-quit', createQuitCoordinator({
     dialog.showErrorBox('数据保存失败', '随序未能保存最后的更改，请检查磁盘空间和文件权限后重试。');
   },
   onReady() {
-    if (workspaceRestartRequested) {
-      workspaceRestartRequested = false;
-      const args = process.argv.slice(1).filter(arg => !/^--(?:remote-debugging-|inspect)/.test(arg));
-      hideIsland();
-      app.relaunch({ args });
-    }
     if (longCapture) {
       try { longCapture.worker?.stop(); } catch (error) { reportDiagnostic('warn', 'capture-worker-stop', error); }
       void Promise.resolve().then(() => longCapture?.controller?.stop()).catch(error => reportDiagnostic('warn', 'capture-controller-stop', error));
@@ -5137,13 +4357,35 @@ app.on('before-quit', createQuitCoordinator({
     isQuitting = true;
   }
 }));
-app.on('will-quit', () => {
+let storeShutdown = null;
+let storeShutdownComplete = false;
+app.on('will-quit', event => {
+  clipboardHistory.stop();
+  if (store && !storeShutdownComplete) {
+    // Window close handlers can enqueue saves after before-quit finished.
+    event.preventDefault();
+    storeShutdown ??= store.dispose().then(() => {
+      storeShutdownComplete = true;
+      app.quit();
+    }).catch(error => {
+      logSaveFailure(error);
+      storeShutdown = null;
+      updateInstallPrepared = false;
+      isQuitting = false;
+      dialog.showErrorBox('数据保存失败', '随序未能保存最后的更改，请检查磁盘空间和文件权限后重试。');
+      void clipboardHistory.start().catch(error => reportDiagnostic('warn', 'clipboard-listener-start', error));
+    });
+    return;
+  }
+  if (workspaceRestartRequested) {
+    workspaceRestartRequested = false;
+    const args = process.argv.slice(1).filter(arg => !/^--(?:remote-debugging-|inspect)/.test(arg));
+    app.relaunch({ args });
+  }
   longPickerWorker?.stop();
   themeController?.dispose();
   clearIslandRest();
   islandPointerProbe?.stop();
-  stopClipboardWatcher?.();
-  stopClipboardWatcher = null;
   if (foregroundIdleTimer) { clearTimeout(foregroundIdleTimer); foregroundIdleTimer = null; }
   shortcutManager?.dispose();
   // 第二个实例会在 ready 前退出，此时 Electron 不允许访问全局快捷键。

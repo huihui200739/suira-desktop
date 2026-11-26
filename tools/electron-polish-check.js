@@ -44,6 +44,12 @@ async function until(fn){for(let n=0;n<150;n++){try{const value=await fn();if(va
   await pin.evaluate('window.PinUI.revealMenu();document.querySelector("[data-command=reset]").click();true');
   await until(()=>pin.evaluate('innerWidth>330'));
   console.log('PASS 钉图工具栏对齐、窄屏菜单、透明度边界，DPI '+wide.dpr);
+  // Exercise the main-process clamp directly rather than relying on the renderer controls.
+  await pin.evaluate('window.pinApi.resize(1, 1); window.pinApi.setOpacity(0.01)');
+  await until(async () => (await pin.evaluate('window.pinApi.bounds()')).width === 80);
+  assert.equal((await pin.evaluate('window.pinApi.bounds()')).height, 60);
+  await pin.evaluate('window.pinApi.resize(360, 240); window.pinApi.setOpacity(1)');
+  await until(async () => (await pin.evaluate('window.pinApi.bounds()')).width === 360);
   const bounds=()=>pin.evaluate('window.pinApi.bounds()');const original=await bounds();
   await pin.evaluate(`document.getElementById('collapse').click(),true`);await until(async()=>Math.abs((await bounds()).height-60)<=1);
   const small=await bounds();const start={x:small.width/2,y:small.height/2};

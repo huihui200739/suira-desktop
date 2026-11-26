@@ -6,6 +6,9 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const crypto = require('crypto');
+const { EventEmitter } = require('node:events');
+const { pathToFileURL } = require('node:url');
+const { createWindowBoundary } = require('../lib/window-ipc');
 
 const {
   DEFAULT_BINDINGS, DEFAULT_MOMENTARY_BINDINGS, LEGACY_BINDINGS, RESERVED_COMBOS,
@@ -19,6 +22,35 @@ const {
 
 let pass = 0, fail = 0;
 const t = (n, f) => { try { f(); console.log('  PASS  ' + n); pass++; } catch (e) { console.log('  FAIL  ' + n + ' -> ' + e.message); fail++; } };
+
+t('synchronous window IPC always replies without bypassing sender checks', () => {
+  const ipcMain = new EventEmitter();
+  const srcDir = path.resolve(__dirname, '../src');
+  const boundary = createWindowBoundary({ ipcMain, srcDir, BrowserWindow: class {
+    constructor() { this.webContents = {}; }
+  } });
+  const sender = (role, file) => {
+    const contents = boundary.create(role, {}).webContents;
+    contents.mainFrame = { url: pathToFileURL(path.join(srcDir, file)).href };
+    return contents;
+  };
+  const pin = sender('pin', 'pin.html');
+  const main = sender('main', 'index.html');
+  const bounds = { x: 5, y: 10, width: 100, height: 150 };
+  const theme = { resolved: 'dark' };
+  boundary.handleSync('pin:bounds', () => bounds);
+  boundary.handleSync('theme:initial', () => theme);
+  const send = (channel, contents, senderFrame = contents.mainFrame) => {
+    const event = { sender: contents, senderFrame };
+    ipcMain.emit(channel, event);
+    return event.returnValue;
+  };
+  assert.deepStrictEqual(send('theme:initial', main), theme);
+  assert.strictEqual(send('theme:initial', main, { ...main.mainFrame }), null);
+  assert.deepStrictEqual(send('pin:bounds', pin), bounds);
+  assert.strictEqual(send('pin:bounds', main), null);
+  assert.strictEqual(send('pin:bounds', pin, { ...pin.mainFrame }), null);
+});
 
 /* ---------- 快捷键 ---------- */
 

@@ -50,8 +50,15 @@ async function until(fn){let last;for(let n=0;n<160;n++){try{const value=await f
   console.log('PASS actual packaged display selection persists across hide/reopen');
   await panel.evaluate(`document.getElementById('mode-apps').click();true`);
   assert.equal((await panel.evaluate(`window.suira.search.query('Edge',{scope:'apps'})`)).every(item=>item.kind==='app'),true);
-  await panel.send('Input.dispatchKeyEvent',{type:'keyDown',key:'Escape',code:'Escape',windowsVirtualKeyCode:27});
-  await until(()=>panel.evaluate('document.getElementById("panel").dataset.presentation==="window"&&outerHeight<=screen.availHeight+1'));
+  await panel.send('Page.bringToFront');
+  await until(()=>panel.evaluate('document.hasFocus() && document.getElementById("panel").getAnimations().every(animation=>animation.playState!=="running")'));
+  const escape={key:'Escape',code:'Escape',windowsVirtualKeyCode:27};
+  await panel.send('Input.dispatchKeyEvent',{...escape,type:'keyDown'});
+  await panel.send('Input.dispatchKeyEvent',{...escape,type:'keyUp'});
+  await until(()=>panel.evaluate('document.getElementById("panel").dataset.presentation==="window"&&outerHeight<=screen.availHeight+1')).catch(async error=>{
+    const state=await panel.evaluate('({presentation:document.getElementById("panel").dataset.presentation,height:outerHeight,available:screen.availHeight,query:document.getElementById("search").value,focus:document.activeElement?.id})');
+    throw Error(error.message+': '+JSON.stringify(state));
+  });
   await panel.evaluate(`document.getElementById('mode-actions').click();document.querySelector('.key[data-key="Q"]').click();document.getElementById('binding-app').click();true`);
   await until(()=>panel.evaluate('document.getElementById("binding-app-status").textContent!=="正在查找本机应用…"'));
   assert.equal(await panel.evaluate('!document.getElementById("binding-apps-view").hidden&&document.getElementById("binding-app-search").getAttribute("placeholder").includes("拼音")'),true);

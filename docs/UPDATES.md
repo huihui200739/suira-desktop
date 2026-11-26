@@ -29,7 +29,7 @@
 - `node tools/updater-network-check.js`：使用真实 Electron 与 electron-updater，从本机隔离 HTTP 服务下载无执行能力的测试文件，验证正确校验值通过、错误校验值被拒绝。不会执行安装器。
 - `node tools/updater-public-check.js`：匿名检查公开更新源，模拟旧版下载完整安装包并验证 SHA512，随后确认当前版本返回已是最新版；使用隔离数据，不执行安装器。
 - `npm run verify:launcher`：真实 Electron 验证 38 键全屏比例、更新菜单与开发模式提示。
-- `node tools/release-package-check.js`：打包源码、更新配置与安装包校验元数据一致。
+- `node tools/release-package-check.js`：检查打包源码、更新配置与安装包校验元数据，并核对安装包和应用的 Authenticode 状态。未签名构建只用于本地验收时，加 `--check-only` 不改发布清单；已有发行签名时，加 `--require-signature` 可强制两者均通过 Windows 签名验证。
 - `npm run verify:installer`：独立名称、独立路径的测试产品，验证安装、覆盖安装、等待旧进程退出、卸载及默认文件关联保持不变。不会替换用户正在使用的随序。
 
 ## 0.2.21 发布核对（2026-11-02）

@@ -5,6 +5,11 @@ const { resolve } = require('node:path');
 
 const limits = {
   'main.js': 500,
+  'lib/clipboard-history.js': 200,
+  'lib/store-writer.js': 140,
+  'src/icons.js': 440,
+  'src/stage-tools.js': 440,
+  'src/styles.css': 440,
   'src/workspace.js': 440,
   'src/trail-view.js': 440,
   'src/utility-surface.css': 140

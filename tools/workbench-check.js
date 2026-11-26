@@ -309,8 +309,11 @@ async function until(fn, label = 'state') {
   assert.equal((await readStyle(calendar, '.countdown-row', ['border-left-width']))['border-left-width'], '0px');
   await calendar.evaluate('document.querySelector("[data-countdown=term]").click();true');
   assert.ok(await calendar.evaluate('document.querySelector("[data-countdown=term]").getAttribute("aria-pressed")==="true" && [...document.querySelectorAll(".countdown-row")].every(row=>row.dataset.kind==="term")'));
-  await calendar.evaluate('document.querySelector("[data-countdown=all]").click();document.querySelector("button[aria-label=窗口置顶]").click();true');
-  await until(() => calendar.evaluate('document.querySelector("button[aria-label=窗口置顶]").getAttribute("aria-pressed")==="true"'));
+  await calendar.evaluate('document.querySelector("[data-countdown=all]").click();true');
+  await calendar.send('Page.bringToFront');
+  await until(() => calendar.evaluate('document.hasFocus()'), 'calendar focused for pin toggle');
+  await calendar.evaluate('document.querySelector("button[aria-label=窗口置顶]").click();true');
+  await until(() => calendar.evaluate('document.querySelector("button[aria-label=窗口置顶]").getAttribute("aria-pressed")==="true"'), 'calendar pinned');
   assert.equal((await readStyle(calendar, 'button[aria-label=窗口置顶]', ['color']))['color'], neutral);
   const controlsToggle = 'button[aria-label="搜索和视图"]';
   await calendar.evaluate('document.querySelector(' + JSON.stringify(controlsToggle) + ').click();true');

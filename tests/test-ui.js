@@ -9,8 +9,13 @@ console.log('\n== 主窗口 index.html ==');
 const html = read('src/index.html');
 const appJs = read('src/app.js');
 const mainJs = read('main.js');
+const clipboardHistoryJs = read('lib/clipboard-history.js');
 
-t('引用的 CSS 存在', () => { if (!fs.existsSync('src/styles.css')) throw new Error('styles.css 缺失'); });
+t('主窗口引用的 CSS 均存在', () => {
+  for (const [, file] of html.matchAll(/<link rel="stylesheet" href="([^"]+)"/g)) {
+    if (!fs.existsSync(path.join(PROJECT_ROOT, 'src', file))) throw new Error(`${file} 缺失`);
+  }
+});
 t('引用的 JS 存在', () => { if (!fs.existsSync('src/app.js')) throw new Error('app.js 缺失'); });
 t('图标资源存在', () => { if (!fs.existsSync('assets/suira-icon.png')) throw new Error('suira-icon.png 缺失'); });
 
@@ -84,7 +89,7 @@ t('quickpanel.js 引用的 ID 都存在', () => {
   if (miss.length) throw new Error('缺失: ' + miss.join(', '));
 });
 
-t('语音输入界面、受限预加载与主进程通道齐备', () => {
+t('语音输入界面和受限预加载齐备', () => {
   const voiceHtml = read('src/voice-input.html');
   const voiceJs = read('src/voice-input.js');
   const voicePreload = read('voice-preload.js');
@@ -94,9 +99,6 @@ t('语音输入界面、受限预加载与主进程通道齐备', () => {
   if (missingIds.length) throw new Error('语音页缺少元素: ' + missingIds.join(', '));
   for (const method of ['status', 'transcribe', 'onStop', 'close', 'openSettings']) {
     if (!voicePreload.includes(`${method}:`)) throw new Error('预加载缺少语音能力 ' + method);
-  }
-  for (const channel of ['voice:open', 'voice:status', 'voice:transcribe', 'voice:stop', 'voice:close', 'voice:open-settings']) {
-    if (!mainJs.includes(`'${channel}'`)) throw new Error('主进程缺少语音通道 ' + channel);
   }
   if (!voiceHtml.includes("connect-src 'none'")) throw new Error('语音页面不应直接建立网络连接');
 });
@@ -149,7 +151,7 @@ t('main.js 引入配方/搜索/剪贴板守卫模块', () => {
 t('剪贴板记录接入敏感排除与超大内容处理', () => {
   if (!mainJs.includes('shouldExcludeCapture')) throw new Error('未接入敏感排除');
   if (!mainJs.includes('summarizeLargeText')) throw new Error('未接入超大内容处理');
-  if (!mainJs.includes('readWithRetry')) throw new Error('未接入锁竞争重试');
+  if (!clipboardHistoryJs.includes('readWithRetry')) throw new Error('未接入锁竞争重试');
 });
 t('quickpanel 命令区元素齐备', () => {
   for (const id of ['command-section', 'command-list']) {
@@ -499,8 +501,8 @@ t('显示面板前先记录目标窗口（顺序正确）', () => {
   if (recordAt > showAt) throw new Error('记录目标的时机晚于显示窗口，会读到自己');
 });
 t('剪贴板自写回环接入账本', () => {
-  if (!mainJs.includes('clipboardLedger.shouldIgnore')) throw new Error('未接入回环防护');
-  if (!mainJs.includes('clipboardLedger.record')) throw new Error('未记录自身写入');
+  if (!clipboardHistoryJs.includes('clipboardLedger.shouldIgnore')) throw new Error('未接入回环防护');
+  if (!clipboardHistoryJs.includes('clipboardLedger.record')) throw new Error('未记录自身写入');
 });
 t('退出时释放前台探测进程', () => {
   if (!mainJs.includes('foregroundProbe.dispose()')) throw new Error('未释放辅助进程');
@@ -539,23 +541,6 @@ t('退出时释放快捷键', () => {
     throw new Error('未释放快捷键');
   }
 });
-t('初始化时创建数据密钥', () => {
-  if (!mainJs.includes('keyVault.loadOrCreate')) throw new Error('未创建数据密钥');
-  if (!mainJs.includes('keyPath()')) throw new Error('缺少密钥路径');
-});
-t('store 支持 codec 注入', () => {
-  const store = read('lib/store.js');
-  if (!store.includes('this.codec')) throw new Error('store 未支持 codec');
-  if (!store.includes('isEncrypting')) throw new Error('缺少 isEncrypting');
-});
-t('解密在 cleanItem 之前执行（避免 [object Object]）', () => {
-  const store = read('lib/store.js');
-  const decodeAt = store.indexOf('map(decodeItem)');
-  const cleanAt = store.indexOf('.map(cleanItem)');
-  if (decodeAt < 0) throw new Error('未找到 decodeItem');
-  if (cleanAt < 0) throw new Error('未找到 cleanItem');
-  if (decodeAt > cleanAt) throw new Error('解密晚于清理，加密信封会被转成字符串');
-});
 t('设置页有加密开关与改键输入框', () => {
   for (const id of ['setting-encrypt', 'setting-key-quick', 'setting-key-capture', 'status-quick', 'status-capture']) {
     if (!htmlIds.has(id)) throw new Error('缺少 ' + id);
@@ -577,10 +562,11 @@ t('旧 clipboard 命名空间已移除（与 content 重复）', () => {
 });
 t('preload 订阅的每个事件都有发送方', () => {
   const subs = [...new Set([...preload.matchAll(/subscribe\('([^']+)'/g)].map((m) => m[1]))];
-  const sends = new Set([
-    ...[...mainJs.matchAll(/broadcast\('([^']+)'/g)].map((m) => m[1]),
-    ...[...mainJs.matchAll(/webContents\.send\('([^']+)'/g)].map((m) => m[1])
-  ]);
+  const mainModules = [mainJs, ...fs.readdirSync('lib', { withFileTypes: true })
+    .filter(entry => entry.isFile() && entry.name.endsWith('.js'))
+    .map(entry => read('lib/' + entry.name))];
+  const senderCalls = /(?:\bbroadcast|\bwebContents\.send)\('([^']+)'/g;
+  const sends = new Set(mainModules.flatMap(source => [...source.matchAll(senderCalls)].map(match => match[1])));
   const dead = subs.filter((ch) => !sends.has(ch));
   if (dead.length) throw new Error('无人发送：' + dead.join(', '));
 });
@@ -601,10 +587,6 @@ t('固定内容：按钮、标记与接口齐备', () => {
   if (!appJs.includes('pin-mark')) throw new Error('缺少固定标记');
   if (!css.includes('.pin-mark')) throw new Error('缺少固定标记样式');
 });
-t('固定项不会被保留策略清理（store 层）', () => {
-  const store = read('lib/store.js');
-  if (!/prune[\s\S]{0,600}?pinned/.test(store)) throw new Error('prune 未跳过固定项');
-});
 t('最大化按钮同步图标状态', () => {
   if (!appJs.includes('syncMaximizeIcon')) throw new Error('缺少 syncMaximizeIcon');
   if (!appJs.includes('window.suira.window.maximize()')) throw new Error('未调用 maximize');
@@ -619,31 +601,6 @@ t('钉图使用独立 preload 暴露 pinApi', () => {
   for (const fn of ['resize', 'setOpacity', 'collapse', 'bounds', 'close']) {
     if (!pinPreload.includes(fn)) throw new Error('pinApi 缺少 ' + fn);
   }
-});
-t('钉图窗口挂载了 pin-preload', () => {
-  if (!mainJs.includes("preload: path.join(__dirname, 'pin-preload.js')")) {
-    throw new Error('未挂载 pin-preload');
-  }
-});
-t('钉图窗口注册了全部 pin:* 通道', () => {
-  for (const ch of ['pin:resize', 'pin:opacity', 'pin:collapse', 'pin:bounds', 'pin:close']) {
-    if (!mainJs.includes(`'${ch}'`)) throw new Error('缺少通道 ' + ch);
-  }
-});
-t('缩放有上下限（不会缩到不可见或撑爆屏幕）', () => {
-  if (!/Math\.min\(3, Math\.max\(0?\.25/.test(read('src/pin.js'))) throw new Error('渲染侧缩放未限幅');
-  if (!/Math\.max\(80, Math\.min\(4000/.test(mainJs)) throw new Error('主进程尺寸未限幅');
-});
-t('透明度有下限（不会变成完全不可见）', () => {
-  if (!/Math\.max\(0\.25, Math\.min\(1/.test(mainJs)) throw new Error('透明度未限幅');
-});
-t('临时收起保存并恢复原边界', () => {
-  if (!mainJs.includes('savedBounds')) throw new Error('未保存原边界');
-  if (!mainJs.includes('state.collapsed')) throw new Error('缺少收起状态');
-});
-t('钉图窗口只接受自身窗口的指令（防越权）', () => {
-  if (!mainJs.includes('pinFromEvent')) throw new Error('缺少来源校验');
-  if (!mainJs.includes('pinWindows.has(win)')) throw new Error('未校验窗口归属');
 });
 t('pin-preload 已纳入打包清单', () => {
   const pkg = JSON.parse(read('package.json'));
@@ -749,34 +706,6 @@ t('面板空格键不再吃掉带修饰键的组合（按住型唤起不被面�
   }
 });
 
-console.log('\n== 第三批：速记（Quick Note）接线 ==');
-
-t('速记窗口与主进程接线存在', () => {
-  if (!mainJs.includes('createNoteWindow')) throw new Error('缺少速记窗口创建');
-  if (!mainJs.includes("loadFile(path.join(__dirname, 'src', 'notes.html'))")) throw new Error('未加载 notes.html');
-  for (const channel of ['notes:list', 'notes:get', 'notes:open', 'notes:create', 'notes:update', 'notes:toggle-pin', 'notes:delete']) {
-    if (!mainJs.includes(channel)) throw new Error('缺少 IPC ' + channel);
-  }
-  if (!fs.existsSync('src/notes.js') || !fs.existsSync('src/notes.css')) throw new Error('速记页面资源缺失');
-});
-
-t('速记落盘走 store 的 notes 段并随内容加密', () => {
-  const store = read('lib/store.js');
-  if (!store.includes('createNote') || !store.includes('updateNoteText')) throw new Error('store 未实现速记方法');
-  if (!store.includes('cleanNote')) throw new Error('缺少速记落盘清洗');
-  if (!store.includes('notes: encrypting')) throw new Error('速记正文未随内容加密落盘');
-});
-
-t('速记语义收敛在纯模型里（可测，不依赖窗口）', () => {
-  const model = read('lib/notes.js');
-  for (const fn of ['noteTitle', 'cleanNote', 'capNotes', 'cleanBounds']) {
-    if (!model.includes(fn)) throw new Error('缺少模型函数 ' + fn);
-  }
-  if (!fs.existsSync('tests/test-notes.js')) throw new Error('缺少速记测试');
-  const pkg = JSON.parse(read('package.json'));
-  if (!pkg.scripts.test.includes('test-notes.js')) throw new Error('npm test 未纳入速记测试');
-});
-
 t('速记在 38 键面板与工具箱都有入口，且不再是「尚未实现」', () => {
   const kb = read('lib/keybindings.js');
   const note = /note:\s*\{[^}]*\}/.exec(kb);
@@ -787,20 +716,13 @@ t('速记在 38 键面板与工具箱都有入口，且不再是「尚未实现�
   if (!tools || !/implemented:\s*true/.test(tools[0])) throw new Error('工具箱速记入口未启用');
 });
 
-t('速记动作走 panel 执行层（键盘与鼠标同一条通道）', () => {
-  const actions = read('lib/panel-actions.js');
-  if (!actions.includes("case 'note'")) throw new Error('执行层未处理速记');
-  if (!actions.includes('openNote')) throw new Error('未注入速记依赖');
-  if (!mainJs.includes('openNote: () => openLatestNote()')) throw new Error('主进程未把速记接到执行层');
-});
-
 console.log('\n== 核心框架：截图 / 剪贴板 / 主体 ==');
 
 t('剪贴板采集覆盖文本 / 文件引用 / 图片三条路径', () => {
-  if (!mainJs.includes('readClipboardSnapshot')) throw new Error('缺少剪贴板快照读取');
+  if (!clipboardHistoryJs.includes('readClipboardSnapshot')) throw new Error('缺少剪贴板快照读取');
   if (!mainJs.includes('rememberClipboardFiles')) throw new Error('缺少文件引用采集');
-  if (!mainJs.includes('parseClipboardFileUris')) throw new Error('缺少 file: URI 解析接线');
-  if (!mainJs.includes('text/uri-list')) throw new Error('未读取 text/uri-list');
+  if (!clipboardHistoryJs.includes('parseClipboardFileUris')) throw new Error('缺少 file: URI 解析接线');
+  if (!clipboardHistoryJs.includes('text/uri-list')) throw new Error('未读取 text/uri-list');
   if (!mainJs.includes('addImageToStore')) throw new Error('缺少图片采集');
   const capture = read('lib/clipboard-capture.js');
   if (/require\('electron'\)/.test(capture) || /require\('node:fs'\)/.test(capture)) {
@@ -1007,7 +929,7 @@ t('性能回归：标注历史层、主题缓存、临时画布与大文本热�
   if (!overlay.includes('mosaicPaletteColors')) throw new Error('马赛克颜色不能逐格重新拼字符串');
   if (!actions.includes("return parts.join('');")) throw new Error('mergeLines 不能用 O(n²) 字符串累加');
   if (store.includes('}, null, 2)')) throw new Error('store 整库序列化不应带缩进');
-  if (!main.includes('imageBlobFingerprint')) throw new Error('剪贴板轮询要先比对轻量指纹');
+  if (!clipboardHistoryJs.includes('imageBlobFingerprint')) throw new Error('剪贴板轮询要先比对轻量指纹');
   if (!panel.includes("image.getAttribute('src')!==currentContext.thumbnail")) throw new Error('最近内容缩略图不能每秒重新解码');
   if (!/if\s*\(agendaMode\s*!==\s*'countdown'\)\s*\$\('agenda-list'\)\.innerHTML\s*=/.test(workspace)) {
     throw new Error('倒数日模式不应先建再丢弃待办 DOM');

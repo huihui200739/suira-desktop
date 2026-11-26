@@ -50,6 +50,8 @@ async function run() {
     const image = fixture.addItem({ kind: 'image', title: 'Legacy image', filePath: imagePath });
     await fixture.save();
     const entry = path.join(profile, 'app.js'), result = path.join(profile, 'listener-ready');
+    const fallback = path.join(profile, 'listener-fallback');
+    const writerClosed = path.join(profile, 'writer-closed');
     await fs.writeFile(entry, `
       const { app, clipboard, dialog, globalShortcut, ipcMain } = require('electron');
       const fs = require('node:fs');
@@ -84,6 +86,14 @@ async function run() {
       const events = require(${JSON.stringify(path.join(root, 'lib/windows-clipboard-events'))});
       const watch = events.watchWindowsClipboard;
       events.watchWindowsClipboard = (win, callback) => {
+        if (fs.existsSync(${JSON.stringify(fallback)})) {
+          win.once('closed', () => fs.writeFileSync(${JSON.stringify(fallback)}, 'destroyed'));
+          setTimeout(() => {
+            text = 'clipboard polling fixture';
+            sequence += 1;
+          }, 450);
+          throw new Error('Simulated clipboard listener registration failure');
+        }
         const stop = watch(win, callback);
         const ffi = require(${JSON.stringify(path.join(root, 'node_modules/koffi'))});
         const send = ffi.load('user32.dll').func('__stdcall','PostMessageW','int',['uintptr_t','uint32','uintptr_t','intptr_t']);
@@ -94,6 +104,13 @@ async function run() {
           fs.writeFileSync(${JSON.stringify(result)}, 'ok');
         }, 450);
         return stop;
+      };
+      const { SuiraStore } = require(${JSON.stringify(path.join(root, 'lib/store'))});
+      const dispose = SuiraStore.prototype.dispose;
+      SuiraStore.prototype.dispose = async function () {
+        await dispose.call(this);
+        await require('node:assert/strict').rejects(this.save(), /store is closed/);
+        fs.writeFileSync(${JSON.stringify(writerClosed)}, 'ok');
       };
       require(${JSON.stringify(path.join(root, 'main.js'))});
     `);
@@ -109,7 +126,10 @@ async function run() {
       const client = await until(() => connect(port, predicate));
       sockets.push(client.ws);
       await until(() => client.evaluate('Boolean(window.suira)'));
-      return client;
+      return { ...client, async evaluate(expression) {
+        try { return await client.evaluate(expression); }
+        catch (error) { throw new Error(`Electron fixture evaluation failed: ${expression.slice(0, 120)}`, { cause: error }); }
+      } };
     };
     const main = await page(target => target.url.endsWith('/index.html'));
     const registered = await until(async () => JSON.parse(await fs.readFile(path.join(profile, 'registered.json'), 'utf8')));
@@ -120,6 +140,16 @@ async function run() {
     }
     assert.deepEqual(registered.sort(), [...invoked].sort(), 'Preload and actual IPC registrations must match');
     assert.equal((await main.evaluate(`window.suira.content.get(${JSON.stringify(sample.id)})`)).text, 'legacy fixture');
+    assert.equal((await main.evaluate('window.suira.voice.open()')).ok, true);
+    const voice = await until(() => connect(port, target => target.url.endsWith('/voice-input.html')));
+    sockets.push(voice.ws);
+    await until(() => voice.evaluate('Boolean(window.suiraVoice)'));
+    const voiceStatus = await voice.evaluate('window.suiraVoice.status()');
+    assert.equal(voiceStatus.ok, true);
+    assert.equal(voiceStatus.configured, false);
+    assert.equal(await voice.evaluate('typeof window.suira'), 'undefined');
+    assert.equal((await voice.evaluate('window.suiraVoice.close()')).ok, true);
+
     const listed = await main.evaluate(`(async () => {
       const items = await window.suira.content.list({ cardDetails: true });
       return items.find(item => item.id === ${JSON.stringify(image.id)});
@@ -136,8 +166,53 @@ async function run() {
     // The injected clipboard does not touch the user's system clipboard. The Win32
     // message still travels through the real hidden HWND and Electron's hook.
     await until(async () => (await main.evaluate('window.suira.content.list()')).some(item => item.text === 'clipboard event fixture'));
-    assert.equal((await main.evaluate('window.suira.notes.create()')).ok, true);
-    const note = await page(target => target.url.endsWith('/notes.html'));
+    assert.equal((await main.evaluate('window.suira.settings.update({recordClipboard:false})')).ok, true);
+    await fs.writeFile(fallback, 'force failure');
+    assert.equal((await main.evaluate('window.suira.settings.update({recordClipboard:true})')).ok, true);
+    assert.equal(await fs.readFile(fallback, 'utf8'), 'destroyed', 'Failed native listener HWND must be released');
+    await until(async () => (await main.evaluate('window.suira.content.list()')).some(item => item.text === 'clipboard polling fixture'));
+    assert.equal((await main.evaluate('window.suira.settings.update({recordClipboard:false})')).ok, true);
+    await fs.unlink(fallback);
+    assert.equal((await main.evaluate('window.suira.settings.update({recordClipboard:true})')).ok, true);
+    assert.equal((await main.evaluate('window.suira.panel.run("note")')).ok, true);
+    const [createdNote] = await main.evaluate('window.suira.notes.list()');
+    assert.ok(createdNote?.id);
+    const noteId = JSON.stringify(createdNote.id);
+    let noteTarget;
+    let note = await page(target => {
+      if (!target.url.endsWith('/notes.html')) return false;
+      noteTarget = target.id;
+      return true;
+    });
+    const noteReady = 'document.getElementById("note")?.dataset.state === "ready"';
+    await until(() => note.evaluate(noteReady));
+    assert.equal((await main.evaluate(`window.suira.notes.open(${noteId})`)).id, createdNote.id);
+    const listTargets = () => fetch(`http://127.0.0.1:${port}/json/list`).then(response => response.json());
+    assert.deepEqual((await listTargets()).filter(target => target.url.endsWith('/notes.html')).map(target => target.id), [noteTarget]);
+    for (const pinned of ['true', 'false']) {
+      await note.evaluate('document.getElementById("note-pin").click()');
+      await until(() => note.evaluate(`document.getElementById("note-pin").getAttribute("aria-pressed") === "${pinned}"`));
+      assert.equal((await main.evaluate(`window.suira.notes.get(${noteId})`)).pinned, pinned === 'true');
+    }
+    await note.evaluate(`{
+      const title = document.getElementById('note-page-title');
+      title.value = 'Close and reopen';
+      title.dispatchEvent(new Event('input', { bubbles: true }));
+      document.getElementById('note-close').click();
+    }`);
+    await until(async () => !(await listTargets()).some(target => target.id === noteTarget));
+    assert.equal((await main.evaluate(`window.suira.notes.get(${noteId})`)).customTitle, 'Close and reopen');
+    assert.equal((await main.evaluate('window.suira.notes.openLatest()')).id, createdNote.id);
+    note = await page(target => target.url.endsWith('/notes.html'));
+    await until(() => note.evaluate(noteReady));
+    assert.equal(await note.evaluate('document.getElementById("note-page-title").value'), 'Close and reopen');
+    assert.equal((await main.evaluate(`window.suira.actions.run({ kind: 'text', text: 'note relay fixture' }, 'text.to-note')`)).ok, true);
+    await until(() => note.evaluate('window.NoteUI.text() === "note relay fixture"'));
+    assert.equal((await main.evaluate(`window.suira.textTools.open({ mode: 'convert', text: 'text tools fixture' })`)).ok, true);
+    const textTools = await page(target => target.url.includes('/text-tools.html'));
+    await until(() => textTools.evaluate(`Boolean(document.querySelector('#tool-action-strip [data-action-id="text.translate"]'))`));
+    assert.equal((await textTools.evaluate('window.suira.settings.update({recordClipboard:false})')).code, 'IPC_FORBIDDEN');
+    await textTools.evaluate('window.suira.window.close()');
     assert.equal((await note.evaluate('window.suira.settings.update({recordClipboard:false})')).code, 'IPC_FORBIDDEN');
     assert.equal(await note.evaluate(`Boolean(window.open('about:blank'))`), false);
     await note.evaluate(`{
@@ -179,18 +254,33 @@ async function run() {
     assert.deepEqual(await main.evaluate(`window.suira.tasks.export(${taskId})`), { ok: true, filePath: exported });
     assert.match(await fs.readFile(exported, 'utf8'), /^# Audit\/Task\n[\s\S]*\n## Protected existing record\n\nlegacy fixture\n/);
     assert.equal((await main.evaluate(`window.suira.tasks.removeItem(${assignment})`)).ok, true);
-    const notes = await note.evaluate('window.suira.notes.list()');
-    assert.ok(notes.length);
-    assert.equal((await note.evaluate(`window.suira.notes.update(${JSON.stringify({ id: notes[0].id, text: 'last debounced edit' })})`)).ok, true);
-    assert.equal((await panel.evaluate('window.suira.app.quit()')).ok, true);
-    assert.equal(await Promise.race([exit, sleep(8000, 'timeout', { ref: false })]), 0);
+    assert.equal((await note.evaluate(`window.suira.notes.update({ id: ${noteId}, text: 'last debounced body' })`)).ok, true);
+    await note.evaluate(`{
+      const title = document.getElementById('note-page-title');
+      title.value = 'last debounced title';
+      title.dispatchEvent(new Event('input', { bubbles: true }));
+    }`);
+    await main.evaluate(`window.WorkspaceUI.flush = () => {
+      const deadline = performance.now() + 15000;
+      while (performance.now() < deadline) { /* Simulate a blocked renderer thread, not just a pending promise. */ }
+    }; true`);
+    // Once quit is dispatched, its DevTools reply can race the process exit.
+    const requested = panel.evaluate('window.suira.app.quit()').then(result => {
+      assert.equal(result.ok, true);
+      return exit;
+    });
+    assert.equal(await Promise.race([requested, exit, sleep(8000, 'timeout', { ref: false })]), 0, 'Quit must not wait for a stalled renderer');
+    assert.equal(await fs.readFile(writerClosed, 'utf8'), 'ok');
+    const diagnostics = (await fs.readFile(path.join(profile, 'diagnostics.log'), 'utf8')).trim().split(/\r?\n/).map(JSON.parse);
+    assert.ok(diagnostics.some(line => line.event === 'quit-renderer-flush' && line.code === 'ERR_RENDERER_TIMEOUT'));
     const persisted = new SuiraStore(dataPath, { codec });
-    assert.equal(persisted.getNote(notes[0].id).text, 'last debounced edit');
+    assert.equal(persisted.getNote(createdNote.id).text, 'last debounced body');
+    assert.equal(persisted.getNote(createdNote.id).customTitle, 'last debounced title');
     assert.equal(persisted.getItem(sample.id).text, 'legacy fixture');
     child = spawn(executable, [entry, '--remote-debugging-address=127.0.0.1', `--remote-debugging-port=${port}`], { cwd: root, env, windowsHide: true, stdio: 'ignore' });
     const restarted = await page(target => target.url.endsWith('/index.html'));
     assert.equal((await restarted.evaluate(`window.suira.content.get(${JSON.stringify(sample.id)})`)).text, 'legacy fixture');
-    console.log('PASS real Electron: existing DPAPI profile and restart, native clipboard notification, denied navigation/popups/IPC, task copy/export/cancel and immediate quit flush');
+    console.log('PASS real Electron: native clipboard and polling fallback, navigation and IPC guard, task export, notes, relay, stalled-renderer quit, writer disposal and DPAPI restart');
   } finally {
     for (const socket of sockets) socket.close();
     if (child?.pid && child.exitCode === null && !child.signalCode) {

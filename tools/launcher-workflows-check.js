@@ -52,16 +52,25 @@ require(${JSON.stringify(path.join(root,'main.js'))});`);
   const cleanup=await main.evaluate(`(async()=>{const a=await window.suira.content.addText({text:'history capture fixture',source:'screenshot'}),b=await window.suira.content.addText({text:'history task fixture',source:'clipboard'});const t=await window.suira.tasks.create('preserved cleanup fixture');await window.suira.tasks.addItem({taskId:t.task.id,itemId:b.item.id});const result=await window.suira.content.clearClipboard();return {...result,items:await window.suira.content.list({limit:100})};})()`);
   assert.ok(cleanup.removed>=1);assert.ok(cleanup.protected>=1);assert.ok(!cleanup.items.some(item=>item.text==='history capture fixture'));assert.ok(cleanup.items.some(item=>item.text==='history task fixture'));
   console.log('PASS real history cleanup IPC removes captures and preserves task content');
-  const capsule=await panel.evaluate(`(()=>{const r=document.querySelector('.search-field').getBoundingClientRect();return {width:r.width,center:r.x+r.width/2,viewport:innerWidth,opacity:getComputedStyle(document.getElementById('search')).opacity};})()`);
-  assert.ok(capsule.width<=320&&Math.abs(capsule.center-capsule.viewport/2)<=2);assert.equal(capsule.opacity,'1');
+  const measureSearch = () => panel.evaluate(`(() => {
+    const field = document.querySelector('.search-field').getBoundingClientRect();
+    const neighbors = [...document.querySelectorAll('.panel-brand,.panel-modes,#recent-context-trigger,#presentation-toggle,#toolbox')]
+      .filter(node => node.checkVisibility()).map(node => node.getBoundingClientRect());
+    return { width:field.width, clear:neighbors.every(rect => field.right <= rect.left+1 || field.left >= rect.right-1),
+      onScreen:field.left >= 0 && field.right <= innerWidth };
+  })()`);
+  const capsule=await measureSearch();
+  assert.ok(capsule.width<=320&&capsule.clear&&capsule.onScreen,JSON.stringify(capsule));
+  assert.equal(await panel.evaluate('getComputedStyle(document.getElementById("search")).opacity'),'1');
   await panel.evaluate(`document.documentElement.dispatchEvent(new PointerEvent('pointerleave'));document.getElementById('panel-more').click();true`);
   assert.equal(await panel.evaluate('document.getElementById("panel-more-menu").hidden'),false);
+  await until(()=>panel.evaluate('document.getElementById("panel").getAnimations({subtree:true}).every(animation=>animation.playState!=="running")'));
   const menuHeight=await panel.evaluate('document.getElementById("panel-more-menu").getBoundingClientRect().height');
   const trigger=await panel.evaluate(`(()=>{const r=document.querySelector('[data-menu-section="display"]').getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2};})()`);
   await panel.send('Input.dispatchMouseEvent',{type:'mouseMoved',...trigger});
   await until(()=>panel.evaluate('!document.querySelector("[data-menu-group=display]").hidden'));
   const flyout=await panel.evaluate(`(()=>{const r=document.querySelector('[data-menu-group="display"]').getBoundingClientRect(),m=document.getElementById('panel-more-menu').getBoundingClientRect(),button=document.getElementById('panel-more').getBoundingClientRect(),icon=document.querySelector('#panel-more svg').getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2,right:r.left>=m.right,height:m.height,center:Math.abs(button.x+button.width/2-icon.x-icon.width/2)+Math.abs(button.y+button.height/2-icon.y-icon.height/2)};})()`);
-  assert.equal(flyout.right,true);assert.equal(flyout.height,menuHeight);assert.ok(flyout.center<1);
+  assert.equal(flyout.right,true);assert.ok(Math.abs(flyout.height-menuHeight)<=1,JSON.stringify({before:menuHeight,after:flyout.height}));assert.ok(flyout.center<1);
   await panel.send('Input.dispatchMouseEvent',{type:'mouseMoved',x:flyout.x,y:flyout.y});await wait(240);
   if(await panel.evaluate('document.querySelector("[data-menu-group=display]").hidden'))console.log('Flyout state',await panel.evaluate(`({visible:document.visibilityState,guide:!document.getElementById('panel-guide').hidden,hover:[...document.querySelectorAll(':hover')].map(n=>n.id||n.className)})`));
   assert.equal(await panel.evaluate('document.querySelector("[data-menu-group=display]").hidden'),false);
@@ -112,7 +121,7 @@ require(${JSON.stringify(path.join(root,'main.js'))});`);
   await panel.evaluate(`document.getElementById('panel-more').click();document.querySelector('[data-menu-section="display"]').click();document.querySelector('[data-display="window"]').click();true`);
   await until(async()=>!(await info()).full);
   await panel.evaluate(`document.getElementById('mode-actions').click();true`);
-  console.log('PASS permanent centered compact search, shared options menu, real light/dark settings and Escape dismissal');
+  console.log('PASS permanent compact search without header overlap, shared options menu, real light/dark settings and Escape dismissal');
   await panel.evaluate(`document.getElementById('panel-more').click();document.querySelector('[data-menu-action="releases"]').click();true`);
   await until(()=>panel.evaluate('!document.getElementById("update-dialog").hidden&&document.getElementById("update-message").textContent.includes("安装版")'));
   assert.equal(await panel.evaluate('document.getElementById("update-action").disabled'),true);

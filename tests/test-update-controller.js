@@ -1,5 +1,6 @@
 'use strict';
 const assert=require('node:assert/strict'),{EventEmitter}=require('node:events'),{UpdateController}=require('../lib/update-controller');
+const { flushRendererDrafts } = require('../lib/renderer-flush');
 (async()=>{
  const engine=new EventEmitter();let checks=0,downloads=0,installs=0,saves=0;
  engine.checkForUpdates=async()=>{checks++;engine.emit('update-available',{version:'9.0.0'});};
@@ -9,6 +10,15 @@ const assert=require('node:assert/strict'),{EventEmitter}=require('node:events')
  await controller.install();assert.equal(installs,0);await controller.check();assert.equal(controller.snapshot().phase,'available');assert.equal(downloads,0);assert.equal(engine.autoInstallOnAppQuit,false);
  await controller.download();assert.equal(controller.snapshot().phase,'ready');await controller.install();assert.equal(installs,1);assert.equal(checks,1);
  const failed=new UpdateController({version:'1',supported:()=>true,factory:()=>engine,beforeInstall:async()=>{throw Error('save failed');}});failed.set({phase:'ready'});await failed.install();assert.equal(failed.snapshot().phase,'ready');assert.equal(installs,1);
+ const stalled = { webContents: { executeJavaScript: () => new Promise(() => {}) } };
+ const timedOut = new UpdateController({
+   version: '1', supported: () => true, factory: () => engine,
+   beforeInstall: () => flushRendererDrafts(stalled, 20)
+ });
+ timedOut.set({ phase: 'ready' });
+ assert.match((await timedOut.install()).message, /草稿未能保存/);
+ assert.equal(timedOut.snapshot().phase, 'ready');
+ assert.equal(installs, 1);
  const pending=new UpdateController({version:'1',supported:()=>true,factory:()=>engine,beforeInstall:async()=>{throw Object.assign(Error('请先处理日历中未保存的日程，再重启更新。'),{code:'CALENDAR_DRAFT_PENDING'});}});pending.set({phase:'ready'});await pending.install();assert.equal(pending.snapshot().phase,'ready');assert.match(pending.snapshot().message,/日历/);assert.equal(installs,1);
  engine.checkForUpdates=async()=>{const e=Error('not published');e.code='ERR_UPDATER_NO_PUBLISHED_VERSIONS';throw e;};controller.set({phase:'idle'});await controller.check();assert.ok(controller.snapshot().message.includes('尚未发布'));assert.equal(controller.snapshot().phase,'error');
  const dev=new UpdateController({version:'1',supported:()=>false,factory:()=>{throw Error('must not load');}});await dev.check();assert.equal(dev.snapshot().phase,'unsupported');
