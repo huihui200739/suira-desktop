@@ -222,9 +222,14 @@ async function until(fn){let error;for(let n=0;n<140;n++){try{const value=await 
   const panel=await until(()=>connect(port,t=>t.url.endsWith('/quickpanel.html')));sockets.push(panel.ws);await until(()=>panel.evaluate('document.querySelectorAll(".key").length===38'));
   await until(()=>panel.evaluate('document.visibilityState==="visible"'));await wait(350);
   await panel.send('Input.dispatchMouseEvent',{type:'mouseMoved',x:10,y:400});await wait(350);
-  const search=await panel.evaluate(`(()=>{const f=document.querySelector('.search-field').getBoundingClientRect();return {width:f.width,center:f.x+f.width/2,viewport:innerWidth};})()`);
+  const search=await panel.evaluate(`(() => {
+    const field = document.querySelector('.search-field').getBoundingClientRect();
+    const neighbors = [...document.querySelectorAll('.panel-brand,.panel-modes,#recent-context-trigger,#presentation-toggle,#toolbox')]
+      .filter(node => node.checkVisibility()).map(node => node.getBoundingClientRect());
+    return {width:field.width, clear:neighbors.every(rect => field.right <= rect.left+1 || field.left >= rect.right-1)};
+  })()`);
   assert.ok(search.width>200&&search.width<=320,'Search remains readable without a hover gesture');
-  assert.ok(Math.abs(search.center-search.viewport/2)<2,'Search is centered');
+  assert.ok(search.clear,'Window-mode search must not overlap adjacent controls');
   await panel.evaluate(`document.getElementById('search').value='日历';document.getElementById('search').dispatchEvent(new Event('input'));true`);
   await panel.send('Input.dispatchMouseEvent',{type:'mouseMoved',x:20,y:400});await wait(200);
   assert.equal(await panel.evaluate(`document.getElementById('search').value`),'日历','Leaving the search preserves the query');
@@ -234,5 +239,5 @@ async function until(fn){let error;for(let n=0;n<140;n++){try{const value=await 
   await panel.send('Input.dispatchKeyEvent',{type:'keyUp',key:'F3',windowsVirtualKeyCode:114});await wait(350);
   assert.equal(await panel.evaluate(`document.activeElement===document.getElementById('search')`),true);
   assert.equal(errors.length,0,errors.join('\n'));
-  console.log('PASS real Electron: calendar save/completion, Markdown rendering/sanitizing/autosave/reload, settings categories, registered Alt+G callback opens picker twice, centered search and collapsible document outline');
+  console.log('PASS real Electron: calendar save/completion, Markdown rendering/sanitizing/autosave/reload, settings categories, registered Alt+G callback opens picker twice, persistent search and collapsible document outline');
 })().catch(error=>{console.error(error);if(fs.existsSync(path.join(tmp,'app.log')))console.error(fs.readFileSync(path.join(tmp,'app.log'),'utf8').slice(-1500));process.exitCode=1;}).finally(async()=>{for(const ws of sockets)ws.close();if(child&&child.exitCode===null)child.kill();await wait(500);try{fs.rmSync(tmp,{recursive:true,force:true});}catch{}});

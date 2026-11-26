@@ -77,10 +77,32 @@ const yaml=require('js-yaml'),feed=yaml.load(fs.readFileSync(path.join(root,'dis
 const publish=require('../package.json').build.publish[0],sha512=crypto.createHash('sha512').update(fs.readFileSync(installer)).digest('base64');
 assert.equal(config.provider,publish.provider);assert.equal(config.owner,publish.owner);assert.equal(config.repo,publish.repo);assert.equal(feed.version,version);
 const updateFile=feed.files.find(file=>file.url===path.basename(installer));assert.ok(updateFile);assert.equal(updateFile.sha512,sha512);assert.equal(updateFile.size,fs.statSync(installer).size);assert.ok(fs.existsSync(installer+'.blockmap'));assert.ok(files.includes('node_modules/electron-updater/out/main.js'));
-const manifest={version,artifact:path.basename(installer),bytes:fs.statSync(installer).size,sha256,sha512,platform:'win32',arch:'x64',electron:'45.0.0',checkedSourceFiles:checked,checks:['source-payload-byte-match','no-test-profile-or-obsolete-key-hook','installer-archive-crc','updater-feed-and-sha512-match','original-font-and-license-sha256-in-nsis-payload'],fontSha256:fontSource.sha256,signature:'unsigned',published:false};
-manifest.checks.push('required-production-dependency-closure');
-manifest.payloadSha256=fileHash(payload);
-manifest.executableSha256=fileHash(path.join(root,'dist','win-unpacked','随序.exe'));
+const executable = path.join(root, 'dist', 'win-unpacked', '随序.exe');
+const requireSignature = process.argv.includes('--require-signature');
+function authenticodeStatus(file) {
+  const pathLiteral = file.replace(/'/g, "''");
+  const shell = path.join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe');
+  return execFileSync(shell, ['-NoProfile', '-NonInteractive', '-Command',
+    "$ErrorActionPreference = 'Stop'; Import-Module (Join-Path $PSHOME 'Modules/Microsoft.PowerShell.Security/Microsoft.PowerShell.Security.psd1'); " +
+    `(Get-AuthenticodeSignature -LiteralPath '${pathLiteral}').Status.ToString()`
+  ], { encoding: 'utf8', windowsHide: true, timeout: 30000 }).trim();
+}
+const installerStatus = authenticodeStatus(installer);
+const executableStatus = authenticodeStatus(executable);
+for (const [label, status] of [['Installer', installerStatus], ['Application', executableStatus]]) {
+  assert.ok(status === 'Valid' || (!requireSignature && status === 'NotSigned'), `${label} Authenticode: ${status}`);
+}
+assert.equal(installerStatus, executableStatus, 'Installer and application must both be signed or both be unsigned');
+console.log(`PASS Authenticode: installer and application = ${installerStatus}`);
+const manifest = {
+  version, artifact: path.basename(installer), bytes: fs.statSync(installer).size, sha256, sha512,
+  platform: 'win32', arch: 'x64', electron: '45.0.0', checkedSourceFiles: checked,
+  checks: ['source-payload-byte-match', 'no-test-profile-or-obsolete-key-hook', 'installer-archive-crc',
+    'updater-feed-and-sha512-match', 'original-font-and-license-sha256-in-nsis-payload',
+    'required-production-dependency-closure', 'authenticode-verified-status'],
+  fontSha256: fontSource.sha256, signature: installerStatus === 'Valid' ? 'valid' : 'unsigned', published: false,
+  payloadSha256: fileHash(payload), executableSha256: fileHash(executable)
+};
 if (!process.argv.includes('--check-only')) fs.writeFileSync(path.join(root,'docs',`release-${version}.json`),JSON.stringify(manifest,null,2)+'\n');
 console.log('PASS packaged source matches '+checked+' files; no private/test data or obsolete fallback; installer CRC verified');
 console.log(JSON.stringify(manifest,null,2));

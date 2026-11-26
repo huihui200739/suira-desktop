@@ -120,6 +120,16 @@ async function run() {
     }
     assert.deepEqual(registered.sort(), [...invoked].sort(), 'Preload and actual IPC registrations must match');
     assert.equal((await main.evaluate(`window.suira.content.get(${JSON.stringify(sample.id)})`)).text, 'legacy fixture');
+    assert.equal((await main.evaluate('window.suira.voice.open()')).ok, true);
+    const voice = await until(() => connect(port, target => target.url.endsWith('/voice-input.html')));
+    sockets.push(voice.ws);
+    await until(() => voice.evaluate('Boolean(window.suiraVoice)'));
+    const voiceStatus = await voice.evaluate('window.suiraVoice.status()');
+    assert.equal(voiceStatus.ok, true);
+    assert.equal(voiceStatus.configured, false);
+    assert.equal(await voice.evaluate('typeof window.suira'), 'undefined');
+    assert.equal((await voice.evaluate('window.suiraVoice.close()')).ok, true);
+
     const listed = await main.evaluate(`(async () => {
       const items = await window.suira.content.list({ cardDetails: true });
       return items.find(item => item.id === ${JSON.stringify(image.id)});
@@ -136,8 +146,45 @@ async function run() {
     // The injected clipboard does not touch the user's system clipboard. The Win32
     // message still travels through the real hidden HWND and Electron's hook.
     await until(async () => (await main.evaluate('window.suira.content.list()')).some(item => item.text === 'clipboard event fixture'));
-    assert.equal((await main.evaluate('window.suira.notes.create()')).ok, true);
-    const note = await page(target => target.url.endsWith('/notes.html'));
+    assert.equal((await main.evaluate('window.suira.panel.run("note")')).ok, true);
+    const [createdNote] = await main.evaluate('window.suira.notes.list()');
+    assert.ok(createdNote?.id);
+    const noteId = JSON.stringify(createdNote.id);
+    let noteTarget;
+    let note = await page(target => {
+      if (!target.url.endsWith('/notes.html')) return false;
+      noteTarget = target.id;
+      return true;
+    });
+    const noteReady = 'document.getElementById("note")?.dataset.state === "ready"';
+    await until(() => note.evaluate(noteReady));
+    assert.equal((await main.evaluate(`window.suira.notes.open(${noteId})`)).id, createdNote.id);
+    const listTargets = () => fetch(`http://127.0.0.1:${port}/json/list`).then(response => response.json());
+    assert.deepEqual((await listTargets()).filter(target => target.url.endsWith('/notes.html')).map(target => target.id), [noteTarget]);
+    for (const pinned of ['true', 'false']) {
+      await note.evaluate('document.getElementById("note-pin").click()');
+      await until(() => note.evaluate(`document.getElementById("note-pin").getAttribute("aria-pressed") === "${pinned}"`));
+      assert.equal((await main.evaluate(`window.suira.notes.get(${noteId})`)).pinned, pinned === 'true');
+    }
+    await note.evaluate(`{
+      const title = document.getElementById('note-page-title');
+      title.value = 'Close and reopen';
+      title.dispatchEvent(new Event('input', { bubbles: true }));
+      document.getElementById('note-close').click();
+    }`);
+    await until(async () => !(await listTargets()).some(target => target.id === noteTarget));
+    assert.equal((await main.evaluate(`window.suira.notes.get(${noteId})`)).customTitle, 'Close and reopen');
+    assert.equal((await main.evaluate('window.suira.notes.openLatest()')).id, createdNote.id);
+    note = await page(target => target.url.endsWith('/notes.html'));
+    await until(() => note.evaluate(noteReady));
+    assert.equal(await note.evaluate('document.getElementById("note-page-title").value'), 'Close and reopen');
+    assert.equal((await main.evaluate(`window.suira.actions.run({ kind: 'text', text: 'note relay fixture' }, 'text.to-note')`)).ok, true);
+    await until(() => note.evaluate('window.NoteUI.text() === "note relay fixture"'));
+    assert.equal((await main.evaluate(`window.suira.textTools.open({ mode: 'convert', text: 'text tools fixture' })`)).ok, true);
+    const textTools = await page(target => target.url.includes('/text-tools.html'));
+    await until(() => textTools.evaluate(`Boolean(document.querySelector('#tool-action-strip [data-action-id="text.translate"]'))`));
+    assert.equal((await textTools.evaluate('window.suira.settings.update({recordClipboard:false})')).code, 'IPC_FORBIDDEN');
+    await textTools.evaluate('window.suira.window.close()');
     assert.equal((await note.evaluate('window.suira.settings.update({recordClipboard:false})')).code, 'IPC_FORBIDDEN');
     assert.equal(await note.evaluate(`Boolean(window.open('about:blank'))`), false);
     await note.evaluate(`{
@@ -179,18 +226,22 @@ async function run() {
     assert.deepEqual(await main.evaluate(`window.suira.tasks.export(${taskId})`), { ok: true, filePath: exported });
     assert.match(await fs.readFile(exported, 'utf8'), /^# Audit\/Task\n[\s\S]*\n## Protected existing record\n\nlegacy fixture\n/);
     assert.equal((await main.evaluate(`window.suira.tasks.removeItem(${assignment})`)).ok, true);
-    const notes = await note.evaluate('window.suira.notes.list()');
-    assert.ok(notes.length);
-    assert.equal((await note.evaluate(`window.suira.notes.update(${JSON.stringify({ id: notes[0].id, text: 'last debounced edit' })})`)).ok, true);
+    assert.equal((await note.evaluate(`window.suira.notes.update({ id: ${noteId}, text: 'last debounced body' })`)).ok, true);
+    await note.evaluate(`{
+      const title = document.getElementById('note-page-title');
+      title.value = 'last debounced title';
+      title.dispatchEvent(new Event('input', { bubbles: true }));
+    }`);
     assert.equal((await panel.evaluate('window.suira.app.quit()')).ok, true);
     assert.equal(await Promise.race([exit, sleep(8000, 'timeout', { ref: false })]), 0);
     const persisted = new SuiraStore(dataPath, { codec });
-    assert.equal(persisted.getNote(notes[0].id).text, 'last debounced edit');
+    assert.equal(persisted.getNote(createdNote.id).text, 'last debounced body');
+    assert.equal(persisted.getNote(createdNote.id).customTitle, 'last debounced title');
     assert.equal(persisted.getItem(sample.id).text, 'legacy fixture');
     child = spawn(executable, [entry, '--remote-debugging-address=127.0.0.1', `--remote-debugging-port=${port}`], { cwd: root, env, windowsHide: true, stdio: 'ignore' });
     const restarted = await page(target => target.url.endsWith('/index.html'));
     assert.equal((await restarted.evaluate(`window.suira.content.get(${JSON.stringify(sample.id)})`)).text, 'legacy fixture');
-    console.log('PASS real Electron: existing DPAPI profile and restart, native clipboard notification, denied navigation/popups/IPC, task copy/export/cancel and immediate quit flush');
+    console.log('PASS real Electron: existing DPAPI profile and restart, native clipboard notification, denied navigation/popups/IPC, task copy/export/cancel, note pin/close/reopen, relay actions and immediate quit flush');
   } finally {
     for (const socket of sockets) socket.close();
     if (child?.pid && child.exitCode === null && !child.signalCode) {
