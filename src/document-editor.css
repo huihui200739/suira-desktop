@@ -150,7 +150,7 @@
  .md-write-content a { color:var(--document-md-write-content-ink-alt-alt); }
 }
 @media(prefers-reduced-motion:reduce){.md-write-content{scroll-behavior:auto}}
-.tool-window[data-tool="markdown"].md-writing-focus :is(#md-panes, #md-outline-toggle, #md-more, #md-format-toggle) { display:none; }
+.tool-window[data-tool="markdown"].md-writing-focus :is(#md-panes, #md-outline-toggle, #md-ppt-toggle, #md-more, #md-format-toggle) { display:none; }
 @media(max-width:850px) {
   .tool-window[data-tool="markdown"] .document-foot { gap:6px 12px; flex-wrap:wrap; }
   .tool-window[data-tool="markdown"] .document-foot>span:last-child { display:none; }
@@ -208,8 +208,270 @@
 @media(min-width:541px) { .mia-shell :is(#md-notes-back,#md-outline-back,#md-empty-notes) { display:none; } }
 
 /* Render local attachments inside the reading column, including split view. */
-.markdown-preview img { max-inline-size:100%; block-size:auto; }
+.markdown-preview img { max-inline-size:100%; block-size:auto; border-radius:8px; margin:12px 0; }
 .markdown-preview li input[type="checkbox"] { accent-color:var(--accent); margin-inline:0 var(--space-1); vertical-align:middle; }
+
+/* Book-page CJK/Latin editorial typography for Markdown reading & split preview. */
+.tool-window[data-tool="markdown"] .markdown-preview {
+  font-size:16px;
+  line-height:1.85;
+  letter-spacing:0.01em;
+  text-autospace:ideograph-alpha ideograph-numeric;
+  font-variant-numeric:tabular-nums;
+}
+.tool-window[data-tool="markdown"] .markdown-split[data-view="preview"] .markdown-preview {
+  padding:28px max(var(--mia-copy-inset), calc((100% - 760px) / 2)) 96px;
+}
+.tool-window[data-tool="markdown"] .markdown-preview > :first-child { margin-top:0; }
+.tool-window[data-tool="markdown"] .markdown-preview p { margin:0 0 16px; }
+.tool-window[data-tool="markdown"] .markdown-preview h1 {
+  font-size:30px;
+  line-height:1.35;
+  letter-spacing:-0.02em;
+  padding-bottom:12px;
+  margin:0 0 24px;
+  border-bottom:1px solid var(--md-rule);
+}
+.tool-window[data-tool="markdown"] .markdown-preview h2 {
+  font-size:22px;
+  line-height:1.4;
+  letter-spacing:-0.015em;
+  margin:32px 0 14px;
+}
+.tool-window[data-tool="markdown"] .markdown-preview h3 { font-size:18px; line-height:1.45; margin:24px 0 10px; }
+.tool-window[data-tool="markdown"] .markdown-preview blockquote {
+  margin:18px 0;
+  padding:10px 18px;
+  border-left:3px solid var(--writing-muted);
+  border-radius:0 8px 8px 0;
+  background:var(--md-side);
+  color:var(--md-muted);
+}
+.tool-window[data-tool="markdown"] .markdown-preview blockquote > :last-child { margin-bottom:0; }
+.tool-window[data-tool="markdown"] .markdown-preview pre {
+  margin:18px 0;
+  padding:14px 18px;
+  border:1px solid var(--md-rule);
+  border-radius:8px;
+  background:var(--md-side);
+  line-height:1.65;
+  font-size:13.5px;
+}
+.tool-window[data-tool="markdown"] .markdown-preview code {
+  font-family:var(--font-mono);
+  font-size:0.9em;
+  padding:2px 5px;
+  border-radius:4px;
+  background:var(--md-hover);
+}
+.tool-window[data-tool="markdown"] .markdown-preview pre code { padding:0; background:transparent; font-size:inherit; }
+.tool-window[data-tool="markdown"] .markdown-preview table {
+  border-collapse:collapse;
+  width:100%;
+  margin:20px 0;
+  font-size:14.5px;
+}
+.tool-window[data-tool="markdown"] .markdown-preview th {
+  background:var(--md-side);
+  font-weight:600;
+  text-align:left;
+}
+.tool-window[data-tool="markdown"] .markdown-preview :is(th,td) {
+  border:1px solid var(--md-rule);
+  padding:8px 12px;
+}
+.tool-window[data-tool="markdown"] .markdown-preview hr {
+  border:0;
+  border-top:1px solid var(--md-rule);
+  margin:28px 0;
+}
+
+/* Local-First folder footer inside .mia-library */
+.mia-library-foot {
+  display:flex;
+  align-items:center;
+  gap:4px;
+  flex:none;
+  padding:8px;
+  border-top:1px solid var(--mia-line);
+}
+.mia-shell button.mia-folder-btn {
+  display:inline-flex;
+  align-items:center;
+  gap:6px;
+  flex:1;
+  min-width:0;
+  height:30px;
+  padding:0 8px;
+  border:0;
+  border-radius:6px;
+  background:transparent;
+  color:var(--mia-muted);
+  font:inherit;
+  font-size:12px;
+  cursor:pointer;
+}
+.mia-shell button.mia-folder-btn:hover { background:var(--mia-hover); color:var(--mia-ink); }
+.mia-shell button.mia-folder-btn span { overflow:hidden; white-space:nowrap; text-overflow:ellipsis; }
+.mia-shell button.mia-folder-btn svg { width:15px; height:15px; flex:none; fill:none; stroke:currentColor; stroke-width:1.6; stroke-linecap:round; stroke-linejoin:round; }
+@media (max-width: 850px) {
+  .mia-library-foot { justify-content:center; padding:6px 4px; }
+  .mia-library-foot .mia-folder-btn { justify-content:center; padding:0; }
+  .mia-library-foot .mia-folder-btn span,
+  .mia-library-foot #md-refresh-folder { display:none; }
+}
+
+/* MiaoYan-style PPT Presentation Stage */
+.md-ppt-stage {
+  position:fixed;
+  inset:0;
+  z-index:600;
+  display:flex;
+  flex-direction:column;
+  background:var(--md-page);
+  color:var(--md-text);
+  outline:none;
+  -webkit-app-region:no-drag;
+}
+.md-ppt-stage[hidden] { display:none; }
+.md-ppt-topbar {
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  flex:none;
+  height:48px;
+  padding:0 20px;
+  border-bottom:1px solid var(--md-rule);
+  color:var(--md-muted);
+  font-size:13px;
+}
+.md-ppt-doc-title {
+  overflow:hidden;
+  white-space:nowrap;
+  text-overflow:ellipsis;
+  font-weight:500;
+  color:var(--md-text);
+}
+.md-ppt-top-actions { display:flex; align-items:center; gap:6px; flex:none; }
+.md-ppt-btn {
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  gap:6px;
+  height:30px;
+  padding:0 10px;
+  border:1px solid var(--md-rule);
+  border-radius:6px;
+  background:transparent;
+  color:var(--md-text);
+  font:inherit;
+  font-size:12px;
+  cursor:pointer;
+  transition:background-color var(--dur-fast) var(--ease-out);
+}
+.md-ppt-btn:hover:not(:disabled) { background:var(--md-hover); }
+.md-ppt-btn:disabled { opacity:0.4; cursor:default; }
+.md-ppt-btn[aria-pressed="true"] { background:var(--md-selected); }
+.md-ppt-viewport {
+  position:relative;
+  flex:1;
+  min-height:0;
+  overflow:auto;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  padding:32px clamp(24px, 7vw, 112px);
+}
+.md-ppt-slide {
+  width:min(960px, 100%);
+  max-height:100%;
+  margin:auto;
+  font-size:clamp(18px, 2.1vw, 26px);
+  line-height:1.75;
+  letter-spacing:0.01em;
+  text-autospace:ideograph-alpha ideograph-numeric;
+  animation:md-ppt-enter 180ms var(--ease-out);
+}
+@keyframes md-ppt-enter {
+  from { opacity:0; transform:translateY(8px); }
+  to { opacity:1; transform:translateY(0); }
+}
+.md-ppt-slide h1 { font-size:clamp(30px, 4vw, 48px); line-height:1.25; margin:0 0 24px; letter-spacing:-0.025em; }
+.md-ppt-slide h2 { font-size:clamp(24px, 3vw, 36px); line-height:1.3; margin:0 0 20px; letter-spacing:-0.02em; }
+.md-ppt-slide h3 { font-size:clamp(20px, 2.4vw, 28px); line-height:1.4; margin:0 0 14px; }
+.md-ppt-slide p { margin:0 0 18px; }
+.md-ppt-slide :is(ul,ol) { margin:12px 0 20px; padding-left:1.4em; }
+.md-ppt-slide li { margin:8px 0; }
+.md-ppt-slide blockquote {
+  margin:20px 0;
+  padding:12px 22px;
+  border-left:4px solid var(--md-muted);
+  border-radius:0 8px 8px 0;
+  background:var(--md-side);
+  color:var(--md-muted);
+}
+.md-ppt-slide pre {
+  margin:20px 0;
+  padding:18px 22px;
+  border:1px solid var(--md-rule);
+  border-radius:10px;
+  background:var(--md-side);
+  font-size:0.72em;
+  line-height:1.6;
+  overflow:auto;
+}
+.md-ppt-slide code { font-family:var(--font-mono); font-size:0.86em; padding:2px 6px; border-radius:4px; background:var(--md-hover); }
+.md-ppt-slide pre code { padding:0; background:transparent; font-size:inherit; }
+.md-ppt-slide img { max-inline-size:100%; max-block-size:58vh; object-fit:contain; border-radius:10px; display:block; margin:16px auto; }
+.md-ppt-slide table { border-collapse:collapse; width:100%; margin:20px 0; font-size:0.82em; }
+.md-ppt-slide :is(th,td) { border:1px solid var(--md-rule); padding:10px 14px; text-align:left; }
+.md-ppt-slide th { background:var(--md-side); font-weight:600; }
+.md-ppt-grid {
+  position:absolute;
+  inset:0;
+  overflow:auto;
+  padding:28px clamp(20px, 5vw, 64px);
+  display:grid;
+  grid-template-columns:repeat(auto-fill, minmax(220px, 1fr));
+  gap:16px;
+  align-content:start;
+  background:var(--md-page);
+}
+.md-ppt-grid[hidden] { display:none; }
+.md-ppt-card {
+  display:flex;
+  flex-direction:column;
+  gap:8px;
+  padding:16px;
+  min-height:124px;
+  border:1px solid var(--md-rule);
+  border-radius:10px;
+  background:var(--md-side);
+  color:var(--md-text);
+  text-align:left;
+  cursor:pointer;
+}
+.md-ppt-card:hover { background:var(--md-hover); }
+.md-ppt-card[aria-current="true"] { border-color:var(--writing-focus); background:var(--md-selected); }
+.md-ppt-card small { color:var(--md-muted); font-size:11px; font-variant-numeric:tabular-nums; }
+.md-ppt-card b { font-size:14px; font-weight:600; line-height:1.4; overflow:hidden; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; }
+.md-ppt-hud {
+  display:flex;
+  align-items:center;
+  gap:12px;
+  flex:none;
+  height:50px;
+  padding:0 20px;
+  border-top:1px solid var(--md-rule);
+}
+.md-ppt-counter { min-width:56px; text-align:center; font-size:13px; color:var(--md-muted); font-variant-numeric:tabular-nums; }
+.md-ppt-progress { flex:1; height:3px; border-radius:2px; background:var(--md-rule); overflow:hidden; }
+.md-ppt-progress > i { display:block; height:100%; background:var(--writing-focus); transition:width var(--dur-fast) var(--ease-out); }
+@media (prefers-reduced-motion:reduce) {
+  .md-ppt-slide { animation:none; }
+  .md-ppt-progress > i { transition:none; }
+}
 
 .tool-window[data-tool="markdown"] .mia-shell { --mia-copy-inset:clamp(16px,2.6vw,34px); }
 .tool-window[data-tool="markdown"] .mia-location { border-radius:8px; }

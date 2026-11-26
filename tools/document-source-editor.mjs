@@ -8,7 +8,7 @@ window.SuiraMarkdownLayout = { mountEditorLayout, renderLocations, iconButton };
 // The source, split and preview views share the visual editor's command model.
 // Source mutations stay in the native textarea undo history and never parse or
 // reserialize the rest of a document (including extension syntax/frontmatter).
-window.SuiraSourceDocument={create({element,preview,enabled,readOnly,activate,onChange,notify,readClipboard,capture}){
+window.SuiraSourceDocument={create({element,preview,enabled,readOnly,activate,onChange,notify,readClipboard,capture,pasteImage,formatPangu}){
  let menu=null,saved=null,slash=null,composing=false;
  const selection=()=>({from:element.selectionStart,to:element.selectionEnd});
  const close=(focus=false)=>{menu?.remove();menu=null;slash=null;saved=null;if(focus&&!readOnly())element.focus();};
@@ -22,6 +22,13 @@ window.SuiraSourceDocument={create({element,preview,enabled,readOnly,activate,on
   const target=saved||selection(),range=slash||target;
   if(command==='capture'||command==='capture-text'){
    const before=element.value;close();capture(command==='capture-text'?'text':'image').then(result=>{if(result.canceled)return;if(!result.ok)throw Error(result.error||'截图失败');if(element.value!==before||!enabled())throw Error('截图期间文档发生变化，请重新插入');replace(command==='capture-text'?result.text:'![截图]('+result.url+')',range.from,range.to);}).catch(error=>notify(error.message));return;
+  }
+  if(command==='paste-image'){
+   close();if(typeof pasteImage==='function')pasteImage(range);return;
+  }
+  if(command==='pangu'){
+   if(slash)replace('',slash.from,slash.to);
+   close();if(typeof formatPangu==='function')formatPangu();return;
   }
   if(command==='link'||command==='image'){openMenu(command);return;}
   if(command==='paste'){
@@ -47,7 +54,8 @@ window.SuiraSourceDocument={create({element,preview,enabled,readOnly,activate,on
    output=selected.split('\n').map((line,i)=>(command==='ordered'?(i+1)+'. ':prefix)+line.replace(/^(?:#{1,6}\s+|>\s?|[-*+]\s+(?:\[[ xX]\]\s+)?|\d+[.)]\s+)/,'')).join('\n');
   }else if(command==='code')output='\n```\n'+text+'\n```\n';
   else if(command==='table')output='\n| 列一 | 列二 | 列三 |\n| --- | --- | --- |\n|  |  |  |\n|  |  |  |\n';
-  else if(command==='rule')output='\n\n---\n\n';
+  else if(command==='rule'||command==='slide')output='\n\n---\n\n';
+  else if(command==='callout')output='\n> [!NOTE]\n> '+text+'\n';
   else if(command==='clear')output=text.replace(/<\/?(?:span|u)\b[^>]*>/gi,'').replace(/(\*\*|~~|`)/g,'');
   else return;
   close();replace(output,from,to);saved=null;

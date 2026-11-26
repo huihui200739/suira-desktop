@@ -29,7 +29,7 @@ const ReferencedImage=Image.extend({
 });
 const icons={bold:'<b>B</b>',italic:'<i>I</i>',underline:'<u>U</u>',code:'&lt;/&gt;',link:'链接',color:'A',style:'正文⌄'};
 
-window.SuiraRichDocument={create({element,onChange,onSelection,notify,openLink,readClipboard,capture}){
+window.SuiraRichDocument={create({element,onChange,onSelection,notify,openLink,readClipboard,capture,pasteImage,formatPangu}){
  let editor,menu,bubble,savedSelection,slashRange=null,menuKind='',suppress=false,compositionPending=false,disposed=false;
  const closeMenu=(restore=false)=>{if(menu)menu.remove();menu=null;menuKind='';slashRange=null;savedSelection=null;if(restore)editor.commands.focus();};
  const hideBubble=()=>{if(bubble)bubble.hidden=true;};
@@ -48,6 +48,21 @@ window.SuiraRichDocument={create({element,onChange,onSelection,notify,openLink,r
    const range=slashRange||savedSelection||selection(),before=editor.state.doc;closeMenu();
    capture(command==='capture-text'?'text':'image').then(result=>{if(disposed||result.canceled)return;if(!result.ok)throw Error(result.error||'截图失败');if(editor.state.doc!==before)throw Error('截图期间文档发生变化，请重新插入');const chain=editor.chain().focus().setTextSelection(range);if(command==='capture-text'){const nodes=result.text.split('\n').map(line=>({type:'paragraph',content:line?[{type:'text',text:line}]:[]}));chain.insertContent(nodes).run();}else chain.setImage({src:result.url,alt:'截图'}).run();emit();}).catch(error=>notify(error.message));return;
   }
+  if(command==='paste-image'){
+   const range=slashRange||savedSelection||selection(),before=editor.state.doc;closeMenu();
+   if(typeof pasteImage==='function'){
+    pasteImage({visual:true}).then(result=>{
+     if(!result?.ok)return;
+     if(disposed||editor.state.doc!==before){result.discardAsset?.();if(!disposed)notify('粘贴期间文档已变化，请重新粘贴');return;}
+     editor.chain().focus().setTextSelection(range).setImage({src:result.url||result.relativePath,alt:result.alt||'图片'}).run();
+     emit();
+     result.notifyInserted?.();
+     if(result.savedTo==='assets'&&typeof result.onVisualAssetInserted==='function')result.onVisualAssetInserted();
+    }).catch(error=>notify(error.message));
+   }
+   return;
+  }
+  if(command==='pangu'){if(slashRange)editor.chain().focus().deleteRange(slashRange).run();closeMenu();if(typeof formatPangu==='function')formatPangu();return;}
   const chain=prepare();let result;
   switch(command){
    case 'bold':result=chain.toggleBold().run();break;
@@ -60,10 +75,10 @@ window.SuiraRichDocument={create({element,onChange,onSelection,notify,openLink,r
    case 'list':result=chain.toggleBulletList().run();break;
    case 'ordered':result=chain.toggleOrderedList().run();break;
    case 'task':result=chain.toggleTaskList().run();break;
-   case 'quote':result=chain.toggleBlockquote().run();break;
+   case 'quote':case 'callout':result=chain.toggleBlockquote().run();break;
    case 'code':result=chain.toggleCodeBlock().run();break;
    case 'table':result=chain.insertTable({rows:3,cols:3,withHeaderRow:true}).run();break;
-   case 'rule':result=chain.setHorizontalRule().run();break;
+   case 'rule':case 'slide':result=chain.setHorizontalRule().run();break;
    case 'color':result=(value?chain.setColor(value):chain.unsetColor()).run();break;
    case 'highlight':result=(value?chain.setBackgroundColor(value):chain.unsetBackgroundColor()).run();break;
    case 'size':result=(value?chain.setFontSize(value):chain.unsetFontSize()).run();break;
@@ -113,7 +128,7 @@ window.SuiraRichDocument={create({element,onChange,onSelection,notify,openLink,r
  editor=new Editor({element,extensions:[StarterKit.configure({link:{openOnClick:false,autolink:true,protocols:['http','https','mailto'],isAllowedUri:uri=>validURL(uri)}}),Markdown.configure({markedOptions:{gfm:true}}),TableKit.configure({table:{resizable:false}}),TaskList,TaskItem.configure({nested:true}),StyledText,Color,BackgroundColor,FontSize,ReferencedImage.configure({allowBase64:false}),Placeholder.configure({placeholder:'写下想法，输入 / 插入内容…'})],content:'',contentType:'markdown',
   editorProps:{attributes:{class:'md-write-content',role:'textbox','aria-label':'可视化文档正文','aria-multiline':'true'},transformPastedHTML:html=>window.SuiraMarkdown.safeHTML(html),
    handleKeyDown(_view,event){if(event.isComposing)return false;return popupKeys(event);},
-   handleDOMEvents:{contextmenu(view,event){if(view.composing)return false;event.preventDefault();if(view.state.selection.empty){const hit=view.posAtCoords({left:event.clientX,top:event.clientY});if(hit)editor.commands.setTextSelection(hit.pos);}savedSelection=selection();openMenu('main',undefined,{x:event.clientX,y:event.clientY});return true;},click(_view,event){const a=event.target.closest('a');if(a){event.preventDefault();if(validURL(a.getAttribute('href')||''))openLink(a.getAttribute('href'));return true;}return false;},compositionend(){if(compositionPending){compositionPending=false;setTimeout(emit,0);}return false;}},
+   handleDOMEvents:{contextmenu(view,event){if(view.composing)return false;event.preventDefault();if(view.state.selection.empty){const hit=view.posAtCoords({left:event.clientX,top:event.clientY});if(hit)editor.commands.setTextSelection(hit.pos);}savedSelection=selection();openMenu('main',undefined,{x:event.clientX,y:event.clientY});return true;},paste(view,event){if(view.composing||typeof pasteImage!=='function')return false;const items=[...(event.clipboardData?.items||[])];const imgItem=items.find(item=>item.kind==='file'&&/^image\/(png|jpeg|gif|webp)$/i.test(item.type));if(!imgItem)return false;const file=imgItem.getAsFile();if(!file)return false;event.preventDefault();const range=selection(),before=editor.state.doc,alt=(file.name||'').replace(/\.[^.]+$/,'')||'图片';const reader=new FileReader();reader.onload=()=>{if(disposed||editor.state.doc!==before){if(!disposed)notify('粘贴期间文档已变化，已取消插入');return;}pasteImage({visual:true,dataUrl:String(reader.result||''),alt}).then(result=>{if(!result?.ok)return;if(disposed||editor.state.doc!==before){result.discardAsset?.();if(!disposed)notify('粘贴期间文档已变化，请重新粘贴');return;}editor.chain().focus().setTextSelection(range).setImage({src:result.url||result.relativePath,alt:result.alt||alt}).run();emit();result.notifyInserted?.();if(result.savedTo==='assets'&&typeof result.onVisualAssetInserted==='function')result.onVisualAssetInserted();}).catch(error=>notify(error.message));};reader.onerror=()=>notify('无法读取粘贴的图片');reader.readAsDataURL(file);return true;},click(_view,event){const a=event.target.closest('a');if(a){event.preventDefault();if(validURL(a.getAttribute('href')||''))openLink(a.getAttribute('href'));return true;}return false;},compositionend(){if(compositionPending){compositionPending=false;setTimeout(emit,0);}return false;}},
   },onUpdate(){emit();updateSlash();},onSelectionUpdate(){onSelection?.();updateBubble();},onBlur(){setTimeout(()=>{if(!menu)hideBubble();},0);},onFocus(){updateBubble();}});
  const outside=e=>{if(!menu?.contains(e.target)&&!bubble?.contains(e.target)&&!e.target.closest('[data-document-menu]'))closeMenu();};
  const reposition=()=>{hideBubble();closeMenu();};
@@ -121,6 +136,7 @@ window.SuiraRichDocument={create({element,onChange,onSelection,notify,openLink,r
  document.addEventListener('pointerdown',outside);document.addEventListener('keydown',key);window.addEventListener('resize',reposition);element.addEventListener('scroll',reposition);
  return {
   load(text){suppress=true;closeMenu();hideBubble();editor.chain().setContent(text,{contentType:'markdown',emitUpdate:false}).setTextSelection(1).setMeta('addToHistory',false).run();suppress=false;},
+  replaceMarkdown(text){closeMenu();hideBubble();editor.chain().focus().setContent(text,{contentType:'markdown',emitUpdate:true}).run();},
   async commit(){if(compositionPending){await new Promise(r=>setTimeout(r,0));if(!editor.view.composing){compositionPending=false;emit();}}},
   apply,openMenu,closeMenu,focus:()=>editor.commands.focus(),getMarkdown:()=>editor.getMarkdown(),getJSON:()=>editor.getJSON(),
   headings(){const list=[];editor.state.doc.forEach((node,pos)=>{if(node.type.name==='heading')list.push({level:node.attrs.level,text:node.textContent,pos});});return list;},

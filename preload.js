@@ -252,7 +252,12 @@ contextBridge.exposeInMainWorld('suira', {
     save: (type,payload) => ipcRenderer.invoke('workspace:save',type,payload),
     remove: (type,id) => ipcRenderer.invoke('workspace:remove',type,id),
     import: () => ipcRenderer.invoke('workspace:import'),
-    export: (id,format) => ipcRenderer.invoke('workspace:export',id,format)
+    export: (id,format) => ipcRenderer.invoke('workspace:export',id,format),
+    folders: () => ipcRenderer.invoke('workspace:folders'),
+    openFolder: options => ipcRenderer.invoke('workspace:open-folder',options),
+    unmountFolder: folder => ipcRenderer.invoke('workspace:unmount-folder',folder),
+    createInFolder: payload => ipcRenderer.invoke('workspace:create-in-folder',payload),
+    pasteImage: payload => ipcRenderer.invoke('workspace:paste-image',payload)
   },
   tasks: {
     status: payload => ipcRenderer.invoke('tasks:status',payload),

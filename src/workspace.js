@@ -80,14 +80,31 @@
   let sourceHeadingPositions, ignoreEditorScroll, ignorePreviewScroll;
   let documentLayout,
     documentLocation = 'all',
-    locationsKey = '';
+    locationsKey = '',
+    mountedFolders = [];
   let outlineCollapsed = true,
     outlineItems = [],
     activeHeading = -1;
   const documentDate = new Intl.DateTimeFormat('zh-CN', { dateStyle: 'short', timeStyle: 'short' });
   const narrowDocumentLayout = () => matchMedia('(max-width: 540px)').matches;
+  const normFolder = (value) => String(value || '').replaceAll('\\', '/').replace(/\/+$/, '');
   const documentFolder = (doc) =>
     (doc.meta?.externalPath || '').replaceAll('\\', '/').replace(/\/[^/]*$/, '');
+  const activeLocalFolder = () => {
+    if (!documentLocation.startsWith('folder:')) return '';
+    const target = documentLocation.slice(7);
+    const mounted = mountedFolders.find((dir) => normFolder(dir).toLowerCase() === target);
+    if (mounted) return mounted;
+    const docMatch = docs.find((doc) => documentFolder(doc).toLowerCase() === target);
+    return docMatch ? docMatch.meta.externalPath.replace(/[\\/][^\\/]*$/, '') : '';
+  };
+  const syncFolderControls = () => {
+    const refreshBtn = $('md-refresh-folder');
+    if (!refreshBtn) return;
+    const target = documentLocation.startsWith('folder:') ? documentLocation.slice(7) : '';
+    const isMounted = Boolean(target && mountedFolders.some((dir) => normFolder(dir).toLowerCase() === target));
+    refreshBtn.hidden = !isMounted;
+  };
   const switchDocumentLocation = (id) => {
     documentLocation = id;
     outlineCollapsed = true;
@@ -704,7 +721,9 @@
     previewPane.scrollTop = scroll;
     ignorePreviewScroll = previewPane.scrollTop;
     syncScroll(editor);
-    $('md-words').textContent = `${text.length.toLocaleString()} 字符 · ${text.split('\n').length} 行`;
+    const mins = window.SuiraSlides?.readingMinutes?.(text) || 0;
+    const minLabel = mins ? ` · 约 ${mins} 分钟` : '';
+    $('md-words').textContent = `${text.length.toLocaleString()} 字符 · ${text.split('\n').length} 行${minLabel}`;
     updateActiveHeading();
   }
   function queuePreviewImages(id, images, change) {
@@ -749,6 +768,10 @@
   function docList({ revealActive = false } = {}) {
     if (documentLayout) {
       const folders = new Map();
+      for (const dir of mountedFolders) {
+        const clean = normFolder(dir);
+        if (clean && !folders.has(clean.toLowerCase())) folders.set(clean.toLowerCase(), clean);
+      }
       for (const doc of docs) {
         const folder = documentFolder(doc);
         if (folder && !folders.has(folder.toLowerCase())) folders.set(folder.toLowerCase(), folder);
@@ -776,16 +799,17 @@
         );
         locationsKey = key;
       }
+      syncFolderControls();
     }
     const query = $('md-search').value.trim().toLowerCase();
     const visible = docs.filter((doc) => {
       if (documentLocation === 'recent' && doc.meta?.recentHidden) return false;
       if (documentLocation === 'local' && doc.meta?.externalPath) return false;
-      if (
-        documentLocation.startsWith('folder:') &&
-        'folder:' + documentFolder(doc).toLowerCase() !== documentLocation
-      )
-        return false;
+      if (documentLocation.startsWith('folder:')) {
+        const target = documentLocation.slice(7);
+        const docDir = documentFolder(doc).toLowerCase();
+        if (docDir !== target && !docDir.startsWith(target + '/')) return false;
+      }
       return !query || doc.title.toLowerCase().includes(query) || doc.text.toLowerCase().includes(query);
     });
     const list = $('md-list');
@@ -831,7 +855,12 @@
     while (documentId && current === documentId && revision !== savedRevision) {
       const id = current,
         version = revision,
-        payload = { id, title: $('md-title').value.trim() || '未命名文档', text: $('md-editor').value };
+        payload = {
+          id,
+          title: $('md-title').value.trim() || '未命名文档',
+          text: $('md-editor').value,
+          ...(editor._baseExternalHash ? { baseExternalHash: editor._baseExternalHash } : {})
+        };
       $('md-status').textContent = '保存中…';
       try {
         const { item } = await checked(api.save('markdown', payload));
@@ -863,6 +892,7 @@
     }
     clearTimeout(previewTimer);
     closeDocumentFind(false);
+    if (typeof closePpt === 'function') closePpt();
     richDocument?.destroy();
     richDocument = null;
     richText = '';
@@ -881,25 +911,29 @@
     if (item) {
       $('md-title').value = item.title;
       editor.value = item.text;
+      editor._baseExternalHash = item.meta?.externalHash || '';
       $('md-status').textContent = item.meta?.externalPath ? '本地文件；Ctrl+S 保存到原位置' : '已保存';
       editor.scrollTop = 0;
       previewPane.scrollTop = 0;
       setDocumentView(requestedView, true);
     } else {
       editor.value = '';
+      editor._baseExternalHash = '';
       previewPane.replaceChildren();
       $('md-outline').replaceChildren();
       outlineItems = [];
       sourceHeadingPositions = null;
     }
     documentIdentity(item);
-    for (const button of ['md-save', 'md-export', 'md-export-format', 'md-delete'])
-      $(button).disabled = !item;
+    for (const button of ['md-save', 'md-export', 'md-export-format', 'md-delete', 'md-ppt-toggle', 'md-pangu-menu', 'md-ppt-menu']) {
+      if ($(button)) $(button).disabled = !item;
+    }
     docList({ revealActive: true });
     syncDocumentNavigation();
   }
   async function loadDocs() {
     await flush();
+    mountedFolders = (await api.folders?.().catch(() => [])) || [];
     docs = await api.list('markdown');
     const opened = await api.openedFile?.();
     await selectDoc(
@@ -921,11 +955,72 @@
   editor.oninput = () => dirty();
   $('md-title').oninput = () => dirty(false);
   $('md-search').oninput = () => docList();
+  async function openLocalFolder(refresh = false) {
+    await flush();
+    const refreshDocId = refresh ? current : '';
+    const revBefore = revision;
+    const hashBefore = editor._baseExternalHash || '';
+    const folder = refresh ? activeLocalFolder() : '';
+    const result = await api.openFolder(refresh ? { refresh: true, folder } : undefined);
+    if (result?.canceled) return;
+    await checked(Promise.resolve(result));
+    mountedFolders = Array.isArray(result.folders) ? result.folders : mountedFolders;
+    docs = await api.list('markdown');
+    const folderKey = 'folder:' + normFolder(result.folder).toLowerCase();
+    documentLocation = folderKey;
+    $('md-search').value = '';
+    const targetPrefix = folderKey.slice(7);
+    const first =
+      result.items?.[0]?.id ||
+      docs.find((d) => {
+        const dir = documentFolder(d).toLowerCase();
+        return dir === targetPrefix || dir.startsWith(targetPrefix + '/');
+      })?.id;
+    const reloadedCurrent = refreshDocId ? docs.find((d) => d.id === refreshDocId) : null;
+    const refreshedCurrent = refreshDocId ? (result.items || []).find((d) => d.id === refreshDocId) : null;
+    const diskHashAfterRefresh =
+      result.diskHashes?.[refreshDocId] || refreshedCurrent?.meta?.externalHash || reloadedCurrent?.meta?.externalHash || '';
+    if (refresh && refreshDocId) {
+      if (current !== refreshDocId) {
+        docList({ revealActive: true });
+      } else if (!reloadedCurrent) {
+        await selectDoc(first || '');
+      } else if (revision !== revBefore) {
+        editor._baseExternalHash = hashBefore;
+        docList({ revealActive: true });
+        if (diskHashAfterRefresh !== hashBefore) {
+          notify('磁盘文件已被外部修改，已保留当前输入；保存前请先核对或导出');
+          return;
+        }
+      } else if (
+        reloadedCurrent.text !== editor.value ||
+        reloadedCurrent.title !== $('md-title').value ||
+        diskHashAfterRefresh !== hashBefore
+      ) {
+        await selectDoc(current);
+      } else {
+        docList({ revealActive: true });
+      }
+    } else if (first) {
+      await selectDoc(first);
+    } else {
+      docList({ revealActive: true });
+    }
+    const skipHint = result.skipped ? `，跳过 ${result.skipped} 个不兼容文件` : '';
+    notify(result.opened ? `已加载 ${result.opened} 篇本地文档${skipHint}` : '已挂载空文件夹，点击新建即可直接落盘 .md');
+  }
   $('md-new').onclick = safe(async () => {
     await flush();
-    const result = await checked(api.save('markdown', { title: '未命名文档', text: '# 新的想法\n\n' }));
-    docs.unshift(result.item);
-    if (documentLocation.startsWith('folder:')) documentLocation = 'local';
+    const localDir = activeLocalFolder();
+    let result;
+    if (localDir && api.createInFolder) {
+      result = await checked(api.createInFolder({ folder: localDir, title: '未命名文档' }));
+      docs = [result.item, ...docs.filter((d) => d.id !== result.item.id)];
+    } else {
+      result = await checked(api.save('markdown', { title: '未命名文档', text: '# 新的想法\n\n' }));
+      docs.unshift(result.item);
+      if (documentLocation.startsWith('folder:')) documentLocation = 'local';
+    }
     $('md-search').value = '';
     await selectDoc(result.item.id);
     $('md-title').focus();
@@ -1070,6 +1165,7 @@
       richDocument = null;
     }
     if (!richDocument) {
+      const boundDocId = current;
       richDocument = window.SuiraRichDocument.create({
         element: $('md-rich'),
         notify,
@@ -1081,6 +1177,8 @@
         onSelection: () => updateActiveHeading(),
         openLink: (url) => safe(() => checked(api.openLink(url)))(),
         readClipboard: () => checked(api.clipboard()),
+        pasteImage: (opts) => pasteImageToDocument(null, opts?.dataUrl || '', opts?.alt || '图片', { visual: true, docId: boundDocId }),
+        formatPangu: () => formatDocumentPangu(),
         capture: async (kind) => {
           const id = current;
           await flush();
@@ -1442,7 +1540,10 @@
         index = docs.findIndex((d) => d.id === id);
       // Only the original-file metadata changed; keep any newer local draft.
       if (index >= 0) docs[index] = { ...docs[index], meta: { ...docs[index].meta, ...result.item.meta } };
-      if (current === id && revision === version) $('md-status').textContent = '已写回原文件';
+      if (current === id) {
+        editor._baseExternalHash = result.item.meta?.externalHash || '';
+        if (revision === version) $('md-status').textContent = '已写回原文件';
+      }
       notify('已保存到 ' + result.item.meta.externalPath);
     } else notify('已保存在随序');
   }
@@ -1545,21 +1646,351 @@
   $('md-sync-scroll').addEventListener('change', () => syncScroll(editor));
   $('md-editor').addEventListener('click', updateActiveHeading);
   $('md-editor').addEventListener('keyup', updateActiveHeading);
+  function replaceEditorRange(text, from, to) {
+    if ($('md-split').dataset.view === 'preview' || $('md-split').dataset.view === 'write') {
+      setDocumentView('edit', true);
+    }
+    const scroll = editor.scrollTop;
+    editor.focus();
+    editor.setSelectionRange(from, to);
+    const prev = editor.value;
+    if (!document.execCommand('insertText', false, text)) {
+      editor.setRangeText(text, from, to, 'end');
+      dirty();
+    } else if (editor.value === prev) {
+      dirty();
+    }
+    editor.scrollTop = scroll;
+  }
+  function formatDocumentPangu() {
+    if (!current) return false;
+    const inVisual = $('md-split').dataset.view === 'write' && richDocument;
+    const before = inVisual ? richDocument.getMarkdown() : editor.value;
+    const after = window.SuiraTextSpacing?.panguMarkdown?.(before);
+    if (!after || after === before) {
+      notify('中英文间距已整洁，无需调整');
+      return false;
+    }
+    if (inVisual) {
+      richDocument.replaceMarkdown(after);
+      notify('已完成中英文自动空格排版（Ctrl+Z 可撤销）');
+      return true;
+    }
+    const ratio = before.length ? editor.selectionStart / before.length : 0;
+    replaceEditorRange(after, 0, before.length);
+    const caret = Math.min(after.length, Math.round(after.length * ratio));
+    editor.setSelectionRange(caret, caret);
+    preview();
+    notify('已完成中英文自动空格排版（Ctrl+Z 可撤销）');
+    return true;
+  }
+  async function verifyDecodableImageDataUrl(dataUrl) {
+    if (!dataUrl || typeof createImageBitmap !== 'function') return true;
+    const match = String(dataUrl).match(/^data:(image\/(?:png|jpeg|gif|webp));base64,([A-Za-z0-9+/=]+)$/);
+    if (!match) return false;
+    try {
+      const bin = atob(match[2]);
+      const bytes = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i += 1) bytes[i] = bin.charCodeAt(i);
+      const bitmap = await createImageBitmap(new Blob([bytes], { type: match[1] }));
+      const valid = bitmap.width >= 1 && bitmap.height >= 1 && bitmap.width <= 16384 && bitmap.height <= 16384 && bitmap.width * bitmap.height <= 40000000;
+      bitmap.close?.();
+      return valid;
+    } catch {
+      return false;
+    }
+  }
+  async function pasteImageToDocument(range = null, dataUrl = '', alt = '图片', options = {}) {
+    const docId = options.docId ?? current;
+    const beforeText = options.beforeText ?? editor.value;
+    const beforeRev = options.beforeRev ?? revision;
+    if (!docId || !api.pasteImage) return { ok: false };
+    if (dataUrl && !(await verifyDecodableImageDataUrl(dataUrl))) {
+      notify('图片数据已损坏或无法解码', 'error');
+      return { ok: false, error: '图片数据已损坏或无法解码' };
+    }
+    if (current !== docId || (!options.visual && (editor.value !== beforeText || revision !== beforeRev))) {
+      notify('粘贴期间文档已变化，已取消插入');
+      return { ok: false, canceled: true };
+    }
+    const target = range || { from: editor.selectionStart, to: editor.selectionEnd };
+    const result = await api.pasteImage({ id: docId, dataUrl, alt });
+    if (!result?.ok) {
+      if (!result?.empty) notify(result?.error || '图片粘贴失败', 'error');
+      return result;
+    }
+    const discardAsset = () => {
+      if (result.savedTo === 'assets' && result.relativePath) {
+        return api.pasteImage({ id: docId, discardRelativePath: result.relativePath }).catch(() => ({ ok: false }));
+      }
+      return Promise.resolve({ ok: true });
+    };
+    if (current !== docId) {
+      await discardAsset();
+      notify('粘贴期间文档已切换，已取消插入');
+      return { ok: false, canceled: true };
+    }
+    if (options.visual) {
+      return {
+        ...result,
+        discardAsset,
+        notifyInserted: () => notify(result.savedTo === 'assets' ? '图片已保存至 assets/ 并插入' : '图片已存入随序并插入'),
+        onVisualAssetInserted: () => {
+          if (current === docId) setDocumentView('split', true);
+        }
+      };
+    }
+    if (editor.value !== beforeText || revision !== beforeRev) {
+      await discardAsset();
+      notify('粘贴期间文档已变化，请重新粘贴');
+      return { ok: false, canceled: true };
+    }
+    replaceEditorRange(result.markdown, target.from, target.to);
+    preview();
+    notify(result.savedTo === 'assets' ? '图片已保存至 assets/ 并插入' : '图片已存入随序并插入');
+    return result;
+  }
+  function readFileAsDataUrl(file) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result || ''));
+      reader.onerror = () => reject(Error('无法读取图片文件'));
+      reader.readAsDataURL(file);
+    });
+  }
+  editor.addEventListener('paste', (event) => {
+    if (!current || $('md-split').dataset.view === 'preview') return;
+    const items = [...(event.clipboardData?.items || [])];
+    const imageItem = items.find((item) => item.kind === 'file' && /^image\/(png|jpeg|gif|webp)$/i.test(item.type));
+    if (!imageItem) return;
+    const file = imageItem.getAsFile();
+    if (!file) return;
+    event.preventDefault();
+    const docId = current;
+    const beforeText = editor.value;
+    const beforeRev = revision;
+    const range = { from: editor.selectionStart, to: editor.selectionEnd };
+    const alt = (file.name || '').replace(/\.[^.]+$/, '') || '图片';
+    safe(async () => {
+      const dataUrl = await readFileAsDataUrl(file);
+      await pasteImageToDocument(range, dataUrl, alt, { docId, beforeText, beforeRev });
+    })();
+  });
+  editor.addEventListener('dragover', (event) => {
+    if (!current || $('md-split').dataset.view === 'preview') return;
+    if ([...(event.dataTransfer?.types || [])].includes('Files')) event.preventDefault();
+  });
+  editor.addEventListener('drop', (event) => {
+    if (!current || $('md-split').dataset.view === 'preview') return;
+    const files = [...(event.dataTransfer?.files || [])].filter((f) => /^image\/(png|jpeg|gif|webp)$/i.test(f.type));
+    if (!files.length) return;
+    event.preventDefault();
+    const docId = current;
+    let beforeText = editor.value;
+    let beforeRev = revision;
+    safe(async () => {
+      for (const file of files.slice(0, 6)) {
+        const dataUrl = await readFileAsDataUrl(file);
+        const alt = (file.name || '').replace(/\.[^.]+$/, '') || '图片';
+        const res = await pasteImageToDocument(null, dataUrl, alt, { docId, beforeText, beforeRev });
+        if (!res?.ok) break;
+        beforeText = editor.value;
+        beforeRev = revision;
+      }
+    })();
+  });
+  let pptActive = false,
+    pptSlides = [],
+    pptIndex = 0,
+    pptGridOpen = false,
+    pptPrevFocus = null,
+    pptRenderSeq = 0;
+  const pptStage = document.createElement('section');
+  pptStage.id = 'md-ppt-stage';
+  pptStage.className = 'md-ppt-stage';
+  pptStage.hidden = true;
+  pptStage.tabIndex = -1;
+  pptStage.setAttribute('role', 'dialog');
+  pptStage.setAttribute('aria-modal', 'true');
+  pptStage.setAttribute('aria-label', 'PPT 演示模式');
+  pptStage.innerHTML =
+    '<header class="md-ppt-topbar"><span class="md-ppt-doc-title" id="md-ppt-doc-title"></span>' +
+    '<div class="md-ppt-top-actions"><button type="button" class="md-ppt-btn" id="md-ppt-grid-btn" aria-pressed="false">总览 (G)</button>' +
+    '<button type="button" class="md-ppt-btn" id="md-ppt-exit">退出演示 (Esc)</button></div></header>' +
+    '<div class="md-ppt-viewport"><article class="md-ppt-slide" id="md-ppt-slide"></article>' +
+    '<div class="md-ppt-grid" id="md-ppt-grid" hidden></div></div>' +
+    '<footer class="md-ppt-hud"><button type="button" class="md-ppt-btn" id="md-ppt-prev">上一页</button>' +
+    '<span class="md-ppt-counter" id="md-ppt-counter">1 / 1</span>' +
+    '<div class="md-ppt-progress"><i id="md-ppt-bar"></i></div>' +
+    '<button type="button" class="md-ppt-btn" id="md-ppt-next">下一页</button></footer>';
+  document.body.append(pptStage);
+  async function renderPptSlide() {
+    if (!pptActive || !pptSlides.length) return;
+    const seq = ++pptRenderSeq;
+    const slide = pptSlides[pptIndex] || pptSlides[0];
+    const docId = current;
+    const external = Boolean(docs.find((doc) => doc.id === docId)?.meta?.externalPath);
+    const rendered = window.SuiraMarkdown.renderWithOutline(slide.markdown || `# ${slide.title}`, { localImages: external });
+    const host = $('md-ppt-slide');
+    host.innerHTML = rendered.html;
+    host.style.animation = 'none';
+    void host.offsetWidth;
+    host.style.animation = '';
+    $('md-ppt-counter').textContent = `${pptIndex + 1} / ${pptSlides.length}`;
+    $('md-ppt-bar').style.width = `${((pptIndex + 1) / pptSlides.length) * 100}%`;
+    $('md-ppt-prev').disabled = pptIndex <= 0;
+    $('md-ppt-next').disabled = pptIndex >= pptSlides.length - 1;
+    $('md-ppt-grid').querySelectorAll('.md-ppt-card').forEach((card, idx) => {
+      card.setAttribute('aria-current', String(idx === pptIndex));
+    });
+    if (external && rendered.images.length) {
+      const loaded = await api.previewImages(docId, rendered.images).catch(() => []);
+      if (!pptActive || seq !== pptRenderSeq || current !== docId) return;
+      const byUrl = new Map(loaded.map(({ url, data }) => [url, data]));
+      for (const placeholder of host.querySelectorAll('[data-md-local-image]')) {
+        const data = byUrl.get(placeholder.dataset.mdLocalImage);
+        if (!data) continue;
+        const image = document.createElement('img');
+        image.alt = placeholder.textContent;
+        image.src = data;
+        placeholder.replaceWith(image);
+      }
+    }
+  }
+  function setPptGrid(open) {
+    pptGridOpen = Boolean(open);
+    $('md-ppt-grid').hidden = !pptGridOpen;
+    $('md-ppt-grid-btn').setAttribute('aria-pressed', String(pptGridOpen));
+  }
+  function openPpt(startIndex = 0) {
+    if (!current || !window.SuiraSlides) return false;
+    const parsed = window.SuiraSlides.splitSlides(editor.value, $('md-title').value);
+    pptSlides = parsed.slides;
+    pptIndex = Math.max(0, Math.min(startIndex, pptSlides.length - 1));
+    pptPrevFocus = document.activeElement;
+    pptActive = true;
+    const shell = document.querySelector('.app-shell');
+    if (shell) shell.inert = true;
+    $('md-ppt-doc-title').textContent = $('md-title').value.trim() || 'PPT 演示';
+    $('md-ppt-grid').innerHTML = pptSlides
+      .map((s, idx) => `<button type="button" class="md-ppt-card" data-ppt-idx="${idx}" aria-current="${idx === pptIndex}"><small>第 ${idx + 1} 页</small><b>${esc(s.title)}</b></button>`)
+      .join('');
+    setPptGrid(false);
+    pptStage.hidden = false;
+    $('md-ppt-toggle')?.setAttribute('aria-pressed', 'true');
+    renderPptSlide();
+    pptStage.focus({ preventScroll: true });
+    return true;
+  }
+  function closePpt() {
+    if (!pptActive) return false;
+    pptActive = false;
+    pptRenderSeq++;
+    pptStage.hidden = true;
+    setPptGrid(false);
+    const shell = document.querySelector('.app-shell');
+    if (shell) shell.inert = false;
+    $('md-ppt-toggle')?.setAttribute('aria-pressed', 'false');
+    if (pptPrevFocus && typeof pptPrevFocus.focus === 'function') pptPrevFocus.focus({ preventScroll: true });
+    pptPrevFocus = null;
+    return true;
+  }
+  const togglePpt = () => (pptActive ? closePpt() : openPpt());
+  $('md-ppt-exit').onclick = () => closePpt();
+  $('md-ppt-grid-btn').onclick = () => setPptGrid(!pptGridOpen);
+  $('md-ppt-prev').onclick = () => { if (pptIndex > 0) { pptIndex--; renderPptSlide(); } };
+  $('md-ppt-next').onclick = () => { if (pptIndex < pptSlides.length - 1) { pptIndex++; renderPptSlide(); } };
+  $('md-ppt-grid').addEventListener('click', (event) => {
+    const card = event.target.closest('[data-ppt-idx]');
+    if (!card) return;
+    pptIndex = Number(card.dataset.pptIdx) || 0;
+    setPptGrid(false);
+    renderPptSlide();
+    pptStage.focus({ preventScroll: true });
+  });
+  $('md-ppt-slide').addEventListener('click', (event) => {
+    const link = event.target.closest('a[href]');
+    if (!link) return;
+    event.preventDefault();
+    const url = link.getAttribute('href');
+    if (/^(?:https?:\/\/|suira-image:\/\/[-\w]+$)/i.test(url)) safe(() => checked(api.openLink(url)))();
+  });
+  document.addEventListener(
+    'keydown',
+    (event) => {
+      if (event.isComposing || !pptActive) return;
+      if (event.key === 'Tab') {
+        const focusable = [...pptStage.querySelectorAll('button:not(:disabled), a[href]')].filter(
+          (el) => (typeof el.checkVisibility === 'function' ? el.checkVisibility() : !el.closest('[hidden]'))
+        );
+        if (!focusable.length) { event.preventDefault(); pptStage.focus(); return; }
+        const idx = focusable.indexOf(document.activeElement);
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        const next = idx < 0
+          ? (event.shiftKey ? focusable.length - 1 : 0)
+          : (idx + (event.shiftKey ? -1 : 1) + focusable.length) % focusable.length;
+        focusable[next]?.focus();
+        return;
+      }
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        if (pptGridOpen) setPptGrid(false);
+        else closePpt();
+      } else if (event.key === 'g' || event.key === 'G') {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        setPptGrid(!pptGridOpen);
+      } else if (!pptGridOpen && ['ArrowRight', 'ArrowDown', 'PageDown', ' '].includes(event.key)) {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        if (pptIndex < pptSlides.length - 1) { pptIndex++; renderPptSlide(); }
+      } else if (!pptGridOpen && ['ArrowLeft', 'ArrowUp', 'PageUp'].includes(event.key)) {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        if (pptIndex > 0) { pptIndex--; renderPptSlide(); }
+      } else if (!pptGridOpen && event.key === 'Home') {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        pptIndex = 0; renderPptSlide();
+      } else if (!pptGridOpen && event.key === 'End') {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        pptIndex = pptSlides.length - 1; renderPptSlide();
+      }
+    },
+    true
+  );
   document.addEventListener('keydown', (event) => {
-    if (event.isComposing) return;
-    if ((event.ctrlKey || event.metaKey) && document.querySelector('#page-markdown.is-active')) {
-      const views = { 1: 'edit', 2: 'split', 3: 'preview' };
+    if (event.isComposing || pptActive) return;
+    if (!document.querySelector('#page-markdown.is-active')) return;
+    if ((event.ctrlKey || event.metaKey) && !event.shiftKey && !event.altKey) {
+      const views = { 1: 'edit', 2: 'split', 3: 'preview', 4: 'write' };
       if (views[event.key]) {
         event.preventDefault();
         setDocumentView(views[event.key]);
         return;
       }
+      if (event.key === '\\') {
+        event.preventDefault();
+        $('md-panes')?.click();
+        return;
+      }
     }
-    if (
-      (event.ctrlKey || event.metaKey) &&
-      event.key.toLowerCase() === 's' &&
-      document.querySelector('#page-markdown.is-active')
-    ) {
+    if ((event.ctrlKey || event.metaKey) && event.shiftKey && event.key.toLowerCase() === 'l' && current) {
+      event.preventDefault();
+      formatDocumentPangu();
+      return;
+    }
+    if (((event.ctrlKey || event.metaKey) && event.shiftKey && event.key.toLowerCase() === 'p') || event.key === 'F5') {
+      if (current) {
+        event.preventDefault();
+        togglePpt();
+        return;
+      }
+    }
+    if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 's') {
       event.preventDefault();
       saveCurrentFile().catch((error) => notify(error.message));
     }
@@ -1681,6 +2112,29 @@
           open: $('md-import')
         })
       };
+      const libraryFoot = document.createElement('div');
+      libraryFoot.className = 'mia-library-foot';
+      const openFolderBtn = document.createElement('button');
+      openFolderBtn.id = 'md-open-folder';
+      openFolderBtn.type = 'button';
+      openFolderBtn.className = 'mia-folder-btn';
+      openFolderBtn.title = '打开本地 Markdown 文件夹';
+      openFolderBtn.setAttribute('aria-label', '打开本地 Markdown 文件夹');
+      openFolderBtn.innerHTML =
+        '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7h6l2 2h10v11H3z M12 11v6 M9 14h6"/></svg><span>打开文件夹</span>';
+      openFolderBtn.onclick = safe(() => openLocalFolder(false));
+      const refreshFolderBtn = document.createElement('button');
+      refreshFolderBtn.id = 'md-refresh-folder';
+      refreshFolderBtn.type = 'button';
+      refreshFolderBtn.className = 'mia-icon';
+      refreshFolderBtn.hidden = true;
+      refreshFolderBtn.title = '刷新本地文件夹';
+      refreshFolderBtn.setAttribute('aria-label', '刷新本地文件夹');
+      refreshFolderBtn.innerHTML =
+        '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.3-5.6L20 9 M20 4v5h-5"/></svg>';
+      refreshFolderBtn.onclick = safe(() => openLocalFolder(true));
+      libraryFoot.append(openFolderBtn, refreshFolderBtn);
+      documentLayout.library.append(libraryFoot);
       const action = (id, icon, label) =>
         iconButton(Object.assign(document.createElement('button'), { id }), icon, label);
       const home = action('md-home', 'library', '返回文档库');
@@ -1713,8 +2167,9 @@
       }
       const empty = $('md-empty');
       empty.innerHTML =
-        '<span class="welcome-document tool-emblem" data-tool-object="markdown" aria-hidden="true"></span><b>未打开 Markdown</b><p>打开 Markdown 文件，或新建空白文档</p><div class="welcome-actions"><button class="primary-btn" id="welcome-open">打开 Markdown</button><button class="quiet-btn" id="welcome-new">新建空白 Markdown</button></div>';
+        '<span class="welcome-document tool-emblem" data-tool-object="markdown" aria-hidden="true"></span><b>未打开 Markdown</b><p>打开本地文件夹或 Markdown 文件，或新建空白文档</p><div class="welcome-actions"><button class="primary-btn" id="welcome-open">打开文件</button><button class="quiet-btn" id="welcome-folder">打开文件夹</button><button class="quiet-btn" id="welcome-new">新建空白</button></div>';
       $('welcome-open').onclick = () => $('md-import').click();
+      $('welcome-folder').onclick = safe(() => openLocalFolder(false));
       $('welcome-new').onclick = () => $('md-new').click();
       const paste = document.createElement('button');
       paste.className = 'quiet-btn';
@@ -1761,17 +2216,45 @@
         docList();
         notify('最近打开记录已清理，文档仍保存在本地');
       });
+      const openFolderMenu = document.createElement('button');
+      openFolderMenu.id = 'md-open-folder-menu';
+      openFolderMenu.type = 'button';
+      openFolderMenu.className = 'quiet-btn';
+      openFolderMenu.textContent = '打开本地文件夹';
+      openFolderMenu.onclick = safe(() => openLocalFolder(false));
+      const panguMenu = document.createElement('button');
+      panguMenu.id = 'md-pangu-menu';
+      panguMenu.type = 'button';
+      panguMenu.className = 'quiet-btn';
+      panguMenu.textContent = '中英文自动排版 · Ctrl+Shift+L';
+      panguMenu.onclick = () => formatDocumentPangu();
+      const pptMenu = document.createElement('button');
+      pptMenu.id = 'md-ppt-menu';
+      pptMenu.type = 'button';
+      pptMenu.className = 'quiet-btn';
+      pptMenu.textContent = 'PPT 演示模式 · F5';
+      pptMenu.onclick = () => togglePpt();
       heading('文件');
-      menu.append(home, $('md-save'), clear);
+      menu.append(home, openFolderMenu, $('md-save'), clear);
       heading('导出');
       menu.append($('md-export-format'), $('md-export'));
-      heading('视图');
-      menu.append(theme, pin);
+      heading('视图与排版');
+      menu.append(panguMenu, pptMenu, theme, pin);
       heading('文档');
       menu.append($('md-delete'));
       const focus = action('md-focus-toggle', 'focus', '专注模式 · Ctrl+Shift+F');
       focus.setAttribute('aria-pressed', 'false');
       focus.onclick = () => setWritingFocus(!focusedWriting);
+      const pptToggle = document.createElement('button');
+      pptToggle.id = 'md-ppt-toggle';
+      pptToggle.type = 'button';
+      pptToggle.className = 'mia-icon';
+      pptToggle.title = 'PPT 演示 · F5';
+      pptToggle.setAttribute('aria-label', 'PPT 演示 · F5');
+      pptToggle.setAttribute('aria-pressed', 'false');
+      pptToggle.innerHTML =
+        '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M12 16v4M8 20h8M10 8l4 2-4 2z"/></svg>';
+      pptToggle.onclick = () => togglePpt();
       const format = action('md-format-toggle', 'format', '格式工具');
       const toolbar = document.querySelector('.markdown-toolbar');
       toolbar.hidden = true;
@@ -1783,7 +2266,7 @@
         toolbar.hidden = !toolbar.hidden;
         format.setAttribute('aria-expanded', String(!toolbar.hidden));
       };
-      actions.append(panes, outline, view, focus, format, more);
+      actions.append(panes, outline, view, pptToggle, focus, format, more);
       const compactMore = action('md-empty-more', 'more', '文档库操作');
       compactMore.setAttribute('aria-controls', menu.id);
       compactMore.setAttribute('aria-expanded', 'false');
@@ -1986,6 +2469,8 @@
     onChange: dirty,
     notify,
     readClipboard: () => checked(api.clipboard()),
+    pasteImage: (range) => safe(() => pasteImageToDocument(range))(),
+    formatPangu: () => formatDocumentPangu(),
     capture: async (kind) => {
       const id = current;
       await flush();
@@ -2048,6 +2533,10 @@
     get documentEditor() {
       return richDocument;
     },
+    openPpt,
+    closePpt,
+    formatPangu: formatDocumentPangu,
+    pasteImage: pasteImageToDocument,
     shortcuts(snapshot) {
       const rows = Object.entries(snapshot.bindings || {}).filter(
         ([name, acc]) => name.startsWith('panelKey:') && acc

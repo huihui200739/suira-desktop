@@ -631,6 +631,32 @@ async function addImageToStore(image, source = {}, title = '', existingFilePath 
   return item;
 }
 
+async function addImageBufferToStore(buffer, ext, info, source = {}, title = '') {
+  if (!Buffer.isBuffer(buffer) || !buffer.length) return null;
+  const hash = hashBuffer(buffer);
+  const duplicate = store.data.items.find((item) => item.kind === 'image' && item.meta?.hash === hash);
+  if (duplicate) {
+    store.touchItem(duplicate.id);
+    await store.save();
+    broadcast('content:changed', { itemId: duplicate.id, deduped: true });
+    return duplicate;
+  }
+  const id = makeId('img');
+  const fileExt = ext === 'jpeg' ? 'jpg' : ext;
+  const filePath = path.join(clipboardImageDir(), `${id}.${fileExt}`);
+  await ensureDirs();
+  await fsp.writeFile(filePath, buffer);
+  const mime = info?.mime || `image/${fileExt}`;
+  const thumbnail = buffer.length <= 512 * 1024 ? `data:${mime};base64,${buffer.toString('base64')}` : '';
+  const item = store.addItem({
+    id, kind: 'image', title: title || '剪贴板图片', filePath, thumbnail, source,
+    meta: { hash, width: info?.width || 0, height: info?.height || 0, byteSize: buffer.length }
+  });
+  await store.save();
+  broadcast('content:changed', { itemId: item.id });
+  return item;
+}
+
 /**
  * 记录剪贴板里的文字。
  *
@@ -3754,6 +3780,7 @@ function registerIpc() {
   registerWorkspaceFileIpc({
     handle: windowIpc.handle, store, workspace, markdownFiles, removalUndo,
     broadcast, senderWindow, dialog,
+    clipboard, nativeImage, addImageToStore, addImageBufferToStore, activeDocuments,
     createExportWindow: () => windowIpc.create('export', { show: false }),
     exportPage: path.join(__dirname, 'src', 'export.html')
   });
