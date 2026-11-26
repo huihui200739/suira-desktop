@@ -672,10 +672,14 @@ try {
       assert.ok(!text.includes('·'), file + ' 仍含中点');
     }
   });
-  t('字号收敛到四档（12/13/15/20）', () => {
+  t('基础壳层和浮层字号限定为四档（12/13/15/20）', () => {
+    // Workbench page styles were moved into this file without changing their typography.
+    const pageStyles = css.indexOf('/* Workbench pages */');
+    assert.ok(pageStyles > 0, '基础壳层和页面样式的分界缺失');
+    const surfaces = [css.slice(0, pageStyles), ...['quickpanel.css', 'clipboardbar.css']
+      .map(file => fs.readFileSync(path.join(PROJECT_ROOT, 'src', file), 'utf8'))];
     const sizes = new Set();
-    for (const file of ['styles.css', 'quickpanel.css', 'clipboardbar.css']) {
-      const text = fs.readFileSync(path.join(PROJECT_ROOT, 'src', file), 'utf8');
+    for (const text of surfaces) {
       for (const m of text.matchAll(/font-size:\s*([\d.]+)px/g)) sizes.add(m[1]);
     }
     for (const size of sizes) assert.ok(['12', '13', '15', '20'].includes(size), '出现未收敛字号 ' + size + 'px');

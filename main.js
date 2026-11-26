@@ -82,7 +82,7 @@ const { createVoiceWindow, voiceSettingsSummary, VOICE_KEY_AAD } = require('./li
 const { createActionRegistry, mergeLines, cleanText } = require('./lib/actions');
 const { RECIPES, getRecipe, listRecipes, runRecipe } = require('./lib/recipes');
 const { searchCandidates, searchAppCandidates, COMMANDS } = require('./lib/search');
-const { readWithRetry, shouldExcludeCapture, summarizeLargeText, sameBytes } = require('./lib/clipboard-guard');
+const { shouldExcludeCapture, summarizeLargeText } = require('./lib/clipboard-guard');
 const { captureTarget, validateTarget, decideCommit, normalizeHwnd, ClipboardWriteLedger } = require('./lib/return-target');
 const { AppIndex } = require('./lib/app-index');
 const { createAppIconLoader, extractResourceBatch } = require('./lib/app-icons');
@@ -117,6 +117,7 @@ const {longCaptureTarget,settledFirstFrame,sourceProbePoint}=require('./lib/long
 const { contains, receiverBounds, receiverDisplay, edgeWindowShape, IslandPointerProbe } = require('./lib/island-wake');
 // 核心框架：剪贴板捕获（文件引用/去重比较）的纯模型，便于单元测试
 const clipboardCapture = require('./lib/clipboard-capture');
+const { createClipboardHistory } = require('./lib/clipboard-history');
 const { execFile } = require('node:child_process');
 
 const APP_NAME = '随序 SUIRA';
@@ -162,23 +163,11 @@ let panelBindingPickerOpen = false;
 let overlayWindow = null;
 let tray = null;
 let capturePayload = null;
-let stopClipboardWatcher = null;
-let clipboardWatcherError = '';
 let clipboardWatcherReady = Promise.resolve();
-let lastClipboardText = '';
-let lastClipboardImageHash = '';
-// 重复通知时按原始字节复用解码结果。
-let lastClipboardImageRaw = null;
-let lastClipboardImageKey = '';
-let lastClipboardImageType = '';
-let lastClipboardFilesKey = '';
-let clipboardWriteGuard = '';
 let isQuitting = false;
 let quickReady = false;
 let captureBusy = false;
 let regionCaptureRevision = 0;
-let captureGeneration = 0;
-let lastClipboardSequence = null;
 let mainWasVisible = false;
 const editorWindows = new Map();
 // 浮引岛（文件中转）与按住型唤起的状态
@@ -681,7 +670,6 @@ async function rememberClipboardText(text, source = {}) {
     return duplicate;
   }
 
-  clipboardWriteGuard = value;
   const item = store.addItem({
     kind: candidate.kind,
     title: value.trim().slice(0, 42) || '文字',
@@ -762,286 +750,24 @@ async function clipboardSourceSnapshot(method = 'clipboard-update') {
   }
 }
 
-async function readClipboardText() {
-  const result = await readWithRetry(
-    async () => String(await clipboard.readText() || ''),
-    (value) => !String(value || '').length
-  );
-  return result.value || '';
-}
+const clipboardHistory = createClipboardHistory({
+  clipboard, ClipboardItem, nativeImage, hashBuffer, clipboardLedger,
+  isEnabled: () => Boolean(store?.getSettings().recordClipboard),
+  sequenceNumber: () => inputInjector.clipboardSequence(),
+  copyFileList: (...args) => require('./lib/clipboard-file-list').copyFileList(...args),
+  createListenerWindow: () => windowIpc.create('clipboardListener', { show: false, skipTaskbar: true, focusable: false }),
+  watchNative: (...args) => require('./lib/windows-clipboard-events').watchWindowsClipboard(...args),
+  clipboardSourceSnapshot, rememberClipboardText, rememberClipboardFiles, addImageToStore,
+  onDiagnostic: (area, error) => reportDiagnostic('warn', area, error)
+});
+const { pollClipboard, readClipboardText, writeClipboardText, writeClipboardImage, writeClipboardFileList } = clipboardHistory;
 
-async function readClipboardImage() {
-  const result = await readWithRetry(
-    async () => {
-      const items = await clipboard.read();
-      const imageItem = items.find((item) => item.types?.some((type) => type.startsWith('image/')));
-      if (!imageItem) return null;
-      const type = imageItem.types.find((value) => value.startsWith('image/'));
-      const blob = await imageItem.getType(type);
-      const buffer = Buffer.from(await blob.arrayBuffer());
-      const image = nativeImage.createFromBuffer(buffer);
-      return image.isEmpty() ? null : image;
-    },
-    (value) => value == null
-  );
-  if (result.error) console.warn('剪贴板图片读取重试后仍失败:', result.error.message);
-  return result.value || null;
-}
-
-/**
- * 一次读取剪贴板的完整快照（文字 / 文件引用 / 图片）。
- *
- * 为什么要一次读完：Electron 45 的 clipboard.read() 每次都会打开系统剪贴板，
- * 分三次读既慢又容易在锁竞争时读到不一致的状态。
- * 平台格式优先级：text/plain 可靠；复制文件时只有 text/uri-list（没有 text/plain）。
- */
-/** 只读 5 个 64 字节片段做指纹：剪贴板没变时就不必把整张 4K PNG 读进 JS 堆。 */
-async function imageBlobFingerprint(blob) {
-  const size = blob.size;
-  if (!size) return '';
-  const positions = [0, Math.floor(size / 4), Math.floor(size / 2), Math.floor(size * 3 / 4), Math.max(0, size - 64)];
-  const chunks = [];
-  for (const start of positions) {
-    chunks.push(Buffer.from(await blob.slice(start, Math.min(size, start + 64)).arrayBuffer()).toString('base64'));
-  }
-  return `${size}:${chunks.join('|')}`;
-}
-
-async function readClipboardSnapshot() {
-  const empty = { text: '', files: [], imageBuffer: null, imageType: '', imageKey: '' };
-  const result = await readWithRetry(async () => {
-    const items = await clipboard.read();
-    if (!Array.isArray(items) || !items.length) return empty;
-    const snapshot = { text: '', files: [], imageBuffer: null, imageType: '', imageKey: '' };
-
-    const textItem = items.find((item) => item.types?.includes('text/plain'));
-    if (textItem) {
-      try {
-        const blob = await textItem.getType('text/plain');
-        snapshot.text = String(typeof blob === 'string' ? blob : await blob.text());
-      } catch { /* 文本读取失败不影响图片/文件 */ }
-    }
-
-    const uriItem = items.find((item) => item.types?.includes('text/uri-list'));
-    if (uriItem) {
-      try {
-        const blob = await uriItem.getType('text/uri-list');
-        const uriText = String(typeof blob === 'string' ? blob : await blob.text());
-        snapshot.files = clipboardCapture.parseClipboardFileUris(uriText);
-      } catch { /* 文件列表格式异常时当作没有文件 */ }
-    }
-
-    const imageItem = items.find((item) => item.types?.some((type) => type.startsWith('image/')));
-    if (imageItem) {
-      try {
-        const type = imageItem.types.find((value) => value.startsWith('image/'));
-        const blob = await imageItem.getType(type);
-        const imageKey = await imageBlobFingerprint(blob);
-        snapshot.imageKey = imageKey;
-        if (imageKey && imageKey === lastClipboardImageKey && lastClipboardImageRaw) {
-          // 指纹一致：直接沿用上一次的原始字节，不再分配一整块 PNG Buffer
-          snapshot.imageBuffer = lastClipboardImageRaw;
-          snapshot.imageType = lastClipboardImageType;
-        } else {
-          const buffer = Buffer.from(await blob.arrayBuffer());
-          // 这里只留原始字节，不在轮询里解码：解码 4K 截图要几十毫秒
-          if (buffer.length) {
-            snapshot.imageBuffer = buffer;
-            snapshot.imageType = type;
-          }
-        }
-      } catch { /* 图片读取失败时忽略这一项 */ }
-    }
-    // 兜底：read() 没暴露出图片项、但系统明确说有图片格式时，退回 readImage()。
-    // 宁可多解一次图，也不能因为读法差异漏掉用户的截图。
-    if (!snapshot.imageBuffer) {
-      try {
-        const hasImageFormat = clipboard.availableFormats().some((format) => String(format).startsWith('image/'));
-        if (hasImageFormat) {
-          const fallback = clipboard.readImage();
-          if (fallback && !fallback.isEmpty()) {
-            snapshot.imageBuffer = fallback.toPNG();
-            snapshot.imageType = 'image/png';
-          }
-        }
-      } catch { /* 读不到就当作没有图片 */ }
-    }
-    return snapshot;
-  }, (value) => value == null);
-
-  if (result.error) throw result.error;
-  return result.value || empty;
-}
-
-async function writeClipboardText(text) {
-  const value = String(text || '');
-  clipboardWriteGuard = value;
-  await clipboard.writeText(value);
-  // 记录序号与内容，供自写回环判定（第 7 节）
-  clipboardLedger.record(value);
-  lastClipboardText = value;
-  lastClipboardImageRaw = null;
-  lastClipboardImageHash = '';
-  lastClipboardImageKey = '';
-  lastClipboardImageType = '';
-  lastClipboardFilesKey = '';
-  clipboardWriteGuard = '';
-}
-
-async function writeClipboardImage(image) {
-  const png = image.toPNG();
-  clipboardWriteGuard = await readClipboardText();
-  const recording = store.getSettings().recordClipboard;
-  lastClipboardImageHash = recording ? hashBuffer(png) : '';
-  // 自己的写入也记进字节缓存，下一趟轮询就不会再解一次
-  lastClipboardImageRaw = recording ? png : null;
-  lastClipboardImageKey = ''; // 让下一趟重新取一次指纹，不与上一张图混淆
-  lastClipboardImageType = recording ? 'image/png' : '';
-  await clipboard.write([new ClipboardItem({ 'image/png': png })]);
-  lastClipboardText = await readClipboardText();
-  lastClipboardFilesKey = '';
-  clipboardLedger.record(lastClipboardText);
-  clipboardWriteGuard = '';
-}
-
-function writeClipboardFileList(win, paths) {
-  require('./lib/clipboard-file-list').copyFileList(win.getNativeWindowHandle(), paths);
-  // Suppress recapture of our own file list.
-  ++captureGeneration;
-  lastClipboardSequence = inputInjector.clipboardSequence();
-  lastClipboardFilesKey = paths.join('\n').toLowerCase();
-  lastClipboardText = lastClipboardImageHash = lastClipboardImageKey = lastClipboardImageType = '';
-  lastClipboardImageRaw = null;
-}
-
-let clipboardPollBusy = false;
-let clipboardUpdatePending = false;
-let clipboardUpdateScheduled = false;
-function scheduleClipboardUpdate() {
-  if (!stopClipboardWatcher || !store.getSettings().recordClipboard) return;
-  clipboardUpdatePending = true;
-  if (clipboardUpdateScheduled || clipboardPollBusy || clipboardSeeding || selectionPollingPaused || clipboardLedger.transientDepth) return;
-  clipboardUpdateScheduled = true;
-  setImmediate(() => {
-    clipboardUpdateScheduled = false;
-    if (!clipboardUpdatePending || !stopClipboardWatcher || selectionPollingPaused || clipboardLedger.transientDepth) return;
-    clipboardUpdatePending = false;
-    void pollClipboard();
-  });
-}
-let selectionPollingPaused=false,panelSelection=null;
+let panelSelection = null;
 const selectionReader=require('./lib/selection').createSelectionReader({
   clipboard,ClipboardItem,ledger:clipboardLedger,sequence:()=>inputInjector.clipboardSequence(),sendCopy:target=>inputInjector.sendCopy(target),
   isCurrent:target=>{const current=panelNative.foreground();return Boolean(current&&String(current.hwnd)===String(target.hwnd)&&Number(current.pid)===Number(target.pid)&&Number(current.processStartedAt)===Number(target.processStartedAt));},
-  pause:()=>{selectionPollingPaused=true;++captureGeneration;return ()=>{++captureGeneration;selectionPollingPaused=false;if(clipboardUpdatePending)scheduleClipboardUpdate();};}
+  pause: clipboardHistory.pause
 });
-async function pollClipboard() {
-  if (!store.getSettings().recordClipboard || clipboardPollBusy || clipboardSeeding || selectionPollingPaused || clipboardLedger.transientDepth) return;
-  const sequence = inputInjector.clipboardSequence();
-  if (sequence !== null && sequence === lastClipboardSequence) return;
-  clipboardPollBusy = true;
-  const sourceAtUpdate = clipboardSourceSnapshot('clipboard-update');
-  try {
-    const generation = ++captureGeneration;
-    const snapshot = await readClipboardSnapshot();
-    if (generation !== captureGeneration||selectionPollingPaused||clipboardLedger.transientDepth) return;
-    if (sequence !== null && inputInjector.clipboardSequence() !== sequence) return;
-
-    const text = snapshot.text || '';
-    const filesKey = snapshot.files.length ? snapshot.files.join('\n').toLowerCase() : '';
-    const rawImage = snapshot.imageBuffer;
-    // 字节相同 = 图片没变：这一趟不解码、不编码、不算哈希
-    // 命中指纹时复用的就是同一个 Buffer 引用，连逐字节比较都不必做
-    const imageBytesChanged = Boolean(rawImage) && rawImage !== lastClipboardImageRaw && !sameBytes(lastClipboardImageRaw, rawImage);
-
-    let image = null;
-    let imageHash = lastClipboardImageHash;
-    if (imageBytesChanged) {
-      const decoded = nativeImage.createFromBuffer(rawImage);
-      if (!decoded.isEmpty()) {
-        image = decoded;
-        imageHash = hashBuffer(decoded.toPNG());
-      }
-    }
-
-    const textChanged = Boolean(text && text !== lastClipboardText);
-    const filesChanged = Boolean(filesKey && filesKey !== lastClipboardFilesKey);
-    const imageChanged = Boolean(image && imageHash !== lastClipboardImageHash);
-    // 自写回环：本次变化若仍是我们刚写入的内容，不重复入库
-    const ownWrite = clipboardLedger.shouldIgnore(text);
-    const stillCurrent = () => generation === captureGeneration &&
-      (sequence === null || inputInjector.clipboardSequence() === sequence);
-
-    if (textChanged && !ownWrite && text !== clipboardWriteGuard) {
-      const source = await sourceAtUpdate;
-      if (stillCurrent()) await rememberClipboardText(text, source);
-    } else if (filesChanged) {
-      const source = await sourceAtUpdate;
-      if (stillCurrent()) await rememberClipboardFiles(snapshot.files, { ...source, acquisitionMethod: 'clipboard-file-update' });
-    } else if (imageChanged && !text && !filesKey) {
-      const source = await sourceAtUpdate;
-      if (stillCurrent()) await addImageToStore(image, { ...source, acquisitionMethod: 'clipboard-image-update' });
-    }
-
-    if (!stillCurrent()) return;
-    lastClipboardSequence = sequence;
-    lastClipboardText = text;
-    lastClipboardFilesKey = filesKey;
-    // 图片被清空时同步清掉缓存，下次再遇到图片会重新解码
-    lastClipboardImageRaw = rawImage || null;
-    lastClipboardImageKey = rawImage ? (snapshot.imageKey || '') : '';
-    lastClipboardImageType = rawImage ? snapshot.imageType : '';
-    lastClipboardImageHash = rawImage ? imageHash : '';
-    if (clipboardWriteGuard && text === clipboardWriteGuard) clipboardWriteGuard = '';
-  } catch (error) {
-    console.warn('剪贴板读取失败:', error.message);
-  } finally {
-    clipboardPollBusy = false;
-    if (clipboardUpdatePending) scheduleClipboardUpdate();
-  }
-}
-
-async function startClipboardWatcher() {
-  stopClipboardWatcher?.();
-  stopClipboardWatcher = null;
-  clipboardUpdatePending = false;
-  if (!store.getSettings().recordClipboard) return;
-  const win = windowIpc.create('clipboardListener', { show: false, skipTaskbar: true, focusable: false });
-  try {
-    const dispose = require('./lib/windows-clipboard-events').watchWindowsClipboard(win, scheduleClipboardUpdate);
-    stopClipboardWatcher = () => { dispose(); if (!win.isDestroyed()) win.destroy(); };
-    await seedClipboardWatcher();
-    clipboardWatcherError = '';
-  } catch (error) {
-    stopClipboardWatcher?.();
-    stopClipboardWatcher = null;
-    if (!win.isDestroyed()) win.destroy();
-    throw error;
-  }
-}
-
-let clipboardSeeding = null;
-async function seedClipboardWatcher() {
-  const generation = ++captureGeneration;
-  const sequence = inputInjector.clipboardSequence();
-  const read = readClipboardSnapshot();
-  clipboardSeeding = read;
-  let initial;
-  try { initial = await read; }
-  finally {
-    if (clipboardSeeding === read) clipboardSeeding = null;
-    if (clipboardUpdatePending) scheduleClipboardUpdate();
-  }
-  if (generation !== captureGeneration) return;
-  if (sequence !== null && inputInjector.clipboardSequence() !== sequence) return;
-  lastClipboardSequence = sequence;
-  lastClipboardText = initial.text || '';
-  lastClipboardFilesKey = initial.files.length ? initial.files.join('\n').toLowerCase() : '';
-  lastClipboardImageRaw = initial.imageBuffer || null;
-  lastClipboardImageKey = initial.imageKey || '';
-  lastClipboardImageType = initial.imageType || '';
-  lastClipboardImageHash = initial.imageBuffer ? hashBuffer(nativeImage.createFromBuffer(initial.imageBuffer).toPNG()) : '';
-}
 
 async function migrateLegacyHistory() {
   if (store.data.items.length) return;
@@ -2198,8 +1924,8 @@ function createMainWindow() {
   }, 2500);
   if (revealTimer.unref) revealTimer.unref();
   mainWindow.on('close', (event) => {
-    rememberMainWindowState();
     if (!isQuitting) {
+      void rememberMainWindowState();
       event.preventDefault();
       mainWindow.hide();
       scheduleIdleTeardown(mainWindow, '主窗口', MAIN_WINDOW_IDLE_MS);
@@ -2217,7 +1943,6 @@ function createMainWindow() {
   // 移动/缩放结束后记忆窗口状态（500ms 防抖，避免拖动过程中频繁写盘）
   let saveTimer = null;
   const flushWindowState = mainWindow.__flushWindowState = () => {
-    if (!saveTimer) return;
     clearTimeout(saveTimer);
     saveTimer = null;
     return rememberMainWindowState();
@@ -4116,14 +3841,8 @@ function registerIpc() {
     const recordedClipboard = store.getSettings().recordClipboard;
     const settings = await store.updateSettings(incoming);
     if (settings.recordClipboard !== recordedClipboard) {
-      ++captureGeneration;
-      lastClipboardSequence = null;
-      lastClipboardText = lastClipboardFilesKey = '';
-      lastClipboardImageRaw = null;
-      lastClipboardImageKey = lastClipboardImageType = lastClipboardImageHash = '';
-      try { await startClipboardWatcher(); }
+      try { await clipboardHistory.start(); }
       catch (error) {
-        clipboardWatcherError = error.message;
         return { ok: false, error: `剪贴板监听未启动：${error.message}` };
       }
     }
@@ -4413,10 +4132,9 @@ async function initialize() {
     return { ok: false, error: momentaryError };
   });
   // 剪贴板监听失败时不能只写日志：剪贴板历史会完全失效，用户必须知道
-  clipboardWatcherReady = startClipboardWatcher().catch((error) => {
-    clipboardWatcherError = error && error.message ? error.message : String(error);
-    console.warn('剪贴板监听启动失败:', clipboardWatcherError);
-    const message = `剪贴板监听未启动：${clipboardWatcherError || '未知错误'}`;
+  clipboardWatcherReady = clipboardHistory.start().catch((error) => {
+    reportDiagnostic('warn', 'clipboard-listener-start', error);
+    const message = `剪贴板监听未启动：${error.message || '未知错误'}`;
     if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.webContents.send('app:toast', { message, type: 'error' });
     }
@@ -4444,7 +4162,7 @@ app.whenReady().then(initialize).then(async () => {
   if (process.argv.includes('--diag')) {
     // 剪贴板监听是异步启动的：不等它完成，报告会把「正在启动」误报成「未运行」。
     // 这类误报会直接误导排查，必须等；但每个最多等 8 秒，卡住也要出报告。
-    try { await waitWithTimeout(clipboardWatcherReady); } catch { /* 错误已记录在 clipboardWatcherError */ }
+    await waitWithTimeout(clipboardWatcherReady);
     try { await waitWithTimeout(momentaryReady); } catch { /* 错误已记录在 momentaryError */ }
     try { await waitWithTimeout(islandWakeReady); } catch { /* 错误已记录在 islandWakeError */ }
     let exitCode = 0;
@@ -4561,7 +4279,9 @@ async function collectDiagnostics() {
     : translateInfo.provider === 'none'
       ? '未配置（设置 → 翻译里选择引擎）'
       : `${translateInfo.providerLabel} 缺少密钥（设置 → 翻译）`);
-  add('剪贴板监听', stopClipboardWatcher ? '运行中' : ('未运行' + (clipboardWatcherError ? '：' + clipboardWatcherError : '')));
+  const clipboardStatus = clipboardHistory.status();
+  const clipboardModes = { native: '运行中（Windows 通知）', polling: '运行中（低频轮询）', off: '已停用', failed: '启动失败' };
+  add('剪贴板监听', clipboardModes[clipboardStatus.mode] + (clipboardStatus.error ? `：${clipboardStatus.error}` : ''));
   add('剪贴板采集范围', '文本 / 文件引用 / 图片');
   add('托盘', tray ? '已创建' : '未创建');
   const mainWindowState = store ? store.getWindowState() : null;
@@ -4614,7 +4334,7 @@ app.on('before-quit', createQuitCoordinator({
     isQuitting = false;
     for (const win of windows) requestWorkspaceClose(win);
   },
-  needsFlush: () => Boolean(store && !updateInstallPrepared),
+  needsFlush: () => Boolean(store && !updateInstallPrepared && !storeShutdownComplete),
   async flush() {
     const windows = [mainWindow, ...noteDomain.activeWindows()].filter(win => win && !win.isDestroyed() && !win.webContents.isLoading());
     const results = await Promise.allSettled(windows.map(win => flushRendererDrafts(win)));
@@ -4630,12 +4350,6 @@ app.on('before-quit', createQuitCoordinator({
     dialog.showErrorBox('数据保存失败', '随序未能保存最后的更改，请检查磁盘空间和文件权限后重试。');
   },
   onReady() {
-    if (workspaceRestartRequested) {
-      workspaceRestartRequested = false;
-      const args = process.argv.slice(1).filter(arg => !/^--(?:remote-debugging-|inspect)/.test(arg));
-      hideIsland();
-      app.relaunch({ args });
-    }
     if (longCapture) {
       try { longCapture.worker?.stop(); } catch (error) { reportDiagnostic('warn', 'capture-worker-stop', error); }
       void Promise.resolve().then(() => longCapture?.controller?.stop()).catch(error => reportDiagnostic('warn', 'capture-controller-stop', error));
@@ -4643,13 +4357,35 @@ app.on('before-quit', createQuitCoordinator({
     isQuitting = true;
   }
 }));
-app.on('will-quit', () => {
+let storeShutdown = null;
+let storeShutdownComplete = false;
+app.on('will-quit', event => {
+  clipboardHistory.stop();
+  if (store && !storeShutdownComplete) {
+    // Window close handlers can enqueue saves after before-quit finished.
+    event.preventDefault();
+    storeShutdown ??= store.dispose().then(() => {
+      storeShutdownComplete = true;
+      app.quit();
+    }).catch(error => {
+      logSaveFailure(error);
+      storeShutdown = null;
+      updateInstallPrepared = false;
+      isQuitting = false;
+      dialog.showErrorBox('数据保存失败', '随序未能保存最后的更改，请检查磁盘空间和文件权限后重试。');
+      void clipboardHistory.start().catch(error => reportDiagnostic('warn', 'clipboard-listener-start', error));
+    });
+    return;
+  }
+  if (workspaceRestartRequested) {
+    workspaceRestartRequested = false;
+    const args = process.argv.slice(1).filter(arg => !/^--(?:remote-debugging-|inspect)/.test(arg));
+    app.relaunch({ args });
+  }
   longPickerWorker?.stop();
   themeController?.dispose();
   clearIslandRest();
   islandPointerProbe?.stop();
-  stopClipboardWatcher?.();
-  stopClipboardWatcher = null;
   if (foregroundIdleTimer) { clearTimeout(foregroundIdleTimer); foregroundIdleTimer = null; }
   shortcutManager?.dispose();
   // 第二个实例会在 ready 前退出，此时 Electron 不允许访问全局快捷键。

@@ -117,7 +117,7 @@
     --glass-hover: var(--t3-wash); --glass-accent-ink: var(--t3-accent-ink);
     --glass-light: transparent; --glass-chrome: transparent;
 
-    /* Calendar badge surfaces (workspace.css reads these vars). */
+    /* Calendar badge surfaces (styles.css reads these vars). */
     --workspace-tools-work-badge-work-surface: var(--t3-badge-work);
     --workspace-tools-work-badge-rest-surface: var(--t3-badge-rest);
     --workspace-tools-work-badge-ink: var(--t3-badge-ink);

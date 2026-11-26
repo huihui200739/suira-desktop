@@ -50,6 +50,8 @@ async function run() {
     const image = fixture.addItem({ kind: 'image', title: 'Legacy image', filePath: imagePath });
     await fixture.save();
     const entry = path.join(profile, 'app.js'), result = path.join(profile, 'listener-ready');
+    const fallback = path.join(profile, 'listener-fallback');
+    const writerClosed = path.join(profile, 'writer-closed');
     await fs.writeFile(entry, `
       const { app, clipboard, dialog, globalShortcut, ipcMain } = require('electron');
       const fs = require('node:fs');
@@ -84,6 +86,14 @@ async function run() {
       const events = require(${JSON.stringify(path.join(root, 'lib/windows-clipboard-events'))});
       const watch = events.watchWindowsClipboard;
       events.watchWindowsClipboard = (win, callback) => {
+        if (fs.existsSync(${JSON.stringify(fallback)})) {
+          win.once('closed', () => fs.writeFileSync(${JSON.stringify(fallback)}, 'destroyed'));
+          setTimeout(() => {
+            text = 'clipboard polling fixture';
+            sequence += 1;
+          }, 450);
+          throw new Error('Simulated clipboard listener registration failure');
+        }
         const stop = watch(win, callback);
         const ffi = require(${JSON.stringify(path.join(root, 'node_modules/koffi'))});
         const send = ffi.load('user32.dll').func('__stdcall','PostMessageW','int',['uintptr_t','uint32','uintptr_t','intptr_t']);
@@ -94,6 +104,13 @@ async function run() {
           fs.writeFileSync(${JSON.stringify(result)}, 'ok');
         }, 450);
         return stop;
+      };
+      const { SuiraStore } = require(${JSON.stringify(path.join(root, 'lib/store'))});
+      const dispose = SuiraStore.prototype.dispose;
+      SuiraStore.prototype.dispose = async function () {
+        await dispose.call(this);
+        await require('node:assert/strict').rejects(this.save(), /store is closed/);
+        fs.writeFileSync(${JSON.stringify(writerClosed)}, 'ok');
       };
       require(${JSON.stringify(path.join(root, 'main.js'))});
     `);
@@ -149,6 +166,14 @@ async function run() {
     // The injected clipboard does not touch the user's system clipboard. The Win32
     // message still travels through the real hidden HWND and Electron's hook.
     await until(async () => (await main.evaluate('window.suira.content.list()')).some(item => item.text === 'clipboard event fixture'));
+    assert.equal((await main.evaluate('window.suira.settings.update({recordClipboard:false})')).ok, true);
+    await fs.writeFile(fallback, 'force failure');
+    assert.equal((await main.evaluate('window.suira.settings.update({recordClipboard:true})')).ok, true);
+    assert.equal(await fs.readFile(fallback, 'utf8'), 'destroyed', 'Failed native listener HWND must be released');
+    await until(async () => (await main.evaluate('window.suira.content.list()')).some(item => item.text === 'clipboard polling fixture'));
+    assert.equal((await main.evaluate('window.suira.settings.update({recordClipboard:false})')).ok, true);
+    await fs.unlink(fallback);
+    assert.equal((await main.evaluate('window.suira.settings.update({recordClipboard:true})')).ok, true);
     assert.equal((await main.evaluate('window.suira.panel.run("note")')).ok, true);
     const [createdNote] = await main.evaluate('window.suira.notes.list()');
     assert.ok(createdNote?.id);
@@ -245,6 +270,7 @@ async function run() {
       return exit;
     });
     assert.equal(await Promise.race([requested, exit, sleep(8000, 'timeout', { ref: false })]), 0, 'Quit must not wait for a stalled renderer');
+    assert.equal(await fs.readFile(writerClosed, 'utf8'), 'ok');
     const diagnostics = (await fs.readFile(path.join(profile, 'diagnostics.log'), 'utf8')).trim().split(/\r?\n/).map(JSON.parse);
     assert.ok(diagnostics.some(line => line.event === 'quit-renderer-flush' && line.code === 'ERR_RENDERER_TIMEOUT'));
     const persisted = new SuiraStore(dataPath, { codec });
@@ -254,7 +280,7 @@ async function run() {
     child = spawn(executable, [entry, '--remote-debugging-address=127.0.0.1', `--remote-debugging-port=${port}`], { cwd: root, env, windowsHide: true, stdio: 'ignore' });
     const restarted = await page(target => target.url.endsWith('/index.html'));
     assert.equal((await restarted.evaluate(`window.suira.content.get(${JSON.stringify(sample.id)})`)).text, 'legacy fixture');
-    console.log('PASS real Electron: DPAPI restart, native clipboard, navigation and IPC guard, task export, notes, relay and stalled-renderer quit');
+    console.log('PASS real Electron: native clipboard and polling fallback, navigation and IPC guard, task export, notes, relay, stalled-renderer quit, writer disposal and DPAPI restart');
   } finally {
     for (const socket of sockets) socket.close();
     if (child?.pid && child.exitCode === null && !child.signalCode) {

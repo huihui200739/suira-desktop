@@ -9,8 +9,13 @@ console.log('\n== 主窗口 index.html ==');
 const html = read('src/index.html');
 const appJs = read('src/app.js');
 const mainJs = read('main.js');
+const clipboardHistoryJs = read('lib/clipboard-history.js');
 
-t('引用的 CSS 存在', () => { if (!fs.existsSync('src/styles.css')) throw new Error('styles.css 缺失'); });
+t('主窗口引用的 CSS 均存在', () => {
+  for (const [, file] of html.matchAll(/<link rel="stylesheet" href="([^"]+)"/g)) {
+    if (!fs.existsSync(path.join(PROJECT_ROOT, 'src', file))) throw new Error(`${file} 缺失`);
+  }
+});
 t('引用的 JS 存在', () => { if (!fs.existsSync('src/app.js')) throw new Error('app.js 缺失'); });
 t('图标资源存在', () => { if (!fs.existsSync('assets/suira-icon.png')) throw new Error('suira-icon.png 缺失'); });
 
@@ -146,7 +151,7 @@ t('main.js 引入配方/搜索/剪贴板守卫模块', () => {
 t('剪贴板记录接入敏感排除与超大内容处理', () => {
   if (!mainJs.includes('shouldExcludeCapture')) throw new Error('未接入敏感排除');
   if (!mainJs.includes('summarizeLargeText')) throw new Error('未接入超大内容处理');
-  if (!mainJs.includes('readWithRetry')) throw new Error('未接入锁竞争重试');
+  if (!clipboardHistoryJs.includes('readWithRetry')) throw new Error('未接入锁竞争重试');
 });
 t('quickpanel 命令区元素齐备', () => {
   for (const id of ['command-section', 'command-list']) {
@@ -496,8 +501,8 @@ t('显示面板前先记录目标窗口（顺序正确）', () => {
   if (recordAt > showAt) throw new Error('记录目标的时机晚于显示窗口，会读到自己');
 });
 t('剪贴板自写回环接入账本', () => {
-  if (!mainJs.includes('clipboardLedger.shouldIgnore')) throw new Error('未接入回环防护');
-  if (!mainJs.includes('clipboardLedger.record')) throw new Error('未记录自身写入');
+  if (!clipboardHistoryJs.includes('clipboardLedger.shouldIgnore')) throw new Error('未接入回环防护');
+  if (!clipboardHistoryJs.includes('clipboardLedger.record')) throw new Error('未记录自身写入');
 });
 t('退出时释放前台探测进程', () => {
   if (!mainJs.includes('foregroundProbe.dispose()')) throw new Error('未释放辅助进程');
@@ -714,10 +719,10 @@ t('速记在 38 键面板与工具箱都有入口，且不再是「尚未实现�
 console.log('\n== 核心框架：截图 / 剪贴板 / 主体 ==');
 
 t('剪贴板采集覆盖文本 / 文件引用 / 图片三条路径', () => {
-  if (!mainJs.includes('readClipboardSnapshot')) throw new Error('缺少剪贴板快照读取');
+  if (!clipboardHistoryJs.includes('readClipboardSnapshot')) throw new Error('缺少剪贴板快照读取');
   if (!mainJs.includes('rememberClipboardFiles')) throw new Error('缺少文件引用采集');
-  if (!mainJs.includes('parseClipboardFileUris')) throw new Error('缺少 file: URI 解析接线');
-  if (!mainJs.includes('text/uri-list')) throw new Error('未读取 text/uri-list');
+  if (!clipboardHistoryJs.includes('parseClipboardFileUris')) throw new Error('缺少 file: URI 解析接线');
+  if (!clipboardHistoryJs.includes('text/uri-list')) throw new Error('未读取 text/uri-list');
   if (!mainJs.includes('addImageToStore')) throw new Error('缺少图片采集');
   const capture = read('lib/clipboard-capture.js');
   if (/require\('electron'\)/.test(capture) || /require\('node:fs'\)/.test(capture)) {
@@ -924,7 +929,7 @@ t('性能回归：标注历史层、主题缓存、临时画布与大文本热�
   if (!overlay.includes('mosaicPaletteColors')) throw new Error('马赛克颜色不能逐格重新拼字符串');
   if (!actions.includes("return parts.join('');")) throw new Error('mergeLines 不能用 O(n²) 字符串累加');
   if (store.includes('}, null, 2)')) throw new Error('store 整库序列化不应带缩进');
-  if (!main.includes('imageBlobFingerprint')) throw new Error('剪贴板轮询要先比对轻量指纹');
+  if (!clipboardHistoryJs.includes('imageBlobFingerprint')) throw new Error('剪贴板轮询要先比对轻量指纹');
   if (!panel.includes("image.getAttribute('src')!==currentContext.thumbnail")) throw new Error('最近内容缩略图不能每秒重新解码');
   if (!/if\s*\(agendaMode\s*!==\s*'countdown'\)\s*\$\('agenda-list'\)\.innerHTML\s*=/.test(workspace)) {
     throw new Error('倒数日模式不应先建再丢弃待办 DOM');
