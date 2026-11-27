@@ -563,7 +563,7 @@ kbd { font-family: var(--font-ui); font-size: var(--text-1); font-weight:600; }
 .command-copy small { font-size:12px; }
 .command-item[data-kind="app"] .command-copy small { display:none; }
 .command-type { color:var(--ink-faint); font-size:12px; flex:0 0 auto; }
-.command-hotkey { flex:0 0 auto; padding:1px 5px; border:1px solid var(--line); border-radius:5px; font-size:11px; color:var(--ink-muted); font-variant-numeric:tabular-nums; }
+.command-hotkey { flex:0 0 auto; padding:1px 5px; border:1px solid var(--line); border-radius:5px; font-size:12px; color:var(--ink-muted); font-variant-numeric:tabular-nums; }
 .command-item.is-selected .command-hotkey { border-color:var(--accent-glow); color:var(--accent-deep); }
 .command-enter { opacity:0; color:var(--accent-deep); }
 .command-item.is-selected .command-enter { opacity:1; }
@@ -572,7 +572,7 @@ kbd { font-family: var(--font-ui); font-size: var(--text-1); font-weight:600; }
   display:grid; place-items:center; position:absolute; top:4px; right:6px;
   min-width:16px; height:16px; padding:0 4px; border-radius:5px;
   border:1px solid var(--line); background:var(--surface-raised); color:var(--ink-muted);
-  font-size:10px; font-weight:600; font-variant-numeric:tabular-nums; line-height:1;
+  font-size:12px; font-weight:600; font-variant-numeric:tabular-nums; line-height:1;
 }
 .panel .key.is-key-triggered .key-card {
   border-color:var(--accent); background:var(--accent-soft); transform:scale(.95);
