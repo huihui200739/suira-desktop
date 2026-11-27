@@ -440,6 +440,69 @@
     $('#bar').setAttribute('aria-busy', String(state.committing));
   }
 
+  function sameStringList(a, b) {
+    const la = Array.isArray(a) ? a : [];
+    const lb = Array.isArray(b) ? b : [];
+    if (la.length !== lb.length) return false;
+    for (let i = 0; i < la.length; i += 1) {
+      if (la[i] !== lb[i]) return false;
+    }
+    return true;
+  }
+
+  function snapshotItemRecord(item) {
+    return {
+      id: item.id,
+      kind: item.kind,
+      title: item.title,
+      text: item.text,
+      filePath: item.filePath,
+      thumbnail: item.thumbnail,
+      appName: item.appName,
+      sourceType: item.sourceType,
+      createdAt: item.createdAt,
+      pinned: Boolean(item.pinned),
+      tags: Array.isArray(item.tags) ? [...item.tags] : [],
+      color: item.color ? {
+        hex: item.color.hex,
+        rgb: item.color.rgb,
+        hsl: item.color.hsl,
+        css: item.color.css,
+        isLight: Boolean(item.color.isLight)
+      } : null,
+      meta: item.meta ? {
+        width: item.meta.width,
+        height: item.meta.height,
+        byteSize: item.meta.byteSize,
+        fileCount: item.meta.fileCount,
+        format: item.meta.format,
+        files: Array.isArray(item.meta.files) ? [...item.meta.files] : null
+      } : null
+    };
+  }
+
+  function sameItemRecord(a, b) {
+    if (!a || !b) return false;
+    if (a.id !== b.id || a.kind !== b.kind || a.title !== b.title || a.text !== b.text
+      || a.filePath !== b.filePath || a.thumbnail !== b.thumbnail
+      || a.appName !== b.appName || a.sourceType !== b.sourceType
+      || a.createdAt !== b.createdAt || Boolean(a.pinned) !== Boolean(b.pinned)) {
+      return false;
+    }
+    if (!sameStringList(a.tags, b.tags)) return false;
+    const ac = a.color, bc = b.color;
+    if (Boolean(ac) !== Boolean(bc)) return false;
+    if (ac && (ac.hex !== bc.hex || ac.rgb !== bc.rgb || ac.hsl !== bc.hsl || ac.css !== bc.css || Boolean(ac.isLight) !== Boolean(bc.isLight))) {
+      return false;
+    }
+    const am = a.meta || {}, bm = b.meta || {};
+    if (am.width !== bm.width || am.height !== bm.height || am.byteSize !== bm.byteSize
+      || am.fileCount !== bm.fileCount || am.format !== bm.format) {
+      return false;
+    }
+    return sameStringList(am.files, bm.files);
+  }
+
   function render() {
     const track = $('#bar-track');
     const empty = $('#bar-empty');
@@ -463,7 +526,7 @@
           template.innerHTML = markup;
           const next = template.content.firstElementChild;
           // 外层不变，索引变化也不替换缩略图。
-          const unchanged = card._recordSignature === JSON.stringify(item);
+          const unchanged = sameItemRecord(card._recordSnapshot, item);
           if (!unchanged) {
             const active = document.activeElement;
             const action = card.contains(active) ? active.dataset.cardAction : '';
@@ -491,7 +554,7 @@
           card.setAttribute('aria-label', next.getAttribute('aria-label'));
         }
         card._contentMarkup = markup;
-        card._recordSignature = JSON.stringify(item);
+        card._recordSnapshot = snapshotItemRecord(item);
         existing.delete(item.id);
         if (track.children[index] !== card) track.insertBefore(card,track.children[index] || null);
       });
@@ -677,6 +740,7 @@
       return;
     }
 
+    const changeCounterAtStart = state.changeCounter || 0;
     try {
       const payload = await api.list({ limit: 120, cardDetails: true });
       if (token !== loadToken) return;
@@ -700,6 +764,13 @@
       state.refreshing = false;
       state.loaded = true;
       state.error = '';
+      state.refreshError = '';
+      if ((state.changeCounter || 0) === changeCounterAtStart) {
+        state.dirty = false;
+        if (typeof options.targetRevision === 'number') state.lastRevision = options.targetRevision;
+      } else {
+        state.dirty = true;
+      }
       const reset = !cached || Boolean(options.resetSelection && !interacted);
       applyFilters(keepId, { reset });
       if (cached && !reset && anchorId) {
@@ -711,6 +782,7 @@
       state.loading = false;
       state.refreshing = false;
       state.loaded = true;
+      state.dirty = true;
       if (cached) {
         state.refreshError = errorText(error, '刷新失败');
         render();
@@ -1264,7 +1336,7 @@
     const barApi = state.barApi;
     if (barApi && typeof barApi.onShown === 'function') {
       try {
-        const off = barApi.onShown(({ pinned = false } = {}) => {
+        const off = barApi.onShown(({ pinned = false, revision } = {}) => {
           syncShelfPin(pinned);
           closeShare();
           closeTagPopover();
@@ -1276,7 +1348,17 @@
           clearNotice();
           state.query = ''; state.filter = 'all';
           if ($('#bar-search')) $('#bar-search').value = '';
-          load({ resetSelection: true });
+          const canReuse = typeof revision === 'number'
+            && state.loaded
+            && !state.dirty
+            && !state.error
+            && !state.refreshError
+            && state.lastRevision === revision;
+          if (canReuse) {
+            applyFilters('', { reset: true });
+          } else {
+            load({ resetSelection: true, targetRevision: revision });
+          }
           if (document.activeElement !== document.body) document.activeElement.blur();
         });
         if (typeof off === 'function') state.offShown = off;
@@ -1291,8 +1373,12 @@
     if (contentApi && typeof contentApi.onChanged === 'function') {
       try {
         const off = contentApi.onChanged(() => {
-          // 窗口不可见时主进程会在下次 onShown 时重新拉取，这里不重复请求
-          if (!state.visible) return;
+          state.changeCounter = (state.changeCounter || 0) + 1;
+          // 窗口不可见时只标脏，下次 onShown 再按需刷新
+          if (!state.visible) {
+            state.dirty = true;
+            return;
+          }
           load({ keepItemId: currentSelectedId() });
         });
         if (typeof off === 'function') state.offChanged = off;

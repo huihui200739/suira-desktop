@@ -654,15 +654,20 @@ kbd { font-family: var(--font-ui); font-size: var(--text-1); font-weight:600; }
 .panel[data-presentation="fullscreen"] .search-field input{color:var(--panel-panel-fullscreen-search-field-ink-alt);caret-color:var(--panel-panel-fullscreen-search-field-caret-color);font-size:13px}
 .panel[data-presentation="fullscreen"] .search-field input::placeholder{color:var(--panel-panel-fullscreen-search-field-ink)}
 
-/* A single, always-visible search capsule and shared options menu. */
-.panel-head{position:relative;justify-content:space-between}
-.panel-brand{margin-right:auto}
-.panel-modes{margin-left:auto}
-.panel-head:has(#recent-context-trigger:not([hidden])) #recent-context-trigger{margin-left:auto}
-.panel-head:has(#recent-context-trigger:not([hidden])) .panel-modes{margin-left:0}
-.search-slot{position:static;transform:none;flex:0 1 clamp(210px,29vw,320px);width:auto;min-width:150px;height:36px}
+/* A single, always-visible search capsule centered on equal left/right header tracks. */
+.panel-head{position:relative;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,auto) minmax(0,1fr);align-items:center;gap:var(--space-3)}
+.panel-brand{justify-self:start;margin-right:0}
+.panel-head-actions{justify-self:end;display:flex;align-items:center;justify-content:flex-end;gap:var(--space-2);min-width:0}
+.search-slot{position:static;transform:none;justify-self:center;width:clamp(220px,28vw,320px);max-width:100%;min-width:0;height:36px;flex:none;z-index:2}
+.panel[data-presentation="fullscreen"] .panel-head{display:flex;justify-content:flex-end}
 .panel[data-presentation="fullscreen"] .search-slot{position:absolute;left:50%;transform:translateX(-50%);flex:none;width:var(--immersive-search-width);height:30px}
-.search-slot .search-field,.search-slot .search-field.is-expanded{width:100%;height:36px;gap:var(--space-1);padding:0 calc(var(--space-1) * 1.25) 0 calc(var(--space-1) * 0.5);border-radius:18px;transition:none;background:var(--control-field);border-color:var(--line-strong);overflow:visible}
+.search-slot .search-field,.search-slot .search-field.is-expanded{width:100%;height:36px;gap:var(--space-1);padding:0 calc(var(--space-1) * 1.25) 0 calc(var(--space-1) * 0.5);border-radius:18px;transition:background-color var(--dur-fast) var(--ease-out),border-color var(--dur-fast) var(--ease-out),box-shadow var(--dur-fast) var(--ease-out);background:var(--panel-search-surface);border-color:var(--panel-search-edge);box-shadow:var(--panel-search-shadow);overflow:visible}
+.panel[data-presentation="window"] .search-slot .search-field:hover{background:var(--panel-search-hover);border-color:var(--panel-search-hover-edge)}
+.panel[data-presentation="window"] .search-slot .search-field:focus-within{background:var(--panel-search-focus);border-color:var(--accent);box-shadow:var(--panel-search-shadow),0 0 0 3px var(--accent-glow)}
+.panel[data-presentation="window"] .search-slot .search-field svg{stroke:var(--panel-search-placeholder)}
+.panel[data-presentation="window"] .search-slot .search-field:focus-within svg{stroke:var(--ink)}
+.panel[data-presentation="window"] .search-slot .search-field input{color:var(--ink)}
+.panel[data-presentation="window"] .search-slot .search-field input::placeholder{color:var(--panel-search-placeholder)}
 .search-slot .search-toggle{width:30px;height:30px;flex-basis:30px}
 .search-slot .search-toggle svg{width:16px;height:16px}
 .search-slot input{width:auto;flex:1;opacity:1;visibility:visible;pointer-events:auto;font-size:12px}
@@ -683,8 +688,11 @@ kbd { font-family: var(--font-ui); font-size: var(--text-1); font-weight:600; }
 .panel[data-presentation="fullscreen"] .search-field,.panel[data-presentation="fullscreen"] .search-field.is-expanded{padding-right:var(--space-1)}
 .panel[data-presentation="fullscreen"] .panel-more{flex-basis:23px;width:23px;height:23px;color:var(--panel-panel-fullscreen-panel-more-ink);border-color:var(--panel-panel-fullscreen-panel-more-edge)}
 .panel[data-presentation="fullscreen"] .panel-more-menu{background:var(--panel-panel-fullscreen-panel-more-menu-surface);color:var(--panel-panel-fullscreen-panel-more-menu-ink);border-color:var(--panel-panel-fullscreen-panel-more-menu-edge)}
-@media(max-width:900px){.panel-brand>span:last-child{display:none}.panel-brand{flex-basis:44px}.panel-modes button{padding-inline:calc(var(--space-1) * 2.25)}.search-slot{width:240px}}
-@media(max-width:640px){.search-slot{width:210px}.toolbox-btn{padding-inline:var(--space-2)}.panel-modes button{padding-inline:calc(var(--space-1) * 1.75)}.panel-head{padding-inline:calc(var(--space-1) * 5)}}
+@media(max-width:1040px){.panel-brand>span:last-child{display:none}.panel-brand{flex-basis:44px}.panel[data-presentation="window"] .toolbox-btn span{display:none}.panel[data-presentation="window"] .toolbox-btn{padding-inline:var(--space-2)}.panel-modes button{padding-inline:calc(var(--space-1) * 2.25)}.panel-head{gap:var(--space-2)}.panel-head-actions{gap:calc(var(--space-1) * 1.5)}.search-slot{width:clamp(200px,25vw,260px)}}
+@media(max-width:820px){.panel[data-presentation="window"] .recent-context-trigger span{display:none}.panel[data-presentation="window"] .recent-context-trigger{padding-inline:var(--space-2)}.search-slot{width:clamp(168px,26vw,220px)}}
+@media(max-width:640px){.search-slot{width:clamp(140px,27vw,188px)}.toolbox-btn{padding-inline:var(--space-2)}.panel-modes button{padding-inline:calc(var(--space-1) * 1.75)}.panel-head{padding-inline:calc(var(--space-1) * 4);gap:var(--space-2)}}
+@media(max-width:520px){.panel-head{padding-inline:var(--space-3);gap:calc(var(--space-1) * 1.5)}.panel-brand,.brand-symbol{width:34px;height:34px;flex-basis:34px}.panel-head-actions{gap:var(--space-1)}.panel[data-presentation="window"] .toolbox-btn,.panel[data-presentation="window"] .recent-context-trigger{width:30px;height:30px;padding:0;justify-content:center}.panel-modes{height:32px;padding:2px}.panel-modes button{height:26px;padding-inline:calc(var(--space-1) * 1.25);font-size:11px}.search-slot{width:clamp(100px,24vw,148px)}}
+@media(max-width:420px){.panel[data-presentation="window"] .panel-head{display:flex;justify-content:space-between;gap:var(--space-1);padding-inline:var(--space-2)}.panel-brand,.brand-symbol{width:28px;height:28px;flex-basis:28px;flex:none}.panel[data-presentation="window"] .search-slot{flex:1 1 auto;width:auto;min-width:72px;max-width:none}.panel-head-actions{flex:none;gap:3px}.panel[data-presentation="window"] .toolbox-btn,.panel[data-presentation="window"] .recent-context-trigger{width:28px;height:28px}.panel-modes{height:30px}.panel-modes button{height:24px;padding-inline:5px;font-size:11px}}
 
 .panel-more{padding:0;align-self:center;line-height:0;box-sizing:border-box;transform:none}
 .panel-more svg{display:block;width:16px;height:16px;fill:currentColor;stroke:none;flex:none}
@@ -742,7 +750,11 @@ kbd { font-family: var(--font-ui); font-size: var(--text-1); font-weight:600; }
 .panel .panel-brand b { font-weight:600; letter-spacing:0; }
 .panel .panel-brand small { letter-spacing:0; color:var(--ink-soft); }
 .panel[data-presentation="window"] .panel-brand>span:last-child { text-shadow:none; }
-.panel .search-field,.panel .search-field.is-expanded { box-shadow:none; }
+.panel .search-field,.panel .search-field.is-expanded { box-shadow:var(--panel-search-shadow); }
+.panel[data-presentation="window"] .panel-head,.panel[data-presentation="window"] .panel-foot { cursor:grab; }
+.panel[data-presentation="window"] .panel-head :is(button,input,.search-field,.panel-modes),.panel[data-presentation="window"] .panel-foot :is(button,input) { cursor:auto; }
+.panel[data-presentation="window"] .panel-head button,.panel[data-presentation="window"] .panel-foot button { cursor:pointer; }
+.panel.is-panel-dragging,.panel.is-panel-dragging * { cursor:grabbing !important; user-select:none !important; }
 .panel .toolbox-btn,.panel .capture-chip,.panel .clipboard-chip { box-shadow:none; border-color:var(--tool-edge); font-weight:500; }
 .panel .panel-more-menu,.panel .panel-more-submenu { background:var(--tool-surface); border-color:var(--tool-edge); border-radius:12px; }
 .panel-more-menu button,.panel-more-submenu button { min-height:36px; }

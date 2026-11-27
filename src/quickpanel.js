@@ -1063,11 +1063,15 @@ function focusSearch() {
 
 function installEvents() {
   let guideDismissed=false;
+  let guideKnownSeen=false;
+  let recentDirty=true;
   const showGuideIfNeeded=async()=>{
+    if(guideDismissed||guideKnownSeen)return;
     const settings=await window.suira.settings?.get?.();
+    if(settings?.panelGuideSeen){guideKnownSeen=true;return;}
     if(!guideDismissed&&settings&&!settings.panelGuideSeen)$('#panel-guide').hidden=false;
   };
-  const syncMaterial=settings=>{const value=settings.panelMaterial||'soft';$('#panel').style.setProperty('--panel-opacity',({soft:.94,clear:.87,solid:.98})[value]||.94);$$('[data-material]').forEach(button=>button.setAttribute('aria-checked',String(button.dataset.material===value)));const compact=settings.panelCompact===true;if(compact!==state.compact){state.compact=compact;renderKeys();}$('#panel-compact').setAttribute('aria-checked',String(compact));};
+  const syncMaterial=settings=>{const value=settings.panelMaterial||'soft';$('#panel').style.setProperty('--panel-opacity',({soft:.94,clear:.87,solid:.98})[value]||.94);$$('[data-material]').forEach(button=>button.setAttribute('aria-checked',String(button.dataset.material===value)));const compact=settings.panelCompact===true;if(compact!==state.compact){state.compact=compact;renderKeys();}$('#panel-compact').setAttribute('aria-checked',String(compact));if(settings.panelGuideSeen)guideKnownSeen=true;};
   panelSettingsReady=window.suira.settings?.get?.().then(syncMaterial).catch(()=>{})||Promise.resolve();
   window.suira.settings?.onChanged?.(syncMaterial);
   listen($('#panel-compact'),'click',async()=>{const result=await window.suira.settings.update({panelCompact:!state.compact});if(!result?.ok)throw Error(result?.error||'保存失败');syncMaterial(result.settings);closeMoreMenu(false);});
@@ -1153,8 +1157,8 @@ function installEvents() {
   listen(document, 'pointerup', finishKeyDrag);
   document.addEventListener('pointercancel', cancelKeyDrag);
   document.addEventListener('lostpointercapture', () => { if (dragState.source) cancelKeyDrag(); });
-  window.addEventListener('blur', () => { cancelKeyDrag(); if (!bindingState.busy) closeBindingEditor(false); });
-  document.addEventListener('visibilitychange', () => { if (document.hidden) { cancelKeyDrag(); closeBindingEditor(false); } });
+  window.addEventListener('blur', () => { stopPanelDrag(true); cancelKeyDrag(); if (!bindingState.busy) closeBindingEditor(false); });
+  document.addEventListener('visibilitychange', () => { if (document.hidden) { stopPanelDrag(true); cancelKeyDrag(); closeBindingEditor(false); } });
   window.addEventListener('resize', () => { cancelKeyDrag(); positionBindingEditor(); });
   $('#panel-body').addEventListener('scroll', positionBindingEditor, true);
   const input = $('#search');
@@ -1384,7 +1388,85 @@ function installEvents() {
   $('#apps-prev').addEventListener('click', () => { state.appPage -= 1; renderApps(); loadAppIcons(); });
   $('#apps-next').addEventListener('click', () => { state.appPage += 1; renderApps(); loadAppIcons(); });
   listen($('#apps-retry'), 'click', loadApps);
+  /* ---- 悬浮板自由拖动（空白区域 / 顶栏可拖，双击顶栏空白处回中） ---- */
+  const panelDragState = {
+    pending: false,
+    active: false,
+    pointerId: 0,
+    startX: 0,
+    startY: 0,
+    frame: 0,
+    suppressClickUntil: 0
+  };
+  const PANEL_DRAG_BLOCKED = 'button, input, textarea, select, a, .key, .app-item, .tool-item, .command-item, .search-field, .panel-modes, .panel-more-menu, .panel-more-submenu, .binding-card, .recent-context, .panel-guide, .update-card, .ocr-panel';
+  const canDragPanelFrom = (target) => {
+    if (presentation !== 'window') return false;
+    if (dragState.source || bindingState.busy || bindingEditorOpen()) return false;
+    if (!$('#update-dialog').hidden || !$('#ocr-panel').hidden || !$('#translate-panel').hidden) return false;
+    if (!target || typeof target.closest !== 'function') return false;
+    return !target.closest(PANEL_DRAG_BLOCKED);
+  };
+  const stopPanelDrag = (commit = true) => {
+    if (!panelDragState.pending && !panelDragState.active) return;
+    const wasActive = panelDragState.active;
+    const pointerId = panelDragState.pointerId;
+    panelDragState.pending = false;
+    panelDragState.active = false;
+    cancelAnimationFrame(panelDragState.frame);
+    panelDragState.frame = 0;
+    $('#panel').classList.remove('is-panel-dragging');
+    if ($('#panel').hasPointerCapture?.(pointerId)) {
+      try { $('#panel').releasePointerCapture(pointerId); } catch {}
+    }
+    if (wasActive) {
+      panelDragState.suppressClickUntil = performance.now() + 250;
+      if (commit) window.suira.quick.dragEnd?.();
+    }
+  };
+  $('#panel').addEventListener('pointerdown', (event) => {
+    if (event.button !== 0 || !canDragPanelFrom(event.target)) return;
+    panelDragState.pending = true;
+    panelDragState.active = false;
+    panelDragState.pointerId = event.pointerId;
+    panelDragState.startX = event.clientX;
+    panelDragState.startY = event.clientY;
+  });
+  $('#panel').addEventListener('pointermove', (event) => {
+    if ((!panelDragState.pending && !panelDragState.active) || event.pointerId !== panelDragState.pointerId) return;
+    if (!panelDragState.active) {
+      if (Math.hypot(event.clientX - panelDragState.startX, event.clientY - panelDragState.startY) < 4) return;
+      panelDragState.pending = false;
+      panelDragState.active = true;
+      keyMotion?.clear();
+      closeMoreMenu(false);
+      closeRecentContext();
+      try { $('#panel').setPointerCapture(event.pointerId); } catch {}
+      $('#panel').classList.add('is-panel-dragging');
+      window.suira.quick.dragStart?.();
+    }
+    event.preventDefault();
+    if (!panelDragState.frame) {
+      panelDragState.frame = requestAnimationFrame(() => {
+        panelDragState.frame = 0;
+        if (panelDragState.active) window.suira.quick.dragMove?.();
+      });
+    }
+  });
+  $('#panel').addEventListener('pointerup', (event) => {
+    if (event.pointerId === panelDragState.pointerId) stopPanelDrag(true);
+  });
+  $('#panel').addEventListener('pointercancel', (event) => {
+    if (event.pointerId === panelDragState.pointerId) stopPanelDrag(true);
+  });
+  $('#panel').addEventListener('lostpointercapture', () => {
+    if (panelDragState.active) stopPanelDrag(true);
+  });
+  $('.panel-head')?.addEventListener('dblclick', (event) => {
+    if (canDragPanelFrom(event.target)) window.suira.quick.resetPosition?.();
+  });
+
   $('#panel-body').addEventListener('click', (event) => {
+    if (performance.now() < panelDragState.suppressClickUntil) return;
     if (event.target === $('#panel-body') && state.mode === 'actions' && !state.query) focusSearch();
   });
 
@@ -1522,7 +1604,13 @@ function installEvents() {
     if (result?.ok) { toast('已加入任务匣'); closeOcr(); } else toast(result?.error || '加入失败', 'error');
   });
 
-  window.suira.content.onChanged(() => loadRecent());
+  window.suira.content.onChanged(() => {
+    recentDirty = true;
+    if (!document.hidden) {
+      recentDirty = false;
+      loadRecent();
+    }
+  });
   window.suira.panel.onChanged?.(() => {
     if (!bindingState.busy && !dragState.source && !bindingEditorOpen()) loadState();
   });
@@ -1535,13 +1623,14 @@ function installEvents() {
     setMode(mode);
     window.SuiraUI?.syncSelections?.();
   });
-  window.suira.quick.onPrepare(async ({token}) => {
+  window.suira.quick.onPrepare(async ({token, mode}) => {
     window.SuiraUI?.dismissHints?.();
     window.SuiraUI?.resetReveal?.($('#panel'));
     window.SuiraGlassSelect?.close();
     await initialPanelLoad;
     closeMoreMenu(false);
-    await window.suira.quick.presentation?.().then(syncPresentation).catch(()=>{});
+    if (mode === 'window' || mode === 'fullscreen') syncPresentation({ mode });
+    else await window.suira.quick.presentation?.().then(syncPresentation).catch(()=>{});
     cancelKeyDrag();
     closeBindingEditor(false);
     clearTimeout(state.toastTimer);
@@ -1560,7 +1649,19 @@ function installEvents() {
     document.documentElement.dataset.panelPrepared=String(token);
     window.suira.quick.prepared(token);
   });
-  window.suira.quick.onShown(() => { closeRecentContext();selectionContext=null;derivedContext=null;loadRecent();window.SuiraUI?.reveal($('#panel')); showGuideIfNeeded(); });
+  window.suira.quick.onShown(() => {
+    closeRecentContext();
+    selectionContext = null;
+    derivedContext = null;
+    if (recentDirty) {
+      recentDirty = false;
+      loadRecent();
+    } else {
+      renderRecentContext();
+    }
+    window.SuiraUI?.reveal($('#panel'));
+    showGuideIfNeeded();
+  });
 }
 
 reducedMotion.addEventListener('change', () => {

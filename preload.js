@@ -55,6 +55,10 @@ contextBridge.exposeInMainWorld('suira', {
     onShown: (callback) => subscribe('quick:shown', callback),
     onPrepare: callback => subscribe('quick:prepare', callback),
     prepared: token => ipcRenderer.send('quick:prepared', token),
+    dragStart: () => ipcRenderer.send('quick:drag-start'),
+    dragMove: () => ipcRenderer.send('quick:drag-move'),
+    dragEnd: () => ipcRenderer.send('quick:drag-end'),
+    resetPosition: () => ipcRenderer.send('quick:reset-position'),
     // 主进程轮换面板布局时下发目标模式（动作 / 应用 / 工具箱）
     onMode: (callback) => subscribe('quick:mode', callback)
   },

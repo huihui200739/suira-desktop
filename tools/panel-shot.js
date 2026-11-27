@@ -458,17 +458,67 @@ async function capture(send, name) {
 
     console.log('\n== 浅色 / 深色 / 小屏布局 ==');
     await checkKeycapMaterial({send,evaluate});
-    for (const [width, height, scheme] of [[QUICK_PANEL_SIZE.width,QUICK_PANEL_SIZE.height,'light'], [QUICK_PANEL_SIZE.width,QUICK_PANEL_SIZE.height,'dark'], [800,560,'light'], [640,480,'dark']]) {
+    for (const [width, height, scheme] of [
+      [QUICK_PANEL_SIZE.width,QUICK_PANEL_SIZE.height,'light'],
+      [QUICK_PANEL_SIZE.width,QUICK_PANEL_SIZE.height,'dark'],
+      [1041,560,'light'],
+      [1040,560,'dark'],
+      [961,480,'light'],
+      [961,480,'dark'],
+      [901,560,'light'],
+      [821,560,'dark'],
+      [800,560,'light'],
+      [761,560,'dark'],
+      [641,480,'light'],
+      [640,480,'dark'],
+      [521,480,'light'],
+      [440,480,'light'],
+      [421,480,'dark'],
+      [400,480,'dark'],
+      [360,480,'light']
+    ]) {
       await send('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor:2, mobile:false });
       await send('Emulation.setEmulatedMedia', { features:[{name:'prefers-color-scheme',value:scheme}] });
       const layout = await evaluate(send, `(function(){
         const body = document.getElementById('panel-body');
         body.scrollTop = body.scrollHeight;
         const panel = document.getElementById('panel');
+        const pr = panel.getBoundingClientRect();
+        const measureHeader = (showRecent) => {
+          const trigger = document.getElementById('recent-context-trigger');
+          const prevHidden = trigger.hidden;
+          const labelSpan = trigger.querySelector('span');
+          const prevText = labelSpan ? labelSpan.textContent : '';
+          trigger.hidden = !showRecent;
+          if (showRecent && labelSpan) labelSpan.textContent = '选中文字';
+          const searchRect = document.querySelector('.search-slot').getBoundingClientRect();
+          const brandRect = document.querySelector('.panel-brand').getBoundingClientRect();
+          const rightItems = Array.from(document.querySelectorAll('.panel-head-actions > *'))
+            .filter((el) => !el.hidden && getComputedStyle(el).display !== 'none')
+            .map((el) => el.getBoundingClientRect())
+            .filter((r) => r.width > 0 && r.height > 0);
+          const minRightLeft = rightItems.length ? Math.min(...rightItems.map((r) => r.left)) : pr.right;
+          const centerOffset = Math.abs((searchRect.left + searchRect.right) / 2 - (pr.left + pr.right) / 2);
+          const clearLeft = searchRect.left >= brandRect.right + 4;
+          const clearRight = searchRect.right <= minRightLeft - 4;
+          trigger.hidden = prevHidden;
+          if (labelSpan) labelSpan.textContent = prevText;
+          return {
+            centerOffset: Math.round(centerOffset * 10) / 10,
+            clearOfSides: clearLeft && clearRight,
+            leftGap: Math.round((searchRect.left - brandRect.right) * 10) / 10,
+            rightGap: Math.round((minRightLeft - searchRect.right) * 10) / 10
+          };
+        };
+        const headerDefault = measureHeader(false);
+        const headerWithRecent = measureHeader(true);
         const b = body.getBoundingClientRect();
         const keys = Array.from(document.querySelectorAll('.key-card'));
         return {
           keys:keys.length,
+          searchCenterOffset: headerDefault.centerOffset,
+          searchClearOfSides: headerDefault.clearOfSides,
+          headerWithRecent,
           within:keys.every(k=>{const r=k.getBoundingClientRect(); return r.left>=b.left && r.right<=b.right+1;}),
           horizontalOverflow:body.scrollWidth>body.clientWidth+1,
           verticalOverflow:body.scrollHeight>body.clientHeight+1,
@@ -483,12 +533,20 @@ async function capture(send, name) {
         };
       })()`);
       assert.equal(layout.keys,38);
+      if (width >= 440) {
+        assert.ok(layout.searchCenterOffset <= 1, '搜索框应在面板水平居中 ' + width + ' ' + JSON.stringify(layout));
+        assert.ok(layout.headerWithRecent.centerOffset <= 1, '显示最近内容时搜索框仍应居中 ' + width + ' ' + JSON.stringify(layout.headerWithRecent));
+      }
+      assert.equal(layout.searchClearOfSides, true, '搜索框不应与两侧控件重叠 ' + width + ' ' + JSON.stringify(layout));
+      assert.equal(layout.headerWithRecent.clearOfSides, true, '显示最近内容时搜索框不应与两侧重叠 ' + width + ' ' + JSON.stringify(layout.headerWithRecent));
       assert.equal(layout.square,true,'所有键位应为正方形');
       assert.equal(layout.numberBorders,true,'数字行应有可见边框');
       assert.equal(layout.brandLoaded,true,'产品图标应成功加载');
       assert.equal(layout.removedText,true,'不再呈现按键标签和底部内容条');
-      assert.equal(layout.within,true, '键帽不能横向裁切 ' + width);
-      assert.equal(layout.horizontalOverflow,false, '不应出现横向滚动 ' + width);
+      if (width >= 640) {
+        assert.equal(layout.within,true, '键帽不能横向裁切 ' + width);
+        assert.equal(layout.horizontalOverflow,false, '不应出现横向滚动 ' + width);
+      }
       assert.equal(layout.footerVisible,true);
       assert.equal(layout.lastKeyReachable,true, '滚动后能完整看到最后一行键帽');
       if (width === QUICK_PANEL_SIZE.width) assert.equal(layout.verticalOverflow,false, '默认尺寸无需滚动 ' + JSON.stringify(layout));

@@ -85,6 +85,7 @@ const { searchCandidates, searchAppCandidates, COMMANDS } = require('./lib/searc
 const { shouldExcludeCapture, summarizeLargeText } = require('./lib/clipboard-guard');
 const { captureTarget, validateTarget, decideCommit, normalizeHwnd, ClipboardWriteLedger } = require('./lib/return-target');
 const { AppIndex } = require('./lib/app-index');
+const { createAppLauncher } = require('./lib/app-launcher');
 const { createAppIconLoader, extractResourceBatch } = require('./lib/app-icons');
 const { createIconDiskCache } = require('./lib/icon-disk-cache');
 const { captureNative, captureWindowsNative, nativeDesktopTiles, normalizeSnapRects } = require('./lib/native-capture');
@@ -92,7 +93,7 @@ const { ForegroundProbe } = require('./lib/foreground-probe');
 const { DEFAULT_BINDINGS, DEFAULT_MOMENTARY_BINDINGS, ShortcutManager, normalizeAccelerator, validateMomentaryAccelerator, momentaryConflict } = require('./lib/shortcuts');
 const { KeyVault, decryptItem, encryptText, decryptText } = require('./lib/crypto-store');
 const { unionBounds, maxScaleFactor, tileLayout, sanitizeWindowBounds, QUICK_PANEL_SIZE, quickPanelBounds,
-  clipboardShelfBounds, roundedWindowShape } = require('./lib/display-geometry');
+  clampQuickPosition, clipboardShelfBounds, roundedWindowShape } = require('./lib/display-geometry');
 const { InputInjector } = require('./lib/input-injector');
 const {clipboardTarget,currentPasteTarget}=require('./lib/clipboard-session');
 const { keyLayout, TOOLBOX_TOOLS, PANEL_ACTIONS, DEFAULT_KEY_BINDINGS, KEY_ROWS, normalizeKey, implementedPanelActions } = require('./lib/keybindings');
@@ -159,6 +160,9 @@ let ocr = null;
 let actions = null;
 let mainWindow = null;
 let quickWindow = null;
+let quickCustomPosition = null;
+let quickDragState = null;
+let contentRevision = 0;
 let panelBindingPickerOpen = false;
 let overlayWindow = null;
 let tray = null;
@@ -203,6 +207,7 @@ let clipboardSessionTarget = null;
 let clipboardClickTarget = null;
 const clipboardLedger = new ClipboardWriteLedger();
 const appIndex = new AppIndex();
+const appLauncher = createAppLauncher({ shell });
 const foregroundProbe = new ForegroundProbe({
   onWarn(message, error) {
     console.warn(message);
@@ -529,6 +534,7 @@ function hashBuffer(buffer) {
 }
 
 function broadcast(channel, payload) {
+  if (channel === 'content:changed') contentRevision += 1;
   for (const win of BrowserWindow.getAllWindows()) {
     if (!win.isDestroyed()) win.webContents.send(channel, payload);
   }
@@ -822,22 +828,42 @@ async function migrateLegacyHistory() {
   }
 }
 
-function positionQuickPanel(win,mode=store?.getSettings().panelPresentation||'window') {
+function positionQuickPanel(win, mode = store?.getSettings().panelPresentation || 'window', { skipClip = false } = {}) {
   const display = screen.getDisplayNearestPoint(screen.getCursorScreenPoint());
-  const fullscreen=mode==='fullscreen';
-  win.__changingPresentation=true;
+  const fullscreen = mode === 'fullscreen';
+  const nextMode = fullscreen ? 'fullscreen' : 'window';
+  win.__changingPresentation = true;
   // Electron's thickFrame:false Windows path only changes bounds; its
   // isFullScreen() remains false. Track this borderless launchpad explicitly.
-  win.__launchpadFullscreen=fullscreen;
-  const next=fullscreen?display.bounds:quickPanelBounds(display.workArea),previous=win.getBounds();
-  if(['x','y','width','height'].some(key=>next[key]!==previous[key]))win.setBounds(next);
-  win.webContents.send('quick:presentation-changed',{mode:fullscreen?'fullscreen':'window'});
+  win.__launchpadFullscreen = fullscreen;
+  const previous = win.getBounds();
+  let next;
+  if (fullscreen) {
+    next = display.bounds;
+  } else if (quickCustomPosition) {
+    next = clampQuickPosition(
+      quickCustomPosition,
+      { width: QUICK_WIDTH, height: QUICK_HEIGHT },
+      screen.getAllDisplays(),
+      display.workArea
+    );
+  } else {
+    next = quickPanelBounds(display.workArea);
+  }
+  if (['x', 'y', 'width', 'height'].some(key => next[key] !== previous[key])) win.setBounds(next);
+  if (win.__presentationMode !== nextMode) {
+    win.__presentationMode = nextMode;
+    win.webContents.send('quick:presentation-changed', { mode: nextMode });
+  }
   clearTimeout(win.__presentationTimer);
-  win.__presentationTimer=setTimeout(()=>{
-    if(win.isDestroyed())return;win.__changingPresentation=false;
-    if(win.isVisible()&&!win.isFocused()&&!panelBindingPickerOpen&&!win.webContents.isDevToolsOpened())hideQuickPanel();
-  },350);
-  clipFloatingSurface(win);
+  win.__presentationTimer = setTimeout(() => {
+    if (win.isDestroyed()) return;
+    win.__changingPresentation = false;
+    if (win.isVisible() && !win.isFocused() && !panelBindingPickerOpen && !win.__panelDragging && !win.webContents.isDevToolsOpened()) {
+      hideQuickPanel();
+    }
+  }, 350);
+  if (!skipClip) clipFloatingSurface(win);
 }
 
 function clipFloatingSurface(win) {
@@ -998,18 +1024,18 @@ function createQuickWindow() {
   quickWindow.setMenuBarVisibility(false);
   quickWindow.webContents.once('did-finish-load', () => {
     quickReady = true;
-    broadcast('content:changed');
+    if (quickWindow && !quickWindow.isDestroyed()) quickWindow.webContents.send('content:changed');
     primeQuickFrame(quickWindow);
   });
   quickWindow.on('blur', () => {
-    if (!quickWindow || quickWindow.isDestroyed() || panelBindingPickerOpen || quickWindow.webContents.isDevToolsOpened()) return;
+    if (!quickWindow || quickWindow.isDestroyed() || panelBindingPickerOpen || quickWindow.__panelDragging || quickWindow.webContents.isDevToolsOpened()) return;
     const win=quickWindow;
-    setImmediate(()=>{if(quickWindow===win&&!win.isDestroyed()&&!win.isFocused()&&!panelBindingPickerOpen)hideQuickPanel();});
+    setImmediate(()=>{if(quickWindow===win&&!win.isDestroyed()&&!win.isFocused()&&!panelBindingPickerOpen&&!win.__panelDragging)hideQuickPanel();});
   });
   quickWindow.on('show', () => {
     cancelIdleTeardown(quickWindow);
   });
-  quickWindow.on('closed', () => { quickWindow?.__prepareShow?.cancel();quickWindow = null; quickReady = false; });
+  quickWindow.on('closed', () => { quickWindow?.__prepareShow?.cancel(); quickDragState = null; quickWindow = null; quickReady = false; });
 }
 
 /**
@@ -1036,6 +1062,7 @@ async function rememberReturnTarget(selectionMethod = 'unknown',knownSnapshot) {
  * 截图隐藏时立即释放图像和画布，兼顾再次唤起速度与大图内存占用。
  */
 const HOT_WINDOW_IDLE_MS = 15 * 1000;
+const HOT_LAUNCHER_IDLE_MS = 10 * 60 * 1000;
 const MAIN_WINDOW_IDLE_MS = 10 * 1000;
 
 /** 窗口隐藏后开始计时；期间被再次唤起会取消。 */
@@ -1070,12 +1097,13 @@ let quickFrameRevision=0;
 function primeQuickFrame(win){
   if(!win||win.isDestroyed())return Promise.resolve();
   const token=++quickFrameRevision;
+  const mode = store?.getSettings().panelPresentation === 'fullscreen' ? 'fullscreen' : 'window';
   win.__prepareShow?.cancel();
   win.__frameReady=new Promise(resolve=>{
     const timer=setTimeout(()=>{if(win.__prepareShow?.token===token)win.__prepareShow=null;resolve();},2000);
     const finish=()=>{clearTimeout(timer);if(win.__prepareShow?.token===token)win.__prepareShow=null;resolve();};
     win.__prepareShow={token,finish,cancel:finish};
-    win.webContents.send('quick:prepare',{token});
+    win.webContents.send('quick:prepare',{token,mode});
   });
   return win.__frameReady;
 }
@@ -1103,7 +1131,7 @@ async function showQuickPanel() {
     await new Promise(resolve=>setImmediate(resolve));
     if(revision!==quickShowRevision||win.isDestroyed())return;
     const wasVisible=win.isVisible();
-    if(!wasVisible){positionQuickPanel(win);win.show();}
+    if(!wasVisible){positionQuickPanel(win, undefined, { skipClip: true });win.show();}
     win.focus();
     if(!wasVisible)win.webContents.send('quick:shown');
     win.webContents.send('quick:selection',panelSelection?{...panelSelection,returnTarget:undefined}:null);
@@ -1114,11 +1142,13 @@ async function showQuickPanel() {
 function hideQuickPanel() {
   quickShowRevision++;
   if (quickWindow && !quickWindow.isDestroyed()) {
+    quickWindow.__panelDragging = false;
+    quickDragState = null;
     quickWindow.__showRequested=false;quickWindow.__prepareShow?.cancel();
     quickWindow.hide();
-    // Keep the panel warm briefly, then release its renderer with other overlays.
+    // Keep the panel warm for frequent hotkey use, then release after extended idle.
     primeQuickFrame(quickWindow);
-    scheduleIdleTeardown(quickWindow, '动作面板', HOT_WINDOW_IDLE_MS);
+    scheduleIdleTeardown(quickWindow, '动作面板', HOT_LAUNCHER_IDLE_MS);
   }
 }
 
@@ -1318,7 +1348,7 @@ function setIslandExpanded(expanded) {
 let quickPointerDown=false;
 function handleIslandPointer(point) {
   const pressed=point.down&&!quickPointerDown;quickPointerDown=point.down;
-  if(pressed&&quickWindow?.isVisible()&&!panelBindingPickerOpen&&!quickWindow.webContents.isDevToolsOpened()){
+  if(pressed&&quickWindow?.isVisible()&&!panelBindingPickerOpen&&!quickWindow.__panelDragging&&!quickWindow.webContents.isDevToolsOpened()){
     // The pointer helper can be DPI-virtualized. Electron supplies the cursor
     // in the same DIP space as BrowserWindow bounds, including mixed-DPI screens.
     const dip=screen.getCursorScreenPoint();
@@ -1483,6 +1513,7 @@ function createClipboardBarWindow() {
   });
   // 仅悬浮板保留原生透明磨砂，剪贴板历史条使用清晰纯色表面避免 Windows 透明发灰
   prepareFloatingSurface(clipboardBarWindow, 24, false);
+  clipboardBarWindow.__instantTransitions = panelNative.disableTransitions(clipboardBarWindow);
   clipboardBarWindow.setAlwaysOnTop(true, 'floating');
   clipboardBarWindow.on('will-resize',event=>event.preventDefault());
   clipboardBarWindow.__loaded = clipboardBarWindow.loadFile(path.join(__dirname, 'src', 'clipboardbar.html'));
@@ -1518,16 +1549,30 @@ async function showClipboardBar() {
   const win = createClipboardBarWindow();
   if (!win || win.isDestroyed()) return { ok: false, error: '剪贴板历史条创建失败' };
   cancelIdleTeardown(win);
-  const [current] = await Promise.all([queryForeground(), win.__loaded]);
+  // 优先走进程内同步 Win32 句柄快照（<1ms），避免每次等待外部助手管道往返。
+  let current = panelNative.foreground({ withFocus: true });
+  const loadedPromise = win.__loaded;
+  if (!current) {
+    current = await Promise.race([queryForeground(), new Promise(resolve => setTimeout(() => resolve(null), 100))]);
+  }
+  await loadedPromise;
   if (revision !== clipboardShowRevision || win.isDestroyed()) return { ok: true, visible: false };
-  clipboardSessionTarget=clipboardTarget(current,process.pid,quickWindow&&!quickWindow.isDestroyed()&&quickWindow.isVisible()?quickInvocationTarget:null);
+  const fallbackTarget = quickWindow && !quickWindow.isDestroyed() && quickWindow.isVisible() ? quickInvocationTarget : null;
+  clipboardSessionTarget = clipboardTarget(current, process.pid, fallbackTarget);
+  if (clipboardSessionTarget && current?.focusHwnd && !clipboardSessionTarget.focusHwnd) {
+    clipboardSessionTarget.focusHwnd = current.focusHwnd;
+  }
   clipboardClickTarget = null;
   clipboardShowPending = false;
   hideQuickPanel();
-  win.setBounds(clipboardBarBounds());
+  const nextBounds = clipboardBarBounds();
+  const previousBounds = win.getBounds();
+  if (['x', 'y', 'width', 'height'].some(key => nextBounds[key] !== previousBounds[key])) {
+    win.setBounds(nextBounds);
+  }
   win.show();
   win.focus();
-  win.webContents.send('clipboard-bar:shown', { pinned: win.__shelfPinned });
+  win.webContents.send('clipboard-bar:shown', { pinned: win.__shelfPinned, revision: contentRevision });
   return { ok: true, visible: true };
 }
 
@@ -1539,7 +1584,7 @@ function hideClipboardBar() {
   if (clipboardBarWindow && !clipboardBarWindow.isDestroyed()) {
     clipboardBarWindow.__shelfPinned = false;
     clipboardBarWindow.hide();
-    scheduleIdleTeardown(clipboardBarWindow, '剪贴板', HOT_WINDOW_IDLE_MS);
+    scheduleIdleTeardown(clipboardBarWindow, '剪贴板', HOT_LAUNCHER_IDLE_MS);
   }
   return { ok: true, visible: false };
 }
@@ -2913,9 +2958,19 @@ async function runBindingKey(key) {
     await shell.openExternal(binding.target);
     return { ok: true, closePanel: true, message: `已打开网页：${binding.name || binding.target}` };
   }
-  // app / folder / file 都交给系统默认方式打开
+  // app / folder / file：应用优先唤起已有窗口（避免微信等软件重复弹出登录窗），其余交系统默认打开
   if (!binding.target || !fs.existsSync(binding.target)) {
     return { ok: false, error: `「${binding.name || binding.target}」不存在或已被移动` };
+  }
+  if (binding.type === 'app' || /\.(exe|lnk)$/i.test(binding.target)) {
+    const launched = await appLauncher.launch(binding.target, { displayName: binding.name || '' });
+    if (!launched.ok) return { ok: false, error: launched.error || '启动失败' };
+    return {
+      ok: true,
+      closePanel: true,
+      activated: Boolean(launched.activated),
+      message: `${launched.activated ? '已切换到' : '已打开'}：${binding.name || binding.target}`
+    };
   }
   const error = await shell.openPath(binding.target);
   if (error) return { ok: false, error };
@@ -3103,6 +3158,75 @@ function registerIpc() {
   windowIpc.on('quick:prepared',(event,token)=>{
     const pending=quickWindow?.__prepareShow;
     if(event.sender===quickWindow?.webContents&&pending?.token===token)pending.finish();
+  });
+  const applyQuickDragMove = (win) => {
+    if (!quickDragState) return;
+    if (quickDragState.useNative) {
+      const cursor = panelNative.cursorPos();
+      if (cursor) {
+        const nextX = Math.round(quickDragState.startRect.x + (cursor.x - quickDragState.startCursor.x));
+        const nextY = Math.round(quickDragState.startRect.y + (cursor.y - quickDragState.startCursor.y));
+        if (panelNative.moveWindow(win, nextX, nextY)) return;
+      }
+      quickDragState.useNative = false;
+    }
+    const dipCursor = screen.getCursorScreenPoint();
+    if (!dipCursor || !quickDragState.startDipCursor || !quickDragState.startDipRect) return;
+    const dipX = Math.round(quickDragState.startDipRect.x + (dipCursor.x - quickDragState.startDipCursor.x));
+    const dipY = Math.round(quickDragState.startDipRect.y + (dipCursor.y - quickDragState.startDipCursor.y));
+    win.setPosition(dipX, dipY);
+  };
+  windowIpc.on('quick:drag-start', (event) => {
+    const win = quickWindow;
+    if (!win || win.isDestroyed() || event.sender !== win.webContents || !win.isVisible() || win.__launchpadFullscreen) return;
+    win.__panelDragging = true;
+    const nativeCursor = panelNative.cursorPos();
+    const nativeRect = panelNative.windowRect(win);
+    quickDragState = {
+      useNative: Boolean(nativeCursor && nativeRect),
+      startCursor: nativeCursor,
+      startRect: nativeRect,
+      startDipCursor: screen.getCursorScreenPoint(),
+      startDipRect: win.getBounds()
+    };
+  });
+  windowIpc.on('quick:drag-move', (event) => {
+    const win = quickWindow;
+    if (!win || win.isDestroyed() || event.sender !== win.webContents || !win.__panelDragging || !quickDragState) return;
+    applyQuickDragMove(win);
+  });
+  windowIpc.on('quick:drag-end', (event) => {
+    const win = quickWindow;
+    if (!win || win.isDestroyed() || event.sender !== win.webContents) return;
+    const wasDragging = Boolean(win.__panelDragging);
+    if (wasDragging && quickDragState && !win.__launchpadFullscreen && win.isVisible()) {
+      applyQuickDragMove(win);
+    }
+    win.__panelDragging = false;
+    quickDragState = null;
+    if (!wasDragging || win.__launchpadFullscreen || !win.isVisible()) return;
+    const current = win.getBounds();
+    const clamped = clampQuickPosition(
+      { x: current.x, y: current.y },
+      { width: current.width, height: current.height },
+      screen.getAllDisplays(),
+      screen.getDisplayNearestPoint(screen.getCursorScreenPoint()).workArea
+    );
+    if (clamped) {
+      if (['x', 'y', 'width', 'height'].some((key) => clamped[key] !== current[key])) {
+        win.setBounds(clamped);
+      }
+      quickCustomPosition = { x: clamped.x, y: clamped.y };
+    }
+    if (win.isVisible() && !win.isFocused() && !panelBindingPickerOpen && !win.webContents.isDevToolsOpened()) {
+      hideQuickPanel();
+    }
+  });
+  windowIpc.on('quick:reset-position', (event) => {
+    const win = quickWindow;
+    if (!win || win.isDestroyed() || event.sender !== win.webContents || win.__launchpadFullscreen) return;
+    quickCustomPosition = null;
+    positionQuickPanel(win, 'window');
   });
   windowIpc.handle('quick:presentation:set',async(event,mode,options)=>{
     if(event.sender!==quickWindow?.webContents||!['window','fullscreen'].includes(mode))return {ok:false,error:'无效的显示模式'};
@@ -3469,9 +3593,9 @@ function registerIpc() {
     try {
       const target = await appIndex.launchPath(filePath);
       if (!target) return { ok: false, error: '只能打开随序在开始菜单中找到的应用快捷方式' };
-      const error = await shell.openPath(target);
-      if (error) return { ok: false, error };
-      return { ok: true };
+      const launched = await appLauncher.launch(target);
+      if (!launched.ok) return { ok: false, error: launched.error || '启动失败' };
+      return { ok: true, activated: Boolean(launched.activated) };
     } catch (error) {
       return { ok: false, error: error.message || '启动失败' };
     }
@@ -4174,6 +4298,52 @@ async function initialize() {
   if (!process.argv.includes('--background')) createMainWindow();
   createTray();
   registerShortcuts();
+  // 显示器插拔或缩放变化时同步收口已拖动的悬浮板位置，防止停留在失效屏幕。
+  const reclampQuickCustomPosition = () => {
+    if (!quickCustomPosition) return;
+    const display = screen.getDisplayNearestPoint(screen.getCursorScreenPoint());
+    const clamped = clampQuickPosition(
+      quickCustomPosition,
+      { width: QUICK_WIDTH, height: QUICK_HEIGHT },
+      screen.getAllDisplays(),
+      display.workArea
+    );
+    if (!clamped) { quickCustomPosition = null; return; }
+    quickCustomPosition = { x: clamped.x, y: clamped.y };
+    if (quickWindow && !quickWindow.isDestroyed() && quickWindow.isVisible() && !quickWindow.__launchpadFullscreen && !quickWindow.__panelDragging) {
+      const current = quickWindow.getBounds();
+      if (['x', 'y', 'width', 'height'].some((key) => clamped[key] !== current[key])) {
+        quickWindow.setBounds(clamped);
+      }
+    }
+  };
+  screen.on('display-removed', reclampQuickCustomPosition);
+  screen.on('display-metrics-changed', reclampQuickCustomPosition);
+  // 后台错峰预热高频浮层与应用索引，首次按快捷键即可瞬时唤起而不拖慢冷启动。
+  if (!process.argv.includes('--diag')) {
+    const warmQuick = setTimeout(() => {
+      if (!isQuitting && (!quickWindow || quickWindow.isDestroyed())) {
+        createQuickWindow();
+        if (quickWindow && !quickWindow.isDestroyed() && !quickWindow.isVisible()) {
+          scheduleIdleTeardown(quickWindow, '动作面板', HOT_LAUNCHER_IDLE_MS);
+        }
+      }
+    }, 150);
+    if (warmQuick.unref) warmQuick.unref();
+    const warmClipboard = setTimeout(() => {
+      if (!isQuitting && (!clipboardBarWindow || clipboardBarWindow.isDestroyed())) {
+        createClipboardBarWindow();
+        if (clipboardBarWindow && !clipboardBarWindow.isDestroyed() && !clipboardBarWindow.isVisible()) {
+          scheduleIdleTeardown(clipboardBarWindow, '剪贴板', HOT_LAUNCHER_IDLE_MS);
+        }
+      }
+    }, 400);
+    if (warmClipboard.unref) warmClipboard.unref();
+    const warmApps = setTimeout(() => {
+      if (!isQuitting) appIndex.ensure().catch(() => {});
+    }, 700);
+    if (warmApps.unref) warmApps.unref();
+  }
   captureHost = prepareCaptureHost();
   foregroundProbe.nativeHostReady = nativeHost('foreground-host');
   foregroundProbe.start().catch(error => console.warn('前台助手预热失败:', error.message));

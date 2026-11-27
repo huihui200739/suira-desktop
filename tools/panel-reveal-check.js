@@ -37,11 +37,11 @@ setInterval(()=>{if(!app.isReady())return;try{
  assert.equal(refocused.messages.filter(m=>m.name==='quick:shown').length,1,'Refocus does not send a second reveal notification');
  await panel.evaluate('document.getElementById("mode-apps").click();window.suira.quick.hide()');await until(async()=>!(await rpc()).visible);
  const warm=[];for(let i=0;i<3;i++){warm.push(await show());await panel.evaluate('window.suira.quick.hide()');await until(async()=>!(await rpc()).visible);}
- const before=await rpc();await main.evaluate('window.suira.quick.show();window.suira.quick.hide();true');await wait(500);const cancelled=await rpc();assert.equal(cancelled.visible,false);assert.equal(cancelled.frames.length,before.frames.length,'Cancelled preparation must not reveal later');
+ const before=await rpc();await panel.evaluate('window.suira.quick.show();window.suira.quick.hide();true');await wait(500);const cancelled=await rpc();assert.equal(cancelled.visible,false);assert.equal(cancelled.frames.length,before.frames.length,'Cancelled preparation must not reveal later');
  const result=await rpc(),shown=result.messages.filter(m=>m.name==='quick:shown');assert.equal(shown.length,4,'Exactly one shown notification per completed invocation');
  await rpc({destroy:true});const recreated=await show();panel=await until(()=>connect(port,t=>t.url.endsWith('/quickpanel.html')));sockets.push(panel.ws);
  await panel.send('Emulation.setEmulatedMedia',{features:[{name:'prefers-reduced-motion',value:'no-preference'}]});
- const motion=await panel.evaluate(`(()=>{const node=document.getElementById('panel');SuiraUI.resetReveal(node);SuiraUI.reveal(node);const style=getComputedStyle(node);return {name:style.animationName,duration:style.animationDuration};})()`);assert.equal(motion.name,'panel-reveal');assert.equal(motion.duration,'0.12s');
+ const motion=await panel.evaluate(`(()=>{const node=document.getElementById('panel');SuiraUI.resetReveal(node);SuiraUI.reveal(node);const style=getComputedStyle(node);const tokenMs=parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--dur-fast'))||0;return {name:style.animationName,duration:style.animationDuration,tokenMs};})()`);assert.equal(motion.name,'panel-reveal');assert.equal(Math.round(parseFloat(motion.duration)*1000),Math.round(motion.tokenMs));assert.ok(motion.tokenMs>0&&motion.tokenMs<=160);
  for(const input of ['pointermove','pointerdown','keydown']){
    const state=await panel.evaluate(`(()=>{const node=document.getElementById('panel');SuiraUI.resetReveal(node);SuiraUI.reveal(node);
      const initial=node.classList.contains('is-revealing');document.body.dispatchEvent(new Event(${JSON.stringify(input)},{bubbles:true}));
