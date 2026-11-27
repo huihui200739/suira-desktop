@@ -165,14 +165,14 @@ kbd {
 .card-color-formats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; flex: 0 0 auto; }
 .card-color-fmt {
   height: 22px; padding: 0 4px; border: 1px solid var(--slate-5); border-radius: 6px;
-  background: var(--slate-2); color: var(--slate-11); font-size: 11px; font-weight: 600;
+  background: var(--slate-2); color: var(--slate-11); font-size: 12px; font-weight: 600;
   transition: border-color var(--dur-fast) var(--ease-out), background-color var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out);
 }
 .card-color-fmt:hover { border-color: var(--accent-8); background: var(--bar-active); color: var(--accent-11); }
 .card-tags { display: flex; align-items: center; gap: 4px; flex: none; overflow: hidden; min-height: 18px; }
 .card-tag-chip {
   max-width: 72px; padding: 0 6px; border-radius: var(--radius-pill);
-  background: var(--slate-3); color: var(--slate-11); font-size: 11px; line-height: 18px;
+  background: var(--slate-3); color: var(--slate-11); font-size: 12px; line-height: 18px;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: none;
 }
 .bar-tag-popover {
@@ -197,7 +197,7 @@ kbd {
 .bar-tag-choice {
   display: inline-flex; align-items: center; gap: 4px; height: 24px; padding: 0 8px;
   border: 1px solid var(--slate-5); border-radius: var(--radius-pill);
-  background: var(--slate-2); color: var(--slate-11); font-size: 11px;
+  background: var(--slate-2); color: var(--slate-11); font-size: 12px;
 }
 .bar-tag-choice:hover { border-color: var(--slate-7); color: var(--slate-12); }
 .bar-tag-choice[aria-pressed="true"] {
