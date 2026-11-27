@@ -203,7 +203,7 @@ kbd {
 .bar-tag-choice[aria-pressed="true"] {
   border-color: var(--accent-8); background: var(--bar-active); color: var(--accent-11); font-weight: 600;
 }
-.card-favorite { color: var(--red-9); font-size: 11px; line-height: 1; }
+.card-favorite { color: var(--red-9); font-size: 12px; line-height: 1; }
 .card-metadata { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-variant-numeric: tabular-nums; }
 .card-hotkey {
   flex: none; min-width: 18px; height: 18px; padding: 0 4px; text-align: center;

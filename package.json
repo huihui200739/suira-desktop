@@ -1,6 +1,6 @@
 {
   "name": "suira-desktop",
-  "version": "0.2.62",
+  "version": "0.2.63",
   "description": "随序 SUIRA — Windows 随手工作台。截图、剪贴板、日历与 Markdown，让零散内容自然接成工作流。",
   "main": "main.js",
   "author": "huihui200739",

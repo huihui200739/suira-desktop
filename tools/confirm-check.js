@@ -257,7 +257,7 @@ const check = (name, cond, detail) => {
     await press('Enter');await press('Escape');check('列表 Esc 不关闭所属对话框',await evaluate(send,`!SuiraGlassSelect.isOpen()&&!document.getElementById('modal').hidden`));await press('Escape');
     await evaluate(send,`document.getElementById('checkbox-probe').click();true`);await sleep(160);
     const checkbox=await evaluate(send,`(()=>{const c=document.getElementById('checkbox-probe'),s=getComputedStyle(c);return {checked:c.checked,background:s.backgroundColor,width:s.width,appearance:s.appearance};})()`);
-    check('复选框保留原生交互并使用 Iris 勾选面',checkbox.checked&&checkbox.background==='rgb(91, 91, 214)'&&checkbox.width==='16px'&&checkbox.appearance==='none',JSON.stringify(checkbox));
+    check('复选框保留原生交互并使用 Iris 勾选面',checkbox.checked&&checkbox.background==='rgb(24, 24, 27)'&&checkbox.width==='16px'&&checkbox.appearance==='none',JSON.stringify(checkbox));
     check('复选框样式不修改编辑器管理的 DOM',await evaluate(send,`(()=>{const c=document.getElementById('checkbox-probe'),before=c.outerHTML;SuiraGlassSelect.mount(c);return c.outerHTML===before&&!c.className;})()`));
     await send('Emulation.setEmulatedMedia',{features:[{name:'prefers-reduced-motion',value:'reduce'}]});
     const reduced=await evaluate(send,`(()=>{const box=document.createElement('div');box.className='panel is-revealing';document.body.append(box);const c=getComputedStyle(box);const result={animation:c.animationName,transition:getComputedStyle(document.querySelector('[role="combobox"]')).transitionDuration};box.remove();return result;})()`);

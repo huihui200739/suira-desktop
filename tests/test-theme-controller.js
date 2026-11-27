@@ -26,7 +26,7 @@ const delay=ms=>new Promise(r=>setTimeout(r,ms));
     settings={...settings,accentSource:'wallpaper'};reader=async()=>null;await controller.refresh();assert.equal(controller.snapshot().accentAvailable,false);assert.equal(controller.snapshot().preset,'paper');
     const ipc=new EventEmitter(),styles=new Map(),root={dataset:{},style:{setProperty:(k,v)=>styles.set(k,v),removeProperty:k=>styles.delete(k)}},media=new EventEmitter();media.matches=false;media.addEventListener=media.on.bind(media);ipc.sendSync=()=>controller.snapshot();
     installThemeBridge({ipcRenderer:ipc,document:{documentElement:root,addEventListener:()=>{}},window:{location:{pathname:'/src/quickpanel.html'},matchMedia:()=>media}});
-    assert.equal(root.dataset.theme,'paper');assert.equal(root.dataset.glassMode,'liquid','QuickPanel follows glass material');assert.equal(styles.size,24);assert.equal(styles.get('--slate-2'),'#f6f2ea');
+    assert.equal(root.dataset.theme,'paper');assert.equal(root.dataset.glassMode,'liquid','QuickPanel follows glass material');assert.equal(styles.size,25);assert.equal(styles.get('--slate-2'),'#f6f2ea');
     const clipRoot={dataset:{},style:{setProperty:()=>{},removeProperty:()=>{}}};
     installThemeBridge({ipcRenderer:ipc,document:{documentElement:clipRoot,addEventListener:()=>{}},window:{location:{pathname:'/src/clipboardbar.html'},matchMedia:()=>media}});
     assert.equal(clipRoot.dataset.glassMode,'solid','Non-panel windows stay solid across theme broadcasts');
