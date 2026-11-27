@@ -61,6 +61,8 @@ let saveTimer = null;
 let saveInFlight = null;
 let titleDirty = false;
 let bodyDirty = false;
+let editVersion = 0;
+let switchRevision = 0;
 let indexNotes = [];
 let indexRevision = 0;
 
@@ -122,6 +124,7 @@ async function boot() {
   const body = $('#note-body');
   const title = $('#note-page-title');
   const update = () => {
+    editVersion += 1;
     state.dirty = true;
     const text = editor.text();
     renderCount(text);
@@ -171,14 +174,95 @@ async function boot() {
     ledger.close();
     editor.ledger(`${date} · ${fields.get('kind')} ¥${amount}${memo ? ` · ${memo}` : ''}`);
   });
+  async function flushBeforeSwitch() {
+    while (state.dirty || saveInFlight) {
+      clearTimeout(saveTimer);
+      if (saveInFlight) {
+        const ok = await saveInFlight;
+        if (!ok) return false;
+        continue;
+      }
+      if (!(await pushText())) return false;
+    }
+    return true;
+  }
+  async function switchToNote(noteOrId, { focus = true, token = ++switchRevision, autoIndex = false } = {}) {
+    const fromId = state.id;
+    const versionBefore = editVersion;
+    const targetId = typeof noteOrId === 'string' ? noteOrId : noteOrId?.id;
+    const finishSameNote = async () => {
+      if (!$('#note-index').hidden) {
+        try { indexNotes = await window.suira.notes.list(); } catch {}
+        if (token === switchRevision) renderIndex();
+      }
+      const active = document.activeElement;
+      const inEditor = active === $('#note-page-title') || $('#note-body')?.contains(active);
+      if (focus && token === switchRevision && !inEditor) editor.focusEnd();
+      return true;
+    };
+    if (fromId && targetId && fromId === targetId && (state.dirty || saveInFlight)) {
+      return finishSameNote();
+    }
+    const note = typeof noteOrId === 'string'
+      ? await window.suira.notes.get(noteOrId)
+      : noteOrId;
+    if (token !== switchRevision) return false;
+    if (!note) throw new Error('这条速记已不存在');
+    if (state.id && state.id === note.id && (state.dirty || saveInFlight || editVersion !== versionBefore)) {
+      return finishSameNote();
+    }
+    // Flush any edits typed into the old note while the open/get IPC was in flight.
+    if (state.id && state.id !== note.id && (state.dirty || saveInFlight)) {
+      const flushed = await flushBeforeSwitch();
+      if (token !== switchRevision) return false;
+      if (!flushed) {
+        window.suira.notes.open?.(state.id).catch?.(() => {});
+        return false;
+      }
+    }
+    if (token !== switchRevision) return false;
+    clearTimeout(saveTimer);
+    state.dirty = false;
+    titleDirty = bodyDirty = false;
+    renderNote(note);
+    setSaved('已保存');
+    showError('');
+    if (autoIndex && innerWidth >= 620) {
+      await openIndex();
+    } else if (!$('#note-index').hidden) {
+      try {
+        indexNotes = await window.suira.notes.list();
+      } catch {}
+      if (token === switchRevision) renderIndex();
+    }
+    if (focus && token === switchRevision) editor.focusEnd();
+    return true;
+  }
   $('#note-search').addEventListener('input', renderIndex);
   $('#note-pages').addEventListener('click', async event => {
     const button = event.target.closest('[data-id]');
-    if (!button || !(await pushText())) return;
+    if (!button) return;
+    const token = ++switchRevision;
+    const fromId = state.id;
+    const targetId = button.dataset.id;
+    if (!(await flushBeforeSwitch()) || token !== switchRevision) return;
+    const versionBefore = editVersion;
     if (innerWidth < 581) closeIndex();
     try {
-      const result = await window.suira.notes.open(button.dataset.id);
+      const result = await window.suira.notes.open(targetId);
+      if (token !== switchRevision) return;
       if (!result?.ok) throw new Error(result?.error || '打开失败');
+      if (targetId !== fromId) {
+        if (editVersion !== versionBefore || state.dirty) {
+          if (!(await flushBeforeSwitch()) || token !== switchRevision) {
+            if (fromId) window.suira.notes.open?.(fromId).catch?.(() => {});
+            return;
+          }
+        }
+        await switchToNote(result.note || targetId, { token });
+      } else {
+        editor.focusEnd();
+      }
     } catch (error) { showError(error.message || '打开失败'); }
   });
 
@@ -216,10 +300,24 @@ async function boot() {
   });
 
   const createPage = async () => {
-    if (!(await pushText())) return;
+    const token = ++switchRevision;
+    const fromId = state.id;
+    if (!(await flushBeforeSwitch()) || token !== switchRevision) return;
+    const versionBefore = editVersion;
     try {
       const result = await window.suira.notes.create();
+      if (token !== switchRevision) return;
       if (result?.ok === false) throw new Error(result.error || '新建失败');
+      const created = result?.note || (result?.id && result.id !== fromId ? result.id : null);
+      if (created) {
+        if (editVersion !== versionBefore || state.dirty) {
+          if (!(await flushBeforeSwitch()) || token !== switchRevision) {
+            if (fromId) window.suira.notes.open?.(fromId).catch?.(() => {});
+            return;
+          }
+        }
+        await switchToNote(created, { token });
+      }
     } catch (error) {
       showError(error.message || '新建失败');
     }
@@ -230,27 +328,39 @@ async function boot() {
   $('#note-delete').addEventListener('click', async () => {
     // 删除不可撤销：先确认，再删除（速记没有回收站）
     if (!window.confirm('删除这条速记？删除后无法恢复。')) return;
+    const token = ++switchRevision;
     try {
       const result = await window.suira.notes.remove(state.id);
       if (!result || result.ok === false) throw new Error((result && result.error) || '删除失败');
       clearTimeout(saveTimer);
       state.dirty = false;
-      await window.suira.notes.hideWindow();
+      titleDirty = bodyDirty = false;
+      if (result.nextNote || result.nextId) {
+        await switchToNote(result.nextNote || result.nextId, { token });
+      } else {
+        await window.suira.notes.hideWindow();
+      }
     } catch (error) {
       showError(error.message || '删除失败');
     }
   });
 
-  // 主进程建好窗口后把 noteId 送过来，才知道自己是哪一条
+  // 主进程建好窗口或复用窗口切页时把 noteId 送过来，切页前必须先落盘当前草稿
   window.suira.notes.onOpened(async (payload) => {
     const id = payload && payload.id;
     if (!id) { showError('未拿到速记编号'); return; }
-    state.id = id;
+    const token = ++switchRevision;
+    const fromId = state.id;
+    if (fromId && fromId !== id && (state.dirty || saveInFlight)) {
+      const flushed = await flushBeforeSwitch();
+      if (token !== switchRevision) return;
+      if (!flushed) {
+        window.suira.notes.open?.(fromId).catch?.(() => {});
+        return;
+      }
+    }
     try {
-      const note = await window.suira.notes.get(id);
-      renderNote(note);
-      if (innerWidth >= 620) await openIndex();
-      editor.focusEnd();
+      await switchToNote(id, { token, autoIndex: !fromId });
     } catch (error) {
       showError(error.message || '读取速记失败');
     }

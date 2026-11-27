@@ -180,6 +180,7 @@ html { background:transparent!important; color-scheme:normal!important; }
 /* The readable key layer sits above the translucent desktop tint. */
 .liquid-ui .glass-window>.glass-scene { background:var(--floating-surface); }
 .liquid-ui .panel .key:is(.is-bound,.is-custom,.is-unbound,.is-unimplemented) .key-face { background:linear-gradient(145deg,var(--cap-top),var(--cap-bottom)); }
+.liquid-ui .panel .key:is(.is-bound,.is-custom):is(.is-key-hover,:hover) .key-face { background:linear-gradient(145deg,var(--cap-hover-top),var(--cap-hover-bottom)); }
 .liquid-ui [data-selection-group] { --selection-fill:var(--accent-9);--selection-edge:var(--accent-9);--selection-light:transparent; }
 .liquid-ui :is(.view-switch,.agenda-tabs) button.is-active { background:var(--accent-9);color:var(--on-accent); }
 .liquid-ui.tool-window .agenda-card { box-shadow:var(--shadow-card); }

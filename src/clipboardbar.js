@@ -43,7 +43,7 @@
     edit: ['编辑', '<path d="m5 16-1 4 4-1L20 7l-3-3zM15 6l3 3"/>'],
     pin: ['钉在桌面', '<path d="m8 3 8 0-1 7 3 4H6l3-4zM12 14v7"/>'],
     save: ['下载原图', '<path d="M12 3v12m-4-4 4 4 4-4M4 16v4h16v-4"/>'],
-    favorite: ['收藏', '<path d="m12 3 2.75 5.6 6.2.9-4.48 4.36 1.06 6.17L12 17.1l-5.53 2.92 1.06-6.17L3.05 9.5l6.2-.9z"/>'],
+    favorite: ['收藏', '<path d="M12 20.5s-7-4.5-9-8.8C1.6 8.6 3.5 5 7 5c2 0 3.7 1.1 5 2.8C13.3 6.1 15 5 17 5c3.5 0 5.4 3.6 4 6.7-2 4.3-9 8.8-9 8.8z"/>'],
     more: ['更多操作（Ctrl+K）', '<circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/>']
   };
 
@@ -303,7 +303,7 @@
     return `<article class="bar-card" id="bar-card-${index}" role="listitem" tabindex="-1" data-index="${index}" data-id="${escapeHtml(item.id)}" data-kind="${escapeHtml(item.kind)}"${item.color ? ' data-color-card="true"' : ''} aria-label="${escapeHtml(name)}">
       <div class="card-head">
         ${cardButton('select', item)}
-        <span class="card-type">${label}${item.pinned ? ' <span class="card-favorite" aria-label="已收藏">★</span>' : ''}</span>
+        <span class="card-type">${label}${item.pinned ? ' <span class="card-favorite" aria-label="已收藏">♥</span>' : ''}</span>
         <div class="card-actions" role="group" aria-label="卡片操作">${actions.map(action => cardButton(action, item)).join('')}<span class="card-more-slot"></span></div>
       </div>
       <div class="${visualClass}">${visual}</div>

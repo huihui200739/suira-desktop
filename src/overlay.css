@@ -93,7 +93,7 @@ button { color: inherit; }
   height: 10px;
   border:var(--overlay-handle-border);
   border-radius: 3px;
-  background: var(--accent-9);
+  background: var(--overlay-handle-fill);
   box-shadow:var(--overlay-handle-shadow);
   z-index: 3;
   pointer-events: auto;
@@ -581,7 +581,7 @@ button { color: inherit; }
   border: 2px solid var(--overlay-snap-edge);
   border-radius: 4px;
   background: var(--overlay-snap-fill);
-  box-shadow: 0 0 0 1px var(--floating-edge);
+  box-shadow: var(--overlay-snap-shadow);
   transition: left var(--dur-instant) var(--ease-out), top var(--dur-instant) var(--ease-out), width var(--dur-instant) var(--ease-out), height var(--dur-instant) var(--ease-out);
 }
 .snap-preview[hidden] { display: none; }

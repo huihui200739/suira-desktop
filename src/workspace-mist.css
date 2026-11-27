@@ -528,8 +528,16 @@
   html.workbench #page-library .library-grid { align-items: stretch; }
   html.workbench #page-library .library-card { display: flex; flex-direction: column; position: relative; }
   html.workbench #page-library .library-card .shelf-text { flex: 1 1 auto; }
+  html.workbench #page-library .library-card .shelf-card-actions {
+    justify-content: space-between; align-items: center;
+    opacity: 0; transition: opacity var(--dur-fast) var(--ease-out);
+  }
+  html.workbench #page-library .library-card:is(:hover, :focus-within, :has(.lib-menu-toggle[aria-expanded="true"])) .shelf-card-actions {
+    opacity: 1;
+  }
   html.workbench #page-library .lib-menu-toggle {
-    min-height: 28px; height: 28px; min-width: 36px; padding: 0 10px; border: 0; border-radius: 6px;
+    display: inline-grid; place-items: center;
+    min-height: 28px; height: 28px; min-width: 32px; padding: 0 8px; border: 0; border-radius: 6px;
     background: transparent; color: var(--ink-muted); font-size: var(--text-2); cursor: pointer;
   }
   html.workbench #page-library .lib-menu-toggle:hover { background: var(--surface-hover); color: var(--ink); }

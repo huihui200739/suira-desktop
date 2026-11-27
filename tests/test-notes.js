@@ -271,6 +271,128 @@ t('超出上限时丢最旧的未钉住条目', () => {
     assert.equal(notes[0].text, '保留我');
   });
 
+  await ta('切页补保存期间继续输入时，flushBeforeSwitch 循环落盘直到无脏数据', async () => {
+    const vm = require('node:vm');
+    const notesJs = fs.readFileSync(path.join(__dirname, '..', 'src', 'notes.js'), 'utf8');
+    const start = notesJs.indexOf('  async function flushBeforeSwitch()');
+    const end = notesJs.indexOf('  async function switchToNote(', start);
+    assert.ok(start > 0 && end > start, 'flushBeforeSwitch must exist in src/notes.js');
+    const savedTexts = [];
+    let currentText = 'part1';
+    const sandbox = {
+      saveTimer: null,
+      saveInFlight: null,
+      state: { dirty: true },
+      clearTimeout() {},
+      async pushText() {
+        const snapshot = currentText;
+        sandbox.state.dirty = false;
+        const job = (async () => {
+          await new Promise((r) => setTimeout(r, 15));
+          // Simulate typing part2 while part1 save is in flight
+          if (snapshot === 'part1') {
+            currentText = 'part1-part2';
+            sandbox.state.dirty = true;
+          }
+          savedTexts.push(snapshot);
+          return true;
+        })();
+        sandbox.saveInFlight = job;
+        try { return await job; }
+        finally { if (sandbox.saveInFlight === job) sandbox.saveInFlight = null; }
+      }
+    };
+    vm.runInNewContext(notesJs.slice(start, end) + '\nthis.run = flushBeforeSwitch;', sandbox);
+    const ok = await sandbox.run();
+    assert.equal(ok, true);
+    assert.equal(sandbox.state.dirty, false);
+    assert.deepEqual(savedTexts, ['part1', 'part1-part2']);
+  });
+
+  await ta('B → A → B 快速切回原页时保留草稿、计时器与脏标记，且陈旧读取不覆盖已保存内容', async () => {
+    const vm = require('node:vm');
+    const notesJs = fs.readFileSync(path.join(__dirname, '..', 'src', 'notes.js'), 'utf8');
+    const start = notesJs.indexOf('  async function flushBeforeSwitch()');
+    const end = notesJs.indexOf("  $('#note-search').addEventListener", start);
+    assert.ok(start > 0 && end > start, 'switchToNote must exist in src/notes.js');
+
+    const pendingGets = new Map();
+    let clearedTimers = 0;
+    let renderCalls = 0;
+    let savedStatus = '已保存';
+    let focusCalls = 0;
+    const bodyEl = { contains: (el) => el === bodyEl };
+    const titleEl = {};
+    const indexEl = { hidden: true };
+
+    const sandbox = {
+      saveTimer: null,
+      saveInFlight: null,
+      titleDirty: false,
+      bodyDirty: false,
+      editVersion: 0,
+      switchRevision: 0,
+      indexNotes: [],
+      innerWidth: 500,
+      state: { id: 'B', dirty: false },
+      document: { activeElement: bodyEl },
+      $: (sel) => (sel === '#note-index' ? indexEl : sel === '#note-body' ? bodyEl : titleEl),
+      editor: { focusEnd: () => { focusCalls += 1; } },
+      clearTimeout() { clearedTimers += 1; },
+      renderNote() { renderCalls += 1; },
+      renderIndex() {},
+      openIndex: async () => {},
+      setSaved(text) { savedStatus = text; },
+      showError() {},
+      pushText: async () => true,
+      window: {
+        suira: {
+          notes: {
+            get: (id) => new Promise((resolve) => { pendingGets.set(id, resolve); }),
+            list: async () => [],
+            open: async () => ({ ok: true })
+          }
+        }
+      }
+    };
+    vm.runInNewContext(notesJs.slice(start, end) + '\nthis.switchToNote = switchToNote;', sandbox);
+
+    // 1. Showing B -> external request opens A (delayed) -> external request opens B again (delayed)
+    const switchA = sandbox.switchToNote('A', { token: ++sandbox.switchRevision });
+    const switchB = sandbox.switchToNote('B', { token: ++sandbox.switchRevision });
+
+    // User types into B while B's notes:get is still in flight
+    sandbox.editVersion += 1;
+    sandbox.state.dirty = true;
+    sandbox.bodyDirty = true;
+    sandbox.saveTimer = 42;
+    savedStatus = '未保存';
+
+    pendingGets.get('B')({ id: 'B', text: 'old-B' });
+    pendingGets.get('A')({ id: 'A', text: 'old-A' });
+
+    const [resA, resB] = await Promise.all([switchA, switchB]);
+    assert.equal(resA, false, 'stale A switch must be cancelled');
+    assert.equal(resB, true, 'same-page B switch should succeed without clobbering draft');
+    assert.equal(clearedTimers, 0, 'saveTimer must not be cancelled when returning to dirty B');
+    assert.equal(sandbox.state.dirty, true, 'state.dirty must stay true');
+    assert.equal(sandbox.bodyDirty, true, 'bodyDirty must stay true');
+    assert.equal(renderCalls, 0, 'renderNote must not overwrite unsaved draft on B');
+    assert.equal(savedStatus, '未保存', 'status must stay unsaved until write completes');
+    assert.equal(focusCalls, 0, 'active caret in editor should not be yanked');
+
+    // 2. Stale notes:get('B') resolving AFTER user edited and debounce save already completed
+    sandbox.state.dirty = false;
+    sandbox.bodyDirty = false;
+    sandbox.saveInFlight = null;
+    pendingGets.clear();
+    const switchB2 = sandbox.switchToNote('B', { token: ++sandbox.switchRevision });
+    sandbox.editVersion += 1; // edit happened and finished saving before get('B') resolves
+    pendingGets.get('B')({ id: 'B', text: 'stale-disk-B' });
+    assert.equal(await switchB2, true);
+    assert.equal(renderCalls, 0, 'stale get(B) must not revert editor after editVersion advanced');
+  });
+
   console.log('\n========== ' + pass + ' 通过 / 0 失败 ==========');
   try { fs.rmSync(dir, { recursive: true, force: true, maxRetries: 2 }); } catch { /* 清理失败不影响结果 */ }
 })();

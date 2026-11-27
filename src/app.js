@@ -103,7 +103,19 @@ function selectedTask() {
 }
 
 function derivedChildren(itemId) {
-  return state.items.filter((item) => (item.parentIds || []).includes(itemId));
+  const raw = state.items.filter((item) => (item.parentIds || []).includes(itemId));
+  const seen = new Set();
+  const deduped = [];
+  for (const child of raw) {
+    const isTextClean = child.kind === 'text' && ['text.clean', 'text.merge-lines'].includes(child.meta?.derivedBy);
+    const key = isTextClean
+      ? `clean\0${child.meta?.derivedBy}\0${(child.text || '').trim()}`
+      : child.id;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    deduped.push(child);
+  }
+  return deduped;
 }
 
 /* ---------- navigation ---------- */
@@ -297,13 +309,18 @@ function renderTaskDetail() {
 
 function taskItemCard(item) {
   const children = derivedChildren(item.id);
+  const hasCleanedText = children.some((c) => ['text.clean', 'text.merge-lines'].includes(c.meta?.derivedBy));
+  const latestChild = children[children.length - 1];
+  const latestChildCleaned = latestChild && derivedChildren(latestChild.id).some((c) => ['text.clean', 'text.merge-lines'].includes(c.meta?.derivedBy));
   const childHtml = children.map((child) => `
     <div class="derived-card">
-      <span class="derived-tag">${escapeHtml(SOURCE_LABELS[child.source?.type] || '整理')}</span>
-      <p>${escapeHtml(SuiraTextSpacing.compactCapture(child.text || child.title || '').slice(0, 220))}</p>
-      <div class="derived-actions">
-        <button type="button" data-copy="${escapeHtml(child.id)}">复制</button><button type="button" data-preview-item="${escapeHtml(child.id)}">查看详情</button>
+      <div class="derived-head">
+        <span class="derived-tag">${escapeHtml(SOURCE_LABELS[child.source?.type] || '整理结果')}</span>
+        <div class="derived-actions">
+          <button type="button" data-copy="${escapeHtml(child.id)}">复制结果</button><button type="button" data-preview-item="${escapeHtml(child.id)}">详情</button>
+        </div>
       </div>
+      <p>${escapeHtml(SuiraTextSpacing.compactCapture(child.text || child.title || '').slice(0, 220))}</p>
     </div>
   `).join('');
   return `
@@ -318,11 +335,11 @@ function taskItemCard(item) {
         : `<p class="shelf-text">${escapeHtml(SuiraTextSpacing.compactCapture(item.text || item.filePath || '').slice(0, 300))}</p>`}
       ${childHtml ? `<div class="derived-wrap">${childHtml}</div>` : ''}
       <footer class="shelf-card-actions"><button type="button" data-preview-item="${escapeHtml(item.id)}">查看详情</button>
-        <button type="button" data-copy="${escapeHtml(item.id)}">复制</button>
+        <button type="button" data-copy="${escapeHtml(item.id)}">${children.length ? '复制原文' : '复制'}</button>
         ${item.kind === 'image' ? `<button type="button" data-edit-image="${escapeHtml(item.id)}">编辑图片</button>` : ''}
         ${item.kind === 'image' && !children.length ? `<button type="button" data-ocr="${escapeHtml(item.id)}"${state.ocrBusy.has(item.id) ? ' disabled' : ''}>${state.ocrBusy.has(item.id) ? '识别中…' : '提取文字'}</button>` : ''}
-        ${item.kind === 'image' && children.length ? `<button type="button" data-recipe="clean-text" data-recipe-item="${escapeHtml(children[children.length - 1].id)}">整理文字</button>` : ''}
-        ${(item.kind === 'text' || item.kind === 'link') ? `<button type="button" data-recipe="clean-text" data-recipe-item="${escapeHtml(item.id)}">整理文字</button>` : ''}
+        ${item.kind === 'image' && children.length ? `<button type="button" data-recipe="clean-text" data-recipe-item="${escapeHtml(latestChild.id)}"${latestChildCleaned ? ' class="is-cleaned" aria-disabled="true"' : ''}>${latestChildCleaned ? '已整理' : '整理文字'}</button>` : ''}
+        ${(item.kind === 'text' || item.kind === 'link') ? `<button type="button" data-recipe="clean-text" data-recipe-item="${escapeHtml(item.id)}"${hasCleanedText ? ' class="is-cleaned" aria-disabled="true"' : ''}>${hasCleanedText ? '已整理' : '整理文字'}</button>` : ''}
         ${item.kind === 'files' || item.kind === 'link' ? `<button type="button" data-open="${escapeHtml(item.id)}">打开</button>` : ''}
         <button type="button" class="is-danger" data-remove="${escapeHtml(item.id)}">移出任务</button>
       </footer>
@@ -372,6 +389,10 @@ function bindItemCardActions(root, task) {
   });
   $$('[data-recipe]', root).forEach((button) => {
     button.addEventListener('click', async () => {
+      if (button.getAttribute('aria-disabled') === 'true') {
+        showGlobalToast('已是整理后的最新结果');
+        return;
+      }
       const itemId = button.dataset.recipeItem;
       const recipeId = button.dataset.recipe;
       if (!itemId) return;
@@ -621,7 +642,7 @@ function createLibraryCard(item, derivedCount, sig) {
   const toggle = document.createElement('button');
   toggle.type = 'button';
   toggle.className = 'lib-menu-toggle';
-  toggle.innerHTML = window.suiraIcons.svg('more');
+  toggle.innerHTML = window.suiraIcons.svg('more_horizontal');
   toggle.setAttribute('aria-label', '更多操作');
   toggle.setAttribute('aria-controls', menu.id);
   toggle.setAttribute('aria-expanded', 'false');

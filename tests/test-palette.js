@@ -15,7 +15,7 @@ for(const color of ['#4985af','#ff0000','#00ff00','#0000ff','#ffffff','#000000']
 }
 const split=Buffer.concat([pixels('#000000'),pixels('#ffffff')]);assert.deepEqual(p.generatePalette(p.dominantColor(split)),p.generatePalette(p.dominantColor(split)));
 const mostly=Buffer.concat([pixels('#00ff00'),pixels('#00ff00'),pixels('#ff0000')]);assert.equal(p.dominantColor(mostly),'#00ff00','Median cut preserves the dominant cluster');
-assert.equal(p.dominantColor(Buffer.alloc(64*64*4)),'#5b5bd6','Transparent sample has a usable fallback');
+assert.equal(p.dominantColor(Buffer.alloc(64*64*4)),'#18181b','Transparent sample has a usable fallback');
 assert.equal(p.dominantColor(Buffer.from([0,0,255,255]),{order:'bgra'}),'#ff0000');
 assert.equal(p.presetPalette('paper').light.slate[1],'#f6f2ea');assert.equal(p.presetPalette('paper').light.slate[11],'#2a251f');
 assert.equal(p.presetPalette('ink').dark.slate[1],'#111113');assert.equal(p.presetPalette('midnight').dark.slate[1],'#0f1722');
@@ -23,5 +23,11 @@ for(const name of p.PRESET_NAMES)for(const mode of ['light','dark']){
   const palette=p.presetPalette(name)[mode];
   for(const ink of [palette.slate[10],palette.slate[11],palette.accent[10],palette.accent[11]])for(const bg of palette.slate.slice(0,3))assert.ok(p.contrast(ink,bg)>=4.5,`${name}/${mode}/${ink}/${bg}`);
   assert.ok(p.contrast(palette.accent[8],p.solidInk(palette.accent[8]))>=4.5);
+}
+// Verify theme-preload's inline contrast comparison matches solidInk() on boundary colors (e.g. #008909)
+for (const sample of ['#008909', '#cc4e00', '#29a383', '#00a2c7', '#18181b', '#f4f4f5']) {
+  const lum = [0, 2, 4].map((i) => { const c = parseInt(sample.slice(1 + i, 3 + i), 16) / 255; return c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4; }).reduce((s, v, i) => s + v * [0.2126, 0.7152, 0.0722][i], 0);
+  const inlineInk = (1.05 / (lum + 0.05)) >= ((lum + 0.05) / 0.05) ? '#ffffff' : '#000000';
+  assert.equal(inlineInk, p.solidInk(sample), `preload ink must match solidInk for ${sample}`);
 }
 console.log('PASS median cut, solid/saturated/monochrome wallpapers, 12-step palettes, contrast and preset anchors');

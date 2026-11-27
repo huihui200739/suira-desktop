@@ -418,10 +418,11 @@ svg { fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round
   border-radius: var(--radius-inner);
   background: var(--paper-soft);
 }
+.derived-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .derived-tag { color: var(--accent-deep); font-size: var(--text-1); font-weight:600; }
 .derived-card p { margin: 5px 0 0; font-size: var(--text-2); line-height: 1.65; color: var(--ink-soft); white-space: pre-wrap; word-break: break-word; }
-.derived-actions { display: flex; gap: 6px; margin-top: 7px; }
-.derived-actions button { color: var(--accent-deep); font-size: var(--text-1); font-weight:600; }
+.derived-actions { display: flex; gap: 10px; margin-top: 0; }
+.derived-actions button { color: var(--accent-deep); font-size: var(--text-1); font-weight:500; }
 .derived-actions button:hover { text-decoration: underline; }
 .derived-note { margin-top: 8px; color: var(--ink-faint); font-size: var(--text-1); }
 
@@ -437,6 +438,8 @@ svg { fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round
   transition: border-color var(--dur-base) var(--ease-out), color var(--dur-base) var(--ease-out);
 }
 .shelf-card-actions button:hover { border-color: var(--line-strong); color: var(--ink); }
+.shelf-card-actions button.is-cleaned { opacity: .55; cursor: default; }
+.shelf-card-actions button.is-cleaned:hover { border-color: var(--line); color: var(--ink-soft); background: transparent; }
 .shelf-card-actions button.is-danger:hover { border-color:var(--styles-shelf-card-actions-is-danger-hover-edge); background: var(--danger-soft); color: var(--danger); }
 .lib-count { font-size: var(--text-2); color: var(--ink-muted); font-weight: 400; margin-left: var(--space-2); }
 .lib-menu-toggle svg { width: 16px; height: 16px; vertical-align: middle; }
@@ -1056,8 +1059,8 @@ svg { fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round
 .completed-filter { display:flex; align-items:center; gap:6px; color:var(--ink-muted); font-size:12px; white-space:nowrap; }
 .tool-window .calendar-layout { grid-template-columns:minmax(0,1fr) 286px; gap:18px; }.tool-window .calendar-day { min-height:66px; }
 .tool-window .calendar-month { padding:16px 20px; }.tool-window .calendar-month h2 { font-size:18px; }
-.calendar-legend { display:flex; gap:16px; padding:12px 18px; color:var(--accent-11); font-size:11px; }.calendar-legend span:nth-child(2) { color:var(--jade-11); }.calendar-legend span:nth-child(3) { color:var(--violet-11); }
-.calendar-day .category-personal { background:var(--jade-3); color:var(--jade-11); }.calendar-day .category-study { background:var(--violet-3); color:var(--violet-11); }
+.calendar-legend { display:flex; gap:16px; padding:12px 18px; color:var(--accent-11); font-size:11px; }.calendar-legend span:nth-child(2) { color:var(--jade-11); }.calendar-legend span:nth-child(3) { color:var(--amber-11); }
+.calendar-day .category-personal { background:var(--jade-3); color:var(--jade-11); }.calendar-day .category-study { background:var(--amber-3); color:var(--amber-11); }
 .calendar-layout[data-view="week"] .calendar-day { min-height:330px; }.calendar-layout[data-view="week"] .calendar-day small { white-space:normal; line-height:1.6; margin-top:10px; }
 .calendar-agenda-row { display:flex; gap:16px; align-items:center; width:100%; padding:18px 20px; text-align:left; border-top:1px solid var(--line); }.calendar-agenda-row time { color:var(--accent); font-size:12px; white-space:nowrap; }.calendar-agenda-row b { flex:1; }.calendar-agenda-row small { color:var(--ink-muted); }
 .agenda-card { max-height:calc(100vh - 264px); overflow:auto; }.tool-window .agenda-card .text-input { min-width:0; }.event-fields>* { min-width:0; flex:1; }
@@ -1253,7 +1256,7 @@ body { background:transparent; }
 .tool-window .calendar-day .date-badge { border:0; padding:0; background:transparent; font-size:12px; }
 .tool-window .calendar-day small { font-size:12px; padding:0 4px; line-height:18px; background:color-mix(in srgb,var(--accent) 7%,transparent); }
 .tool-window .calendar-day .category-personal { color:var(--jade-11); background:color-mix(in srgb,var(--jade-11) 7%,transparent); }
-.tool-window .calendar-day .category-study { color:var(--violet-11); background:color-mix(in srgb,var(--violet-11) 7%,transparent); }
+.tool-window .calendar-day .category-study { color:var(--amber-11); background:color-mix(in srgb,var(--amber-11) 7%,transparent); }
 .tool-window .calendar-clock { font-size:18px; font-weight:500; font-variant-numeric:tabular-nums; letter-spacing:.02em; }
 .calendar-quick-form { display:flex; flex-wrap:wrap; align-items:center; gap:6px; margin:0 0 12px; }
 .calendar-quick-form #calendar-quick-title { flex:1 1 130px; min-width:0; height:32px; padding:4px 10px; font-size:13px; }
@@ -1285,7 +1288,7 @@ body { background:transparent; }
 /* Standalone window layers */
 /* Distinct window edges and focus, without changing the shared glass palette. */
 :root { --window-marker:var(--accent-11); }
-:root[data-tool="markdown"] { --window-marker:var(--violet-11); }
+:root[data-tool="markdown"] { --window-marker:var(--accent-11); }
 .app-shell { position:relative; isolation:isolate; }
 .app-shell::after {
   content:""; position:absolute; inset:0; z-index:200; pointer-events:none;

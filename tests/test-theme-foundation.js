@@ -13,7 +13,7 @@ const themeTool=require('../tools/theme-css'),themeSource=fs.readFileSync(path.j
 assert.ok(themeTool.isCurrent(themeSource),'Generated theme scales match the checked-in stylesheet');
 const crlfThemeSource=themeSource.replace(/\r\n?/g,'\n').replace(/\n/g,'\r\n');
 assert.ok(themeTool.isCurrent(crlfThemeSource),'Generated theme scales remain valid after Windows CRLF checkout');
-const requested=new Set();for(const file of ['index.html','pin.html','workspace.js']){
+const requested=new Set();for(const file of ['index.html','pin.html','workspace.js','app.js']){
  const text=fs.readFileSync(path.join(root,'src',file),'utf8');for(const match of text.matchAll(/data-icon="([^"]+)"|suiraIcons\.svg\('([^']+)'\)/g))requested.add(match[1]||match[2]);
 }
 let exported;const sandbox={window:{},document:{readyState:'loading',addEventListener(){}}};vm.runInNewContext(fs.readFileSync(path.join(root,'src/icons.js'),'utf8'),sandbox);exported=sandbox.window.suiraIcons;
