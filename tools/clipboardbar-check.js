@@ -182,6 +182,9 @@ const MOCK = `
       calls.actionLists = (calls.actionLists || []).concat(id);
       var image = id.startsWith('img');
       const copy = {id: 'output.copy', label: '复制', hint: ''};
+      if (window.__manyActions) {
+        return Promise.resolve(Array.from({length: 21}, (_, i) => ({id: i === 0 ? 'output.copy' : 'text.action-' + i, label: '动作 ' + (i + 1), hint: ''})));
+      }
       return Promise.resolve(image ? [copy, {id: 'image.pin', label: '钉在桌面'}, {id: 'ocr.local', label: '提取文字'}] : [copy, {id: 'text.translate', label: '翻译'}, {id: 'text.pin', label: '钉在桌面'}]);
     },
     run: function(id, actionId){ calls.action = {id, actionId};return Promise.resolve({ok:true,message:'已完成'}); }
@@ -813,6 +816,24 @@ async function runChecks(send) {
     return {open,onScreen,noPaste,returnsFocus,selectedAction,backgroundKeepsMenu,filterClosesMenu,pinIsOnlyOnCard,flatRows,headerIsClear};
   })()`);
   for (const [name, ok] of Object.entries(moreMenu)) check('剪贴板更多动作：'+name, ok);
+  await send('Emulation.setDeviceMetricsOverride', { width: 720, height: 310, deviceScaleFactor: 1, mobile: false });
+  const manyMenu = await evaluate(send, `(async()=>{
+    const wait=()=>new Promise(r=>setTimeout(r,100));
+    window.__manyActions=true;
+    document.querySelector('[data-filter="all"]').click();await wait();
+    document.querySelector('[data-id="text-1"]').click();await wait();
+    const summary=document.querySelector('#bar-action-strip summary'), menu=document.querySelector('#bar-action-strip [popover]');
+    summary.click();await wait();
+    const mr=menu.getBoundingClientRect(), hr=document.querySelector('.bar-head').getBoundingClientRect();
+    const res={open:menu.matches(':popover-open'),belowHeader:mr.top>=hr.bottom-1,onScreen:mr.top>=0&&mr.bottom<=innerHeight,scrollable:menu.scrollHeight>menu.clientHeight,count:menu.querySelectorAll('button').length,menuTop:Math.round(mr.top),headBottom:Math.round(hr.bottom)};
+    summary.click();await wait();
+    window.__manyActions=false;
+    return res;
+  })()`);
+  await send('Emulation.setDeviceMetricsOverride', { ...CLIPBOARD_SHELF_SIZE, deviceScaleFactor: 1, mobile: false });
+  check('剪贴板 720×310 21 项动作菜单不遮顶栏且内部可滚动',
+    manyMenu.open && manyMenu.count === 21 && manyMenu.belowHeader && manyMenu.onScreen && manyMenu.scrollable,
+    JSON.stringify(manyMenu));
   if (process.env.SUIRA_QA_SHOTS) {
     await runScenario(send, 'layout');
     await evaluate(send, `(() => { document.querySelector('[data-id="img-1"]').focus(); document.activeElement.dispatchEvent(new KeyboardEvent('keydown',{key:'k',ctrlKey:true,bubbles:true,cancelable:true})); return true; })()`);

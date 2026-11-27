@@ -108,16 +108,35 @@
   const switchDocumentLocation = (id) => {
     documentLocation = id;
     outlineCollapsed = true;
-    if (narrowDocumentLayout()) documentLayout.shell.classList.add('mia-notes-only');
+    if (narrowDocumentLayout()) setNarrowNotesOnly(true);
     docList();
     syncDocumentNavigation();
     documentLayout.sections.querySelector('[aria-current="true"]')?.focus();
   };
   const foldedHeadings = new Set();
+  function syncMarkdownSidebarInert() {
+    if (!documentLayout) return;
+    const narrow = narrowDocumentLayout();
+    const notesOnly = documentLayout.shell.classList.contains('mia-notes-only');
+    const hideWideLib = documentLayout.shell.classList.contains('mia-hide-library');
+    const hideLib = focusedWriting || (!narrow && hideWideLib) || (narrow && !notesOnly && hideWideLib);
+    documentLayout.library.inert = hideLib;
+    const notesPane = documentLayout.shell.querySelector('.mia-notes');
+    if (notesPane) notesPane.inert = focusedWriting || (narrow && !notesOnly);
+    const panes = $('md-panes');
+    if (panes) panes.setAttribute('aria-pressed', String(narrow ? notesOnly : hideWideLib));
+  }
+  function setNarrowNotesOnly(enabled) {
+    if (!documentLayout) return;
+    documentLayout.shell.classList.toggle('mia-notes-only', Boolean(enabled));
+    syncMarkdownSidebarInert();
+  }
   function setWritingFocus(enabled) {
     focusedWriting = Boolean(enabled && current);
+    if (focusedWriting) setNarrowNotesOnly(false);
     document.documentElement.classList.toggle('md-writing-focus', focusedWriting);
     documentLayout?.shell.classList.toggle('mia-focus', focusedWriting);
+    syncMarkdownSidebarInert();
     if (focusedWriting && $('md-format-toggle')?.getAttribute('aria-expanded') === 'true')
       $('md-format-toggle').click();
     const button = $('md-focus-toggle');
@@ -947,7 +966,7 @@
     api.activeDocument?.(current);
     revision = savedRevision = 0;
     if (!current) setWritingFocus(false);
-    if (item) documentLayout?.shell.classList.remove('mia-notes-only');
+    if (item) setNarrowNotesOnly(false);
     $('md-body').hidden = !item;
     $('md-empty').hidden = Boolean(item);
     if (item) {
@@ -1327,7 +1346,7 @@
   }
   function toggleOutline() {
     outlineCollapsed = !outlineCollapsed;
-    if (documentLayout && narrowDocumentLayout()) documentLayout.shell.classList.add('mia-notes-only');
+    if (documentLayout && narrowDocumentLayout()) setNarrowNotesOnly(true);
     syncDocumentNavigation();
   }
   function renderOutline(headings) {
@@ -1402,7 +1421,7 @@
     activeHeading = index;
     markActiveHeading();
     if (documentLayout && narrowDocumentLayout()) {
-      documentLayout.shell.classList.remove('mia-notes-only');
+      setNarrowNotesOnly(false);
       if (view === 'edit' || view === 'split') editor.focus({ preventScroll: true });
     }
   }
@@ -2151,7 +2170,7 @@
           heading: headingBar,
           actions,
           brand: '随序',
-          open: null
+          open: $('md-import')
         })
       };
       const libraryFoot = document.createElement('div');
@@ -2197,15 +2216,21 @@
       panes.setAttribute('aria-pressed', 'false');
       panes.onclick = () => {
         if (narrowDocumentLayout()) {
-          shell.classList.toggle('mia-notes-only');
-          $('md-search').focus();
-        } else panes.setAttribute('aria-pressed', String(shell.classList.toggle('mia-hide-library')));
+          const next = !shell.classList.contains('mia-notes-only');
+          setNarrowNotesOnly(next);
+          if (next) $('md-search').focus();
+        } else {
+          shell.classList.toggle('mia-hide-library');
+          syncMarkdownSidebarInert();
+        }
       };
       const back = action('md-notes-back', 'sidebar', '返回编辑区');
       back.onclick = () => {
-        shell.classList.remove('mia-notes-only');
+        setNarrowNotesOnly(false);
         (current ? $('md-title') : compactMore).focus();
       };
+      matchMedia('(max-width: 540px)').addEventListener('change', syncMarkdownSidebarInert);
+      syncMarkdownSidebarInert();
       documentLayout.listHead.prepend(back);
       top.remove();
       const shortTitle = document.querySelector('.brand b');
@@ -2322,7 +2347,7 @@
       compactMore.setAttribute('aria-expanded', 'false');
       const emptyNotes = action('md-empty-notes', 'sidebar', '查看文档列表');
       emptyNotes.onclick = () => {
-        shell.classList.add('mia-notes-only');
+        setNarrowNotesOnly(true);
         $('md-search').focus();
       };
       empty.querySelector('.welcome-actions').append(emptyNotes, compactMore);

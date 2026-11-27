@@ -246,6 +246,13 @@ function makePanel(overrides = {}) {
     assert.equal(calls.capture.at(-1),'translate');
     assert.equal((await makePanel({capture:async()=>({ok:false,error:'截图失败'})}).run('capture-translate')).ok,false);
   });
+  await ta('全局快捷键触发长截图/截图时保留 shortcut 来源且不收起悬浮板', async () => {
+    const seen=[];
+    const shortcutPanel=makePanel({capture:async(intent,source)=>{seen.push([intent,source]);return {ok:true};}});
+    assert.deepStrictEqual(await shortcutPanel.run('long-capture',{source:'shortcut'}),{ok:true,closePanel:false});
+    assert.deepStrictEqual(await shortcutPanel.run('capture',{source:'shortcut'}),{ok:true,closePanel:false});
+    assert.deepStrictEqual(seen,[['long','shortcut'],['copy','shortcut']]);
+  });
   t('旧 B 为出厂标注时迁移，用户自定义 B 不迁移，重启不再迁移', () => {
     const {migrateLegacyPanelBindings,panelGlobalBindings}=require('../lib/panel-shortcuts');
     assert.equal(migrateLegacyPanelBindings({},1).B.id,'capture-translate');

@@ -47,13 +47,15 @@
     document.querySelector('.note-tools').prepend(host);
     const instance=mount(host,()=>textItem(window.NoteUI.text()),{
       menuOnly:true,
+      numbersWhenClosed:false,
       triggerId:'note-more',
       triggerTitle:'下一步 · Ctrl+K',
-      triggerLabel:'速记下一步'
+      triggerLabel:'速记下一步',
+      onStatus:(message,error)=>window.NoteUI?.notice?.(message,error)
     });
     instance.refresh();
     const hint=document.createElement('button');hint.type='button';hint.id='note-date-hint';hint.className='note-date-hint';hint.textContent='加到日历？';hint.hidden=true;document.querySelector('.note-status').prepend(hint);hint.onclick=()=>instance.run('text.to-calendar');
-    let timer,revision=0;function parse(){const token=++revision;clearTimeout(timer);timer=setTimeout(async()=>{try{const draft=await api.dates?.parse(window.NoteUI.text());if(token===revision&&hint.hidden!==!draft)hint.hidden=!draft;}catch{if(token===revision&&!hint.hidden)hint.hidden=true;}},200);}
+    let timer,revision=0;function parse(){const token=++revision;clearTimeout(timer);timer=setTimeout(async()=>{instance.refresh();try{const draft=await api.dates?.parse(window.NoteUI.text());if(token===revision&&hint.hidden!==!draft)hint.hidden=!draft;}catch{if(token===revision&&!hint.hidden)hint.hidden=true;}},200);}
     dateRefresh=parse;document.getElementById('note-body').addEventListener('note-input',parse);api.notes?.onChanged?.(parse);api.notes?.onOpened?.(parse);parse();
     api.relay?.onRequest?.(async request=>{if(request.kind!=='notes.flush')return;try{await window.NoteUI.flush();await api.relay.reply({token:request.token,ok:true});}catch(error){await api.relay.reply({token:request.token,ok:false,error:error.message});}});
   }

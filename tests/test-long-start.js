@@ -9,6 +9,9 @@ const {longCaptureTarget,settledFirstFrame,sourceProbePoint,frameSettled}=requir
   await assert.rejects(longCaptureTarget({point:{x:50,y:50},probe,ownerPid:1,current:external,pause:async()=>{}}),/没有可滚动/,'选区命中自身时不能拿无关前台窗口替代');
   let hits=0;probe.queryAt=async()=>++hits<3?self:external;
   assert.deepEqual(await longCaptureTarget({point:{x:50,y:50},probe,ownerPid:1,pause:async()=>{}}),external);assert.equal(hits,3,'框选层隐藏后的旧命中应重试');
+  const ownApp={hwnd:'99',pid:1,processStartedAt:100};
+  let selfHits=0;probe.queryAt=async()=>++selfHits<2?self:ownApp;probe.query=async hwnd=>hwnd==='99'?ownApp:self;
+  assert.deepEqual(await longCaptureTarget({point:{x:50,y:50},probe,ownerPid:1,excludeHwnds:['1'],pause:async()=>{}}),ownApp,'仅排除截图遮罩句柄时应允许长截图随序自身业务窗口');assert.equal(selfHits,2);
   probe.queryAt=async()=>external;probe.query=async()=>self;
   await assert.rejects(longCaptureTarget({point:{x:50,y:50},probe,ownerPid:1,current:self}),/已关闭或发生变化/);
   probe.query=async()=>({...external,processStartedAt:200});

@@ -20,7 +20,7 @@
     const path=ACTION_ICONS[id]||DEFAULT_ICON;
     return `<svg viewBox="0 0 24 24" aria-hidden="true">${path}</svg>`;
   }
-  function mount(host,{getItem,onResult=()=>{},onError=()=>{},reveal=()=>{},label='下一步',menuOnly=false,triggerId='',triggerTitle='',triggerLabel='',onStatus=null,includeAction=()=>true}={}){
+  function mount(host,{getItem,onResult=()=>{},onError=()=>{},reveal=()=>{},label='下一步',menuOnly=false,triggerId='',triggerTitle='',triggerLabel='',onStatus=null,includeAction=()=>true,numbersWhenClosed=true}={}){
     const api=(window.suira||window.pinApi)?.actions;if(!host||!api)return {refresh(){},destroy(){}};
     host.classList.add('action-strip');
     if (menuOnly) host.classList.add('action-strip-menu-only');
@@ -61,15 +61,20 @@
       if(menu.matches(':popover-open'))menu.hidePopover();
       search.value='';
       delete menu.dataset.compact;
+      menu.style.maxHeight='';
       const origin=returnFocus;returnFocus=null;
       if(restore&&available(origin))origin.focus({preventScroll:true});
     }
     function positionMenu(){
-      const anchor=summary.getBoundingClientRect(),rect=menu.getBoundingClientRect();
-      const left=Math.max(8,Math.min(innerWidth-rect.width-8,anchor.right-rect.width));
+      const anchor=summary.getBoundingClientRect();
       const spaceBelow=innerHeight-anchor.bottom-10;
       const spaceAbove=anchor.top-10;
-      const preferBelow=menuOnly ? (spaceBelow>=rect.height || spaceBelow>=spaceAbove) : (spaceAbove<rect.height+4 && spaceBelow>spaceAbove);
+      const preferBelow=menuOnly ? (spaceBelow>=140 || spaceBelow>=spaceAbove) : (spaceAbove<180 && spaceBelow>spaceAbove);
+      const avail=Math.max(96, preferBelow ? spaceBelow : spaceAbove);
+      if (menuOnly) menu.style.maxHeight=Math.min(340, Math.floor(avail))+'px';
+      else menu.style.maxHeight='';
+      const rect=menu.getBoundingClientRect();
+      const left=Math.max(8,Math.min(innerWidth-rect.width-8,anchor.right-rect.width));
       const top=preferBelow ? anchor.bottom+6 : anchor.top-rect.height-6;
       menu.style.left=left+'px';
       menu.style.top=Math.max(8,Math.min(innerHeight-rect.height-8,top))+'px';
@@ -136,7 +141,7 @@
       if(destroyed||document.hidden||!host.isConnected||(!available(host)&&!command))return;
       if(command){reveal();if(!available(host)||!available(summary))return;event.preventDefault();event.stopImmediatePropagation();if(!more.open)returnFocus=document.activeElement;openedByShortcut=true;delete menu.dataset.compact;more.open=true;if (menuOnly) { toggle(); search.focus(); } else refresh().then(()=>{if(more.open&&!destroyed&&available(summary))search.focus();});return;}
       if(event.key==='Escape'&&more.open){event.preventDefault();event.stopImmediatePropagation();close();return;}
-      if(event.ctrlKey||event.metaKey||editing(event.target))return;
+      if(event.ctrlKey||event.metaKey||editing(event.target)||(!numbersWhenClosed&&!more.open))return;
       const index=Number(event.key)-1;if(/^[1-9]$/.test(event.key)&&actions[index]){event.preventDefault();event.stopImmediatePropagation();run(actions[index]);}
     }
     document.addEventListener('keydown',keydown,true);

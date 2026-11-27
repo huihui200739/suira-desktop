@@ -17,6 +17,7 @@ html.notes-window {
 }
 .note {
   --note-inset: clamp(16px, 3.6vw, 42px);
+  --note-side-w: clamp(192px, 27vw, 244px);
   --note-paper: var(--writing-paper);
   --note-ink: var(--writing-ink);
   --note-muted: var(--writing-muted);
@@ -26,8 +27,7 @@ html.notes-window {
   --note-accent: var(--writing-focus);
   --note-tone: var(--note-accent-0);
   --note-tone-soft: var(--note-accent-0-soft);
-  display:grid; position:relative; isolation:isolate; height:100%; overflow:hidden;
-  grid-template: "head" 46px "writing" minmax(0,1fr) "foot" auto / minmax(0,1fr);
+  display:flex; position:relative; isolation:isolate; height:100%; overflow:hidden;
   border:1px solid var(--note-line); border-radius:22px;
   background:var(--note-paper); color:var(--note-ink);
 }
@@ -38,7 +38,14 @@ html.notes-window {
 .note[data-tone="4"], .note-pages button[data-tone="4"] { --note-tone:var(--note-accent-4); --note-tone-soft:var(--note-accent-4-soft); }
 .note :where(button,input,textarea) { font-family:inherit; }
 .note button { border:0; background:transparent; cursor:pointer; }
-.note.with-index { grid-template:"index head" 46px "index writing" minmax(0,1fr) "index foot" auto / clamp(192px,27%,244px) minmax(0,1fr); }
+.note-page {
+  position:relative; z-index:1; flex:1; min-width:0; height:100%;
+  display:grid; grid-template:"head" 46px "writing" minmax(0,1fr) "foot" auto / minmax(0,1fr);
+  background:var(--note-paper);
+  box-shadow:-10px 0 24px -18px var(--writing-scrim);
+  transition:box-shadow 240ms var(--ease-out);
+}
+.note:not(.with-index) .note-page { box-shadow:none; }
 .note.with-index #note-new { display:none; }
 .note .note-head { grid-area:head; display:flex; align-items:center; gap:8px; min-width:0; padding:0 12px 0 12px; border-block-end:1px solid var(--note-line); background:var(--note-paper); -webkit-app-region:drag; user-select:none; }
 .note-sidebar-toggle { -webkit-app-region:no-drag; display:grid; place-items:center; width:30px; height:30px; flex:none; border-radius:8px; color:var(--note-muted); transition:background-color var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out); }
@@ -49,8 +56,8 @@ html.notes-window {
 .note .note-title { flex:1; min-width:0; margin:0; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; font-size:14.5px; font-weight:600; }
 .note-tools { display:flex; align-items:center; gap:2px; -webkit-app-region:no-drag; }
 .note-tools-sep { width:1px; height:16px; margin:0 4px; background:var(--note-line); }
-.note .note-tools button, .note .note-tools summary, .note-foot button { display:grid; place-items:center; padding:0 6px; min-width:28px; height:30px; border-radius:7px; color:var(--note-muted); }
-.note .note-tools button:hover,.note .note-tools button[aria-pressed="true"],.note .note-tools summary:hover,.note .note-tools details[open] > summary,.note-foot button:hover { background:var(--note-tint); color:var(--note-ink); }
+.note .note-tools > button, .note .note-tools .action-strip > .action-strip-more > summary, .note-foot button { display:grid; place-items:center; padding:0 6px; min-width:28px; height:30px; border-radius:7px; color:var(--note-muted); }
+.note .note-tools > button:hover,.note .note-tools > button[aria-pressed="true"],.note .note-tools .action-strip > .action-strip-more > summary:hover,.note .note-tools .action-strip > .action-strip-more[open] > summary,.note-foot button:hover { background:var(--note-tint); color:var(--note-ink); }
 .note .note-tools #note-pin[aria-pressed="true"] { color:var(--note-tone); background:var(--note-tone-soft); }
 .note .note-tools .note-delete-btn:hover { background:var(--danger-soft); color:var(--danger); }
 .note :is(button,input,summary):focus-visible { outline:2px solid var(--note-accent); outline-offset:-2px; }
@@ -59,9 +66,9 @@ html.notes-window {
 .note-writing { grid-area:writing; min-width:0; min-height:0; display:flex; flex-direction:column; gap:10px; padding:18px var(--note-inset) 12px; }
 .note-page-meta { display:flex; align-items:center; gap:8px; flex:none; font-size:12px; color:var(--note-muted); }
 .note-meta-dot { width:8px; height:8px; border-radius:50%; background:var(--note-tone); flex:none; }
-.note-meta-page { padding:1px 7px; border-radius:999px; background:var(--note-tone-soft); color:var(--note-tone); font-weight:600; font-size:11px; }
-.note-meta-time { color:var(--note-muted); font-size:11.5px; }
-.note-meta-pin { padding:1px 7px; border-radius:999px; background:var(--note-side); border:1px solid var(--note-line); color:var(--note-ink); font-size:11px; }
+.note-meta-page { padding:1px 7px; border-radius:999px; background:var(--note-tone-soft); color:var(--note-tone); font-weight:600; font-size:12px; }
+.note-meta-time { color:var(--note-muted); font-size:12px; }
+.note-meta-pin { padding:1px 7px; border-radius:999px; background:var(--note-side); border:1px solid var(--note-line); color:var(--note-ink); font-size:12px; }
 .note-meta-pin[hidden] { display:none; }
 .note-page-title,.note .note-body { display:block; width:100%; min-width:0; padding:0; margin:0; border:0; background:transparent; color:var(--note-ink); caret-color:var(--note-tone); }
 .note-page-title { flex:none; border-radius:4px; font-size:clamp(21px,4.2vw,26px); font-weight:650; letter-spacing:-0.01em; }
@@ -93,7 +100,7 @@ html.notes-window {
 .note-format #note-ledger { border:1px solid var(--note-line); margin-inline-start:3px; }
 .note-format button:disabled { opacity:.5; cursor:wait; }
 .note-status { display:flex; align-items:center; justify-content:flex-end; gap:8px; min-width:0; }
-.note-status .note-date-hint { margin-inline-end:auto; height:24px; padding:0 8px; border-radius:999px; background:var(--note-tone-soft); color:var(--note-tone); font-size:11.5px; font-weight:500; }
+.note-status .note-date-hint { margin-inline-end:auto; height:24px; padding:0 8px; border-radius:999px; background:var(--note-tone-soft); color:var(--note-tone); font-size:12px; font-weight:500; }
 .note-status button[hidden] { display:none; }
 .note-count { white-space:nowrap; font-variant-numeric:tabular-nums; color:var(--note-muted); }
 .note-saved { white-space:nowrap; color:var(--note-muted); }
@@ -115,16 +122,27 @@ html.notes-window {
 .note-ledger-actions button { padding:6px 9px; border-radius:6px; color:var(--note-ink); }
 .note-ledger-actions button:is(:hover,[type="submit"]) { background:var(--note-tint); }
 
-/* Full-height collapsible stationery sidebar */
+/* Full-height stationary sidebar: nav stays still while the page slides over it */
 .note .note-index {
-  grid-area:index; min-width:0; min-height:0; padding:0 10px 10px;
-  display:flex; flex-direction:column; gap:8px;
-  background:var(--note-side); border:0; border-inline-end:1px solid var(--note-line);
+  flex:none; position:relative; z-index:0;
+  width:var(--note-side-w); min-width:0; height:100%;
+  overflow:hidden; background:var(--note-side);
+  border:0; border-inline-end:1px solid var(--note-line);
   border-radius:0; box-shadow:none;
-  transition:opacity var(--dur-fast) var(--ease-out), translate var(--dur-fast) var(--ease-out);
-  @starting-style { opacity:.45; translate:-6px 0; }
+  transition:width 240ms var(--ease-out), border-color 240ms var(--ease-out);
 }
-.note .note-index[hidden] { display:none; }
+.note .note-index[hidden] {
+  display:block; width:0; border-inline-end-color:transparent;
+  pointer-events:none; visibility:hidden;
+  transition:width 240ms var(--ease-out), border-color 240ms var(--ease-out), visibility 0s linear 240ms;
+}
+.note[data-state="loading"] .note-index,
+.note[data-state="loading"] .note-page { transition:none; }
+.note-index-inner {
+  position:absolute; inset:0 auto 0 0; width:var(--note-side-w); height:100%;
+  padding:0 10px 10px; box-sizing:border-box;
+  display:flex; flex-direction:column; gap:8px;
+}
 .note-index-head {
   height:46px; flex:none; display:flex; align-items:center; gap:8px;
   padding:0 4px; border-block-end:1px solid var(--note-line);
@@ -134,7 +152,7 @@ html.notes-window {
 .note-index-title { font-size:13.5px; font-weight:650; color:var(--note-ink); }
 .note-index-count {
   margin-inline-start:auto; padding:1px 7px; border-radius:999px;
-  background:var(--note-tint); color:var(--note-muted); font-size:11px; font-variant-numeric:tabular-nums;
+  background:var(--note-tint); color:var(--note-muted); font-size:12px; font-variant-numeric:tabular-nums;
 }
 .note-search-wrap {
   display:flex; align-items:center; gap:6px; height:32px; padding:0 9px;
@@ -168,11 +186,11 @@ html.notes-window {
 .note-page-top { display:flex; align-items:center; gap:6px; min-width:0; }
 .note-page-pill {
   padding:1px 6px; border-radius:999px; background:var(--note-tone-soft);
-  color:var(--note-tone); font-size:10.5px; font-weight:600; flex:none;
+  color:var(--note-tone); font-size:12px; font-weight:600; flex:none;
 }
-.note-page-chars { margin-inline-start:auto; font-size:11px; color:var(--note-muted); font-variant-numeric:tabular-nums; flex:none; }
+.note-page-chars { margin-inline-start:auto; font-size:12px; color:var(--note-muted); font-variant-numeric:tabular-nums; flex:none; }
 .note-pages b { font-size:13px; font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-.note-pages .note-page-preview { font-size:11.5px; color:var(--note-muted); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.note-pages .note-page-preview { font-size:12px; color:var(--note-muted); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .note-index-empty { color:var(--note-muted); font-size:12px; padding:12px 4px; text-align:center; }
 .note-new-page {
   display:flex; align-items:center; justify-content:center; gap:6px;
@@ -182,18 +200,50 @@ html.notes-window {
 }
 .note-new-page:hover { background:var(--note-paper); border-style:solid; }
 .note-error { position:absolute; inset:auto 16px 118px; z-index:4; padding:8px 12px; margin:0; border:1px solid var(--note-line); border-radius:8px; background:var(--note-side); color:var(--note-ink); transition:opacity var(--dur-fast) var(--ease-out), translate var(--dur-fast) var(--ease-out); @starting-style { opacity:0; translate:0 4px; } }
-@media (prefers-reduced-motion:reduce) { .note .note-index, .note-index input, .note .note-pages button, .note-error { transition:none !important; } }
+@media (prefers-reduced-motion:reduce) { .note .note-index, .note-page, .note-index input, .note .note-pages button, .note-error { transition:none !important; } }
 @media (max-width:580px) {
-  .note.with-index { grid-template:"head" 46px "writing" minmax(0,1fr) "foot" auto / minmax(0,1fr); }
-  .note.with-index .note-index { position:absolute; z-index:3; inset:50px 8px auto; max-height:70%; border:1px solid var(--note-line); border-radius:12px; box-shadow:var(--shadow-float); }
+  .note .note-index {
+    position:absolute; z-index:3; inset:50px 8px auto;
+    width:auto; height:auto; max-height:70%;
+    border:1px solid var(--note-line); border-radius:12px; box-shadow:var(--shadow-float);
+    transition:opacity var(--dur-fast) var(--ease-out), translate var(--dur-fast) var(--ease-out);
+    @starting-style { opacity:0; translate:0 -4px; }
+  }
+  .note .note-index[hidden] { display:none; }
+  .note-index-inner { position:static; width:auto; height:auto; max-height:inherit; }
+  .note-page { box-shadow:none; }
   .note-writing { padding-block-start:14px; gap:8px; }
   .note .note-foot { gap:4px; }
   .note .note-head { padding-inline:10px 12px; gap:5px; }
 }
 @media (max-width:340px) {
   .note-mark,.note-tools-sep { display:none; }
-  .note .note-tools button { min-width:24px; padding:0 3px; }
+  .note .note-tools > button, .note .note-tools .action-strip > .action-strip-more > summary { min-width:24px; padding:0 3px; }
+  .note-writing { padding:10px 12px 6px; gap:6px; }
+  .note-page-title { font-size:17px; }
+  .note .note-foot { padding:0 12px 8px; gap:4px; }
+  .note-format { flex-wrap:nowrap; overflow-x:auto; scrollbar-width:none; }
+  .note-format::-webkit-scrollbar { display:none; }
   .note-count { display:none; }
+}
+@media (max-height:280px) {
+  .note-page { grid-template:"head" 36px "writing" minmax(0,1fr) "foot" auto / minmax(0,1fr); }
+  .note-index-inner { padding:6px 8px; gap:5px; }
+  .note-index-head { display:none; }
+  .note-search-wrap { height:26px; }
+  .note-new-page { height:28px; }
+  .note-page-meta { display:none; }
+  .note-writing { padding:6px 12px 4px; gap:4px; }
+  .note-page-title { font-size:15px; line-height:1.25; }
+  .note .note-body { min-height:48px; font-size:14px; line-height:1.45; }
+  .note .note-foot { padding:0 12px 6px; gap:3px; }
+  .note-format { flex-wrap:nowrap; overflow-x:auto; scrollbar-width:none; padding:2px 3px; }
+  .note-format::-webkit-scrollbar { display:none; }
+  .note-foot button { height:24px; }
+}
+@media (max-width:580px) and (max-height:280px) {
+  .note .note-index { inset:40px 8px 8px; max-height:calc(100% - 48px); }
+  .note-index-inner { height:100%; }
 }
 
 .note ::selection { background:var(--writing-selected); color:var(--writing-ink); }

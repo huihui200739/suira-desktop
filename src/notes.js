@@ -15,16 +15,63 @@ const state = {
   source: null
 };
 
-function setSaved(text, kind = '') {
+let noticeTimer = null;
+let activeNotice = '';
+let savedStatus = { text: '已保存', kind: '' };
+let saveError = '';
+let actionError = '';
+
+function renderSaved() {
   const el = $('#note-saved');
-  el.textContent = text;
-  el.dataset.state = kind;
+  if (activeNotice) {
+    el.textContent = activeNotice;
+    el.dataset.state = 'notice';
+    return;
+  }
+  el.textContent = savedStatus.text;
+  el.dataset.state = savedStatus.kind;
 }
 
-function showError(message) {
+function setSaved(text, kind = '') {
+  savedStatus = { text, kind };
+  renderSaved();
+}
+
+function renderError() {
+  const message = actionError || saveError;
   const el = $('#note-error');
-  el.textContent = message || '';
+  el.textContent = message;
   el.hidden = Boolean(!message);
+}
+
+function showError(message, source = 'save') {
+  if (source === 'action') actionError = message || '';
+  else if (source === 'all') { saveError = message || ''; actionError = message ? actionError : ''; }
+  else saveError = message || '';
+  renderError();
+}
+
+function showNotice(message, isError = false) {
+  clearTimeout(noticeTimer);
+  if (isError) {
+    activeNotice = '';
+    renderSaved();
+    showError(message || '操作失败', 'action');
+    return;
+  }
+  if (!message) {
+    activeNotice = '';
+    renderSaved();
+    showError('', 'action');
+    return;
+  }
+  showError('', 'action');
+  activeNotice = message;
+  renderSaved();
+  noticeTimer = setTimeout(() => {
+    activeNotice = '';
+    renderSaved();
+  }, 2400);
 }
 
 function renderCount(text) {
@@ -113,16 +160,17 @@ async function pushText() {
     try {
       const result = await window.suira.notes.update(draft);
       if (!result?.ok) throw new Error(result?.error || '保存失败');
-      state.source = result.note || {...state.source, ...draft};
+      state.source = result.note || {...state.source, ...draft, updatedAt: Date.now()};
+      syncActiveMeta(state.source);
       if (!state.dirty) setSaved('已保存');
-      showError('');
+      showError('', 'save');
       return true;
     } catch (error) {
       state.dirty = true;
       titleDirty ||= Object.hasOwn(draft, 'title');
       bodyDirty ||= Object.hasOwn(draft, 'text');
       setSaved('未保存', 'error');
-      showError(error.message || '保存失败');
+      showError(error.message || '保存失败', 'save');
       return false;
     }
   })();
@@ -415,9 +463,14 @@ async function boot() {
 
 function closeIndex() {
   indexRevision++;
-  $('#note-index').hidden = true;
+  const panel = $('#note-index');
+  const hadFocus = panel.contains(document.activeElement);
+  panel.hidden = true;
+  panel.inert = true;
   $('#note').classList.remove('with-index');
-  $('#note-index-btn').setAttribute('aria-expanded', 'false');
+  const toggle = $('#note-index-btn');
+  toggle.setAttribute('aria-expanded', 'false');
+  if (hadFocus) toggle.focus({ preventScroll: true });
 }
 
 function renderIndex() {
@@ -455,7 +508,9 @@ async function openIndex() {
     if (revision !== indexRevision) return;
     indexNotes = notes;
     renderIndex();
-    $('#note-index').hidden = false;
+    const panel = $('#note-index');
+    panel.hidden = false;
+    panel.inert = false;
     $('#note').classList.add('with-index');
     $('#note-index-btn').setAttribute('aria-expanded', 'true');
   } catch (error) { showError(error.message || '读取速记列表失败'); }
@@ -483,5 +538,5 @@ window.addEventListener('beforeunload', () => {
   if (state.id && state.dirty) window.suira.notes.update(noteDraft());
 });
 
-window.NoteUI={text:()=>editor.text(), flush:async()=>{ clearTimeout(saveTimer); if (!(await pushText())) throw Error('速记保存失败'); }};
+window.NoteUI={text:()=>editor.text(), notice:showNotice, flush:async()=>{ clearTimeout(saveTimer); if (!(await pushText())) throw Error('速记保存失败'); }};
 boot();

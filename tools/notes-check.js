@@ -120,9 +120,17 @@ const MOCK = `
     pickFile: function(){ return Promise.resolve('C:/示例/发票.pdf'); },
     update: function(payload){
       calls.update.push(payload);
+      if (window.__failNextUpdate) {
+        window.__failNextUpdate = false;
+        return Promise.resolve({ ok: false, error: '临时保存失败' });
+      }
       var target = notes.filter(function(n){ return n.id === (payload && payload.id); })[0];
       if (target) Object.assign(target, payload, {updatedAt:Date.now()});
-      return Promise.resolve({ ok: true, note: target ? clone(target) : null });
+      var response = { ok: true, note: target ? clone(target) : null };
+      if (window.__holdUpdate) {
+        return new Promise(function(resolve){ window.__releaseUpdate = function(){ resolve(response); }; });
+      }
+      return Promise.resolve(response);
     },
     togglePin: function(id){
       var target = notes.filter(function(n){ return n.id === id; })[0];
@@ -141,6 +149,23 @@ const MOCK = `
     hideWindow: function(){ calls.hide += 1; return Promise.resolve({ ok: true }); },
     onOpened: function(cb){ openedCallbacks.push(cb); },
     onChanged: function(cb){ changedCallbacks.push(cb); }
+  };
+  window.suira.actions = {
+    list: function(){
+      return Promise.resolve([
+        { id: 'output.copy', label: '复制', direct: true },
+        { id: 'text.translate', label: '翻译', direct: true },
+        { id: 'text.to-note', label: '追加到速记', direct: true },
+        { id: 'text.to-markdown', label: '追加到 Markdown', direct: false },
+        { id: 'text.to-calendar', label: '加到日历', direct: false },
+        { id: 'text.pin', label: '钉在桌面', direct: false }
+      ]);
+    },
+    run: function(_item, id){
+      calls.actionRuns = (calls.actionRuns || []).concat(id);
+      if (id === 'text.translate') return Promise.resolve({ ok: false, error: '翻译服务暂不可用' });
+      return Promise.resolve({ ok: true, message: '已复制' });
+    }
   };
   // 删除确认：无头环境不应弹真对话框
   window.confirm = function(){ window.__confirmAsked = true; return true; };
@@ -175,7 +200,10 @@ const PROBE = `
       docScrollW: document.documentElement.scrollWidth,
       docClientW: document.documentElement.clientWidth,
       docScrollH: document.documentElement.scrollHeight,
-      docClientH: document.documentElement.clientHeight
+      docClientH: document.documentElement.clientHeight,
+      bodyHeight: Math.round(body.getBoundingClientRect().height),
+      pagesHeight: Math.round(document.getElementById('note-pages').getBoundingClientRect().height),
+      metaTime: document.getElementById('note-meta-time').textContent
     };
   }
   await sleep(120);
@@ -194,6 +222,7 @@ const PROBE = `
   await sleep(600);
   output.updateCallsAfterDebounce = (window.__calls.update || []).length;
   output.lastUpdateText = ((window.__calls.update || []).slice(-1)[0] || {}).text;
+  output.afterSaveMetaTime = document.getElementById('note-meta-time').textContent;
 
   if (scenario === 'toolbar') {
     var command = function(name){ document.querySelector('[data-format="'+name+'"]').click(); };
@@ -235,9 +264,104 @@ const PROBE = `
     return;
   }
 
-  // 全部速记：列出并可切换
-  document.getElementById('note-index-btn').click();
-  await sleep(180);
+  // 单层 ... 更多动作菜单：不嵌套，且每行是水平单行（图标与文字同行、高度正常）
+  var moreTrigger = document.getElementById('note-more');
+  if (moreTrigger) {
+    moreTrigger.click();
+    await sleep(100);
+    var rows = Array.from(document.querySelectorAll('.action-strip-menu-list button'));
+    var rowMetrics = rows.slice(0, 4).map(function(btn){
+      var r = btn.getBoundingClientRect();
+      var icon = btn.querySelector('.action-strip-icon');
+      var text = btn.querySelector('.action-strip-text');
+      var ir = icon ? icon.getBoundingClientRect() : null;
+      var tr = text ? text.getBoundingClientRect() : null;
+      return {
+        display: getComputedStyle(btn).display,
+        h: Math.round(r.height),
+        aligned: Boolean(ir && tr && Math.abs((ir.top + ir.height / 2) - (tr.top + tr.height / 2)) <= 4)
+      };
+    });
+    output.moreMenu = {
+      nestedCount: document.querySelectorAll('.note-relay-menu').length,
+      rowCount: rows.length,
+      rowMetrics: rowMetrics
+    };
+    moreTrigger.click();
+    await sleep(60);
+    // 菜单关闭时在工具栏按钮上按数字键不得触发动作；仅打开菜单后按数字键才触发
+    var runsBeforeKey = (window.__calls.actionRuns || []).length;
+    var pinBtn = document.getElementById('note-pin');
+    pinBtn.focus();
+    pinBtn.dispatchEvent(new KeyboardEvent('keydown', { key: '3', bubbles: true, cancelable: true }));
+    await sleep(60);
+    output.moreMenu.closedDigitIgnored = (window.__calls.actionRuns || []).length === runsBeforeKey;
+    moreTrigger.click();
+    await sleep(60);
+    moreTrigger.focus();
+    moreTrigger.dispatchEvent(new KeyboardEvent('keydown', { key: '1', bubbles: true, cancelable: true }));
+    await sleep(80);
+    output.moreMenu.openDigitRan = (window.__calls.actionRuns || []).length === runsBeforeKey + 1 && (window.__calls.actionRuns || []).at(-1) === 'output.copy';
+    // 交错时序测试：编辑触发防抖保存在途 -> 执行 ... 动作 -> 保存返回不覆盖动作成功/失败反馈
+    window.__holdUpdate = true;
+    window.__releaseUpdate = null;
+    body.querySelector('.tiptap').focus();
+    document.execCommand('insertText', false, '!');
+    await sleep(460);
+    moreTrigger.click();
+    await sleep(80);
+    var copyBtn = document.querySelector('.action-strip-menu-list button[data-action-id="output.copy"]');
+    if (copyBtn) {
+      output.moreMenu.okHeld = typeof window.__releaseUpdate === 'function';
+      copyBtn.click();
+      await sleep(80);
+      if (window.__releaseUpdate) window.__releaseUpdate();
+      window.__holdUpdate = false;
+      await sleep(80);
+      output.moreMenu.okFeedback = document.getElementById('note-saved').textContent;
+    }
+    window.__holdUpdate = true;
+    window.__releaseUpdate = null;
+    body.querySelector('.tiptap').focus();
+    document.execCommand('insertText', false, '?');
+    await sleep(460);
+    moreTrigger.click();
+    await sleep(80);
+    var failBtn = document.querySelector('.action-strip-menu-list button[data-action-id="text.translate"]');
+    if (failBtn) {
+      output.moreMenu.errHeld = typeof window.__releaseUpdate === 'function';
+      failBtn.click();
+      await sleep(80);
+      if (window.__releaseUpdate) window.__releaseUpdate();
+      window.__holdUpdate = false;
+      await sleep(80);
+      output.moreMenu.errorHidden = document.getElementById('note-error').hidden;
+      output.moreMenu.errorText = document.getElementById('note-error').textContent;
+      // 动作失败 -> 保存失败 -> 重试保存成功 -> 动作错误仍保留可见
+      var callsBeforeFail = window.__calls.update.length;
+      window.__failNextUpdate = true;
+      body.querySelector('.tiptap').focus();
+      document.execCommand('insertText', false, '.');
+      await sleep(480);
+      output.moreMenu.saveFailed = window.__calls.update.length === callsBeforeFail + 1 && document.getElementById('note-saved').dataset.state === 'error';
+      body.querySelector('.tiptap').focus();
+      document.execCommand('insertText', false, '.');
+      await sleep(480);
+      output.moreMenu.saveRetriedOk = window.__calls.update.length === callsBeforeFail + 2
+        && document.getElementById('note-saved').textContent === '已保存'
+        && String((window.__calls.update.at(-1) || {}).text || '').includes('..');
+      output.moreMenu.afterRetryErrorHidden = document.getElementById('note-error').hidden;
+      output.moreMenu.afterRetryErrorText = document.getElementById('note-error').textContent;
+    }
+    window.NoteUI.notice('');
+    await sleep(60);
+  }
+
+  // 全部速记：列出并可切换（宽屏已自动展开时直接测列表，避免再次点击把侧栏合上）
+  if (document.getElementById('note-index').hidden) {
+    document.getElementById('note-index-btn').click();
+    await sleep(180);
+  }
   output.afterIndex = snapshot();
   var first = document.querySelector('#note-pages button');
   if (first) first.click();
@@ -257,13 +381,15 @@ const PROBE = `
   output.removeCalls = (window.__calls.remove || []).slice();
   output.hideCalls = window.__calls.hide;
 
-  // Esc：先收浮层，再收窗口
+  // Esc：先收浮层（若焦点在侧栏内应还给侧栏开关），再收窗口
   document.getElementById('note-index-btn').click();
   await sleep(120);
+  document.getElementById('note-search').focus();
   var beforeEsc = window.__calls.hide;
-  document.getElementById('note-body').dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+  document.getElementById('note-search').dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
   await sleep(120);
   output.escClosedIndexOnly = document.getElementById('note-index').hidden && window.__calls.hide === beforeEsc;
+  output.escRestoredToggleFocus = document.activeElement === document.getElementById('note-index-btn');
   document.getElementById('note-body').dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
   await sleep(200);
   output.hideCallsAfterEsc = window.__calls.hide;
@@ -321,7 +447,7 @@ function buildFixtures() {
   fs.writeFileSync(path.join(TMP, '__notes_error_probe.js'), ERROR_PROBE, 'utf8');
   fs.copyFileSync(path.join(ROOT, 'src', 'theme.css'), path.join(TMP, 'theme.css'));
   fs.copyFileSync(path.join(ROOT, 'src', 'notes.css'), path.join(TMP, 'notes.css'));
-  fs.mkdirSync(path.join(TMP,'art'),{recursive:true});for(const asset of ['utility-surface.css','liquid-glass.js','liquid-glass.css','companion.js','companion.css','art/companion-courier.png'])fs.copyFileSync(path.join(ROOT,'src',asset),path.join(TMP,asset));
+  fs.mkdirSync(path.join(TMP,'art'),{recursive:true});for(const asset of ['utility-surface.css','liquid-glass.js','liquid-glass.css','companion.js','companion.css','ui-motion.css','ui-motion.js','glass-select.css','glass-select.js','icons.js','action-strip.css','action-strip.js','relay-surfaces.js','art/companion-courier.png'])fs.copyFileSync(path.join(ROOT,'src',asset),path.join(TMP,asset));
   fs.copyFileSync(path.join(ROOT, 'src', 'notes.js'), path.join(TMP, 'notes.js'));
   fs.mkdirSync(path.join(TMP,'vendor'));
   for (const asset of ['document-editor.js','purify.js']) fs.copyFileSync(path.join(ROOT,'src/vendor',asset),path.join(TMP,'vendor',asset));
@@ -329,9 +455,12 @@ function buildFixtures() {
     .replace('<script src="notes.js"></script>', [
       '<script>window.__errs=[];window.addEventListener("error",function(e){window.__errs.push(String(e.message||e.error));});window.addEventListener("unhandledrejection",function(e){window.__errs.push("rejection: "+String((e.reason&&e.reason.message)||e.reason));});</script>',
       '<script src="__notes_mock.js"></script>',
-      '<script src="notes.js"></script>',
+      '<script src="notes.js"></script>'
+    ].join('\n'))
+    .replace('</body>', [
       '<script src="__notes_probe.js"></script>',
-      '<script src="__notes_error_probe.js"></script>'
+      '<script src="__notes_error_probe.js"></script>',
+      '</body>'
     ].join('\n'));
   require('./browser-fixture').writeFixture(path.join(TMP, '__notes_check.html'), page);
 }
@@ -476,8 +605,9 @@ async function runScenario(send, scenario, width, height) {
       JSON.stringify(main.afterPin));
     check('删除走过确认再删', main.removeCalls && main.removeCalls.length === 1, JSON.stringify(main.removeCalls));
     check('删除后关掉窗口', main.hideCalls >= 1, String(main.hideCalls));
-    check('Esc 先收浮层，再收窗口', main.escClosedIndexOnly === true && main.hideCallsAfterEsc > main.hideCalls,
-      JSON.stringify({ esc: main.escClosedIndexOnly, after: main.hideCallsAfterEsc }));
+    check('Esc 先收浮层，再收窗口（焦点在侧栏内时还给侧栏开关）',
+      main.escClosedIndexOnly === true && main.escRestoredToggleFocus === true && main.hideCallsAfterEsc > main.hideCalls,
+      JSON.stringify({ esc: main.escClosedIndexOnly, focus: main.escRestoredToggleFocus, after: main.hideCallsAfterEsc }));
     check('没有未捕获的页面错误', (main.errors || []).length === 0, JSON.stringify(main.errors));
 
     const toolbar = await runScenario(browser.send, 'toolbar', 760, 550);
@@ -497,11 +627,28 @@ async function runScenario(send, scenario, width, height) {
     check('列表读取失败时提示且不崩', listError.errorHidden === false && listError.indexHidden === true,
       JSON.stringify(listError));
 
-    console.log('\n== 小窗口（240×200 下限）==');
+    console.log('\n== 小窗口（240×200 下限）与宽矮窗口（750×240）==');
     const small = await runScenario(browser.send, 'default', 240, 200);
     check('最小尺寸下不溢出', small.opened && small.opened.docScrollW <= small.opened.docClientW
       && small.opened.docScrollH <= small.opened.docClientH, JSON.stringify(small.opened));
-    check('最小尺寸下正文仍可见', small.opened && small.opened.text.length > 0);
+    check('最小尺寸下正文仍可见', small.opened && small.opened.text.length > 0 && small.opened.bodyHeight >= 40, JSON.stringify({ bodyHeight: small.opened && small.opened.bodyHeight }));
+    const wideShort = await runScenario(browser.send, 'default', 750, 240);
+    check('宽矮窗口（750×240）侧栏列表可见且可切换页面',
+      wideShort.afterIndex && wideShort.afterIndex.pagesHeight >= 60 && wideShort.openCalls && wideShort.openCalls.length >= 1,
+      JSON.stringify({ pagesHeight: wideShort.afterIndex && wideShort.afterIndex.pagesHeight, openCalls: wideShort.openCalls }));
+    check('速记 ... 菜单为单层、横向单行排列且成功/失败均有可见反馈',
+      main.moreMenu && main.moreMenu.nestedCount === 0 && main.moreMenu.rowCount >= 4
+      && main.moreMenu.rowMetrics.every(row => row.display === 'flex' && row.h >= 24 && row.h <= 38 && row.aligned)
+      && main.moreMenu.closedDigitIgnored === true && main.moreMenu.openDigitRan === true
+      && main.moreMenu.okHeld === true && main.moreMenu.errHeld === true
+      && main.moreMenu.okFeedback === '已复制'
+      && main.moreMenu.errorHidden === false && /翻译服务暂不可用/.test(main.moreMenu.errorText || '')
+      && main.moreMenu.saveFailed === true && main.moreMenu.saveRetriedOk === true
+      && main.moreMenu.afterRetryErrorHidden === false && /翻译服务暂不可用/.test(main.moreMenu.afterRetryErrorText || ''),
+      JSON.stringify(main.moreMenu));
+    check('保存后页头更新时间同步刷新',
+      main.opened && main.afterSaveMetaTime && main.afterSaveMetaTime !== main.opened.metaTime && /^今天\s+\d{2}:\d{2}$/.test(main.afterSaveMetaTime),
+      JSON.stringify({ before: main.opened && main.opened.metaTime, after: main.afterSaveMetaTime }));
   } catch (error) {
     console.log('  FAIL  无头 Chrome 检查异常 -> ' + error.message);
     fail += 1;

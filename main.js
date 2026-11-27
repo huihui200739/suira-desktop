@@ -171,6 +171,13 @@ let clipboardWatcherReady = Promise.resolve();
 let isQuitting = false;
 let quickReady = false;
 let captureBusy = false;
+function isCaptureSurfaceActive() {
+  return Boolean(
+    captureBusy || longCapture || longCaptureStarting
+    || (overlayWindow && !overlayWindow.isDestroyed() && overlayWindow.isVisible())
+    || (longPickerWindow && !longPickerWindow.isDestroyed() && longPickerWindow.isVisible())
+  );
+}
 let regionCaptureRevision = 0;
 let mainWasVisible = false;
 const editorWindows = new Map();
@@ -1028,9 +1035,9 @@ function createQuickWindow() {
     primeQuickFrame(quickWindow);
   });
   quickWindow.on('blur', () => {
-    if (!quickWindow || quickWindow.isDestroyed() || panelBindingPickerOpen || quickWindow.__panelDragging || captureBusy || (overlayWindow && !overlayWindow.isDestroyed() && overlayWindow.isVisible()) || quickWindow.webContents.isDevToolsOpened()) return;
+    if (!quickWindow || quickWindow.isDestroyed() || panelBindingPickerOpen || quickWindow.__panelDragging || isCaptureSurfaceActive() || quickWindow.webContents.isDevToolsOpened()) return;
     const win=quickWindow;
-    setImmediate(()=>{if(quickWindow===win&&!win.isDestroyed()&&!win.isFocused()&&!panelBindingPickerOpen&&!win.__panelDragging&&!captureBusy&&!(overlayWindow&&!overlayWindow.isDestroyed()&&overlayWindow.isVisible()))hideQuickPanel();});
+    setImmediate(()=>{if(quickWindow===win&&!win.isDestroyed()&&!win.isFocused()&&!panelBindingPickerOpen&&!win.__panelDragging&&!isCaptureSurfaceActive())hideQuickPanel();});
   });
   quickWindow.on('show', () => {
     cancelIdleTeardown(quickWindow);
@@ -1266,7 +1273,7 @@ function createIslandWindow() {
   islandWindow.on('blur', () => {
     const wasFocused = islandHadFocus;
     islandHadFocus = false;
-    if (wasFocused && islandWindow?.isVisible() && islandMode !== 'sleep') setIslandMode('sleep');
+    if (wasFocused && islandWindow?.isVisible() && islandMode !== 'sleep' && !isCaptureSurfaceActive()) setIslandMode('sleep');
   });
   islandWindow.on('closed', () => { islandWindow = null; islandMode = 'sleep'; });
   return islandWindow;
@@ -1304,8 +1311,8 @@ function scheduleIslandRest(delay = ISLAND_REST_MS) {
   islandRestTimer = setTimeout(() => {
     islandRestTimer = null;
     if (islandMode === 'sleep') return;
-    // showInactive 不产生 blur；是否仍在使用应按实际指针位置判断。
-    if (islandWindow && !islandWindow.isDestroyed() && contains(islandWindow.getBounds(), screen.getCursorScreenPoint())) {
+    // showInactive 不产生 blur；截图期间或指针仍在卡片内时延迟休眠，避免截随序界面时卡片自动收起。
+    if (isCaptureSurfaceActive() || (islandWindow && !islandWindow.isDestroyed() && contains(islandWindow.getBounds(), screen.getCursorScreenPoint()))) {
       scheduleIslandRest(delay);
       return;
     }
@@ -1348,7 +1355,7 @@ function setIslandExpanded(expanded) {
 let quickPointerDown=false;
 function handleIslandPointer(point) {
   const pressed=point.down&&!quickPointerDown;quickPointerDown=point.down;
-  if(pressed&&quickWindow?.isVisible()&&!panelBindingPickerOpen&&!quickWindow.__panelDragging&&!quickWindow.webContents.isDevToolsOpened()){
+  if(pressed&&quickWindow?.isVisible()&&!panelBindingPickerOpen&&!quickWindow.__panelDragging&&!isCaptureSurfaceActive()&&!quickWindow.webContents.isDevToolsOpened()){
     // The pointer helper can be DPI-virtualized. Electron supplies the cursor
     // in the same DIP space as BrowserWindow bounds, including mixed-DPI screens.
     const dip=screen.getCursorScreenPoint();
@@ -1358,7 +1365,7 @@ function handleIslandPointer(point) {
   if ((!islandWindow || islandWindow.isDestroyed()) && !receiver) return;
   const win = createIslandWindow();
   if (islandMode !== 'sleep') {
-    if (point.down && !contains(win.getBounds(), point)) setIslandMode('sleep');
+    if (point.down && !isCaptureSurfaceActive() && !contains(win.getBounds(), point)) setIslandMode('sleep');
     return;
   }
   if (!receiver) {
@@ -1532,7 +1539,7 @@ function createClipboardBarWindow() {
     });
   }
   win.on('blur', () => {
-    if (!win.__shelfPinned && !win.__savingImage && !win.__pastingHistory && !captureBusy && !(overlayWindow && !overlayWindow.isDestroyed() && overlayWindow.isVisible())) hideClipboardBar();
+    if (!win.__shelfPinned && !win.__savingImage && !win.__pastingHistory && !isCaptureSurfaceActive()) hideClipboardBar();
   });
   win.on('closed', () => {
     clipboardBarWindow = null;
@@ -2691,9 +2698,11 @@ async function startLongCapture(selection,fromPicker=false) {
     if(fromPicker)originWindow.hide();else hideOverlayWindow({restoreMain:false,release:false});
     await new Promise(resolve=>setTimeout(resolve,60));
     stage='识别选区窗口';
-    // 工具条可能压在选区里，命中点要避开它，否则会把自己当成采集源。
+    // 工具条可能压在选区里，命中点要避开它；仅排除截图自身浮层句柄，允许长截图随序业务窗口。
+    const nativeHwnd=w=>{if(!w||w.isDestroyed())return '';try{const b=w.getNativeWindowHandle();return b.length>=8?b.readBigUInt64LE(0).toString():String(b.readUInt32LE(0));}catch{return '';}};
     const hudPhysical=screen.dipToScreenRect(null,hud);
-    const target=await longCaptureTarget({point:sourceProbePoint(physical,[hudPhysical]),probe:foregroundProbe,ownerPid:process.pid});
+    const excludeHwnds=[originWindow,overlayWindow,longPickerWindow,win,outline,session.preview].map(nativeHwnd).filter(Boolean);
+    const target=await longCaptureTarget({point:sourceProbePoint(physical,[hudPhysical]),probe:foregroundProbe,ownerPid:process.pid,excludeHwnds});
     if(session.canceled)return {ok:true,canceled:true};
     session.target=target;
     const captureFrame=async()=>{
@@ -2914,7 +2923,7 @@ function getPanelActions() {
     panelActions = createPanelActions({
       store,
       actions,
-      capture: (intent) => beginScreenCapture('panel', { intent }),
+      capture: (intent, source = 'panel') => beginScreenCapture(source, { intent }),
       pin: (filePath, size) => createPinWindow(pathToFileURL(filePath).href, size),
       switchToDesktop,
       lockWorkstation,
@@ -2932,19 +2941,19 @@ function getPanelActions() {
  * 执行面板动作。这是 38 个按键唯一的执行入口：
  * 鼠标点击和键盘直达走同一条通道，保证「按键与鼠标调用同一动作」。
  */
-async function runPanelAction(actionId) {
-  return getPanelActions().run(actionId);
+async function runPanelAction(actionId, options) {
+  return options ? getPanelActions().run(actionId, options) : getPanelActions().run(actionId);
 }
 
 /**
  * 执行某个键位当前的有效绑定（自定义优先，回落出厂默认）。
  * 自定义绑定支持：内置动作 / 应用 / 文件夹 / 网页 / 任意文件。
  */
-async function runBindingKey(key) {
+async function runBindingKey(key, options) {
   if (!store) return { ok: false, error: '数据层尚未就绪' };
   const binding = effectiveBinding(store.getPanelBindings(), key);
   if (!binding || binding.type === 'none') return { ok: false, error: '这个键还没有绑定内容' };
-  if (binding.type === 'action') return runPanelAction(binding.id);
+  if (binding.type === 'action') return runPanelAction(binding.id, options);
   if(binding.type==='recipe'){
     const recipe=getRecipe(binding.id,store.data.recipes||[]);if(!recipe)return {ok:false,error:'组合动作已被删除，请重新绑定'};
     let item;
@@ -2982,7 +2991,7 @@ const globalPanelRunning=new Set();
 async function dispatchGlobalPanelAction(action) {
   const key=actionKey(store.getPanelBindings(),action);
   if(key)return runGlobalPanelKey(key);
-  return runPanelAction(action);
+  return runPanelAction(action,{source:'shortcut'});
 }
 async function runGlobalPanelKey(key) {
   // 截图/编辑时，键盘仍只服务当前工具；避免长按重复创建多个窗口。
@@ -2995,7 +3004,7 @@ async function runGlobalPanelKey(key) {
   }
   globalPanelRunning.add(key);
   try {
-    const result=await runBindingKey(key);
+    const result=await runBindingKey(key,{source:'shortcut'});
     if(result?.openClipboardBar){await showClipboardBar();return;}
     if(result?.openPage){hideQuickPanel();showMain(result.openPage);return;}
     if(result?.translate||result?.ocr||result?.output||!result?.ok) {

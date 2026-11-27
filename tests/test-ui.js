@@ -322,12 +322,12 @@ t('确认文字必须逐字匹配才允许提交', () => {
 t('面板截图入口带意图，O 提字 / P 钉图框完即出结果', () => {
   // 意图由 lib/panel-actions.js 决定（可测），main.js 只负责把 capture 接上
   if (!mainJs.includes('intent')) throw new Error('主进程未传递入口意图');
-  if (!/capture: \(intent\).*beginScreenCapture\('panel', \{ intent \}\)/.test(mainJs)) {
+  if (!/capture: \(intent(?:,\s*source\s*=\s*'panel')?\).*beginScreenCapture\((?:'panel'|source), \{ intent \}\)/.test(mainJs)) {
     throw new Error('main.js 未把入口意图交给截图');
   }
   const panelActions = read('lib/panel-actions.js');
-  if (!panelActions.includes("return startCapture('ocr')")) throw new Error('OCR 入口未带意图');
-  if (!panelActions.includes("return startCapture('pin')")) throw new Error('钉图入口未带意图');
+  if (!/return startCapture\('ocr'(?:,\s*source)?\)/.test(panelActions)) throw new Error('OCR 入口未带意图');
+  if (!/return startCapture\('pin'(?:,\s*source)?\)/.test(panelActions)) throw new Error('钉图入口未带意图');
   const overlay = read('src/overlay.js');
   if (!overlay.includes('applyIntent')) throw new Error('覆盖层未应用意图');
   if (!overlay.includes('autoAdvanceForIntent')) throw new Error('覆盖层未按意图自动推进');

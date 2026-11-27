@@ -83,7 +83,34 @@ async function until(fn){let error;for(let n=0;n<140;n++){try{const value=await 
   await main.send('Emulation.setDeviceMetricsOverride',{width:900,height:700,deviceScaleFactor:1,mobile:false});
   assert.ok(await main.evaluate('document.documentElement.scrollWidth<=innerWidth'), 'Compact document window must not overflow');
   assert.ok(await main.evaluate('document.querySelector(".window-actions").getBoundingClientRect().right<=innerWidth'), 'Window controls remain reachable');
+  // 跨断点侧栏与窄屏专注模式回归：750px 收起左栏 -> 480px 打开列表/目录/空态入口 -> 同步 inert 与 aria-pressed -> 专注模式编辑区可见
+  await main.send('Emulation.setDeviceMetricsOverride',{width:750,height:700,deviceScaleFactor:1,mobile:false});
+  await main.evaluate('document.getElementById("md-panes").click();true');
+  assert.equal(await main.evaluate('document.querySelector(".mia-library").inert'),true,'750px 收起左栏后应设为 inert');
+  await main.send('Emulation.setDeviceMetricsOverride',{width:480,height:700,deviceScaleFactor:1,mobile:false});
+  await main.evaluate('document.getElementById("md-panes").click();true');
+  assert.equal(await main.evaluate('document.querySelector(".mia-library").inert===false && document.querySelector(".mia-notes").inert===false && document.getElementById("md-panes").getAttribute("aria-pressed")==="true"'),true,'480px 展开文档列表后左栏与列表均应可交互且 aria-pressed=true');
+  assert.equal(await main.evaluate('(() => { const b=document.getElementById("md-import"); b.focus(); return document.activeElement===b; })()'),true,'480px 左栏导入按钮应可聚焦');
+  await main.evaluate('document.getElementById("md-focus-toggle").click();true');
+  assert.ok(await main.evaluate('getComputedStyle(document.querySelector(".mia-main")).display!=="none" && document.querySelector(".mia-main").getBoundingClientRect().width>200'),'480px 从列表进入专注模式时编辑区必须保持可见');
+  await main.evaluate('document.getElementById("md-focus-toggle").click();true');
+  // 480px 从编辑区打开目录 -> 侧栏与目录条目可聚焦 -> 点目录跳转返回编辑区并复位 aria-pressed
+  await main.evaluate('document.getElementById("md-outline-toggle").click();true');
+  assert.equal(await main.evaluate('document.querySelector(".mia-notes").inert===false && document.getElementById("md-panes").getAttribute("aria-pressed")==="true"'),true,'480px 目录入口打开侧栏后应可交互且 aria-pressed=true');
+  assert.equal(await main.evaluate('(() => { const h=document.querySelector("#md-outline button[data-heading]"); h?.focus(); return Boolean(h && document.activeElement===h); })()'),true,'480px 目录条目应可聚焦');
+  await main.evaluate('document.querySelector("#md-outline button[data-heading]").click();true');
+  assert.equal(await main.evaluate('document.querySelector(".mia-notes").inert===true && document.getElementById("md-panes").getAttribute("aria-pressed")==="false"'),true,'480px 目录跳转返回编辑区后应复位侧栏 inert 与 aria-pressed');
+  // 480px 列表选中文档返回编辑区 + 空态入口打开列表
+  await main.evaluate('document.getElementById("md-home").click();true');
+  await until(()=>main.evaluate('!document.getElementById("md-empty").hidden'));
+  await main.evaluate('document.getElementById("md-empty-notes").click();true');
+  assert.equal(await main.evaluate('document.querySelector(".mia-notes").inert===false && document.activeElement===document.getElementById("md-search") && document.getElementById("md-panes").getAttribute("aria-pressed")==="true"'),true,'480px 空态入口打开列表后搜索框应可聚焦且 aria-pressed=true');
+  await main.evaluate('document.querySelector("#md-list button").click();true');
+  await until(()=>main.evaluate('!document.getElementById("md-body").hidden'));
+  assert.equal(await main.evaluate('document.querySelector(".mia-notes").inert===true && document.getElementById("md-panes").getAttribute("aria-pressed")==="false"'),true,'480px 选中文档返回编辑区后应复位 aria-pressed');
   await main.send('Emulation.clearDeviceMetricsOverride');
+  await main.evaluate('if(document.querySelector(".mia-shell").classList.contains("mia-hide-library"))document.getElementById("md-panes").click();true');
+  await main.evaluate('if(!document.getElementById("md-outline").hidden)document.getElementById("md-outline-toggle").click();true');
   assert.equal(await main.evaluate('document.getElementById("md-list").hidden'),false);
   assert.equal(await main.evaluate('document.getElementById("md-outline").hidden'),true);
   await main.evaluate('document.getElementById("md-outline-toggle").click();true');

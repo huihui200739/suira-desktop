@@ -316,11 +316,65 @@
 .mia-shell button.mia-folder-btn svg { width:15px; height:15px; flex:none; fill:none; stroke:currentColor; stroke-width:1.6; stroke-linecap:round; stroke-linejoin:round; }
 .mia-library-foot .mia-import-file-btn { width:30px; height:30px; flex:none; border-radius:6px; }
 @media (max-width: 850px) {
-  .mia-library-foot { justify-content:center; padding:6px 4px; }
-  .mia-library-foot .mia-folder-btn { justify-content:center; padding:0; }
+  .mia-library-foot { flex-direction:column; justify-content:center; padding:6px 4px; }
+  .mia-library-foot .mia-folder-btn { justify-content:center; padding:0; width:30px; flex:none; }
   .mia-library-foot .mia-folder-btn span,
-  .mia-library-foot .mia-import-file-btn,
   .mia-library-foot #md-refresh-folder { display:none; }
+}
+
+/* Smooth stationary-nav sidebar collapse: nav stays still while the page slides over it */
+@media (min-width: 541px) {
+  .tool-window[data-tool="markdown"] .mia-shell:not(.mia-focus) {
+    --mia-lib-w: clamp(112px, 13vw, 164px);
+    --mia-notes-w: 200px;
+    grid-template-columns: var(--mia-lib-w) var(--mia-notes-w) minmax(0, 1fr);
+    grid-template-areas: 'library notes main';
+    transition: grid-template-columns 240ms var(--ease-out);
+  }
+  .tool-window[data-tool="markdown"] .mia-shell:not(.mia-focus) .mia-library {
+    position: relative;
+    z-index: 0;
+    overflow: hidden;
+    transition: border-color 240ms var(--ease-out);
+  }
+  .tool-window[data-tool="markdown"] .mia-shell:not(.mia-focus) .mia-library > * {
+    width: var(--mia-lib-w);
+    min-width: var(--mia-lib-w);
+    box-sizing: border-box;
+  }
+  .tool-window[data-tool="markdown"] .mia-shell:not(.mia-focus) .mia-notes {
+    position: relative;
+    z-index: 1;
+    background: var(--mia-side);
+  }
+  .tool-window[data-tool="markdown"] .mia-shell:not(.mia-focus) .mia-main {
+    position: relative;
+    z-index: 2;
+    background: var(--mia-paper);
+  }
+  .tool-window[data-tool="markdown"] .mia-shell.mia-hide-library:not(.mia-focus) {
+    grid-template-columns: 0px var(--mia-notes-w) minmax(0, 1fr);
+    grid-template-areas: 'library notes main';
+  }
+  .tool-window[data-tool="markdown"] .mia-shell.mia-hide-library:not(.mia-focus) .mia-library {
+    display: flex;
+    border-inline-end-color: transparent;
+    pointer-events: none;
+    visibility: hidden;
+    transition: border-color 240ms var(--ease-out), visibility 0s linear 240ms;
+  }
+}
+@media (min-width: 541px) and (max-width: 850px) {
+  .tool-window[data-tool="markdown"] .mia-shell:not(.mia-focus) {
+    --mia-lib-w: 48px;
+    --mia-notes-w: clamp(148px, 23vw, 190px);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .tool-window[data-tool="markdown"] .mia-shell,
+  .tool-window[data-tool="markdown"] .mia-shell .mia-library {
+    transition: none !important;
+  }
 }
 
 /* MiaoYan-style PPT Presentation Stage */
