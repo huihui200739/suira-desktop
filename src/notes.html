@@ -11,14 +11,16 @@
   <link rel="stylesheet" href="notes.css">
 </head>
 <body>
-  <main class="note" id="note" data-state="loading">
+  <main class="note" id="note" data-state="loading" data-tone="0">
     <header class="note-head">
+      <button id="note-index-btn" class="note-sidebar-toggle" type="button" title="展开或收起侧边栏" aria-label="全部速记" aria-expanded="false">
+        <svg viewBox="0 0 24 24"><rect x="3.5" y="4.5" width="17" height="15" rx="2.5"/><path d="M9.5 4.5v15"/></svg>
+      </button>
       <span class="note-mark" aria-hidden="true">
         <svg viewBox="0 0 24 24"><path d="M5 4.5h14v11l-4.5 4H5z"/><path d="M8.5 9h7M8.5 12.5h4.5"/></svg>
       </span>
       <h1 class="note-title" id="note-title">速记</h1>
       <div class="note-tools">
-        <button id="note-index-btn" type="button" title="全部速记" aria-label="全部速记" aria-expanded="false"><svg viewBox="0 0 24 24"><path d="M4 5h16M4 12h16M4 19h16"/></svg></button>
         <button id="note-new" type="button" title="新建页面" aria-label="新建页面"><svg viewBox="0 0 24 24"><path d="M12 4v16M4 12h16"/></svg></button>
         <button id="note-pin" type="button" title="钉在桌面上" aria-label="钉在桌面上" aria-pressed="false"><svg viewBox="0 0 24 24"><path d="m8 3 8 0-1 7 3 4H6l3-4zM12 14v7"/></svg></button>
         <button id="note-delete" type="button" class="note-delete-btn" title="删除当前速记" aria-label="删除当前速记"><svg viewBox="0 0 24 24"><path d="M4 7h16M9 7V4.5h6V7M7 7l1 12.5h8L17 7M10.5 11v5M13.5 11v5"/></svg></button>
@@ -28,14 +30,28 @@
       </div>
     </header>
 
-    <!-- 全部速记：不另开管理窗口，就地切换到另一条 -->
+    <!-- 全部速记侧边栏：可随时收起与展开 -->
     <aside class="note-index" id="note-index" hidden aria-label="全部速记">
-      <input id="note-search" type="search" placeholder="搜索速记" aria-label="搜索速记" autocomplete="off">
+      <div class="note-index-head">
+        <span class="note-index-badge" aria-hidden="true"></span>
+        <b class="note-index-title">速记本</b>
+        <span class="note-index-count" id="note-index-count">0</span>
+      </div>
+      <div class="note-search-wrap">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6"/><path d="m15 15 4 4"/></svg>
+        <input id="note-search" type="search" placeholder="搜索速记" aria-label="搜索速记" autocomplete="off">
+      </div>
       <div class="note-pages" id="note-pages"></div>
       <button type="button" class="note-new-page" id="note-new-page"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M8 12h8m-4-4v8"/></svg>新建页面</button>
     </aside>
 
     <section class="note-writing" aria-label="当前页面">
+      <div class="note-page-meta" id="note-page-meta">
+        <span class="note-meta-dot" aria-hidden="true"></span>
+        <span class="note-meta-page" id="note-meta-page">第 1 页</span>
+        <span class="note-meta-time" id="note-meta-time"></span>
+        <span class="note-meta-pin" id="note-meta-pin" hidden>已置顶</span>
+      </div>
       <input class="note-page-title" id="note-page-title" placeholder="添加标题" aria-label="页面标题" maxlength="120" autocomplete="off">
       <div class="note-body" id="note-body"></div>
     </section>

@@ -31,6 +31,35 @@ function renderCount(text) {
   $('#note-count').textContent = `${(text || '').length} 字`;
 }
 
+function noteToneIndex(id) {
+  const value = String(id || '');
+  let hash = 0;
+  for (let i = 0; i < value.length; i += 1) hash = (hash * 31 + value.charCodeAt(i)) >>> 0;
+  return hash % 5;
+}
+
+function formatNoteTime(timestamp) {
+  if (!timestamp || !Number.isFinite(Number(timestamp))) return '';
+  const date = new Date(Number(timestamp));
+  if (Number.isNaN(date.getTime())) return '';
+  const now = new Date();
+  const sameDay = date.getFullYear() === now.getFullYear() && date.getMonth() === now.getMonth() && date.getDate() === now.getDate();
+  const hh = String(date.getHours()).padStart(2, '0');
+  const mm = String(date.getMinutes()).padStart(2, '0');
+  if (sameDay) return `今天 ${hh}:${mm}`;
+  return `${date.getMonth() + 1}月${date.getDate()}日 ${hh}:${mm}`;
+}
+
+function syncActiveMeta(note) {
+  if (!note) return;
+  const tone = noteToneIndex(note.id);
+  $('#note').dataset.tone = String(tone);
+  const idx = indexNotes.findIndex((entry) => entry.id === note.id);
+  $('#note-meta-page').textContent = `第 ${idx >= 0 ? idx + 1 : 1} 页`;
+  $('#note-meta-time').textContent = formatNoteTime(note.updatedAt || note.createdAt || Date.now());
+  $('#note-meta-pin').hidden = !state.pinned;
+}
+
 function renderNote(note) {
   if (!note) return;
   state.id = note.id;
@@ -53,6 +82,7 @@ function renderNote(note) {
   $('#note').dataset.state = 'ready';
   $('#note-pin').setAttribute('aria-pressed', String(state.pinned));
   $('#note-pin').setAttribute('title',state.pinned?'取消置顶':'钉在桌面上');
+  syncActiveMeta(note);
 }
 
 /* ---------- 写入 ---------- */
@@ -294,6 +324,7 @@ async function boot() {
       $('#note').dataset.pinned = String(state.pinned);
       $('#note-pin').setAttribute('aria-pressed', String(state.pinned));
       $('#note-pin').setAttribute('title',state.pinned?'取消置顶':'钉在桌面上');
+      $('#note-meta-pin').hidden = !state.pinned;
     } catch (error) {
       showError(error.message || '切换失败');
     }
@@ -393,16 +424,24 @@ function renderIndex() {
   const query = $('#note-search').value.trim().toLocaleLowerCase();
   const notes = indexNotes.map((note,index) => ({note,page:index+1}))
     .filter(({note}) => !query || `${note.title} ${note.text}`.toLocaleLowerCase().includes(query));
+  $('#note-index-count').textContent = String(indexNotes.length);
+  const activeIdx = indexNotes.findIndex((entry) => entry.id === state.id);
+  if (activeIdx >= 0) $('#note-meta-page').textContent = `第 ${activeIdx + 1} 页`;
   const list = $('#note-pages');
   const scroll = list.scrollTop;
   const focusedId = list.contains(document.activeElement) ? document.activeElement.dataset.id : '';
   list.innerHTML = notes.length ? notes.map(({note,page}) => {
     const text = (note.text || '').trim();
     const preview = (note.customTitle ? text : text.split(/\r?\n/).slice(1).join(' ')).trim();
-    return `<button type="button" data-id="${escapeHtml(note.id)}" aria-current="${note.id === state.id}">
-      <small>第 ${page} 页${note.pinned ? ' · 已置顶' : ''}</small>
+    const tone = noteToneIndex(note.id);
+    const metaLabel = text.length ? `${text.length} 字` : '空白';
+    return `<button type="button" data-id="${escapeHtml(note.id)}" data-tone="${tone}" aria-current="${note.id === state.id}">
+      <div class="note-page-top">
+        <span class="note-page-pill">第 ${page} 页${note.pinned ? ' · 置顶' : ''}</span>
+        <span class="note-page-chars">${escapeHtml(metaLabel)}</span>
+      </div>
       <b>${escapeHtml(text || note.customTitle ? note.title : '新页面')}</b>
-      <span>${escapeHtml((preview || (text ? '无摘要' : '空白页面')).slice(0, 100))}</span>
+      <span class="note-page-preview">${escapeHtml((preview || (text ? '无摘要' : '空白页面')).slice(0, 100))}</span>
     </button>`;
   }).join('') : `<p class="note-index-empty">${query ? '没有匹配的速记' : '还没有速记'}</p>`;
   list.scrollTop = scroll;

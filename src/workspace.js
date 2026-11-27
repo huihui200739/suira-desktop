@@ -2151,7 +2151,7 @@
           heading: headingBar,
           actions,
           brand: '随序',
-          open: $('md-import')
+          open: null
         })
       };
       const libraryFoot = document.createElement('div');
@@ -2165,6 +2165,14 @@
       openFolderBtn.innerHTML =
         '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7h6l2 2h10v11H3z M12 11v6 M9 14h6"/></svg><span>打开文件夹</span>';
       openFolderBtn.onclick = safe(() => openLocalFolder(false));
+      const importFileBtn = $('md-import');
+      if (importFileBtn) {
+        importFileBtn.className = 'mia-icon mia-import-file-btn';
+        importFileBtn.title = '打开单个 Markdown 文件';
+        importFileBtn.setAttribute('aria-label', '打开单个 Markdown 文件');
+        importFileBtn.innerHTML =
+          '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M12 16v-5m-2.5 2.5L12 11l2.5 2.5"/></svg>';
+      }
       const refreshFolderBtn = document.createElement('button');
       refreshFolderBtn.id = 'md-refresh-folder';
       refreshFolderBtn.type = 'button';
@@ -2175,7 +2183,7 @@
       refreshFolderBtn.innerHTML =
         '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.3-5.6L20 9 M20 4v5h-5"/></svg>';
       refreshFolderBtn.onclick = safe(() => openLocalFolder(true));
-      libraryFoot.append(openFolderBtn, refreshFolderBtn);
+      libraryFoot.append(...[openFolderBtn, importFileBtn, refreshFolderBtn].filter(Boolean));
       documentLayout.library.append(libraryFoot);
       const action = (id, icon, label) =>
         iconButton(Object.assign(document.createElement('button'), { id }), icon, label);

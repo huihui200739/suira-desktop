@@ -243,23 +243,28 @@ kbd {
 .bar-notice.is-error { color: var(--red-11); }
 .bar .action-strip { padding: 0; border: 0; background: none; }
 .bar .action-strip-menu[popover] {
-  width: min(264px, calc(100vw - 16px)); max-height: calc(100vh - 16px);
-  padding: 4px; border: 1px solid var(--slate-6); border-radius: 12px;
+  width: min(210px, calc(100vw - 16px)); max-height: calc(100vh - 16px);
+  padding: 5px; border: 1px solid var(--slate-6); border-radius: 12px;
   background: var(--slate-1); color: var(--slate-12); backdrop-filter: none;
+  box-shadow: var(--shadow-float);
+}
+.bar .action-strip-menu[popover][data-compact="true"] {
+  width: min(184px, calc(100vw - 16px));
 }
 .bar .action-strip-menu-search {
-  display: flex; align-items: center; gap: 8px; height: 36px; margin: 0 4px 4px;
-  padding: 0 8px; color: var(--slate-11); border-bottom: 1px solid var(--slate-5);
+  display: flex; align-items: center; gap: 6px; height: 28px; margin: 1px 1px 4px;
+  padding: 0 8px; color: var(--slate-11); border: 1px solid var(--slate-5);
+  border-radius: 7px; background: var(--slate-2);
 }
-.bar .action-strip-menu-search:focus-within { border-color: var(--accent-8); }
-.bar .action-strip-menu-search svg { width: 16px; height: 16px; flex: none; }
-.bar .action-strip-menu-search input { min-width: 0; margin: 0; padding: 0; border: 0; outline: 0; background: transparent; }
+.bar .action-strip-menu-search:focus-within { border-color: var(--accent-8); background: var(--slate-1); }
+.bar .action-strip-menu-search svg { width: 13px; height: 13px; flex: none; }
+.bar .action-strip-menu-search input { min-width: 0; margin: 0; padding: 0; border: 0; outline: 0; background: transparent; font-size: 12px; }
 .bar .action-strip-menu-list button {
-  min-height: 32px; margin: 0; padding: 4px 8px; border: 0; border-radius: 6px;
-  color: inherit; background: transparent;
+  min-height: 29px; margin: 0; padding: 0 8px; border: 0; border-radius: 7px;
+  color: inherit; background: transparent; font-size: 12.5px;
 }
 .bar .action-strip-menu-list button:is(:hover, :focus-visible), #bar-share button:is(:hover, :focus-visible) { background: var(--slate-4); }
-.bar .action-strip-menu-list kbd { padding: 0 4px; border: 0; }
+.bar .action-strip-menu-list kbd { padding: 0 4px; border: 0; background: transparent; }
 .bar-preview {
   position: absolute; inset: 0 var(--bar-gutter) 12px; z-index: 10; display: flex; flex-direction: column;
   border: 1px solid var(--slate-7); border-radius: 12px; background: var(--slate-1); overflow: hidden;

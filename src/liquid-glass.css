@@ -84,6 +84,7 @@ html { background:transparent!important; color-scheme:normal!important; }
 .liquid-ui :is(.quiet-btn,.primary-btn):active { transform:scale(0.97); transition-duration:50ms; }
 .liquid-ui :is(.quiet-btn,.primary-btn):disabled { opacity:.45; cursor:default; transform:none; }
 .liquid-ui :is(input,select,textarea):focus-visible,.liquid-ui button:focus-visible { outline:2px solid var(--focus-ring); outline-offset:2px; }
+.liquid-ui .search-field input:focus-visible,.liquid-ui .bar-search input:focus-visible,.liquid-ui .action-strip-menu-search input:focus-visible { outline:none; }
 .liquid-ui :is(.view-switch,.agenda-tabs) { padding:calc(var(--space-1) * 0.75); gap:calc(var(--space-1) * 0.75); background:var(--glass-liquid-ui-view-switch-agenda-tabs-surface); border:1px solid var(--tool-edge); box-shadow:var(--glass-liquid-ui-view-switch-agenda-tabs-shadow); }
 .liquid-ui :is(.view-switch,.agenda-tabs) button { border:1px solid transparent; border-radius:7px; min-height:30px; padding:calc(var(--space-1) * 1.25) calc(var(--space-1) * 2.5); font-weight:400; }
 .liquid-ui :is(.view-switch,.agenda-tabs) button.is-active { background:var(--glass-button); color:var(--glass-accent-ink); border-color:var(--glass-edge); box-shadow:var(--glass-view-switch-agenda-tabs-is-active-shadow); }

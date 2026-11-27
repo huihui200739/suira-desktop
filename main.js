@@ -1028,9 +1028,9 @@ function createQuickWindow() {
     primeQuickFrame(quickWindow);
   });
   quickWindow.on('blur', () => {
-    if (!quickWindow || quickWindow.isDestroyed() || panelBindingPickerOpen || quickWindow.__panelDragging || quickWindow.webContents.isDevToolsOpened()) return;
+    if (!quickWindow || quickWindow.isDestroyed() || panelBindingPickerOpen || quickWindow.__panelDragging || captureBusy || (overlayWindow && !overlayWindow.isDestroyed() && overlayWindow.isVisible()) || quickWindow.webContents.isDevToolsOpened()) return;
     const win=quickWindow;
-    setImmediate(()=>{if(quickWindow===win&&!win.isDestroyed()&&!win.isFocused()&&!panelBindingPickerOpen&&!win.__panelDragging)hideQuickPanel();});
+    setImmediate(()=>{if(quickWindow===win&&!win.isDestroyed()&&!win.isFocused()&&!panelBindingPickerOpen&&!win.__panelDragging&&!captureBusy&&!(overlayWindow&&!overlayWindow.isDestroyed()&&overlayWindow.isVisible()))hideQuickPanel();});
   });
   quickWindow.on('show', () => {
     cancelIdleTeardown(quickWindow);
@@ -1532,7 +1532,7 @@ function createClipboardBarWindow() {
     });
   }
   win.on('blur', () => {
-    if (!win.__shelfPinned && !win.__savingImage && !win.__pastingHistory) hideClipboardBar();
+    if (!win.__shelfPinned && !win.__savingImage && !win.__pastingHistory && !captureBusy && !(overlayWindow && !overlayWindow.isDestroyed() && overlayWindow.isVisible())) hideClipboardBar();
   });
   win.on('closed', () => {
     clipboardBarWindow = null;
@@ -2255,12 +2255,12 @@ async function beginScreenCapture(source = 'panel', options = {}) {
     if (revision !== regionCaptureRevision) return cancelled;
     // 页面加载与屏幕采集并行，缩短首次显示等待。
     createOverlayWindow();
-    const hidingSurface = [quickWindow, clipboardBarWindow, mainWindow].some(win => win && !win.isDestroyed() && win.isVisible());
-    hideQuickPanel();
-    hideClipboardBar();
-    mainWasVisible = Boolean(mainWindow && !mainWindow.isDestroyed() && mainWindow.isVisible());
-    if (mainWasVisible) mainWindow.hide();
-    // 仅在需要等待自己的窗口从桌面消失时让出合成帧。
+    // 仅在由悬浮板自身触发截图时收起悬浮板；保留主窗口、速记、Markdown、日历、剪贴板等随序窗口，支持直接截取本产品界面。
+    const hideLauncher = source === 'panel' || source === 'quick';
+    const hidingSurface = hideLauncher && Boolean(quickWindow && !quickWindow.isDestroyed() && quickWindow.isVisible());
+    if (hideLauncher) hideQuickPanel();
+    mainWasVisible = false;
+    // 仅在需要等待悬浮板从桌面消失时让出合成帧。
     if (hidingSurface) await new Promise((resolve) => setTimeout(resolve, 40));
 
     // 跨屏支持：覆盖所有显示器组成的虚拟桌面。
@@ -2275,7 +2275,8 @@ async function beginScreenCapture(source = 'panel', options = {}) {
       try {
         const executable=await readyCaptureHost();
         if(executable){
-          const [frames,rawWindows]=await Promise.all([captureNative(executable),captureWindowsNative(executable,process.pid)]);
+          // overlayWindow 此时尚未显示，传 0 让智能窗口吸附同样可命中随序自身窗口。
+          const [frames,rawWindows]=await Promise.all([captureNative(executable),captureWindowsNative(executable,0)]);
           tiles=nativeDesktopTiles(displays,frames,virtualBounds,maxScale);
           snapRects=normalizeSnapRects(rawWindows,virtualBounds,pt=>screen.screenToDipPoint(pt));
         }
@@ -2477,9 +2478,9 @@ async function beginLongPicker(source) {
     longPickerPayload={bounds,size:bounds,intent:'long',source,revision,longPicker:true};
     win.webContents.send('long-picker:shown',{bounds,revision});await ready;
     if(revision!==longPickerRevision||win.isDestroyed())return {ok:true,visible:false};
-    mainWasVisible=Boolean(mainWindow&&!mainWindow.isDestroyed()&&mainWindow.isVisible());
-    // 框选层先显示再收起面板；无需截整屏、PNG 编解码或激活任何窗口。
-    win.showInactive();hideQuickPanel();hideClipboardBar();if(mainWasVisible)mainWindow.hide();
+    mainWasVisible=false;
+    // 框选层先显示；仅从悬浮板进入时收起悬浮板，保留其余随序窗口供长截图选取。
+    win.showInactive();if(source==='panel'||source==='quick')hideQuickPanel();
     longPickerEscape=globalShortcut.register('Escape',()=>cancelLongPicker());
     return {ok:true};
   }catch(error){if(revision===longPickerRevision)cancelLongPicker();return {ok:false,error:error.message||'长截图框选失败'};}
