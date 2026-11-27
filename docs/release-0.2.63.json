@@ -14,5 +14,7 @@
   "published": true,
   "payloadSha256": "B02D2E208F26CBC369F943D9EE12482DCEA0B061F9CF15D66D9EC965B847B07E",
   "executableSha256": "0D8D38A4B3FED6BF899B24981B42669094CC063721AD40D7DF5796B04448A124",
-  "buildCommit": "33e570e3f40a3b9f7cf4180e43eb56301b3e565f",`n  "releaseUrl": "https://github.com/huihui200739/suira-updates/releases/tag/v0.2.63",`n  "publishedAt": "2026-11-27T13:17:49Z"
+  "buildCommit": "33e570e3f40a3b9f7cf4180e43eb56301b3e565f",
+  "releaseUrl": "https://github.com/huihui200739/suira-updates/releases/tag/v0.2.63",
+  "publishedAt": "2026-11-27T13:17:49Z"
 }
