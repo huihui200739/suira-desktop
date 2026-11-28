@@ -16,18 +16,22 @@ function documentHarness(api,{dirty=true,external=false}={}){
   const nodes=new Map(),$=id=>{if(!nodes.has(id))nodes.set(id,{value:'',hidden:false,disabled:false,textContent:''});return nodes.get(id);};
   $('md-title').value='Document A';$('md-editor').value=dirty?'# Edited A':'# Original A';
   const initialDocs=[{id:'a',title:'Document A',text:'# Original A',meta:external?{externalPath:'A.md'}:{}},{id:'b',title:'Document B',text:'# Document B',meta:{}}];
-  const context={api,$,initialDocs,initialRevision:dirty?1:0,clearTimeout,notify(){},document:{documentElement:{classList:{toggle(){}}}}};
+  const shellClasses=new Set(['mia-notes-only']);
+  const shell={classList:{toggle(name,enabled){if(enabled)shellClasses.add(name);else shellClasses.delete(name);}}};
+  const context={api,$,initialDocs,initialRevision:dirty?1:0,shell,clearTimeout,notify(){},document:{documentElement:{classList:{toggle(){}}}}};
   vm.runInNewContext(`
     let current='a',revision=initialRevision,savedRevision=0,docs=initialDocs,richDocument=null,richText='',richKey='',timer,previewTimer,saveInFlight,viewRevision=0,previewRevision=0,renderedText,outlineItems,sourceHeadingPositions,documentLayout,requestedView='edit';
     const foldedHeadings=new Set(), editor=$('md-editor'), previewPane={replaceChildren(){}};
     async function checked(promise){const result=await promise;if(!result?.ok)throw Error(result?.error||'操作失败');return result;}
-    function setWritingFocus(){} function documentIdentity(){} function closeDocumentFind(){} function setDocumentView(){} function preview(){} function docList(){} function syncDocumentNavigation(){}
+    documentLayout={shell};
+    function setWritingFocus(){} function documentIdentity(){} function closeDocumentFind(){} function setDocumentView(){} function preview(){} function docList(){} function syncDocumentNavigation(){} function syncMarkdownSidebarInert(){}
     const savedLabel=()=> '已保存';
+    ${rendererSection(/\bfunction\s+setNarrowNotesOnly\s*\(/, /\bfunction\s+setWritingFocus\s*\(/)}
     ${rendererSection(/\bfunction\s+flush\s*\(/, /\basync\s+function\s+loadDocs\s*\(/)}
     ${rendererSection(/\basync\s+function\s+saveCurrentFile\s*\(/, /\$\('md-save'\)\.onclick\s*=/)}
     globalThis.ui={flush,selectDoc,saveCurrentFile,state:()=>({current,revision,savedRevision,docs}),edit:text=>{$('md-editor').value=text;revision++;$('md-status').textContent='未保存';}};
   `,context);
-  return {...context.ui,$};
+  return {...context.ui,$,shellClasses};
 }
 async function testDocumentSaving(){
   const started=deferred(),finish=deferred(),saves=[];
@@ -36,6 +40,7 @@ async function testDocumentSaving(){
   assert.equal(saves.at(-1).text,'# Latest A while saving','Switching must save edits made while an earlier save is pending');
   assert.equal(ui.state().docs.find(item=>item.id==='a').text,'# Latest A while saving');
   assert.equal(ui.state().current,'b');assert.equal(ui.$('md-editor').value,'# Document B');
+  assert.equal(ui.shellClasses.has('mia-notes-only'),false,'Selecting a document must return to the editor in narrow layouts');
 
   const fileStarted=deferred(),fileFinished=deferred();
   const external=documentHarness({saveFile:async id=>{assert.equal(id,'a');fileStarted.resolve();return fileFinished.promise;}},{dirty:false,external:true});

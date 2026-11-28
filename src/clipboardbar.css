@@ -261,7 +261,7 @@ kbd {
 .bar .action-strip-menu-search input { min-width: 0; margin: 0; padding: 0; border: 0; outline: 0; background: transparent; font-size: 12px; }
 .bar .action-strip-menu-list button {
   min-height: 29px; margin: 0; padding: 0 8px; border: 0; border-radius: 7px;
-  color: inherit; background: transparent; font-size: 12.5px;
+  color: inherit; background: transparent; font-size: var(--text-2);
 }
 .bar .action-strip-menu-list button:is(:hover, :focus-visible), #bar-share button:is(:hover, :focus-visible) { background: var(--slate-4); }
 .bar .action-strip-menu-list kbd { padding: 0 4px; border: 0; background: transparent; }
